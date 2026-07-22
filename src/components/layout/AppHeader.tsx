@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Menu, RefreshCw, Search, Sparkles } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { marketStatus } from '~/data/mockData'
-import { searchInstrumentsLocal } from '~/services/marketDataService'
+import { marketDataService } from '~/services/marketDataService'
 import { Button, IconButton } from '~/components/ui/Button'
 import type { Instrument } from '~/types'
 
@@ -63,8 +63,35 @@ function InstrumentSearch() {
   const listId = useId()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [results, setResults] = useState<Instrument[]>([])
+  const [isSearching, setIsSearching] = useState(false)
 
-  const results = searchInstrumentsLocal(query)
+  // Debounced: when AVANZA_MCP_ENABLED is on, this hits the real Avanza API,
+  // so every keystroke would otherwise fire a live network request.
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      setResults([])
+      setIsSearching(false)
+      return
+    }
+
+    let cancelled = false
+    setIsSearching(true)
+    const timeout = setTimeout(() => {
+      marketDataService.searchInstruments(trimmed).then((instruments) => {
+        if (!cancelled) {
+          setResults(instruments)
+          setIsSearching(false)
+        }
+      })
+    }, 200)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [query])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -134,7 +161,9 @@ function InstrumentSearch() {
           aria-label="Sökresultat"
           className="absolute top-12 left-0 z-40 w-full overflow-hidden rounded-lg bg-surface-2 p-1 shadow-pop"
         >
-          {results.length === 0 ? (
+          {isSearching ? (
+            <li className="px-3 py-2.5 text-sm text-content-muted">Söker…</li>
+          ) : results.length === 0 ? (
             <li className="px-3 py-2.5 text-sm text-content-muted">
               Inga träffar för ”{query}”.
             </li>

@@ -1,17 +1,15 @@
 /**
  * Market data service — the single seam between the UI and any real data source.
  *
- * Today every method returns local mock data synchronously. The interface is
- * already async-shaped so swapping in the Avanza MCP adapter (see
- * `./avanzaMcpAdapter.ts`) requires no component changes.
- *
- * INTEGRATION POINT
- * -----------------
- * Replace `mockMarketDataService` with `createAvanzaMcpMarketDataService(...)`
- * in `getMarketDataService()` once the MCP client is wired up. Components should
- * only ever import `marketDataService`, never the mock module directly.
+ * Most methods still return local mock data. `searchInstruments` and
+ * `getMarketStatus` are real when `AVANZA_MCP_ENABLED=true` (see
+ * `./avanzaMcpAdapter.ts` for exactly which methods and why only those two).
+ * The interface is async-shaped throughout, so this swap requires no
+ * component changes either way — components should only ever import
+ * `marketDataService`, never the mock module directly.
  */
 
+import { createAvanzaMcpMarketDataService } from './avanzaMcpAdapter'
 import {
   agents,
   aiMarketBrief,
@@ -108,10 +106,19 @@ export function searchInstrumentsLocal(query: string, limit = 6): Instrument[] {
 /**
  * Resolves the active service implementation.
  *
- * TODO(avanza-mcp): return the MCP-backed service when a client is configured,
- * e.g. `return createAvanzaMcpMarketDataService(mcpClient)`.
+ * Opt-in, not default: the real Avanza integration spawns a Python
+ * subprocess (`uvx avanza-mcp`) and makes live network calls, both of which
+ * require that host to have `uv` installed — set `AVANZA_MCP_ENABLED=true`
+ * (in a local, gitignored `.env`) once that's true for your environment.
  */
 export function getMarketDataService(): MarketDataService {
+  // Guard `typeof process` — this module is also evaluated in the browser
+  // bundle, where `process` does not exist.
+  const avanzaMcpEnabled =
+    typeof process !== 'undefined' && process.env.AVANZA_MCP_ENABLED === 'true'
+  if (avanzaMcpEnabled) {
+    return createAvanzaMcpMarketDataService(mockMarketDataService)
+  }
   return mockMarketDataService
 }
 

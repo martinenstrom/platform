@@ -1,8 +1,11 @@
 # Stack — UI-grund för ett operativsystem för analysagenter
 
 Frontend-grund för ett agentdrivet analysverktyg: agenterna är produktens primära
-objekt, med portfölj- och marknadsöversikt som stödvy. **All data är lokal
-exempeldata** — ingen backend, ingen Avanza-koppling, inga order eller affärer.
+objekt, med portfölj- och marknadsöversikt som stödvy. **All portfölj- och kunddata
+är lokal exempeldata** — ingen kontokoppling, inga order eller affärer.
+`searchInstruments`/`getMarketStatus` kan valfritt hämta riktig, publik
+marknadsdata från Avanza (se nedan) — utan inloggning och utan åtkomst till något
+konto.
 
 ## Teknik
 
@@ -37,20 +40,56 @@ src/
     dashboard/     MarketTicker, WatchlistTable, RecentAnalysesTable
   data/            mockData.ts — all exempeldata på ett ställe
   services/        marketDataService.ts + avanzaMcpAdapter.ts (integrationspunkt)
+    avanzaMcp/     Node-transport, mappers och createServerFn-wrappers för avanza-mcp
+    investmentLetter/  11-agents pipeline för Private Banking-veckobrevet
   types/           Domäntyper
   lib/             format.ts (sv-SE/SEK), chartTheme.ts, navigation.ts, cn.ts
   styles/app.css   Designtokens (@theme) — färger, radier, skuggor
 ```
 
+## Avanza-integration (real, delvis)
+
+[`src/services/avanzaMcpAdapter.ts`](src/services/avanzaMcpAdapter.ts) kopplar
+`searchInstruments` och `getMarketStatus` till Avanzas riktiga, publika
+marknadsdata via [`avanza-mcp`](https://pypi.org/project/avanza-mcp/) (körs med
+`uvx`). Paketet kräver ingen inloggning och har inga konto-/order-verktyg — bara
+sök, kurser, grafer och nyckeltal. Övriga metoder (innehav, portfölj, bevakning,
+AI-brief, m.m.) har ingen motsvarande endpoint och fortsätter använda
+exempeldata; se kommentarerna i
+[`avanzaMcpAdapter.ts`](src/services/avanzaMcpAdapter.ts) för exakt vilka och
+varför.
+
+Avstängt som standard. Slå på genom att sätta i en lokal, git-ignorerad `.env`:
+
+```
+AVANZA_MCP_ENABLED=true
+# Endast om `uvx` inte redan ligger på PATH:
+AVANZA_MCP_UVX_PATH=/absolut/sökväg/till/uvx
+```
+
+Node-transporten (`src/services/avanzaMcp/client.ts`) spawnar `uv`s `uvx` som en
+subprocess och pratar MCP över stdio via `@modelcontextprotocol/sdk` — den
+importeras enbart dynamiskt inifrån en `createServerFn`-handler
+([`src/services/avanzaMcp/serverFns.ts`](src/services/avanzaMcp/serverFns.ts))
+så den aldrig hamnar i klientbundlen (verifierat: `npm run build` och sök i
+`dist/client/` efter `modelcontextprotocol`/`child_process` ger inga träffar).
+Kräver att värden som kör `npm start` har `uv` installerat.
+
 ## Nästa steg: integrationer
 
-- **Avanza MCP** — implementera `createAvanzaMcpMarketDataService()` i
-  [`src/services/avanzaMcpAdapter.ts`](src/services/avanzaMcpAdapter.ts) och returnera
-  den från `getMarketDataService()` i
-  [`src/services/marketDataService.ts`](src/services/marketDataService.ts).
-  Anropa MCP från en `createServerFn` så att inga uppgifter hamnar i klientbundlen.
-- **Analysagenter** — briefer, uppslag och analyskörningar hör inte till Avanza.
-  Lägg ett separat `analysisAgentService.ts` med samma gränssnittsmönster.
+- **Avanza MCP** — resten av `MarketDataService` (innehav, portfölj, bevakning,
+  screener, AI-brief) kräver kontoåtkomst som `avanza-mcp` inte exponerar; en
+  riktig implementation behöver en annan, autentiserad datakälla.
+- **Analysagenter** — [`src/services/analysisAgentService.ts`](src/services/analysisAgentService.ts)
+  ger en 11-agents pipeline (News → Flow → Macro → Equity → Valuation →
+  Portfolio → Quant → Devil's Advocate → CIO → Editorial → Compliance) som
+  producerar ett veckobrev för Private Banking-kunder. Se
+  [`src/services/investmentLetter/`](src/services/investmentLetter/) för
+  agenterna, pipelinen, publiceringschecklistan och typerna i
+  [`src/types/investmentLetter.ts`](src/types/investmentLetter.ts). Idag
+  returnerar varje agent en fast exempel-fixture — riktig LLM- och
+  datakoppling (se `investmentLetter/dataAdapters.ts`) återstår, agent för
+  agent, på samma sätt som Avanza-adaptern ovan.
 
 ## Designnoter
 

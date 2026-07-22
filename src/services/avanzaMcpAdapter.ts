@@ -1,60 +1,70 @@
 /**
- * Avanza MCP adapter — intentionally unimplemented.
+ * Avanza MCP adapter — real, partial implementation.
  *
- * This file documents the shape the real integration should take so the UI never
- * needs to know where data comes from. Nothing here runs today.
+ * Backed by the `avanza-mcp` PyPI package (run via `uvx`, see
+ * `./avanzaMcp/client.ts`), which wraps Avanza's **public, unauthenticated**
+ * market-data API. There is no login and no account/portfolio access here —
+ * confirmed by reading that package's source: it exposes only search, quotes,
+ * charts, financials, dividends and similar public instrument data, never
+ * holdings, positions, watchlists or orders.
  *
- * Where things go
- * ---------------
- * 1. `AvanzaMcpClient` is satisfied by whatever MCP transport is used
- *    (stdio / HTTP). Keep credentials on the server — call MCP tools from a
- *    TanStack Start `createServerFn`, never from the browser bundle.
- * 2. `mapPositionsToHoldings` (and siblings) translate upstream payloads into the
- *    domain types in `~/types`. Keep every field-level assumption in this file.
- * 3. `createAvanzaMcpMarketDataService` returns a `MarketDataService` that
- *    `getMarketDataService()` can hand to the UI in place of the mock.
+ * That means only two `MarketDataService` methods have anything real to call:
+ * `searchInstruments` and `getMarketStatus` (see `./avanzaMcp/serverFns.ts`
+ * for the `createServerFn` wrappers, `./avanzaMcp/mappers.ts` for the raw
+ * Avanza JSON -> domain type mapping). Everything else — holdings, portfolio
+ * summary, allocation, risk score, watchlist, opportunities, the AI brief,
+ * recent analyses, reports, the screener, and `getMarketIndices` (whose mock
+ * list mixes Swedish/US/FX/crypto — not something this Swedish-broker-only
+ * search maps onto cleanly) — has no real endpoint to call and stays mocked.
  *
- * Scope guard: this template is read-only by design. Do not add order placement
- * or trading tools here.
+ * Scope guard: this integration is read-only by design, and so is the
+ * upstream package — do not add order placement or trading tools here.
  */
 
+import { getAvanzaMarketStatusFn, searchAvanzaInstrumentsFn } from './avanzaMcp/serverFns'
 import type { MarketDataService } from './marketDataService'
 
-/** Minimal surface expected from an MCP client (tool name + arguments). */
-export interface AvanzaMcpClient {
-  callTool<TResult>(name: string, args?: Record<string, unknown>): Promise<TResult>
-}
-
-/** Tool names the adapter is expected to call. Adjust to the real MCP server. */
+/** The full real tool catalog exposed by `avanza-mcp`, for reference — only a few are wired up above. */
 export const AVANZA_MCP_TOOLS = {
-  accountOverview: 'avanza.account.overview',
-  positions: 'avanza.account.positions',
-  instrumentSearch: 'avanza.instrument.search',
-  instrumentQuote: 'avanza.instrument.quote',
-  chartData: 'avanza.instrument.chart',
-  watchlists: 'avanza.watchlist.list',
+  searchInstruments: 'search_instruments',
+  getInstrumentByOrderBookId: 'get_instrument_by_order_book_id',
+  getMarketplaceInfo: 'get_marketplace_info',
+  getStockQuote: 'get_stock_quote',
+  getStockInfo: 'get_stock_info',
+  getStockChart: 'get_stock_chart',
+  getStockAnalysis: 'get_stock_analysis',
+  getOrderbook: 'get_orderbook',
+  getRecentTrades: 'get_recent_trades',
+  getBrokerTradeSummary: 'get_broker_trade_summary',
+  getDividends: 'get_dividends',
+  getCompanyFinancials: 'get_company_financials',
+  getFundInfo: 'get_fund_info',
+  getNumberOfOwners: 'get_number_of_owners',
+  getShortSelling: 'get_short_selling',
 } as const
 
 /**
- * TODO(avanza-mcp): implement.
- *
- * Suggested outline:
- *   const positions = await client.callTool(AVANZA_MCP_TOOLS.positions)
- *   return { ...mockMarketDataService, getHoldings: async () => map(positions) }
- *
- * Roll methods over one at a time — the mock service can back the rest until
- * each endpoint is mapped and verified.
+ * Returns a `MarketDataService` where `searchInstruments` and
+ * `getMarketStatus` hit the real Avanza public API; every other method falls
+ * back to `fallback` (pass `mockMarketDataService`). Roll more methods over
+ * as real endpoints are found for them (or as this integration grows a
+ * second, authenticated data source). Takes the fallback as a parameter
+ * rather than importing it, so this module never depends on
+ * `marketDataService.ts` at runtime — only `marketDataService.ts` depends on
+ * this one.
  */
 export function createAvanzaMcpMarketDataService(
-  _client: AvanzaMcpClient,
+  fallback: MarketDataService,
 ): MarketDataService {
-  throw new Error(
-    'Avanza MCP-adaptern är inte implementerad ännu. Använd mockMarketDataService.',
-  )
+  return {
+    ...fallback,
+    searchInstruments: (query) => searchAvanzaInstrumentsFn({ data: query }),
+    getMarketStatus: () => getAvanzaMarketStatusFn(),
+  }
 }
 
 /**
- * TODO(agents): AI briefs, opportunities and analysis runs are produced by
- * analysis agents rather than Avanza. Add a separate `analysisAgentService.ts`
- * with the same async-interface pattern and compose the two here.
+ * AI briefs, opportunities and analysis runs are produced by analysis agents
+ * rather than Avanza — see `./analysisAgentService.ts`, which follows the
+ * same async-interface pattern as this file.
  */
