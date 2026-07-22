@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+
+/**
+ * Design tokens for the premium dark UI.
+ *
+ * Depth comes from elevation, not outlines: surfaces step up from the canvas and
+ * carry a soft shadow. `line` is a hairline used only where a real edge is needed
+ * (table rows, sidebar seam) — never as a default card border.
+ * Semantics: indigo = primary, green = positive, red = negative, amber = warning.
+ */
+@theme {
+  --color-canvas: #080a0f;
+  --color-surface: #101419;
+  --color-surface-2: #161a21;
+  --color-surface-3: #1d222b;
+  --color-line: #1c222b;
+  --color-line-strong: #29313d;
+
+  --color-content: #e8edf7;
+  --color-content-muted: #98a3b8;
+  --color-content-subtle: #818da1;
+
+  /* `accent` is the light step used for text and icons (AA on every surface);
+     `accent-solid` is the fill behind white text. */
+  --color-accent: #8695ff;
+  --color-accent-solid: #4a5ae0;
+  --color-accent-hover: #5566ea;
+  --color-accent-soft: #1b2140;
+
+  --color-positive: #2ecc84;
+  --color-positive-soft: #0f2b21;
+  --color-negative: #f2555a;
+  --color-negative-soft: #2e1519;
+  --color-warning: #eaa73c;
+  --color-warning-soft: #2c2113;
+  --color-info: #48a7e8;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* Elevation replaces borders: a hairline top highlight plus a soft drop. */
+  --shadow-card:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.4),
+    0 8px 24px -16px rgb(0 0 0 / 0.8);
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.7);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-canvas text-content font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'ss01';
+  }
+
+  /* Numeric columns stay aligned when values change. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  *:focus-visible {
+    @apply outline-accent outline-2 outline-offset-2;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-content-subtle);
+    background-clip: content-box;
+  }
+}
+
+@layer utilities {
+  /* Recharts injects its own focus ring on the surface wrapper. */
+  .recharts-wrapper:focus {
+    outline: none;
+  }
+}
