@@ -1,15 +1,27 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
+  Activity,
   BarChart3,
   Bell,
+  BellRing,
   Briefcase,
-  Eye,
+  Building2,
+  Cpu,
+  Factory,
   FileText,
-  Home,
-  LineChart as LineChartIcon,
+  Flame,
+  Landmark,
+  LayoutGrid,
+  Newspaper,
+  Package,
   Plus,
+  Radio,
+  Search,
   Settings,
+  ShoppingBag,
+  Star,
+  TrendingUp,
 } from 'lucide-react'
 import {
   CartesianGrid,
@@ -50,30 +62,33 @@ import type {
 } from '~/types/countryExplorer'
 
 /**
- * Wall Street photograph for the left column.
+ * Wall Street photograph for the strip beside the sidebar.
  * "Sign of the New York Stock Exchange, Broad Street" by Billie Grace Ward —
  * CC0 (public domain dedication, no attribution required), sourced from
  * Wikimedia Commons:
  * https://commons.wikimedia.org/wiki/File:Sign_of_the_New_York_Stock_Exchange,_Broad_Street.jpg
- * Set to null to fall back to the built-in architectural line art.
  */
-const WALL_STREET_PHOTO_URL: string | null = '/data/wall-street.jpg'
+const WALL_STREET_PHOTO_URL = '/data/wall-street.jpg'
 
-const CARD =
-  'rounded-[20px] border border-[#E9EEF5] bg-white shadow-[0_10px_40px_rgba(30,40,60,0.06)]'
+/** Dark institutional palette (matches the reference token set). */
+const PANEL =
+  'rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)]'
+const CARD_INNER =
+  'rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)]'
 const CARD_HOVER =
-  'transition-all duration-250 hover:-translate-y-[3px] hover:shadow-[0_14px_44px_rgba(30,40,60,0.09)]'
-const LABEL = 'text-[11px] font-medium tracking-[0.2em] uppercase text-[#5b7a9d]'
+  'transition-all duration-200 hover:-translate-y-[2px] hover:border-[rgba(72,167,232,0.42)]'
+const LABEL = 'text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]'
+const POSITIVE = '#27d879'
+const NEGATIVE = '#ff4f55'
 
 /* ------------------------------------------------------------------ data — */
 
 /**
  * All figures below reuse the app's existing mock datasets wherever they
  * exist (indices, DAX/Nikkei country data, VIX/10Y overview, news, watch-
- * list, sentiment). Entries that have no dataset yet (FTSE, EUR/USD-style
- * pairs, commodities, extra yields, sector day-moves, intraday curves) are
- * local deterministic mock values, marked as such — same convention as the
- * rest of the mock layer.
+ * list, sentiment). Entries with no dataset yet (FTSE, EUR/USD, commodities,
+ * extra yields, sector day-moves, intraday curves) are local deterministic
+ * mock values — same convention as the rest of the mock layer.
  */
 
 interface DisplayQuote {
@@ -155,20 +170,21 @@ function buildMarketCards(): Array<DisplayQuote & { spark: number[] }> {
   return cards
 }
 
-/** Right-panel quotes: real where datasets exist, local mock for commodities. */
+/** Right-panel quotes: real where datasets exist, local mock for FX/commodities/crypto. */
 function buildCurrentMarkets(): DisplayQuote[] {
-  const rows: DisplayQuote[] = []
   const usdsek = indexQuote('usdsek')
-  if (usdsek) rows.push({ ...usdsek, icon: '🇺🇸' })
-  const eursek = indexQuote('eursek')
-  if (eursek) rows.push({ ...eursek, icon: '🇪🇺' })
-  rows.push(
+  const bitcoin = indexQuote('bitcoin')
+  return [
+    usdsek
+      ? { ...usdsek, icon: '🇺🇸' }
+      : { id: 'usdsek', label: 'USD/SEK', value: '10,4127', changePercent: 0.19, icon: '🇺🇸' },
+    { id: 'eurusd', label: 'EUR/USD', value: '1,0812', changePercent: -0.15, icon: '🇪🇺' },
     { id: 'brent', label: 'Brent Olja', value: '65,72', changePercent: 0.38, icon: '🛢️' },
     { id: 'gold', label: 'Guld (USD/oz)', value: '2 385,40', changePercent: 0.27, icon: '🥇' },
-  )
-  const bitcoin = indexQuote('bitcoin')
-  if (bitcoin) rows.push({ ...bitcoin, icon: '₿' })
-  return rows
+    bitcoin
+      ? { ...bitcoin, label: 'Bitcoin (USD)', icon: '₿' }
+      : { id: 'bitcoin', label: 'Bitcoin (USD)', value: '71 386,25', changePercent: 1.18, icon: '₿' },
+  ]
 }
 
 /** 10Y U.S. from the real overview dataset; the rest are local mock yields. */
@@ -177,37 +193,37 @@ function buildRates(): Array<{ label: string; value: string; change: string; neg
   return [
     {
       label: '10Y U.S. Yield',
-      value: us10?.value ?? '4.32%',
-      change: us10?.change ?? '+0.00 pp',
+      value: us10?.value ?? '4,32%',
+      change: us10?.change ?? '+0,00 bp',
       negative: us10?.tone === 'negative',
     },
-    { label: '10Y Germany Yield', value: '2,48 %', change: '−0,04 pp', negative: true },
-    { label: '2Y U.S. Yield', value: '3,91 %', change: '+0,01 pp', negative: false },
-    { label: 'Sweden 10Y Yield', value: '2,34 %', change: '+0,02 pp', negative: false },
+    { label: '10Y Germany Yield', value: '2,48%', change: '−0,04 bp', negative: true },
+    { label: '2Y U.S. Yield', value: '3,91%', change: '+0,01 bp', negative: false },
+    { label: 'Sweden 10Y Yield', value: '2,34%', change: '+0,02 bp', negative: false },
   ]
 }
 
 /** Sector day-moves — local mock, S&P sector taxonomy. */
-const SECTORS = [
-  { label: 'Teknologi', change: 0.81 },
-  { label: 'Kommunikation', change: 0.68 },
-  { label: 'Industri', change: 0.42 },
-  { label: 'Finans', change: 0.27 },
-  { label: 'Sällanköp', change: 0.15 },
-  { label: 'Hälsovård', change: -0.11 },
-  { label: 'Fastigheter', change: -0.18 },
-  { label: 'Energi', change: -0.36 },
-  { label: 'Dagligvaror', change: -0.47 },
+const SECTORS: Array<{ label: string; change: number; icon: typeof Cpu }> = [
+  { label: 'Teknologi', change: 0.81, icon: Cpu },
+  { label: 'Kommunikation', change: 0.68, icon: Radio },
+  { label: 'Industri', change: 0.42, icon: Factory },
+  { label: 'Finans', change: 0.27, icon: Landmark },
+  { label: 'Sällanköp', change: 0.15, icon: ShoppingBag },
+  { label: 'Hälsovård', change: -0.11, icon: Activity },
+  { label: 'Fastigheter', change: -0.18, icon: Building2 },
+  { label: 'Energi', change: -0.36, icon: Flame },
+  { label: 'Dagligvaror', change: -0.47, icon: Package },
 ]
 
 const INTRADAY_RANGES = ['1D', '1V', '1M', '3M', '1Å', 'YTD'] as const
 type IntradayRange = (typeof INTRADAY_RANGES)[number]
 
 const INTRADAY_SERIES = [
-  { id: 'omxs30', label: 'OMXS30', color: '#16a34a' },
-  { id: 'sp500', label: 'S&P 500', color: '#2563eb' },
-  { id: 'dax', label: 'DAX', color: '#7c3aed' },
-  { id: 'nikkei', label: 'Nikkei 225', color: '#0ea5e9' },
+  { id: 'omxs30', label: 'OMXS30', color: '#27d879' },
+  { id: 'sp500', label: 'S&P 500', color: '#4382f6' },
+  { id: 'dax', label: 'DAX', color: '#a855f7' },
+  { id: 'nikkei', label: 'Nikkei 225', color: '#22cdeb' },
 ]
 
 function buildIntraday(range: IntradayRange) {
@@ -227,106 +243,107 @@ function buildIntraday(range: IntradayRange) {
   })
 }
 
+/** Small dotted yield-curve preview under the rates panel. */
+const RATE_CURVE = seededSeries(61, 14, 0.02)
+
 /* ------------------------------------------------------------- sections — */
 
-function WallStreetPanel() {
-  const navItems = [
-    { to: '/', label: 'Hem', icon: Home },
-    { to: '/markets', label: 'Marknad', icon: LineChartIcon },
-    { to: '/watchlist', label: 'Bevakning', icon: Eye },
-    { to: '/agents', label: 'Analys', icon: BarChart3 },
-    { to: '/portfolio', label: 'Portfölj', icon: Briefcase },
-    { to: '/reports', label: 'Rapporter', icon: FileText },
-    { to: '/settings', label: 'Inställningar', icon: Settings },
-  ]
+const NAV_ITEMS = [
+  { to: '/', label: 'Overview', icon: LayoutGrid },
+  { to: '/markets', label: 'Markets', icon: TrendingUp },
+  { to: '/watchlist', label: 'Watchlist', icon: Star },
+  { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { to: '/agents', label: 'Analytics', icon: BarChart3 },
+  { to: '/reports', label: 'News', icon: Newspaper },
+  { to: '/reports', label: 'Reports', icon: FileText },
+  { to: '/settings', label: 'Alerts', icon: BellRing },
+  { to: '/settings', label: 'Settings', icon: Settings },
+] as const
 
+/** Narrow dark icon rail on the far left. */
+function Sidebar() {
   return (
-    <aside className="relative hidden w-[20%] min-w-[230px] shrink-0 overflow-hidden lg:block">
-      {/* Architectural fallback art — replaced by the licensed photograph once
-          WALL_STREET_PHOTO_URL is configured. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#eef4fb] via-[#f6f8fb] to-[#eef1f6]" />
-      <svg
-        aria-hidden="true"
-        className="absolute inset-0 h-full w-full opacity-[0.32]"
-        preserveAspectRatio="xMidYMax slice"
-        viewBox="0 0 100 200"
+    <aside
+      className="relative hidden w-[96px] shrink-0 flex-col items-center py-5 md:flex"
+      style={{ background: 'linear-gradient(180deg, #02070D 0%, #06101A 100%)' }}
+    >
+      <Link
+        to="/"
+        aria-label="Overview"
+        className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.35)] text-[15px] font-bold text-[#ffb366]"
       >
-        {[
-          [4, 30, 15], [22, 16, 13], [38, 40, 12], [52, 8, 16], [71, 26, 14], [88, 44, 11],
-        ].map(([x = 0, top = 20, w = 12]) => (
-          <rect key={`b-${x}`} x={x} y={top} width={w} height={200 - top} fill="#cdd9e8" />
-        ))}
-        {[
-          [7, 44], [10, 58], [25, 30], [28, 46], [41, 54], [44, 70], [55, 24],
-          [58, 40], [74, 42], [77, 58], [90, 58], [93, 74],
-        ].map(([x = 0, y = 40], i) => (
-          <rect key={`w-${i}`} x={x} y={y} width={2} height={3} fill="#b3c4da" />
-        ))}
-        <rect x={30} y={96} width={2.4} height={64} fill="#9fb3c9" />
-        <rect x={16} y={100} width={30} height={7} rx={1.4} fill="#8199b3" />
-        <rect x={20} y={112} width={26} height={6.5} rx={1.4} fill="#93a9c0" />
-        <path d="M60 118 L60 160 L84 160 L84 118 L72 108 Z" fill="#c2d2e4" />
-        {[63, 68.5, 74, 79.5].map((x) => (
-          <rect key={`c-${x}`} x={x} y={122} width={2.4} height={36} fill="#a9bed4" />
-        ))}
-      </svg>
-      {WALL_STREET_PHOTO_URL && (
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
-        />
-      )}
-      <div className="absolute inset-0 bg-white/30" />
-      {/* Readability ramp behind the nav rail. */}
-      <div className="absolute inset-y-0 left-0 w-3/4 bg-gradient-to-r from-white/70 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent to-[#FAFAFA]" />
-
-      <nav className="relative flex h-full flex-col px-6 py-8">
-        <Link to="/" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2563eb] text-lg font-bold text-white shadow-[0_10px_30px_rgba(37,99,235,0.35)]">
-          S
-        </Link>
-        <ul className="mt-12 flex flex-col gap-2.5">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const active = item.to === '/'
-            return (
-              <li key={item.to}>
-                <Link
-                  to={item.to}
-                  className={cn(
-                    'flex items-center gap-3 rounded-2xl px-4 py-3 text-[13px] font-medium transition-colors duration-250',
-                    active
-                      ? 'bg-white text-[#1d4ed8] shadow-[0_10px_30px_rgba(30,40,60,0.08)]'
-                      : 'bg-white/40 text-slate-700 backdrop-blur-[2px] hover:bg-white/75 hover:text-slate-900',
-                  )}
-                >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                  {item.label}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="mt-auto flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(30,40,60,0.07)]">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1d4ed8] text-xs font-semibold text-white">
-            M
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[13px] font-semibold text-slate-800">
-              Martin
-            </span>
-            <span className="block text-[11px] text-slate-500">Private Banking</span>
-          </span>
-        </div>
+        HX
+      </Link>
+      <nav className="mt-8 flex flex-1 flex-col gap-1.5">
+        {NAV_ITEMS.map((item, index) => {
+          const Icon = item.icon
+          const active = index === 0
+          return (
+            <Link
+              key={item.label}
+              to={item.to}
+              className={cn(
+                'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
+                active
+                  ? 'border border-[rgba(240,151,66,0.28)] bg-[rgba(111,66,29,0.42)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.12)]'
+                  : 'border border-transparent text-[#6b7d90] hover:bg-white/[0.04] hover:text-[#c9d6e2]',
+              )}
+            >
+              <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-[9px] font-medium tracking-wide">{item.label}</span>
+            </Link>
+          )
+        })}
       </nav>
+      <div className="mt-4 flex flex-col items-center gap-1">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.3)] bg-[rgba(9,24,37,0.9)] text-[12px] font-semibold text-[#c9d6e2]">
+          AS
+        </span>
+        <span className="text-center text-[8px] leading-tight text-[#6b7d90]">
+          Anders
+          <br />
+          Private Banking
+        </span>
+      </div>
     </aside>
   )
 }
 
-function useClock(): Date {
-  const [now, setNow] = useState(() => new Date())
+/** Full-height cinematic Wall Street photographic strip beside the sidebar. */
+function WallStreetStrip() {
+  return (
+    <div className="relative hidden w-[210px] shrink-0 overflow-hidden lg:block">
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
+      />
+      {/* Cinematic night grade: deep shadows top/bottom, warm mid, cyan cast. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            'linear-gradient(180deg, rgba(3,8,15,0.55), rgba(3,8,15,0.10) 42%, rgba(3,8,15,0.62))',
+        }}
+      />
+      <div
+        className="absolute inset-0 mix-blend-soft-light"
+        style={{ background: 'linear-gradient(120deg, rgba(20,90,140,0.35), transparent 60%)' }}
+      />
+      {/* Seam into the main surface. */}
+      <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#020711] to-transparent" />
+      {/* Subtle vignette. */}
+      <div className="absolute inset-0 shadow-[inset_0_0_60px_20px_rgba(2,7,17,0.6)]" />
+    </div>
+  )
+}
+
+/** Client-only clock: null during SSR/first paint so live time can't cause a
+ *  hydration mismatch, then ticks every second. */
+function useClock(): Date | null {
+  const [now, setNow] = useState<Date | null>(null)
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    setNow(new Date())
+    const id = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(id)
   }, [])
   return now
@@ -334,53 +351,64 @@ function useClock(): Date {
 
 function Header() {
   const now = useClock()
-  const hour = now.getHours()
+  const ref = now ?? new Date(COUNTRY_MOCK_NOW)
+  const hour = ref.getHours()
   const greeting = hour < 10 ? 'God morgon' : hour < 18 ? 'God eftermiddag' : 'God kväll'
   const dateText = new Intl.DateTimeFormat('sv-SE', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(now)
+  }).format(ref)
   const openCount = MARKET_CENTERS.filter(
-    (center) => getMarketStatus(center, now) === 'OPEN',
+    (center) => getMarketStatus(center, ref) === 'OPEN',
   ).length
-  const clock = new Intl.DateTimeFormat('sv-SE', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Stockholm',
-  }).format(now)
+  const clock = now
+    ? new Intl.DateTimeFormat('sv-SE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'Europe/Stockholm',
+      }).format(now)
+    : '––:––:––'
 
   return (
     <header className="flex flex-wrap items-start justify-between gap-6">
       <div>
-        <h1 className="text-[28px] font-semibold tracking-tight text-slate-900">
-          {greeting}, Martin
+        <h1 className="text-[31px] font-semibold tracking-tight text-[#f4f7fb]">
+          {greeting}, Anders
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Här är din marknadsöversikt för idag, {dateText}
+        <p className="mt-1 text-sm text-[#9aa7b7]">
+          Här är din globala marknadsöversikt för idag, {dateText}.
         </p>
       </div>
-      <div className="flex items-center gap-6">
-        <span className="flex items-center gap-2 text-[12px] font-medium tracking-[0.14em] text-slate-600 uppercase">
+      <div className="flex items-center gap-3">
+        <span className="flex items-center gap-2 rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] px-3.5 py-2 text-[11px] font-medium tracking-[0.12em] text-[#9aa7b7] uppercase">
           <span
             aria-hidden="true"
             className={cn(
               'h-2 w-2 rounded-full',
-              openCount > 0 ? 'bg-[#16a34a]' : 'bg-[#dc2626]',
+              openCount > 0 ? 'bg-[#27d879] shadow-[0_0_8px_#27d879]' : 'bg-[#ff4f55]',
             )}
           />
           {openCount > 0 ? 'Marknader öppna' : 'Marknader stängda'}
         </span>
-        <span className="text-right">
-          <span className="block text-xl font-semibold text-slate-900 tabular-nums">
+        <span className="rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] px-3.5 py-1.5 text-right">
+          <span className="block text-[15px] font-semibold text-[#f4f7fb] tabular-nums">
             {clock}
           </span>
-          <span className="block text-[11px] text-slate-500">Stockholm</span>
+          <span className="block text-[10px] text-[#697787]">Stockholm</span>
         </span>
         <button
           type="button"
+          aria-label="Sök"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
+        >
+          <Search className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           aria-label="Notiser"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E9EEF5] bg-white text-slate-600 shadow-[0_10px_40px_rgba(30,40,60,0.06)] transition-colors duration-250 hover:text-slate-900"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
         >
           <Bell className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -392,11 +420,8 @@ function Header() {
 function ChangeText({ value, className }: { value: number; className?: string }) {
   return (
     <span
-      className={cn(
-        'font-medium tabular-nums',
-        value >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]',
-        className,
-      )}
+      className={cn('font-medium tabular-nums', className)}
+      style={{ color: value >= 0 ? POSITIVE : NEGATIVE }}
     >
       {formatPercent(value)}
     </span>
@@ -415,7 +440,7 @@ function SectionCard({
   className?: string
 }) {
   return (
-    <section className={cn(CARD, 'p-6', className)}>
+    <section className={cn(PANEL, 'p-5', className)}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className={LABEL}>{title}</h2>
         {action}
@@ -472,30 +497,36 @@ export function LightCommandCenter() {
   const intraday = buildIntraday(range)
   const sentimentPosition = GLOBAL_RISK_SENTIMENT.position
 
+  const tickerItems = [
+    ...marketCards.map((c) => ({ label: c.label, value: c.value, change: c.changePercent })),
+    ...currentMarkets
+      .filter((c) => ['usdsek', 'eurusd', 'brent'].includes(c.id))
+      .map((c) => ({ label: c.label, value: c.value, change: c.changePercent })),
+  ]
+
   return (
-    <div className="flex min-h-screen bg-[#FAFAFA] font-sans text-slate-900 antialiased">
-      <WallStreetPanel />
+    <div
+      className="relative flex min-h-screen font-sans text-[#f2f6fa] antialiased"
+      style={{
+        background:
+          'radial-gradient(circle at 60% 30%, rgba(14,88,126,0.18) 0%, rgba(4,19,32,0.10) 34%, rgba(2,7,17,0) 64%), linear-gradient(180deg, #020711 0%, #03101A 100%)',
+      }}
+    >
+      <Sidebar />
+      <WallStreetStrip />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[1560px] flex-col gap-8 p-10">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
           <Header />
 
-          <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
-            {/* Market cards. */}
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            {/* Market overview cards. */}
             <SectionCard title="Marknadsöversikt" className="xl:col-span-5">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 {marketCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className={cn(
-                      'rounded-2xl border border-[#E9EEF5] bg-white p-4',
-                      CARD_HOVER,
-                    )}
-                  >
-                    <p className="text-[11px] font-medium tracking-[0.08em] text-slate-500 uppercase">
-                      {card.label}
-                    </p>
-                    <p className="mt-1.5 text-lg font-semibold text-slate-900 tabular-nums">
+                  <div key={card.id} className={cn(CARD_INNER, CARD_HOVER, 'p-3.5')}>
+                    <p className="text-[12px] font-medium text-[#7f97ad]">{card.label}</p>
+                    <p className="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums">
                       {card.value}
                     </p>
                     <ChangeText value={card.changePercent} className="text-[13px]" />
@@ -503,8 +534,8 @@ export function LightCommandCenter() {
                       <Sparkline
                         data={card.spark}
                         trendUp={card.changePercent >= 0}
-                        width={104}
-                        height={26}
+                        width={112}
+                        height={30}
                         area
                       />
                     </div>
@@ -513,53 +544,68 @@ export function LightCommandCenter() {
               </div>
               <Link
                 to="/markets"
-                className="mt-4 inline-block text-[13px] font-medium text-[#2563eb] transition-colors duration-250 hover:text-[#1d4ed8]"
+                className="mt-4 inline-block text-[13px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
               >
-                Visa fler marknader →
+                Visa alla marknader →
               </Link>
             </SectionCard>
 
-            {/* Globe centerpiece. */}
-            <div className="relative min-h-[420px] xl:col-span-4">
-              {/* Soft grounding shadow beneath the globe — pale blue, wide, airy. */}
-              <div
-                aria-hidden="true"
-                className="absolute bottom-6 left-1/2 h-9 w-2/3 -translate-x-1/2 rounded-[50%] blur-2xl"
-                style={{ background: 'rgba(90, 150, 220, 0.14)' }}
-              />
+            {/* Globe centerpiece — overlaps down into the middle row. */}
+            <div className="relative z-10 min-h-[440px] xl:col-span-4">
               {mounted && (
                 <Suspense fallback={null}>
-                  <LightGlobe
-                    onSelectCountry={selectCountry}
-                    reducedMotion={reducedMotion}
-                  />
+                  <LightGlobe onSelectCountry={selectCountry} reducedMotion={reducedMotion} />
                 </Suspense>
               )}
-              <p className="pointer-events-none absolute inset-x-0 bottom-1 text-center text-[11px] text-slate-400">
+              {/* Holographic projection platform beneath the globe. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+              >
+                <div className="relative h-16 w-[62%]">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="absolute left-1/2 -translate-x-1/2 rounded-[50%] border"
+                      style={{
+                        bottom: `${i * 5}px`,
+                        width: `${100 - i * 20}%`,
+                        height: `${34 - i * 7}px`,
+                        borderColor: `rgba(255,138,0,${0.24 - i * 0.05})`,
+                      }}
+                    />
+                  ))}
+                  <div
+                    className="absolute bottom-1 left-1/2 h-2 w-10 -translate-x-1/2 rounded-[50%]"
+                    style={{ background: 'radial-gradient(ellipse, rgba(255,180,90,0.75), transparent 70%)' }}
+                  />
+                </div>
+              </div>
+              <p className="pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px] text-[#5a6a7c]">
                 Dra för att rotera · klicka på ett land för analys
               </p>
             </div>
 
             {/* Right column. */}
-            <div className="flex flex-col gap-8 xl:col-span-3">
+            <div className="flex flex-col gap-6 xl:col-span-3">
               <SectionCard title="Aktuella marknader">
                 <ul className="flex flex-col">
                   {currentMarkets.map((row) => (
                     <li
                       key={row.id}
-                      className="flex items-center justify-between gap-3 border-t border-[#EFF3F8] py-2.5 first:border-t-0"
+                      className="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
                     >
-                      <span className="flex min-w-0 items-center gap-2.5 text-sm text-slate-700">
+                      <span className="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]">
                         <span aria-hidden="true" className="text-base leading-none">
                           {row.icon}
                         </span>
                         <span className="truncate">{row.label}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-3">
-                        <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                        <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                           {row.value}
                         </span>
-                        <ChangeText value={row.changePercent} className="text-[12px]" />
+                        <ChangeText value={row.changePercent} className="w-14 text-right text-[12px]" />
                       </span>
                     </li>
                   ))}
@@ -569,7 +615,7 @@ export function LightCommandCenter() {
               <SectionCard
                 title="Sentiment"
                 action={
-                  <span className="text-[13px] font-semibold text-[#16a34a]">
+                  <span className="text-[13px] font-semibold" style={{ color: POSITIVE }}>
                     {GLOBAL_RISK_SENTIMENT.sentiment === 'risk-on'
                       ? 'Risk-on'
                       : GLOBAL_RISK_SENTIMENT.sentiment === 'risk-off'
@@ -580,19 +626,19 @@ export function LightCommandCenter() {
               >
                 <div className="relative flex h-2 gap-1">
                   {[
-                    '#dc2626', '#ef4444', '#f59e0b', '#facc15', '#a3e635',
-                    '#4ade80', '#22c55e', '#16a34a',
+                    '#e0483f', '#ef6a3a', '#f5ad3a', '#e7d43c', '#a9d84a',
+                    '#5fce6a', '#33c06a', '#27d879',
                   ].map((color) => (
                     <span
                       key={color}
                       aria-hidden="true"
                       className="h-full flex-1 rounded-full"
-                      style={{ background: color, opacity: 0.75 }}
+                      style={{ background: color }}
                     />
                   ))}
                   <span
                     aria-hidden="true"
-                    className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-800"
+                    className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#0b1220] bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)]"
                     style={{ left: `${sentimentPosition}%` }}
                   />
                 </div>
@@ -600,23 +646,23 @@ export function LightCommandCenter() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             {/* Intraday chart. */}
             <SectionCard
               title="Utveckling idag"
               className="xl:col-span-5"
               action={
-                <div className="flex gap-1 rounded-full border border-[#E9EEF5] bg-[#F6F8FB] p-1">
+                <div className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5">
                   {INTRADAY_RANGES.map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => setRange(r)}
                       className={cn(
-                        'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-250',
+                        'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200',
                         r === range
-                          ? 'bg-white text-slate-900 shadow-[0_4px_14px_rgba(30,40,60,0.1)]'
-                          : 'text-slate-500 hover:text-slate-800',
+                          ? 'bg-[rgba(72,167,232,0.18)] text-[#73c8ff]'
+                          : 'text-[#6b7d90] hover:text-[#c9d6e2]',
                       )}
                     >
                       {r}
@@ -625,36 +671,37 @@ export function LightCommandCenter() {
                 </div>
               }
             >
-              <div className="h-56">
+              <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={intraday} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-                    <CartesianGrid stroke="#EEF2F7" vertical={false} />
+                    <CartesianGrid stroke="rgba(70,130,163,0.12)" vertical={false} />
                     <XAxis
                       dataKey="time"
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      tick={{ fill: '#5a6a7c', fontSize: 11 }}
                       tickLine={false}
                       axisLine={false}
                       interval={0}
-                      tickFormatter={(value: string) => value}
                     />
                     <YAxis
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      tick={{ fill: '#5a6a7c', fontSize: 11 }}
                       tickLine={false}
                       axisLine={false}
                       tickFormatter={(value: number) => `${value.toFixed(1)}%`}
                     />
                     <Tooltip
-                      cursor={{ stroke: '#cbd5e1' }}
+                      cursor={{ stroke: 'rgba(114,164,255,0.4)' }}
                       contentStyle={{
-                        borderRadius: 12,
-                        border: '1px solid #E9EEF5',
-                        boxShadow: '0 10px 40px rgba(30,40,60,0.1)',
+                        borderRadius: 10,
+                        border: '1px solid rgba(70,130,163,0.3)',
+                        background: 'rgba(6,18,29,0.96)',
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
                         fontSize: 12,
+                        color: '#f2f6fa',
                       }}
+                      labelStyle={{ color: '#9aa7b7' }}
                       formatter={(value, name) => [
                         `${Number(value ?? 0).toFixed(2)}%`,
-                        INTRADAY_SERIES.find((s) => s.id === name)?.label ??
-                          String(name),
+                        INTRADAY_SERIES.find((s) => s.id === name)?.label ?? String(name),
                       ]}
                     />
                     {INTRADAY_SERIES.map((s) => (
@@ -671,7 +718,7 @@ export function LightCommandCenter() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-[#EFF3F8] pt-3">
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-[rgba(70,130,163,0.12)] pt-3">
                 {INTRADAY_SERIES.map((s) => {
                   const card = marketCards.find((c) => c.id === s.id)
                   return (
@@ -681,7 +728,7 @@ export function LightCommandCenter() {
                         className="h-2 w-2 rounded-full"
                         style={{ background: s.color }}
                       />
-                      <span className="text-slate-600">{s.label}</span>
+                      <span className="text-[#9aa7b7]">{s.label}</span>
                       {card && <ChangeText value={card.changePercent} />}
                     </span>
                   )
@@ -695,18 +742,16 @@ export function LightCommandCenter() {
                 {rates.map((rate) => (
                   <li
                     key={rate.label}
-                    className="flex items-center justify-between gap-3 border-t border-[#EFF3F8] py-3 first:border-t-0"
+                    className="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
                   >
-                    <span className="text-sm text-slate-600">{rate.label}</span>
+                    <span className="text-sm text-[#9aa7b7]">{rate.label}</span>
                     <span className="flex shrink-0 items-center gap-3">
-                      <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                      <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                         {rate.value}
                       </span>
                       <span
-                        className={cn(
-                          'text-[12px] font-medium tabular-nums',
-                          rate.negative ? 'text-[#dc2626]' : 'text-[#16a34a]',
-                        )}
+                        className="w-16 text-right text-[12px] font-medium tabular-nums"
+                        style={{ color: rate.negative ? NEGATIVE : POSITIVE }}
                       >
                         {rate.change}
                       </span>
@@ -714,32 +759,35 @@ export function LightCommandCenter() {
                   </li>
                 ))}
               </ul>
+              <div className="mt-3 h-10">
+                <Sparkline data={RATE_CURVE} trendUp width={260} height={40} />
+              </div>
             </SectionCard>
 
             {/* Sectors. */}
             <SectionCard title="Sektorer (S&P 500)" className="xl:col-span-2">
-              <ul className="flex flex-col gap-2.5">
+              <ul className="flex flex-col gap-2">
                 {SECTORS.map((sector) => {
                   const width = Math.min(100, (Math.abs(sector.change) / 0.9) * 100)
+                  const Icon = sector.icon
                   return (
                     <li key={sector.label} className="flex items-center gap-2">
-                      <span className="w-20 truncate text-[12px] text-slate-600">
+                      <Icon className="h-3 w-3 shrink-0 text-[#6b7d90]" aria-hidden="true" />
+                      <span className="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]">
                         {sector.label}
                       </span>
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#EFF3F8]">
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]">
                         <span
                           className="block h-full rounded-full"
                           style={{
                             width: `${width}%`,
-                            background: sector.change >= 0 ? '#22c55e' : '#f87171',
+                            background: sector.change >= 0 ? POSITIVE : NEGATIVE,
                           }}
                         />
                       </span>
                       <span
-                        className={cn(
-                          'w-14 text-right text-[11px] font-medium whitespace-nowrap tabular-nums',
-                          sector.change >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]',
-                        )}
+                        className="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                        style={{ color: sector.change >= 0 ? POSITIVE : NEGATIVE }}
                       >
                         {formatPercent(sector.change)}
                       </span>
@@ -756,7 +804,7 @@ export function LightCommandCenter() {
               action={
                 <Link
                   to="/reports"
-                  className="text-[12px] font-medium text-[#2563eb] transition-colors duration-250 hover:text-[#1d4ed8]"
+                  className="text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
                 >
                   Visa fler →
                 </Link>
@@ -766,26 +814,21 @@ export function LightCommandCenter() {
                 {news.map((item) => (
                   <li
                     key={item.id}
-                    className="border-t border-[#EFF3F8] py-3 first:border-t-0"
+                    className="flex gap-2.5 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
                   >
-                    <p className="line-clamp-2 text-[13px] leading-snug font-medium text-slate-800">
-                      {item.headline}
-                    </p>
-                    <p className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          item.importance === 'critical'
-                            ? 'bg-[#dc2626]'
-                            : item.importance === 'high'
-                              ? 'bg-[#f59e0b]'
-                              : 'bg-[#94a3b8]',
-                        )}
-                      />
-                      {item.source} ·{' '}
-                      {formatRelativeTime(item.publishedAt, COUNTRY_MOCK_NOW)}
-                    </p>
+                    <FileText
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#48a7e8]"
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-[13px] leading-snug font-medium text-[#dbe4ee]">
+                        {item.headline}
+                      </p>
+                      <p className="mt-1 text-[11px] text-[#697787]">
+                        {item.source} ·{' '}
+                        {formatRelativeTime(item.publishedAt, COUNTRY_MOCK_NOW)}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -794,51 +837,77 @@ export function LightCommandCenter() {
 
           {/* Watchlist row. */}
           <SectionCard
-            title="Följda aktier"
+            title="Bevakning"
             action={
               <Link
                 to="/watchlist"
-                className="flex items-center gap-1.5 text-[12px] font-medium text-[#2563eb] transition-colors duration-250 hover:text-[#1d4ed8]"
+                className="flex items-center gap-1.5 text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
               >
                 Lägg till bevakning <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             }
           >
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               {watchlist.slice(0, 6).map((item) => (
-                <div
-                  key={item.id}
-                  className={cn('rounded-2xl border border-[#E9EEF5] bg-white p-4', CARD_HOVER)}
-                >
-                  <p className="truncate text-[13px] font-semibold text-slate-800">
-                    {item.name}
-                  </p>
-                  <p className="text-[11px] text-slate-500">{item.ticker}</p>
-                  <div className="mt-2 flex items-end justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                <div key={item.id} className={cn(CARD_INNER, CARD_HOVER, 'p-3.5')}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate text-[13px] font-semibold text-[#dbe4ee]">
+                      {item.name}
+                    </p>
+                    <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                       {formatNumber(item.price, 2)}
                     </span>
-                    <ChangeText value={item.changePercent} className="text-[12px]" />
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-end justify-between gap-2">
                     <Sparkline
                       data={item.spark}
                       trendUp={item.changePercent >= 0}
                       width={96}
-                      height={20}
+                      height={22}
                     />
+                    <ChangeText value={item.changePercent} className="text-[12px]" />
                   </div>
                 </div>
               ))}
             </div>
           </SectionCard>
         </div>
+
+        {/* Bottom ticker rail. */}
+        <div className="sticky bottom-0 z-20 flex items-center gap-6 overflow-x-auto border-t border-[rgba(70,130,163,0.2)] bg-[rgba(2,7,17,0.94)] px-8 py-2 backdrop-blur-sm">
+          {tickerItems.map((item) => (
+            <span key={item.label} className="flex shrink-0 items-center gap-2 text-[12px]">
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: item.change >= 0 ? POSITIVE : NEGATIVE }}
+              />
+              <span className="font-medium text-[#c9d6e2]">{item.label}</span>
+              <span className="text-[#9aa7b7] tabular-nums">{item.value}</span>
+              <span
+                className="font-medium tabular-nums"
+                style={{ color: item.change >= 0 ? POSITIVE : NEGATIVE }}
+              >
+                {formatPercent(item.change)}
+              </span>
+            </span>
+          ))}
+          <span className="ml-auto shrink-0 text-[11px] text-[#5a6a7c]">
+            Data uppdaterad{' '}
+            {mounted
+              ? new Intl.DateTimeFormat('sv-SE', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }).format(new Date())
+              : '––:––'}
+          </span>
+        </div>
       </main>
 
       {/* Country analysis — the full existing analyzer, presented as a modal. */}
       {analysisOpen && entry && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-6 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label={`Landsanalys: ${entry.nameEn}`}

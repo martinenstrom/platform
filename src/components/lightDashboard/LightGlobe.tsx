@@ -63,12 +63,14 @@ const EARTH_FRAGMENT_SHADER = `
     // luminance-based relief lift from the day texture — no daylight colours;
     // the golden city lights carry the land's visual interest.
     vec3 ocean = vec3(0.024, 0.055, 0.1);
-    vec3 terrain = vec3(0.045, 0.075, 0.125) + vec3(dayLum) * 0.045;
+    // Night Earth: land barely lighter than ocean so the globe reads uniformly
+    // dark — the city lights, not daylit terrain, define the continents.
+    vec3 terrain = vec3(0.028, 0.05, 0.086) + vec3(dayLum) * 0.012;
     vec3 base = mix(ocean, terrain, land);
 
-    // Cinematic key light from the upper left; soft fill floor.
+    // Very soft cool key from upper-left — shape only, no daylight wash.
     vec3 keyDir = normalize(vec3(-0.45, 0.55, 0.7));
-    float key = 0.5 + 0.6 * max(dot(normal, keyDir), 0.0);
+    float key = 0.62 + 0.34 * max(dot(normal, keyDir), 0.0);
     base *= key;
 
     // Glossy ocean: tight specular from the key light, oceans only.
@@ -77,15 +79,17 @@ const EARTH_FRAGMENT_SHADER = `
     base += vec3(0.35, 0.5, 0.7) * spec * 0.4;
 
     // Real city lights, warm-ramped gold/amber with a subtle regional twinkle.
+    // A high-contrast curve keeps dark land dark so only real cities pop.
     vec3 night = texture2D(nightTexture, vUv).rgb;
     float lum = dot(night, vec3(0.3, 0.59, 0.11));
+    lum = pow(lum, 1.35) * 1.5;
     float twinkle = 0.88 + 0.12 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
-    vec3 lights = mix(vec3(1.0, 0.7, 0.4), vec3(1.0, 0.87, 0.67), clamp(lum * 2.0, 0.0, 1.0));
-    base += lights * lum * 2.2 * twinkle;
+    vec3 lights = mix(vec3(1.0, 0.66, 0.32), vec3(1.0, 0.86, 0.62), clamp(lum * 2.0, 0.0, 1.0));
+    base += lights * lum * 2.6 * twinkle;
 
     // Blue atmospheric scattering rim.
     float facing = clamp(dot(normal, viewDir), 0.0, 1.0);
-    base += vec3(0.3, 0.5, 0.85) * pow(1.0 - facing, 2.6) * 0.42;
+    base += vec3(0.3, 0.52, 0.88) * pow(1.0 - facing, 2.5) * 0.48;
 
     gl_FragColor = vec4(base, 1.0);
   }
@@ -258,9 +262,9 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
     const globe = globeRef.current
     if (!globe || size.width === 0) return
     const camera = globe.camera() as PerspectiveCamera
-    camera.fov = 32
+    camera.fov = 30
     camera.updateProjectionMatrix()
-    globe.pointOfView({ lat: 22, lng: 5, altitude: 4.0 }, 0)
+    globe.pointOfView({ lat: 18, lng: 8, altitude: 3.55 }, 0)
   }, [size.width > 0])
 
   // Slow cinematic rotation (~107 s/rev), damping, zoom clamps. Keyed on size
