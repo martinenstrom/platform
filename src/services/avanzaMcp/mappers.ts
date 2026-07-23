@@ -4,7 +4,7 @@
  * types. No I/O here — safe to import from anywhere, including tests.
  */
 
-import type { Instrument, InstrumentType, MarketStatus } from '~/types'
+import type { Instrument, InstrumentType, MarketStatus, Quote } from '~/types'
 
 /**
  * Avanza formats numbers with Swedish locale conventions: comma decimals,
@@ -97,5 +97,32 @@ export function mapMarketplaceInfoToMarketStatus(
     detail: info.marketOpen
       ? `Stänger ${info.todayClosingTime.slice(0, 5)}`
       : info.currentStatus,
+  }
+}
+
+/**
+ * `get_stock_quote` works for any instrument id (verified against both a
+ * stock and an index) despite the tool's name. Values are plain numbers
+ * (unlike search's localized strings) but carry no currency field — Avanza
+ * is a Swedish broker, so default to SEK.
+ */
+export interface AvanzaStockQuote {
+  last: number
+  change: number
+  changePercent: number
+  updated: number
+}
+
+export function mapStockQuoteToQuote(
+  instrumentId: string,
+  quote: AvanzaStockQuote,
+): Quote {
+  return {
+    instrumentId,
+    price: quote.last,
+    change: quote.change,
+    changePercent: quote.changePercent,
+    currency: 'SEK',
+    updatedAt: new Date(quote.updated).toISOString(),
   }
 }

@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react'
-import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
+import {
+  Outlet,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  useRouterState,
+} from '@tanstack/react-router'
 import { AppLayout } from '~/components/layout/AppLayout'
 import appCss from '~/styles/app.css?url'
 
@@ -22,11 +28,20 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  // The Overview is a full-bleed light-theme command center with its own
+  // navigation column; every other route keeps the dark app shell.
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const fullBleed = pathname === '/'
+
   return (
     <RootDocument>
-      <AppLayout>
+      {fullBleed ? (
         <Outlet />
-      </AppLayout>
+      ) : (
+        <AppLayout>
+          <Outlet />
+        </AppLayout>
+      )}
     </RootDocument>
   )
 }

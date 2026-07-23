@@ -8,20 +8,25 @@
  * charts, financials, dividends and similar public instrument data, never
  * holdings, positions, watchlists or orders.
  *
- * That means only two `MarketDataService` methods have anything real to call:
- * `searchInstruments` and `getMarketStatus` (see `./avanzaMcp/serverFns.ts`
- * for the `createServerFn` wrappers, `./avanzaMcp/mappers.ts` for the raw
- * Avanza JSON -> domain type mapping). Everything else — holdings, portfolio
- * summary, allocation, risk score, watchlist, opportunities, the AI brief,
- * recent analyses, reports, the screener, and `getMarketIndices` (whose mock
- * list mixes Swedish/US/FX/crypto — not something this Swedish-broker-only
- * search maps onto cleanly) — has no real endpoint to call and stays mocked.
+ * That means only three `MarketDataService` methods have anything real to
+ * call: `searchInstruments`, `getMarketStatus` and `getQuote` (see
+ * `./avanzaMcp/serverFns.ts` for the `createServerFn` wrappers,
+ * `./avanzaMcp/mappers.ts` for the raw Avanza JSON -> domain type mapping).
+ * Everything else — holdings, portfolio summary, allocation, risk score,
+ * watchlist, opportunities, the AI brief, recent analyses, reports, the
+ * screener, and `getMarketIndices` (whose mock list mixes Swedish/US/FX/crypto
+ * — not something this Swedish-broker-only search maps onto cleanly) — has no
+ * real endpoint to call and stays mocked.
  *
  * Scope guard: this integration is read-only by design, and so is the
  * upstream package — do not add order placement or trading tools here.
  */
 
-import { getAvanzaMarketStatusFn, searchAvanzaInstrumentsFn } from './avanzaMcp/serverFns'
+import {
+  getAvanzaMarketStatusFn,
+  getAvanzaStockQuoteFn,
+  searchAvanzaInstrumentsFn,
+} from './avanzaMcp/serverFns'
 import type { MarketDataService } from './marketDataService'
 
 /** The full real tool catalog exposed by `avanza-mcp`, for reference — only a few are wired up above. */
@@ -44,12 +49,15 @@ export const AVANZA_MCP_TOOLS = {
 } as const
 
 /**
- * Returns a `MarketDataService` where `searchInstruments` and
- * `getMarketStatus` hit the real Avanza public API; every other method falls
- * back to `fallback` (pass `mockMarketDataService`). Roll more methods over
- * as real endpoints are found for them (or as this integration grows a
- * second, authenticated data source). Takes the fallback as a parameter
- * rather than importing it, so this module never depends on
+ * Returns a `MarketDataService` where `searchInstruments`, `getMarketStatus`
+ * and `getQuote` are routed through `createServerFn`s that hit the real
+ * Avanza public API when `AVANZA_MCP_ENABLED=true` server-side, and the same
+ * mock data as `fallback` otherwise (see `avanzaMcp/serverFns.ts` — that
+ * check happens there, not here, since it needs `process.env`, which this
+ * file's caller may be evaluating in a browser bundle). Every other method
+ * falls back to `fallback` directly (pass `mockMarketDataService`). Roll more
+ * methods over as real endpoints are found for them. Takes the fallback as a
+ * parameter rather than importing it, so this module never depends on
  * `marketDataService.ts` at runtime — only `marketDataService.ts` depends on
  * this one.
  */
@@ -60,6 +68,7 @@ export function createAvanzaMcpMarketDataService(
     ...fallback,
     searchInstruments: (query) => searchAvanzaInstrumentsFn({ data: query }),
     getMarketStatus: () => getAvanzaMarketStatusFn(),
+    getQuote: (instrumentId) => getAvanzaStockQuoteFn({ data: instrumentId }),
   }
 }
 

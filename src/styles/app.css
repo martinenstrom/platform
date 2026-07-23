@@ -1,12 +1,12 @@
 @import 'tailwindcss';
 
 /**
- * Design tokens for the premium dark UI.
+ * Design tokens for the HUD/"agentic-OS" dark UI.
  *
  * Depth comes from elevation, not outlines: surfaces step up from the canvas and
  * carry a soft shadow. `line` is a hairline used only where a real edge is needed
  * (table rows, sidebar seam) — never as a default card border.
- * Semantics: indigo = primary, green = positive, red = negative, amber = warning.
+ * Semantics: cyan = primary/HUD accent, green = positive, red = negative, amber = warning.
  */
 @theme {
   --color-canvas: #080a0f;
@@ -22,10 +22,15 @@
 
   /* `accent` is the light step used for text and icons (AA on every surface);
      `accent-solid` is the fill behind white text. */
-  --color-accent: #8695ff;
-  --color-accent-solid: #4a5ae0;
-  --color-accent-hover: #5566ea;
-  --color-accent-soft: #1b2140;
+  --color-accent: #4de8f5;
+  --color-accent-solid: #0e7490;
+  --color-accent-hover: #0891b2;
+  --color-accent-soft: #0c2a30;
+
+  /* HUD-only tokens: corner-frame lines and glow shadows read the accent at
+     reduced opacity, kept separate so plain `accent` stays a solid, AA colour. */
+  --color-hud-line: rgb(76 198 232 / 0.45);
+  --color-hud-glow: rgb(76 198 232 / 0.3);
 
   --color-positive: #2ecc84;
   --color-positive-soft: #0f2b21;
@@ -93,5 +98,167 @@
   /* Recharts injects its own focus ring on the surface wrapper. */
   .recharts-wrapper:focus {
     outline: none;
+  }
+
+  /*
+   * HUD corner-frame: four short bracket marks instead of a full border.
+   * Built from background layers (not pseudo-elements) so a single class
+   * works on any element, including ones that already use ::before/::after.
+   */
+  .hud-frame {
+    position: relative;
+    background-repeat: no-repeat;
+    background-image:
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line)),
+      linear-gradient(var(--color-hud-line), var(--color-hud-line));
+    background-size:
+      14px 1.5px,
+      1.5px 14px,
+      14px 1.5px,
+      1.5px 14px,
+      14px 1.5px,
+      1.5px 14px,
+      14px 1.5px,
+      1.5px 14px;
+    background-position:
+      top 0 left 0,
+      top 0 left 0,
+      top 0 right 0,
+      top 0 right 0,
+      bottom 0 left 0,
+      bottom 0 left 0,
+      bottom 0 right 0,
+      bottom 0 right 0;
+  }
+
+  /* Soft ambient glow — orb, active nav state, focus emphasis. */
+  .hud-glow {
+    box-shadow: 0 0 28px 2px var(--color-hud-glow);
+  }
+
+  /*
+   * Tracked-out mono caps for HUD readouts and panel titles. Deliberately
+   * doesn't set font-size — pair with a Tailwind text-size utility so the
+   * two don't fight over cascade order.
+   */
+  .hud-label {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /* Slow-panning grid + drifting "particles" behind the Global Command Center — purely decorative.
+     Two scales: main 32px cells plus a very faint 8px technical sub-grid. */
+  .command-center-grid {
+    background-image:
+      repeating-linear-gradient(0deg, rgb(76 198 232 / 0.026) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgb(76 198 232 / 0.026) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(0deg, rgb(76 198 232 / 0.008) 0 1px, transparent 1px 8px),
+      repeating-linear-gradient(90deg, rgb(76 198 232 / 0.008) 0 1px, transparent 1px 8px);
+    animation: command-center-grid-pan 40s linear infinite;
+  }
+
+  .command-center-particles {
+    background-image:
+      radial-gradient(circle, rgb(76 198 232 / 0.45) 1px, transparent 1.5px),
+      radial-gradient(circle, rgb(76 198 232 / 0.3) 1px, transparent 1.5px),
+      radial-gradient(circle, rgb(76 198 232 / 0.2) 1px, transparent 1.5px);
+    background-size:
+      180px 180px,
+      260px 260px,
+      340px 340px;
+    background-position:
+      0 0,
+      60px 120px,
+      200px 40px;
+    animation: command-center-particles-drift 60s linear infinite;
+  }
+
+  /* Slow tile drift on the film-grain layer — removes digital flatness. */
+  .command-center-noise {
+    animation: command-center-noise-drift 9s linear infinite;
+  }
+
+  /* ~26 s ambient breathing on the haze layers — almost imperceptible. */
+  .command-center-breathe {
+    animation: command-center-breathe 26s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .command-center-grid,
+    .command-center-particles,
+    .command-center-noise,
+    .command-center-breathe {
+      animation: none;
+    }
+  }
+}
+
+@keyframes command-center-grid-pan {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      32px 32px,
+      32px 32px,
+      32px 32px,
+      32px 32px;
+  }
+}
+
+/* Gentle vertical bob for the floating market holograms. */
+@keyframes hologram-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
+  }
+}
+
+@keyframes command-center-noise-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 120px 120px;
+  }
+}
+
+@keyframes command-center-breathe {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes command-center-particles-drift {
+  from {
+    background-position:
+      0 0,
+      60px 120px,
+      200px 40px;
+  }
+  to {
+    background-position:
+      180px 180px,
+      -200px 380px,
+      -140px 380px;
   }
 }

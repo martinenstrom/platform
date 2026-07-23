@@ -27,7 +27,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+        'hud-label inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] whitespace-nowrap',
         TONE_CLASS[tone],
         className,
       )}

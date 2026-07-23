@@ -42,7 +42,7 @@ function MarketStatusIndicator() {
   const { isOpen, label, detail } = marketStatus
   return (
     <span
-      className="hidden items-center gap-2 text-xs text-content-muted md:inline-flex"
+      className="hud-label hidden items-center gap-2 text-[11px] text-content-muted md:inline-flex"
       title={detail}
     >
       <span
@@ -65,6 +65,7 @@ function InstrumentSearch() {
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState<Instrument[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState(false)
 
   // Debounced: when AVANZA_MCP_ENABLED is on, this hits the real Avanza API,
   // so every keystroke would otherwise fire a live network request.
@@ -73,18 +74,30 @@ function InstrumentSearch() {
     if (!trimmed) {
       setResults([])
       setIsSearching(false)
+      setSearchError(false)
       return
     }
 
     let cancelled = false
     setIsSearching(true)
+    setSearchError(false)
     const timeout = setTimeout(() => {
-      marketDataService.searchInstruments(trimmed).then((instruments) => {
-        if (!cancelled) {
-          setResults(instruments)
-          setIsSearching(false)
-        }
-      })
+      marketDataService
+        .searchInstruments(trimmed)
+        .then((instruments) => {
+          if (!cancelled) {
+            setResults(instruments)
+            setIsSearching(false)
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('Instrumentsökningen misslyckades:', error)
+          if (!cancelled) {
+            setResults([])
+            setIsSearching(false)
+            setSearchError(true)
+          }
+        })
     }, 200)
 
     return () => {
@@ -142,7 +155,7 @@ function InstrumentSearch() {
             }}
             onFocus={() => setOpen(true)}
             className={cn(
-              'h-9 w-full rounded-lg bg-surface pr-14 pl-9 text-sm text-content',
+              'hud-frame h-9 w-full rounded-lg bg-surface pr-14 pl-9 text-sm text-content',
               'placeholder:text-content-subtle transition-colors duration-150',
               'hover:bg-surface-2 focus:bg-surface-2 focus:outline-none',
               '[&::-webkit-search-cancel-button]:appearance-none',
@@ -163,6 +176,10 @@ function InstrumentSearch() {
         >
           {isSearching ? (
             <li className="px-3 py-2.5 text-sm text-content-muted">Söker…</li>
+          ) : searchError ? (
+            <li className="px-3 py-2.5 text-sm text-negative">
+              Sökningen misslyckades. Försök igen.
+            </li>
           ) : results.length === 0 ? (
             <li className="px-3 py-2.5 text-sm text-content-muted">
               Inga träffar för ”{query}”.

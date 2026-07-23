@@ -32,9 +32,7 @@ export function AppSidebar({
         >
           <Logo />
           {!collapsed && (
-            <span className="text-[15px] font-semibold tracking-tight text-content">
-              Stack
-            </span>
+            <span className="hud-label text-[13px] text-content">Stack</span>
           )}
         </Link>
         {!collapsed && (
@@ -82,7 +80,7 @@ export function AppSidebar({
 function Logo() {
   return (
     <span
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-solid"
+      className="hud-frame hud-glow flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-solid"
       aria-hidden="true"
     >
       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
@@ -117,12 +115,15 @@ function SidebarLink({
       activeOptions={{ exact: item.to === '/' }}
       title={collapsed ? item.label : undefined}
       className={cn(
-        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150',
+        'hud-label relative flex items-center gap-3 rounded-md px-3 py-2 text-[11px] transition-all duration-150',
         'text-content-muted hover:bg-surface-2 hover:text-content',
         collapsed && 'justify-center px-0',
       )}
       activeProps={{
-        className: 'bg-surface-2 text-content font-medium',
+        className: cn(
+          'bg-accent-soft text-accent shadow-[0_0_16px_rgba(77,232,245,0.25)]',
+          'before:absolute before:top-1 before:bottom-1 before:left-0 before:w-0.5 before:rounded-full before:bg-accent before:shadow-[0_0_8px_rgba(77,232,245,0.8)]',
+        ),
         'aria-current': 'page',
       }}
     >

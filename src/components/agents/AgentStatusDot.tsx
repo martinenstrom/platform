@@ -24,7 +24,13 @@ export function AgentStatusDot({
 }) {
   const meta = AGENT_STATUS_META[status]
   return (
-    <span className={cn('inline-flex items-center gap-2 text-xs', meta.text, className)}>
+    <span
+      className={cn(
+        'hud-label inline-flex items-center gap-2 text-[10px]',
+        meta.text,
+        className,
+      )}
+    >
       <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
         {status === 'running' && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />

@@ -21,6 +21,7 @@ import type {
   Opportunity,
   PerformancePoint,
   PortfolioSummary,
+  Quote,
   ReportItem,
   RiskScore,
   ScreenerRow,
@@ -488,6 +489,19 @@ export const instrumentUniverse: Instrument[] = [
   },
 ]
 
+/** Synchronous variant used by the header search, which filters as you type. */
+export function searchInstrumentsLocal(query: string, limit = 6): Instrument[] {
+  const q = query.trim().toLocaleLowerCase('sv-SE')
+  if (!q) return []
+  return instrumentUniverse
+    .filter(
+      (instrument) =>
+        instrument.name.toLocaleLowerCase('sv-SE').includes(q) ||
+        instrument.ticker.toLocaleLowerCase('sv-SE').includes(q),
+    )
+    .slice(0, limit)
+}
+
 export const holdings: Holding[] = [
   {
     id: 'inve-b',
@@ -729,4 +743,58 @@ export function getPerformanceSeries(range: TimeRange): PerformancePoint[] {
   }
 
   return points
+}
+
+/**
+ * Looks up a quote across the mock fixtures that carry price data. Falls
+ * back to a flat zeroed quote for instruments this template has no price
+ * for (e.g. most of `instrumentUniverse`) — mock data, not a real "no data" error.
+ */
+export function getMockQuote(instrumentId: string): Quote {
+  const watchlistItem = watchlist.find((item) => item.id === instrumentId)
+  if (watchlistItem) {
+    return {
+      instrumentId,
+      price: watchlistItem.price,
+      change: Number(
+        ((watchlistItem.price * watchlistItem.changePercent) / 100).toFixed(2),
+      ),
+      changePercent: watchlistItem.changePercent,
+      currency: watchlistItem.currency,
+      updatedAt: MOCK_NOW.toISOString(),
+    }
+  }
+
+  const holding = holdings.find((item) => item.id === instrumentId)
+  if (holding) {
+    return {
+      instrumentId,
+      price: holding.lastPrice,
+      change: Number(((holding.lastPrice * holding.changePercent) / 100).toFixed(2)),
+      changePercent: holding.changePercent,
+      currency: holding.currency,
+      updatedAt: MOCK_NOW.toISOString(),
+    }
+  }
+
+  const index = marketIndices.find((item) => item.id === instrumentId)
+  if (index) {
+    return {
+      instrumentId,
+      price: index.value,
+      change: Number(((index.value * index.changePercent) / 100).toFixed(2)),
+      changePercent: index.changePercent,
+      currency: index.currency ?? 'SEK',
+      updatedAt: MOCK_NOW.toISOString(),
+    }
+  }
+
+  return {
+    instrumentId,
+    price: 0,
+    change: 0,
+    changePercent: 0,
+    currency: 'SEK',
+    updatedAt: MOCK_NOW.toISOString(),
+  }
 }

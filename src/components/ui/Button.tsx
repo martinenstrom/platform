@@ -5,8 +5,8 @@ type Variant = 'primary' | 'secondary' | 'ghost'
 type Size = 'sm' | 'md'
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent-solid text-white hover:bg-accent-hover',
-  secondary: 'bg-surface-2 text-content hover:bg-surface-3',
+  primary: 'hud-glow bg-accent-solid text-white hover:bg-accent-hover',
+  secondary: 'hud-frame bg-surface-2 text-content hover:bg-surface-3',
   ghost: 'text-content-muted hover:bg-surface-2 hover:text-content',
 }
 
@@ -33,7 +33,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-150',
+        'hud-label inline-flex items-center justify-center rounded-lg transition-colors duration-150',
         'disabled:pointer-events-none disabled:opacity-40',
         VARIANTS[variant],
         SIZES[size],
