@@ -4,6 +4,9 @@ import {
   ACESFilmicToneMapping,
   BufferAttribute,
   BufferGeometry,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  NoColorSpace,
   Points,
   PointsMaterial,
   ShaderMaterial,
@@ -14,20 +17,12 @@ import {
 } from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { feature } from 'topojson-client'
-import type { Feature, Geometry } from 'geojson'
-import type { GeometryCollection, Topology } from 'topojson-specification'
-import { resolveCountryByGeoName } from '~/data/countryExplorer'
 import {
   createCloudLayer,
   type CloudLayer,
 } from '~/components/countryExplorer/globeLayers'
 import { MARKET_CENTERS } from '~/data/countryExplorer/marketCenters'
 import type { CountryRegistryEntry } from '~/types/countryExplorer'
-
-const WORLD_ATLAS_URL = '/data/countries-110m.json'
-
-type CountryFeature = Feature<Geometry, { name: string }>
 
 /**
  * Cinematic Earth material — layered in one shader over the two vendored
@@ -65,13 +60,19 @@ const EARTH_FRAGMENT_SHADER = `
 
     vec3 day = texture2D(dayTexture, vUv).rgb;
     float dayLum = dot(day, vec3(0.299, 0.587, 0.114));
-    float land = smoothstep(0.05, 0.2, dayLum);
+    float land = smoothstep(0.11, 0.22, dayLum);
 
     // NASA Black Marble: the globe is uniformly dark, space-lit — there is NO
     // daylight hemisphere. Land is near-black, oceans deep navy; the continents
     // are defined almost entirely by glowing golden city lights.
-    vec3 ocean = vec3(0.006, 0.022, 0.05);
-    vec3 landDark = vec3(0.019, 0.026, 0.036);
+    vec3 ocean = vec3(0.0025, 0.011, 0.05);
+    // Very dark charcoal-brown terrain, derived from the real day texture so
+    // relief/coastline detail survives, then heavily darkened and desaturated.
+    // The continents must read as low-luminance land, never as illuminated
+    // surface — all visible brightness comes from the city lights added below.
+    float terrainLum = dot(day, vec3(0.299, 0.587, 0.114));
+    vec3 landTint = mix(vec3(terrainLum), day, 0.24);
+    vec3 landDark = landTint * vec3(0.042, 0.04, 0.035);
     vec3 base = mix(ocean, landDark, land);
 
     // Flat, very low space ambient with only a whisper of top moonlight on
@@ -79,32 +80,79 @@ const EARTH_FRAGMENT_SHADER = `
     vec3 moonDir = normalize(vec3(-0.3, 0.6, 0.6));
     float moon = max(dot(normal, moonDir), 0.0);
     base *= 0.72 + 0.12 * moon;
-    base += vec3(dayLum) * land * 0.02 * moon;
+    base += vec3(dayLum) * land * 0.004 * moon;
+
+    // Keep every ocean pixel a uniform dark blue, even on the moon-shadowed
+    // side where the directional dimming above would otherwise crush it to
+    // near-black. Masked by (1.0 - land) so land is never touched.
+    base += vec3(0.0018, 0.008, 0.032) * (1.0 - land);
 
     float facing = clamp(dot(normal, viewDir), 0.0, 1.0);
 
     // Ocean glint: tight moonlight specular + a soft cool Fresnel reflection.
     vec3 halfDir = normalize(moonDir + viewDir);
     float spec = pow(max(dot(normal, halfDir), 0.0), 80.0) * (1.0 - land);
-    base += vec3(0.3, 0.5, 0.85) * spec * 0.5;
+    base += vec3(0.18, 0.34, 0.7) * spec * 0.28;
     base += vec3(0.08, 0.2, 0.46) * pow(1.0 - facing, 4.0) * (1.0 - land) * 0.4;
 
-    // Dense golden city lights — THE dominant feature. A modest floor keeps
-    // deserts/oceans dark while a gentle curve lets many small cities glow;
-    // the warm ramp runs orange (small towns) → gold → white-gold metro cores.
+    // ================= Illuminated civilization =================
+    // THE dominant feature. Built from the real NASA night-lights texture as a
+    // dense, layered field of warm light rather than a handful of bright dots.
+    //
+    // Two-part response tuned for satellite-at-night detail rather than glowing
+    // patches. A steep response curve makes the emissive track the night
+    // texture's own fine per-pixel structure — thousands of distinct points —
+    // instead of inflating mid-tones into blobs, and gives a wide brightness
+    // spread (tiny towns → warm cities → blazing capitals):
+    //  - coverage: a very low floor so many small settlements register, but a
+    //    steep exponent so each stays a small point, not a patch.
+    //  - cores: a high threshold + steep power so ONLY true capitals reach the
+    //    extreme white-gold HDR that reads as a brilliant metropolitan core.
+    // ACES tone mapping (renderer) compresses the peaks, keeping cores warm and
+    // detailed instead of clipping to flat white.
     vec3 night = texture2D(nightTexture, vUv).rgb;
     float rawLum = dot(night, vec3(0.3, 0.59, 0.11));
-    float city = pow(max(rawLum - 0.045, 0.0) * 1.15, 1.65);
-    float twinkle = 0.9 + 0.1 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
-    vec3 lights = mix(vec3(1.0, 0.62, 0.26), vec3(1.0, 0.77, 0.42), clamp(rawLum * 2.0, 0.0, 1.0));
-    lights = mix(lights, vec3(1.0, 0.945, 0.78), clamp((rawLum - 0.5) * 2.0, 0.0, 1.0));
-    base += lights * city * 9.0 * twinkle;
+    float coverage = pow(max(rawLum - 0.01, 0.0) * 1.25, 1.55);
+    float cores = pow(max(rawLum - 0.35, 0.0) * 1.7, 2.6);
+
+    // Two shimmers: a gentle regional twinkle over the whole lit field, and a
+    // sharper high-frequency sparkle that only the bright metro cores carry, so
+    // the dense clusters visibly scintillate and their bloom halos pulse.
+    float twinkle = 0.94 + 0.06 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
+    float sparkle = 0.72 + 0.28 * sin(uTime * 8.5 + vUv.x * 640.0 + vUv.y * 430.0);
+    float city = coverage * twinkle + cores * 3.7 * sparkle;
+
+    // Layered warm gradient — every city carries multiple colour layers, from
+    // deep-amber outskirts through orange, golden amber and soft gold to a
+    // warm-white core. Never flat white (top stop is warm #FFF8E2).
+    vec3 amber      = vec3(1.0, 0.541, 0.227); // #FF8A3A deep amber outer
+    vec3 orange     = vec3(1.0, 0.667, 0.290); // #FFAA4A warm orange
+    vec3 goldAmber  = vec3(1.0, 0.784, 0.416); // #FFC76A golden amber
+    vec3 softGold   = vec3(1.0, 0.886, 0.604); // #FFE29A soft gold
+    vec3 warmWhite  = vec3(1.0, 0.973, 0.886); // #FFF8E2 warm-white core
+    vec3 lights = amber;
+    lights = mix(lights, orange,    smoothstep(0.03, 0.10, rawLum));
+    lights = mix(lights, goldAmber, smoothstep(0.10, 0.22, rawLum));
+    lights = mix(lights, softGold,  smoothstep(0.22, 0.42, rawLum));
+    lights = mix(lights, warmWhite, smoothstep(0.42, 0.75, rawLum));
+
+    // Strict land gate for the emissive. The shading land mask isn't a clean
+    // ocean/land cut — the day texture keeps moderate luminance over water
+    // (coasts, shallow seas, ice), so reusing it lets a little light bleed onto
+    // the sea. This gate uses a tighter threshold and squares the result, so
+    // partial-land pixels (coastal water) collapse to ~zero while solid land
+    // stays full. Result: the ocean goes fully dark right up to the shoreline,
+    // and only genuine land carries the warm city glow.
+    float emitLand = smoothstep(0.09, 0.17, dayLum);
+    emitLand *= emitLand;
+    base += lights * city * 7.5 * emitLand;
 
     // Thin blue-white atmospheric rim (NASA limb), edge-only, stronger on the
-    // upper-left as sunlight scattering through the atmosphere.
-    float rim = pow(1.0 - facing, 3.1);
+    // upper-left. A gentler exponent spreads the falloff inward so there is no
+    // hard glowing edge — realistic scattering, subtler and more premium.
+    float rim = pow(1.0 - facing, 2.7);
     float upperLeft = clamp(dot(normal, normalize(vec3(-0.5, 0.62, 0.3))) * 0.5 + 0.5, 0.0, 1.0);
-    base += vec3(0.475, 0.72, 1.0) * rim * (0.4 + 0.4 * upperLeft);
+    base += vec3(0.475, 0.72, 1.0) * rim * (0.26 + 0.26 * upperLeft);
 
     gl_FragColor = vec4(base, 1.0);
   }
@@ -118,12 +166,97 @@ interface EarthMaterial extends ShaderMaterial {
   }
 }
 
+const DAY_TEXTURE_URL = '/data/globe/earth-blue-marble.jpg'
+const NIGHT_TEXTURE_4K_URL = '/data/globe/earth-night.jpg' // 4096×2048 fallback
+const NIGHT_TEXTURE_8K_URL = '/data/globe/earth-night-8k.jpg' // 8192×4096 default
+
+/**
+ * Pick the night-lights texture by GPU/device capability. The 8K asset needs a
+ * GPU that can hold an 8192-wide texture and enough memory to be worthwhile, so
+ * we fall back to the 4K asset on constrained GPUs, mobile, and low-memory /
+ * low-core devices. Purely a resolution choice — the shader is identical either
+ * way. Runs once; SSR-safe (returns 4K when there is no DOM).
+ */
+function pickNightTextureUrl(): string {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return NIGHT_TEXTURE_4K_URL
+  }
+  try {
+    const probe = document.createElement('canvas')
+    const gl = (probe.getContext('webgl2') ??
+      probe.getContext('webgl')) as WebGLRenderingContext | null
+    if (!gl) return NIGHT_TEXTURE_4K_URL
+
+    // The 8192-wide texture cannot be uploaded if the GPU's max is below it.
+    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number
+    if (!maxTextureSize || maxTextureSize < 8192) return NIGHT_TEXTURE_4K_URL
+
+    // Mobile / tablet: skip the ~180 MB (with mipmaps) 8K upload regardless.
+    const ua = navigator.userAgent ?? ''
+    if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua)) {
+      return NIGHT_TEXTURE_4K_URL
+    }
+
+    // Low-memory / low-core desktops: stay on 4K where reported.
+    const deviceMemory = (navigator as Navigator & { deviceMemory?: number })
+      .deviceMemory
+    if (typeof deviceMemory === 'number' && deviceMemory > 0 && deviceMemory < 4) {
+      return NIGHT_TEXTURE_4K_URL
+    }
+    const cores = navigator.hardwareConcurrency
+    if (typeof cores === 'number' && cores > 0 && cores < 4) {
+      return NIGHT_TEXTURE_4K_URL
+    }
+
+    return NIGHT_TEXTURE_8K_URL
+  } catch {
+    return NIGHT_TEXTURE_4K_URL
+  }
+}
+
+/**
+ * Filtering for the equirectangular Earth maps. Both are power-of-two, so we
+ * enable mipmaps + trilinear min filtering (kills shimmer/aliasing when the
+ * globe is small on screen) and max anisotropy (keeps city lights and coastal
+ * detail crisp at grazing angles near the limb, instead of smearing). Three
+ * clamps the anisotropy request to the GPU's real maximum at upload time.
+ *
+ * Color space is left as NoColorSpace to match the exact pipeline the shader
+ * and bloom were tuned against — the raw texel values are sampled directly, so
+ * swapping the 4K asset for the 8K one changes resolution only, never the look.
+ */
+function configureEarthTexture(texture: Texture): Texture {
+  texture.colorSpace = NoColorSpace
+  texture.generateMipmaps = true
+  texture.minFilter = LinearMipmapLinearFilter
+  texture.magFilter = LinearFilter
+  texture.anisotropy = 16
+  texture.needsUpdate = true
+  return texture
+}
+
+async function loadNightTexture(loader: TextureLoader): Promise<Texture> {
+  const url = pickNightTextureUrl()
+  try {
+    return await loader.loadAsync(url)
+  } catch (error) {
+    // If the 8K asset fails (network/decoding/memory), degrade to 4K.
+    if (url !== NIGHT_TEXTURE_4K_URL) {
+      console.warn('8K night texture failed, falling back to 4K:', error)
+      return loader.loadAsync(NIGHT_TEXTURE_4K_URL)
+    }
+    throw error
+  }
+}
+
 async function createEarthMaterial(): Promise<EarthMaterial> {
   const loader = new TextureLoader()
   const [dayTexture, nightTexture] = await Promise.all([
-    loader.loadAsync('/data/globe/earth-blue-marble.jpg'),
-    loader.loadAsync('/data/globe/earth-night.jpg'),
+    loader.loadAsync(DAY_TEXTURE_URL),
+    loadNightTexture(loader),
   ])
+  configureEarthTexture(dayTexture)
+  configureEarthTexture(nightTexture)
   return new ShaderMaterial({
     uniforms: {
       dayTexture: { value: dayTexture },
@@ -219,12 +352,10 @@ interface LightGlobeProps {
   reducedMotion: boolean
 }
 
-export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) {
+export function LightGlobe({ reducedMotion }: LightGlobeProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const globeRef = useRef<GlobeMethods | undefined>(undefined)
   const [size, setSize] = useState({ width: 0, height: 0 })
-  const [countries, setCountries] = useState<CountryFeature[]>([])
-  const [hoveredName, setHoveredName] = useState<string | null>(null)
   const [earthMaterial, setEarthMaterial] = useState<EarthMaterial | null>(null)
   const cloudsRef = useRef<CloudLayer | null>(null)
 
@@ -238,25 +369,6 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    fetch(WORLD_ATLAS_URL)
-      .then((res) => res.json())
-      .then((topology: Topology) => {
-        if (cancelled) return
-        const countriesObject = topology.objects.countries as GeometryCollection<{
-          name: string
-        }>
-        setCountries(feature(topology, countriesObject).features as CountryFeature[])
-      })
-      .catch((error: unknown) => {
-        console.error('Kunde inte läsa in världskartan:', error)
-      })
-    return () => {
-      cancelled = true
-    }
   }, [])
 
   useEffect(() => {
@@ -283,8 +395,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
     globe.pointOfView({ lat: 18, lng: 8, altitude: 3.55 }, 0)
   }, [size.width > 0])
 
-  // Slow cinematic rotation (~107 s/rev), damping, zoom clamps. Keyed on size
-  // too: country data can arrive before the canvas exists.
+  // Slow cinematic rotation (~107 s/rev), damping, zoom clamps.
   useEffect(() => {
     const controls = globeRef.current?.controls()
     if (!controls) return
@@ -296,7 +407,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
     controls.maxDistance = 660
     controls.minPolarAngle = Math.PI * 0.18
     controls.maxPolarAngle = Math.PI * 0.82
-  }, [countries, reducedMotion, size.width > 0])
+  }, [reducedMotion, size.width > 0])
 
   // Subtle cloud layer drifting independently of the rotation.
   useEffect(() => {
@@ -339,7 +450,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
     renderer.toneMapping = ACESFilmicToneMapping
 
     const composer = globe.postProcessingComposer()
-    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.72, 0.42, 0.55)
+    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.45, 0.24, 0.72)
     // Keep the transparent canvas: rewrite the blur shader to carry glow
     // luminance as alpha, and finish with an OutputPass (faithful alpha + the
     // renderer's ACES tone mapping) instead of the pass's opaque screen blit.
@@ -432,7 +543,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
       ref={wrapperRef}
       className="relative h-full w-full"
       role="application"
-      aria-label="Interaktiv jordglob. Klicka på ett land för landsanalys."
+      aria-label="Interaktiv jordglob över globala marknader."
     >
       {size.width > 0 && size.height > 0 && earthMaterial && (
         <Globe
@@ -443,38 +554,8 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
           globeImageUrl={null}
           globeMaterial={earthMaterial}
           showAtmosphere
-          atmosphereColor="#6ea6e0"
-          atmosphereAltitude={0.09}
-          polygonsData={countries}
-          polygonCapColor={(polygon: object) =>
-            hoveredName === (polygon as CountryFeature).properties.name
-              ? 'rgba(160, 210, 255, 0.14)'
-              : 'rgba(0,0,0,0)'
-          }
-          polygonSideColor={() => 'rgba(0,0,0,0)'}
-          polygonStrokeColor={(polygon: object) =>
-            hoveredName === (polygon as CountryFeature).properties.name
-              ? 'rgba(185, 225, 255, 0.85)'
-              : 'rgba(120, 170, 230, 0.22)'
-          }
-          polygonAltitude={0.006}
-          polygonsTransitionDuration={0}
-          polygonLabel={(polygon: object) => {
-            const entry = resolveCountryByGeoName(
-              (polygon as CountryFeature).properties.name,
-            )
-            return `<div style="background:#ffffff;border:1px solid #E9EEF5;border-radius:8px;padding:6px 10px;font-size:12px;color:#1e293b;box-shadow:0 10px 40px rgba(30,40,60,0.1)">${entry.nameEn} · klicka för analys</div>`
-          }}
-          onPolygonHover={(polygon) => {
-            setHoveredName(
-              polygon ? (polygon as CountryFeature).properties.name : null,
-            )
-          }}
-          onPolygonClick={(polygon) => {
-            onSelectCountry(
-              resolveCountryByGeoName((polygon as CountryFeature).properties.name),
-            )
-          }}
+          atmosphereColor="#4f7398"
+          atmosphereAltitude={0.072}
           arcsData={ARCS}
           arcStartLat={(d) => (d as ArcDatum).startLat}
           arcStartLng={(d) => (d as ArcDatum).startLng}
