@@ -552,6 +552,15 @@ export function LightCommandCenter() {
 
             {/* Globe centerpiece — overlaps down into the middle row. */}
             <div className="relative z-10 min-h-[440px] xl:col-span-4">
+              {/* Subtle dark-blue space glow separating the globe from the page. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-0"
+                style={{
+                  background:
+                    'radial-gradient(circle at 50% 42%, rgba(30,72,120,0.3), rgba(12,30,54,0.12) 44%, transparent 68%)',
+                }}
+              />
               {mounted && (
                 <Suspense fallback={null}>
                   <LightGlobe onSelectCountry={selectCountry} reducedMotion={reducedMotion} />
@@ -571,13 +580,17 @@ export function LightCommandCenter() {
                         bottom: `${i * 5}px`,
                         width: `${100 - i * 20}%`,
                         height: `${34 - i * 7}px`,
-                        borderColor: `rgba(255,138,0,${0.24 - i * 0.05})`,
+                        borderColor: `rgba(255,168,84,${0.4 - i * 0.07})`,
+                        boxShadow: `0 0 ${10 - i * 2}px rgba(255,150,60,${0.22 - i * 0.045})`,
                       }}
                     />
                   ))}
                   <div
                     className="absolute bottom-1 left-1/2 h-2 w-10 -translate-x-1/2 rounded-[50%]"
-                    style={{ background: 'radial-gradient(ellipse, rgba(255,180,90,0.75), transparent 70%)' }}
+                    style={{
+                      background:
+                        'radial-gradient(ellipse, rgba(255,214,150,0.95), rgba(255,150,60,0.4) 45%, transparent 72%)',
+                    }}
                   />
                 </div>
               </div>

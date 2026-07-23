@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import {
+  ACESFilmicToneMapping,
+  BufferAttribute,
+  BufferGeometry,
+  Points,
+  PointsMaterial,
   ShaderMaterial,
   TextureLoader,
+  Vector2,
   type PerspectiveCamera,
   type Texture,
 } from 'three'
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { feature } from 'topojson-client'
 import type { Feature, Geometry } from 'geojson'
 import type { GeometryCollection, Topology } from 'topojson-specification'
@@ -59,37 +67,44 @@ const EARTH_FRAGMENT_SHADER = `
     float dayLum = dot(day, vec3(0.299, 0.587, 0.114));
     float land = smoothstep(0.05, 0.2, dayLum);
 
-    // Ocean: deep navy, almost black. Land: dark graphite-blue, only a
-    // luminance-based relief lift from the day texture — no daylight colours;
-    // the golden city lights carry the land's visual interest.
-    vec3 ocean = vec3(0.024, 0.055, 0.1);
-    // Night Earth: land barely lighter than ocean so the globe reads uniformly
-    // dark — the city lights, not daylit terrain, define the continents.
-    vec3 terrain = vec3(0.028, 0.05, 0.086) + vec3(dayLum) * 0.012;
-    vec3 base = mix(ocean, terrain, land);
+    // NASA Black Marble: the globe is uniformly dark, space-lit — there is NO
+    // daylight hemisphere. Land is near-black, oceans deep navy; the continents
+    // are defined almost entirely by glowing golden city lights.
+    vec3 ocean = vec3(0.006, 0.022, 0.05);
+    vec3 landDark = vec3(0.019, 0.026, 0.036);
+    vec3 base = mix(ocean, landDark, land);
 
-    // Very soft cool key from upper-left — shape only, no daylight wash.
-    vec3 keyDir = normalize(vec3(-0.45, 0.55, 0.7));
-    float key = 0.62 + 0.34 * max(dot(normal, keyDir), 0.0);
-    base *= key;
+    // Flat, very low space ambient with only a whisper of top moonlight on
+    // relief — no directional daylight wash across the day-facing side.
+    vec3 moonDir = normalize(vec3(-0.3, 0.6, 0.6));
+    float moon = max(dot(normal, moonDir), 0.0);
+    base *= 0.72 + 0.12 * moon;
+    base += vec3(dayLum) * land * 0.02 * moon;
 
-    // Glossy ocean: tight specular from the key light, oceans only.
-    vec3 halfDir = normalize(keyDir + viewDir);
-    float spec = pow(max(dot(normal, halfDir), 0.0), 42.0) * (1.0 - land);
-    base += vec3(0.35, 0.5, 0.7) * spec * 0.4;
-
-    // Real city lights, warm-ramped gold/amber with a subtle regional twinkle.
-    // A high-contrast curve keeps dark land dark so only real cities pop.
-    vec3 night = texture2D(nightTexture, vUv).rgb;
-    float lum = dot(night, vec3(0.3, 0.59, 0.11));
-    lum = pow(lum, 1.35) * 1.5;
-    float twinkle = 0.88 + 0.12 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
-    vec3 lights = mix(vec3(1.0, 0.66, 0.32), vec3(1.0, 0.86, 0.62), clamp(lum * 2.0, 0.0, 1.0));
-    base += lights * lum * 2.6 * twinkle;
-
-    // Blue atmospheric scattering rim.
     float facing = clamp(dot(normal, viewDir), 0.0, 1.0);
-    base += vec3(0.3, 0.52, 0.88) * pow(1.0 - facing, 2.5) * 0.48;
+
+    // Ocean glint: tight moonlight specular + a soft cool Fresnel reflection.
+    vec3 halfDir = normalize(moonDir + viewDir);
+    float spec = pow(max(dot(normal, halfDir), 0.0), 80.0) * (1.0 - land);
+    base += vec3(0.3, 0.5, 0.85) * spec * 0.5;
+    base += vec3(0.08, 0.2, 0.46) * pow(1.0 - facing, 4.0) * (1.0 - land) * 0.4;
+
+    // Dense golden city lights — THE dominant feature. A modest floor keeps
+    // deserts/oceans dark while a gentle curve lets many small cities glow;
+    // the warm ramp runs orange (small towns) → gold → white-gold metro cores.
+    vec3 night = texture2D(nightTexture, vUv).rgb;
+    float rawLum = dot(night, vec3(0.3, 0.59, 0.11));
+    float city = pow(max(rawLum - 0.045, 0.0) * 1.15, 1.65);
+    float twinkle = 0.9 + 0.1 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
+    vec3 lights = mix(vec3(1.0, 0.62, 0.26), vec3(1.0, 0.77, 0.42), clamp(rawLum * 2.0, 0.0, 1.0));
+    lights = mix(lights, vec3(1.0, 0.945, 0.78), clamp((rawLum - 0.5) * 2.0, 0.0, 1.0));
+    base += lights * city * 9.0 * twinkle;
+
+    // Thin blue-white atmospheric rim (NASA limb), edge-only, stronger on the
+    // upper-left as sunlight scattering through the atmosphere.
+    float rim = pow(1.0 - facing, 3.1);
+    float upperLeft = clamp(dot(normal, normalize(vec3(-0.5, 0.62, 0.3))) * 0.5 + 0.5, 0.0, 1.0);
+    base += vec3(0.475, 0.72, 1.0) * rim * (0.4 + 0.4 * upperLeft);
 
     gl_FragColor = vec4(base, 1.0);
   }
@@ -180,11 +195,12 @@ const ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
   ]
 })
 
-/** Calm lines: cyan/soft blue, some almost invisible; particles run warm amber. */
+/** Warm gold primary/secondary routes with a faint cool-blue tertiary; the
+ *  particle "data packets" run brighter warm gold. */
 const STATIC_ARC_COLORS = [
-  'rgba(108, 200, 255, 0.42)',
-  'rgba(90, 150, 246, 0.34)',
-  'rgba(140, 200, 255, 0.16)',
+  'rgba(255, 168, 84, 0.5)',
+  'rgba(255, 140, 60, 0.4)',
+  'rgba(120, 175, 255, 0.28)',
 ]
 
 const MAJOR_HUBS = new Set([
@@ -294,7 +310,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
         return
       }
       const cloudMaterial = clouds.mesh.material
-      if (!Array.isArray(cloudMaterial)) cloudMaterial.opacity = 0.05
+      if (!Array.isArray(cloudMaterial)) cloudMaterial.opacity = 0.02
       cloudsRef.current = clouds
       globe.scene().add(clouds.mesh)
       detach = () => {
@@ -306,6 +322,87 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
       cancelled = true
       detach?.()
       cloudsRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [size.width > 0])
+
+  // Post-processing + environment: ACES filmic tone mapping, a selective
+  // bloom pass that glows ONLY the bright warm city lights (and hubs/arcs),
+  // and a faint in-scene star field for depth. Rendering only — no geometry,
+  // camera, sizing or interaction is touched.
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe || size.width === 0) return
+
+    const renderer = globe.renderer()
+    const previousToneMapping = renderer.toneMapping
+    renderer.toneMapping = ACESFilmicToneMapping
+
+    const composer = globe.postProcessingComposer()
+    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.72, 0.42, 0.55)
+    // Keep the transparent canvas: rewrite the blur shader to carry glow
+    // luminance as alpha, and finish with an OutputPass (faithful alpha + the
+    // renderer's ACES tone mapping) instead of the pass's opaque screen blit.
+    bloom.separableBlurMaterials.forEach((material) => {
+      material.fragmentShader = material.fragmentShader.replace(
+        'gl_FragColor = vec4( diffuseSum, 1.0 );',
+        'gl_FragColor = vec4( diffuseSum, clamp( max( diffuseSum.r, max( diffuseSum.g, diffuseSum.b ) ), 0.0, 1.0 ) );',
+      )
+      material.needsUpdate = true
+    })
+    const output = new OutputPass()
+    composer.addPass(bloom)
+    composer.addPass(output)
+
+    // Sparse star field around the globe — mostly dim blue-white with a few
+    // faint warm points. Elegant, never a dense field.
+    const scene = globe.scene()
+    const globeRadius = globe.getGlobeRadius()
+    let seed = 90731
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    const makeStars = (count: number, color: number, size: number, opacity: number) => {
+      const positions = new Float32Array(count * 3)
+      for (let i = 0; i < count; i++) {
+        const z = rand() * 2 - 1
+        const phi = rand() * Math.PI * 2
+        const ring = Math.sqrt(Math.max(0, 1 - z * z))
+        const radius = globeRadius * (2.6 + rand() * 3.4)
+        positions[i * 3] = ring * Math.cos(phi) * radius
+        positions[i * 3 + 1] = z * radius
+        positions[i * 3 + 2] = ring * Math.sin(phi) * radius
+      }
+      const geometry = new BufferGeometry()
+      geometry.setAttribute('position', new BufferAttribute(positions, 3))
+      const material = new PointsMaterial({
+        color,
+        size,
+        transparent: true,
+        opacity,
+        sizeAttenuation: true,
+        depthWrite: false,
+      })
+      const points = new Points(geometry, material)
+      points.frustumCulled = false
+      scene.add(points)
+      return { points, geometry, material }
+    }
+    const blueStars = makeStars(200, 0xcfe0ff, 1.1, 0.5)
+    const warmStars = makeStars(28, 0xffcf9a, 1.3, 0.55)
+
+    return () => {
+      composer.removePass(output)
+      composer.removePass(bloom)
+      output.dispose()
+      bloom.dispose()
+      for (const set of [blueStars, warmStars]) {
+        scene.remove(set.points)
+        set.geometry.dispose()
+        set.material.dispose()
+      }
+      renderer.toneMapping = previousToneMapping
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size.width > 0])
@@ -346,8 +443,8 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
           globeImageUrl={null}
           globeMaterial={earthMaterial}
           showAtmosphere
-          atmosphereColor="#8fc2f0"
-          atmosphereAltitude={0.13}
+          atmosphereColor="#6ea6e0"
+          atmosphereAltitude={0.09}
           polygonsData={countries}
           polygonCapColor={(polygon: object) =>
             hoveredName === (polygon as CountryFeature).properties.name
@@ -385,10 +482,10 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
           arcEndLng={(d) => (d as ArcDatum).endLng}
           arcColor={(d: object) => {
             const arc = d as ArcDatum
-            if (arc.particle) return 'rgba(255, 186, 102, 0.85)'
+            if (arc.particle) return 'rgba(255, 200, 120, 0.95)'
             return (
               STATIC_ARC_COLORS[arc.index % STATIC_ARC_COLORS.length] ??
-              'rgba(108, 200, 255, 0.42)'
+              'rgba(255, 168, 84, 0.5)'
             )
           }}
           arcStroke={(d) =>
@@ -407,8 +504,8 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
           pointLng={(d) => (d as (typeof MARKET_CENTERS)[number]).lng}
           pointColor={(d) =>
             MAJOR_HUBS.has((d as (typeof MARKET_CENTERS)[number]).id)
-              ? '#ffddaa'
-              : '#7fb8ff'
+              ? '#ffd08a'
+              : '#ffb367'
           }
           pointAltitude={0.012}
           pointRadius={(d) =>
@@ -418,7 +515,7 @@ export function LightGlobe({ onSelectCountry, reducedMotion }: LightGlobeProps) 
           ringsData={reducedMotion ? [] : PULSE_HUBS}
           ringLat={(d) => (d as (typeof MARKET_CENTERS)[number]).lat}
           ringLng={(d) => (d as (typeof MARKET_CENTERS)[number]).lng}
-          ringColor={() => 'rgba(255, 199, 138, 0.4)'}
+          ringColor={() => 'rgba(255, 178, 100, 0.45)'}
           ringMaxRadius={3.2}
           ringPropagationSpeed={1.4}
           ringRepeatPeriod={3200}
