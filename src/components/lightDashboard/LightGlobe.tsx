@@ -73,6 +73,12 @@ const EARTH_FRAGMENT_SHADER = `
     float terrainLum = dot(day, vec3(0.299, 0.587, 0.114));
     vec3 landTint = mix(vec3(terrainLum), day, 0.24);
     vec3 landDark = landTint * vec3(0.042, 0.04, 0.035);
+    // Deserts (bright, warm sand — Sahara, Arabian, Australian interior) read
+    // too hot next to dark forest. Damp them ~13% by luminance × warmth so sand
+    // recedes while dark vegetation and neutral ice are untouched — keeps empty
+    // terrain quiet and never competing with city lights.
+    float sand = smoothstep(0.20, 0.45, terrainLum) * smoothstep(0.0, 0.06, day.r - day.b);
+    landDark *= 1.0 - 0.15 * sand;
     vec3 base = mix(ocean, landDark, land);
 
     // Flat, very low space ambient with only a whisper of top moonlight on
@@ -110,9 +116,20 @@ const EARTH_FRAGMENT_SHADER = `
     //    extreme white-gold HDR that reads as a brilliant metropolitan core.
     // ACES tone mapping (renderer) compresses the peaks, keeping cores warm and
     // detailed instead of clipping to flat white.
+    // Unsharp-mask the night lights against a coarser mip (a local average) to
+    // recover fine high-frequency detail that mip/bilinear filtering softens:
+    // sharper individual settlements, crisper coastal corridors, a less smoothed
+    // (more organic) distribution, and clearer structure inside big metros.
+    // Deliberately asymmetric — the DARKENING of the gaps between lights is kept
+    // full (that is what defines structure) while the bright overshoot at cores
+    // is attenuated, so metros gain definition without getting brighter and the
+    // bloom/overall exposure is essentially unchanged.
     vec3 night = texture2D(nightTexture, vUv).rgb;
-    float rawLum = dot(night, vec3(0.3, 0.59, 0.11));
-    float coverage = pow(max(rawLum - 0.01, 0.0) * 1.25, 1.55);
+    vec3 nightBlur = texture2D(nightTexture, vUv, 2.0).rgb;
+    vec3 diff = night - nightBlur;
+    vec3 nightSharp = night + min(diff, vec3(0.0)) * 0.9 + max(diff, vec3(0.0)) * 0.32;
+    float rawLum = dot(max(nightSharp, vec3(0.0)), vec3(0.3, 0.59, 0.11));
+    float coverage = pow(max(rawLum - 0.006, 0.0) * 1.25, 1.62);
     float cores = pow(max(rawLum - 0.35, 0.0) * 1.7, 2.6);
 
     // Two shimmers: a gentle regional twinkle over the whole lit field, and a
@@ -120,7 +137,7 @@ const EARTH_FRAGMENT_SHADER = `
     // the dense clusters visibly scintillate and their bloom halos pulse.
     float twinkle = 0.94 + 0.06 * sin(uTime * 2.4 + vUv.x * 180.0 + vUv.y * 90.0);
     float sparkle = 0.72 + 0.28 * sin(uTime * 8.5 + vUv.x * 640.0 + vUv.y * 430.0);
-    float city = coverage * twinkle + cores * 3.7 * sparkle;
+    float city = coverage * twinkle + cores * 3.2 * sparkle;
 
     // Layered warm gradient — every city carries multiple colour layers, from
     // deep-amber outskirts through orange, golden amber and soft gold to a
@@ -129,7 +146,7 @@ const EARTH_FRAGMENT_SHADER = `
     vec3 orange     = vec3(1.0, 0.667, 0.290); // #FFAA4A warm orange
     vec3 goldAmber  = vec3(1.0, 0.784, 0.416); // #FFC76A golden amber
     vec3 softGold   = vec3(1.0, 0.886, 0.604); // #FFE29A soft gold
-    vec3 warmWhite  = vec3(1.0, 0.973, 0.886); // #FFF8E2 warm-white core
+    vec3 warmWhite  = vec3(1.0, 0.945, 0.83); // warm golden core (holds hue when bright)
     vec3 lights = amber;
     lights = mix(lights, orange,    smoothstep(0.03, 0.10, rawLum));
     lights = mix(lights, goldAmber, smoothstep(0.10, 0.22, rawLum));
@@ -143,16 +160,34 @@ const EARTH_FRAGMENT_SHADER = `
     // partial-land pixels (coastal water) collapse to ~zero while solid land
     // stays full. Result: the ocean goes fully dark right up to the shoreline,
     // and only genuine land carries the warm city glow.
-    float emitLand = smoothstep(0.09, 0.17, dayLum);
+    float emitLand = smoothstep(0.09, 0.155, dayLum);
     emitLand *= emitLand;
-    base += lights * city * 7.5 * emitLand;
+    // Soft highlight roll-off: below the knee nothing changes (overall exposure
+    // and the small/medium-city look are preserved), while the extreme metro-core
+    // peaks are gently compressed so they keep warm golden channel detail instead
+    // of every channel clipping toward white.
+    float emit = city * 5.6;
+    emit = emit < 7.5 ? emit : 7.5 + (emit - 7.5) / (1.0 + (emit - 7.5) * 0.16);
+    base += lights * emit * emitLand;
 
-    // Thin blue-white atmospheric rim (NASA limb), edge-only, stronger on the
-    // upper-left. A gentler exponent spreads the falloff inward so there is no
-    // hard glowing edge — realistic scattering, subtler and more premium.
-    float rim = pow(1.0 - facing, 2.7);
-    float upperLeft = clamp(dot(normal, normalize(vec3(-0.5, 0.62, 0.3))) * 0.5 + 0.5, 0.0, 1.0);
-    base += vec3(0.475, 0.72, 1.0) * rim * (0.26 + 0.26 * upperLeft);
+    // Atmospheric scattering along the limb, approximating a Rayleigh falloff
+    // with two bands: a broad inner haze (low exponent) plus a thin, brighter
+    // outer edge (high exponent). The colour shifts from a saturated Rayleigh
+    // blue in the denser inner band to a desaturated blue-white right at the
+    // limb, and a gentle forward-scatter term lifts the side facing the key
+    // (moon) light. Edge-only and low-amplitude — the land/ocean colour balance
+    // underneath is untouched, and the peak stays at the previous rim level.
+    float fres = 1.0 - facing;
+    float haze = pow(fres, 2.7); // tighter — pulled closer to the limb
+    float edge = pow(fres, 5.5); // thin bright edge, right at the rim
+    float forward = clamp(dot(normal, moonDir) * 0.5 + 0.5, 0.0, 1.0);
+    vec3 scatterInner = vec3(0.24, 0.46, 0.95); // saturated Rayleigh blue
+    vec3 scatterLimb = vec3(0.44, 0.64, 1.0);   // still predominantly blue at limb
+    vec3 scatterCol = mix(scatterInner, scatterLimb, edge);
+    // Lower peak + less forward-scatter whiteness so the rim supports the globe
+    // without competing with the city lights.
+    float scatter = haze * (0.12 + 0.08 * forward) + edge * (0.11 + 0.09 * forward);
+    base += scatterCol * scatter;
 
     gl_FragColor = vec4(base, 1.0);
   }
@@ -268,14 +303,24 @@ async function createEarthMaterial(): Promise<EarthMaterial> {
   }) as EarthMaterial
 }
 
+/**
+ * Each route is drawn as a faint continuous "line" arc (the structure). Routes
+ * that carry traffic ALSO get a second "packet" arc on the identical path — a
+ * tiny bright moving dash. Two arcs with the same endpoints + altitude overlap
+ * exactly, so the packet appears to travel along the visible line while only the
+ * packet is bright enough to catch the bloom (glow around the packet, not the
+ * whole arc).
+ */
+type ArcKind = 'line' | 'packet'
 interface ArcDatum {
   startLat: number
   startLng: number
   endLat: number
   endLng: number
   index: number
-  /** Roughly 40% of routes carry a moving particle; the rest are calm lines. */
-  particle: boolean
+  /** Trunk route between two major hubs — warm gold vs cool blue-white. */
+  major: boolean
+  kind: ArcKind
 }
 
 const LINKS: Array<[string, string]> = [
@@ -311,8 +356,18 @@ const LINKS: Array<[string, string]> = [
   ['london', 'singapore'],
 ]
 
+const MAJOR_HUBS = new Set([
+  'new-york',
+  'london',
+  'frankfurt',
+  'tokyo',
+  'hong-kong',
+  'singapore',
+])
+
 const CENTER_BY_ID = new Map(MARKET_CENTERS.map((c) => [c.id, c]))
-const ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
+
+const LINE_ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
   const from = CENTER_BY_ID.get(a)
   const to = CENTER_BY_ID.get(b)
   if (!from || !to) return []
@@ -323,27 +378,19 @@ const ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
       endLat: to.lat,
       endLng: to.lng,
       index,
-      particle: index % 5 < 2,
+      major: MAJOR_HUBS.has(a) && MAJOR_HUBS.has(b),
+      kind: 'line',
     },
   ]
 })
 
-/** Warm gold primary/secondary routes with a faint cool-blue tertiary; the
- *  particle "data packets" run brighter warm gold. */
-const STATIC_ARC_COLORS = [
-  'rgba(255, 168, 84, 0.5)',
-  'rgba(255, 140, 60, 0.4)',
-  'rgba(120, 175, 255, 0.28)',
-]
+// Roughly 40% of routes carry a travelling packet: an overlapping arc on the
+// same path, animated as a tiny moving dash.
+const PACKET_ARCS: ArcDatum[] = LINE_ARCS.filter((arc) => arc.index % 5 < 2).map(
+  (arc) => ({ ...arc, kind: 'packet' }),
+)
 
-const MAJOR_HUBS = new Set([
-  'new-york',
-  'london',
-  'frankfurt',
-  'tokyo',
-  'hong-kong',
-  'singapore',
-])
+const ARCS_ALL: ArcDatum[] = [...LINE_ARCS, ...PACKET_ARCS]
 
 const PULSE_HUBS = MARKET_CENTERS.filter((c) => MAJOR_HUBS.has(c.id))
 
@@ -395,12 +442,12 @@ export function LightGlobe({ reducedMotion }: LightGlobeProps) {
     globe.pointOfView({ lat: 18, lng: 8, altitude: 3.55 }, 0)
   }, [size.width > 0])
 
-  // Slow cinematic rotation (~107 s/rev), damping, zoom clamps.
+  // Gentle cinematic auto-rotation, damping, zoom clamps.
   useEffect(() => {
     const controls = globeRef.current?.controls()
     if (!controls) return
     controls.autoRotate = !reducedMotion
-    controls.autoRotateSpeed = 0.28
+    controls.autoRotateSpeed = 0.42
     controls.enableDamping = true
     controls.enableZoom = true
     controls.minDistance = 400
@@ -450,7 +497,7 @@ export function LightGlobe({ reducedMotion }: LightGlobeProps) {
     renderer.toneMapping = ACESFilmicToneMapping
 
     const composer = globe.postProcessingComposer()
-    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.45, 0.24, 0.72)
+    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.34, 0.18, 0.75)
     // Keep the transparent canvas: rewrite the blur shader to carry glow
     // luminance as alpha, and finish with an OutputPass (faithful alpha + the
     // renderer's ACES tone mapping) instead of the pass's opaque screen blit.
@@ -555,30 +602,66 @@ export function LightGlobe({ reducedMotion }: LightGlobeProps) {
           globeMaterial={earthMaterial}
           showAtmosphere
           atmosphereColor="#4f7398"
-          atmosphereAltitude={0.072}
-          arcsData={ARCS}
+          atmosphereAltitude={0.055}
+          arcsData={reducedMotion ? LINE_ARCS : ARCS_ALL}
           arcStartLat={(d) => (d as ArcDatum).startLat}
           arcStartLng={(d) => (d as ArcDatum).startLng}
           arcEndLat={(d) => (d as ArcDatum).endLat}
           arcEndLng={(d) => (d as ArcDatum).endLng}
           arcColor={(d: object) => {
             const arc = d as ArcDatum
-            if (arc.particle) return 'rgba(255, 200, 120, 0.95)'
-            return (
-              STATIC_ARC_COLORS[arc.index % STATIC_ARC_COLORS.length] ??
-              'rgba(255, 168, 84, 0.5)'
-            )
+            // Every arc is a 3-stop gradient that fades to fully transparent at
+            // both endpoints (smooth fade-in / fade-out) and peaks at the apex.
+            // Packets are bright (they catch the bloom → soft glow travels with
+            // them); the underlying line stays faint (below bloom, no glow).
+            // Warm gold on primary trunks, cool blue-white on secondary routes.
+            if (arc.kind === 'packet') {
+              return arc.major
+                ? [
+                    'rgba(255, 201, 132, 0)',
+                    'rgba(255, 229, 178, 0.95)',
+                    'rgba(255, 201, 132, 0)',
+                  ]
+                : [
+                    'rgba(200, 224, 251, 0)',
+                    'rgba(230, 242, 255, 0.9)',
+                    'rgba(200, 224, 251, 0)',
+                  ]
+            }
+            return arc.major
+              ? [
+                  'rgba(255, 182, 96, 0)',
+                  'rgba(255, 198, 122, 0.32)',
+                  'rgba(255, 182, 96, 0)',
+                ]
+              : [
+                  'rgba(150, 186, 236, 0)',
+                  'rgba(176, 206, 240, 0.18)',
+                  'rgba(150, 186, 236, 0)',
+                ]
           }}
-          arcStroke={(d) =>
-            (d as ArcDatum).particle ? 0.32 : 0.2 + ((d as ArcDatum).index % 2) * 0.08
-          }
+          arcStroke={(d) => {
+            const arc = d as ArcDatum
+            if (arc.kind === 'packet') return arc.major ? 0.28 : 0.24
+            return arc.major ? 0.12 : 0.08 // thin, clean structural lines
+          }}
           arcAltitudeAutoScale={(d) => 0.12 + ((d as ArcDatum).index % 5) * 0.07}
-          arcDashLength={(d: object) => ((d as ArcDatum).particle ? 0.05 : 1)}
-          arcDashGap={(d: object) => ((d as ArcDatum).particle ? 0.55 : 0)}
+          arcDashLength={(d: object) =>
+            (d as ArcDatum).kind === 'packet' ? 0.03 : 1
+          }
+          arcDashGap={(d: object) => {
+            const arc = d as ArcDatum
+            // Slight per-route variation in gap so packets sit at different
+            // offsets along their curves rather than all starting together.
+            return arc.kind === 'packet' ? 0.78 + (arc.index % 4) * 0.06 : 0
+          }}
           arcDashAnimateTime={(d) => {
             const arc = d as ArcDatum
-            if (reducedMotion || !arc.particle) return 0
-            return 3200 + (arc.index % 4) * 950
+            if (arc.kind !== 'packet') return 0
+            // Varied speeds: majors run a touch quicker; the modulo spreads the
+            // rest so packets never travel in lockstep.
+            const base = arc.major ? 2400 : 3200
+            return base + (arc.index % 6) * 560
           }}
           pointsData={MARKET_CENTERS}
           pointLat={(d) => (d as (typeof MARKET_CENTERS)[number]).lat}
