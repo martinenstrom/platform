@@ -312,48 +312,136 @@ async function createEarthMaterial(): Promise<EarthMaterial> {
  * whole arc).
  */
 type ArcKind = 'line' | 'packet'
+/**
+ * Weight drives BOTH the height hierarchy and the warm-gold brightness:
+ *   hero     — iconic global-trunk long-hauls: highest, brightest.
+ *   trunk    — other long routes between two global hubs: high.
+ *   inter    — intercontinental regional routes: medium.
+ *   regional — short same-region routes: low, hugging the globe.
+ */
+type ArcWeight = 'hero' | 'trunk' | 'inter' | 'regional'
 interface ArcDatum {
   startLat: number
   startLng: number
   endLat: number
   endLng: number
   index: number
-  /** Trunk route between two major hubs — warm gold vs cool blue-white. */
-  major: boolean
+  weight: ArcWeight
+  /** A small accent set rendered cool blue-white; everything else is warm gold. */
+  cool: boolean
+  /** Altitude auto-scale (×distance by the lib) — sets the height hierarchy. */
+  altitudeScale: number
+  stroke: number
   kind: ArcKind
+  /** Dash params. Lines are solid (length 1, gap 0, time 0); packets animate. */
+  dashLength: number
+  dashGap: number
+  animateTime: number
 }
 
+// A weighted, non-uniform route set. Major financial/tech hubs (NY, London,
+// Singapore, Hong Kong, Frankfurt, Tokyo) carry many outgoing links; smaller
+// centers only a few. Emphasis on intercontinental corridors (NA↔EU, EU↔Asia,
+// NA↔Asia, Asia↔Oceania) plus tighter regional clusters in Europe, North
+// America and East Asia.
 const LINKS: Array<[string, string]> = [
+  // North America ↔ Europe
   ['new-york', 'london'],
-  ['london', 'stockholm'],
-  ['london', 'frankfurt'],
-  ['frankfurt', 'zurich'],
-  ['paris', 'frankfurt'],
-  ['paris', 'new-york'],
+  ['new-york', 'frankfurt'],
+  ['new-york', 'paris'],
+  ['new-york', 'zurich'],
   ['stockholm', 'new-york'],
-  ['new-york', 'toronto'],
-  ['new-york', 'sao-paulo'],
-  ['sao-paulo', 'london'],
+  ['toronto', 'london'],
+  ['toronto', 'new-york'],
+  // Europe (regional)
+  ['london', 'frankfurt'],
+  ['london', 'paris'],
+  ['london', 'zurich'],
+  ['london', 'stockholm'],
+  ['paris', 'frankfurt'],
+  ['paris', 'zurich'],
+  ['frankfurt', 'zurich'],
+  ['frankfurt', 'stockholm'],
+  // Europe ↔ Middle East / Asia
   ['london', 'dubai'],
+  ['london', 'mumbai'],
+  ['london', 'hong-kong'],
+  ['london', 'tokyo'],
+  ['london', 'singapore'],
+  ['frankfurt', 'dubai'],
+  ['frankfurt', 'singapore'],
+  ['frankfurt', 'shanghai'],
+  ['paris', 'dubai'],
+  ['paris', 'hong-kong'],
+  ['paris', 'singapore'],
   ['zurich', 'dubai'],
+  ['zurich', 'singapore'],
+  // North America ↔ Asia
+  ['new-york', 'tokyo'],
+  ['new-york', 'hong-kong'],
+  ['new-york', 'singapore'],
+  ['new-york', 'mumbai'],
+  ['new-york', 'dubai'],
+  ['toronto', 'tokyo'],
+  ['toronto', 'hong-kong'],
+  // Middle East ↔ Asia
   ['dubai', 'mumbai'],
   ['dubai', 'shanghai'],
+  ['dubai', 'singapore'],
+  ['dubai', 'hong-kong'],
   ['mumbai', 'singapore'],
   ['mumbai', 'hong-kong'],
-  ['singapore', 'hong-kong'],
-  ['paris', 'singapore'],
+  // East Asia (regional)
+  ['hong-kong', 'singapore'],
   ['hong-kong', 'shanghai'],
-  ['frankfurt', 'shanghai'],
+  ['hong-kong', 'tokyo'],
   ['shanghai', 'tokyo'],
-  ['tokyo', 'singapore'],
-  ['toronto', 'tokyo'],
+  ['shanghai', 'singapore'],
+  ['singapore', 'tokyo'],
+  // Asia ↔ Oceania
   ['tokyo', 'sydney'],
   ['hong-kong', 'sydney'],
   ['singapore', 'sydney'],
-  ['new-york', 'tokyo'],
-  ['new-york', 'hong-kong'],
-  ['stockholm', 'frankfurt'],
-  ['london', 'singapore'],
+  // South America
+  ['new-york', 'sao-paulo'],
+  ['sao-paulo', 'london'],
+  ['sao-paulo', 'frankfurt'],
+  // Africa
+  ['johannesburg', 'london'],
+  ['johannesburg', 'new-york'],
+  ['johannesburg', 'frankfurt'],
+  ['johannesburg', 'dubai'],
+  ['johannesburg', 'singapore'],
+  ['johannesburg', 'sao-paulo'],
+  ['lagos', 'london'],
+  ['lagos', 'frankfurt'],
+  ['lagos', 'dubai'],
+  ['cape-town', 'johannesburg'],
+  ['cape-town', 'london'],
+  ['cape-town', 'dubai'],
+  ['nairobi', 'london'],
+  ['nairobi', 'dubai'],
+  ['nairobi', 'mumbai'],
+  ['nairobi', 'johannesburg'],
+  ['casablanca', 'london'],
+  ['casablanca', 'paris'],
+  ['casablanca', 'new-york'],
+  // South America → Europe / Africa / South Asia
+  ['sao-paulo', 'paris'],
+  ['sao-paulo', 'lagos'],
+  ['sao-paulo', 'cape-town'],
+  ['sao-paulo', 'mumbai'],
+  ['buenos-aires', 'sao-paulo'],
+  ['buenos-aires', 'london'],
+  ['buenos-aires', 'johannesburg'],
+  ['buenos-aires', 'mumbai'],
+  ['santiago', 'sao-paulo'],
+  ['santiago', 'frankfurt'],
+  ['santiago', 'johannesburg'],
+  ['santiago', 'mumbai'],
+  ['bogota', 'london'],
+  ['bogota', 'lagos'],
+  ['bogota', 'mumbai'],
 ]
 
 const MAJOR_HUBS = new Set([
@@ -367,10 +455,98 @@ const MAJOR_HUBS = new Set([
 
 const CENTER_BY_ID = new Map(MARKET_CENTERS.map((c) => [c.id, c]))
 
+// Deterministic per-arc pseudo-random so heights, packet selection, speeds and
+// offsets vary organically but stay stable across renders.
+function arcHash(n: number): number {
+  let h = Math.imul(n + 1, 2654435761)
+  h = (h ^ (h >>> 15)) >>> 0
+  return h
+}
+
+const routeKey = (a: string, b: string) => [a, b].sort().join('|')
+
+// A handful of iconic long-haul corridors between the largest global hubs,
+// drawn highest and brightest to convey global scale.
+const HERO_ROUTES = new Set([
+  routeKey('new-york', 'tokyo'),
+  routeKey('new-york', 'hong-kong'),
+  routeKey('new-york', 'singapore'),
+  routeKey('london', 'tokyo'),
+  routeKey('london', 'hong-kong'),
+  routeKey('london', 'singapore'),
+  routeKey('london', 'johannesburg'),
+])
+
+// Great-circle central angle as a fraction of PI (0 = same point, 1 = antipodal).
+function arcDistance(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const r = Math.PI / 180
+  const la1 = a.lat * r
+  const la2 = b.lat * r
+  const d =
+    Math.sin(la1) * Math.sin(la2) +
+    Math.cos(la1) * Math.cos(la2) * Math.cos((a.lng - b.lng) * r)
+  return Math.acos(Math.min(1, Math.max(-1, d))) / Math.PI
+}
+
+// Per-weight tables. The lib multiplies altitude by route distance, so short
+// routes stay low even when important — giving a strong layered 3-D hierarchy.
+const ALT_SCALE: Record<ArcWeight, number> = {
+  hero: 0.58,
+  trunk: 0.46,
+  inter: 0.3,
+  regional: 0.13,
+}
+const LINE_STROKE: Record<ArcWeight, number> = {
+  hero: 0.12,
+  trunk: 0.115,
+  inter: 0.095,
+  regional: 0.078,
+}
+const PACKET_STROKE: Record<ArcWeight, number> = {
+  hero: 0.27,
+  trunk: 0.25,
+  inter: 0.22,
+  regional: 0.2,
+}
+const PACKET_PROB: Record<ArcWeight, number> = {
+  hero: 82,
+  trunk: 58,
+  inter: 40,
+  regional: 26,
+}
+const PACKET_SPEED: Record<ArcWeight, number> = {
+  hero: 2000,
+  trunk: 2300,
+  inter: 2900,
+  regional: 3400,
+}
+
+function weightFor(a: string, b: string, dist: number, hero: boolean): ArcWeight {
+  if (hero) return 'hero'
+  // Short routes always hug the globe, regardless of hub importance.
+  if (dist < 0.2) return 'regional'
+  // Long routes between two global hubs are trunks; other long routes are
+  // intercontinental regionals.
+  if (MAJOR_HUBS.has(a) && MAJOR_HUBS.has(b)) return 'trunk'
+  return 'inter'
+}
+
 const LINE_ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
   const from = CENTER_BY_ID.get(a)
   const to = CENTER_BY_ID.get(b)
   if (!from || !to) return []
+  const hero = HERO_ROUTES.has(routeKey(a, b))
+  const dist = arcDistance(from, to)
+  const weight = weightFor(a, b, dist, hero)
+  const jitter = (arcHash(index) % 100) / 100 - 0.5
+  const altitudeScale = ALT_SCALE[weight] + jitter * 0.05
+  // Warm gold everywhere; only a small ~8% accent set — never the important
+  // hero/trunk routes — is cool blue-white, purely for visual contrast.
+  const cool =
+    weight !== 'hero' && weight !== 'trunk' && arcHash(index * 11 + 7) % 100 < 15
   return [
     {
       startLat: from.lat,
@@ -378,17 +554,44 @@ const LINE_ARCS: ArcDatum[] = LINKS.flatMap(([a, b], index) => {
       endLat: to.lat,
       endLng: to.lng,
       index,
-      major: MAJOR_HUBS.has(a) && MAJOR_HUBS.has(b),
+      weight,
+      cool,
+      altitudeScale,
+      stroke: LINE_STROKE[weight],
       kind: 'line',
+      dashLength: 1,
+      dashGap: 0,
+      animateTime: 0,
     },
   ]
 })
 
-// Roughly 40% of routes carry a travelling packet: an overlapping arc on the
-// same path, animated as a tiny moving dash.
-const PACKET_ARCS: ArcDatum[] = LINE_ARCS.filter((arc) => arc.index % 5 < 2).map(
-  (arc) => ({ ...arc, kind: 'packet' }),
-)
+// Packets are probabilistic and weighted toward busier routes, so not every arc
+// carries one and the flow feels organic. A share run in reverse (bidirectional
+// traffic); size, spacing and speed vary per packet; hero/trunk routes
+// occasionally carry two packets chasing each other.
+const PACKET_ARCS: ArcDatum[] = LINE_ARCS.flatMap((arc) => {
+  const h = arcHash(arc.index * 7 + 5)
+  if (h % 100 >= PACKET_PROB[arc.weight]) return []
+  const reversed = (h & 1) === 0
+  const multi = (arc.weight === 'hero' || arc.weight === 'trunk') && h % 3 === 0
+  const dashLength = 0.025 + (h % 3) * 0.008 // subtle size variation
+  const dashGap = multi ? 0.4 + (h % 3) * 0.05 : 0.72 + (h % 5) * 0.05
+  return [
+    {
+      ...arc,
+      kind: 'packet',
+      startLat: reversed ? arc.endLat : arc.startLat,
+      startLng: reversed ? arc.endLng : arc.startLng,
+      endLat: reversed ? arc.startLat : arc.endLat,
+      endLng: reversed ? arc.startLng : arc.endLng,
+      stroke: PACKET_STROKE[arc.weight] + (h % 3) * 0.02, // subtle size variation
+      dashLength,
+      dashGap,
+      animateTime: PACKET_SPEED[arc.weight] + (h % 6) * 460,
+    },
+  ]
+})
 
 const ARCS_ALL: ArcDatum[] = [...LINE_ARCS, ...PACKET_ARCS]
 
@@ -614,55 +817,56 @@ export function LightGlobe({ reducedMotion }: LightGlobeProps) {
             // both endpoints (smooth fade-in / fade-out) and peaks at the apex.
             // Packets are bright (they catch the bloom → soft glow travels with
             // them); the underlying line stays faint (below bloom, no glow).
-            // Warm gold on primary trunks, cool blue-white on secondary routes.
+            // Warm gold dominates, brightness scaling with weight; only the small
+            // cool accent set is blue-white.
             if (arc.kind === 'packet') {
-              return arc.major
-                ? [
-                    'rgba(255, 201, 132, 0)',
-                    'rgba(255, 229, 178, 0.95)',
-                    'rgba(255, 201, 132, 0)',
-                  ]
-                : [
-                    'rgba(200, 224, 251, 0)',
-                    'rgba(230, 242, 255, 0.9)',
-                    'rgba(200, 224, 251, 0)',
-                  ]
+              if (arc.cool) {
+                return [
+                  'rgba(200, 224, 251, 0)',
+                  'rgba(230, 242, 255, 0.9)',
+                  'rgba(200, 224, 251, 0)',
+                ]
+              }
+              const a =
+                arc.weight === 'hero'
+                  ? 0.98
+                  : arc.weight === 'trunk'
+                    ? 0.94
+                    : arc.weight === 'inter'
+                      ? 0.9
+                      : 0.85
+              return [
+                'rgba(255, 206, 142, 0)',
+                `rgba(255, 232, 186, ${a})`,
+                'rgba(255, 206, 142, 0)',
+              ]
             }
-            return arc.major
-              ? [
-                  'rgba(255, 182, 96, 0)',
-                  'rgba(255, 198, 122, 0.32)',
-                  'rgba(255, 182, 96, 0)',
-                ]
-              : [
-                  'rgba(150, 186, 236, 0)',
-                  'rgba(176, 206, 240, 0.18)',
-                  'rgba(150, 186, 236, 0)',
-                ]
+            if (arc.cool) {
+              return [
+                'rgba(150, 186, 236, 0)',
+                'rgba(176, 206, 240, 0.16)',
+                'rgba(150, 186, 236, 0)',
+              ]
+            }
+            const a =
+              arc.weight === 'hero'
+                ? 0.42
+                : arc.weight === 'trunk'
+                  ? 0.34
+                  : arc.weight === 'inter'
+                    ? 0.27
+                    : 0.21
+            return [
+              'rgba(255, 186, 102, 0)',
+              `rgba(255, 202, 130, ${a})`,
+              'rgba(255, 186, 102, 0)',
+            ]
           }}
-          arcStroke={(d) => {
-            const arc = d as ArcDatum
-            if (arc.kind === 'packet') return arc.major ? 0.28 : 0.24
-            return arc.major ? 0.12 : 0.08 // thin, clean structural lines
-          }}
-          arcAltitudeAutoScale={(d) => 0.12 + ((d as ArcDatum).index % 5) * 0.07}
-          arcDashLength={(d: object) =>
-            (d as ArcDatum).kind === 'packet' ? 0.03 : 1
-          }
-          arcDashGap={(d: object) => {
-            const arc = d as ArcDatum
-            // Slight per-route variation in gap so packets sit at different
-            // offsets along their curves rather than all starting together.
-            return arc.kind === 'packet' ? 0.78 + (arc.index % 4) * 0.06 : 0
-          }}
-          arcDashAnimateTime={(d) => {
-            const arc = d as ArcDatum
-            if (arc.kind !== 'packet') return 0
-            // Varied speeds: majors run a touch quicker; the modulo spreads the
-            // rest so packets never travel in lockstep.
-            const base = arc.major ? 2400 : 3200
-            return base + (arc.index % 6) * 560
-          }}
+          arcStroke={(d) => (d as ArcDatum).stroke}
+          arcAltitudeAutoScale={(d) => (d as ArcDatum).altitudeScale}
+          arcDashLength={(d: object) => (d as ArcDatum).dashLength}
+          arcDashGap={(d: object) => (d as ArcDatum).dashGap}
+          arcDashAnimateTime={(d: object) => (d as ArcDatum).animateTime}
           pointsData={MARKET_CENTERS}
           pointLat={(d) => (d as (typeof MARKET_CENTERS)[number]).lat}
           pointLng={(d) => (d as (typeof MARKET_CENTERS)[number]).lng}

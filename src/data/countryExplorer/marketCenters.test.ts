@@ -34,8 +34,8 @@ describe('getMarketStatus', () => {
     expect(getMarketStatus(newYork, midnight)).toBe('CLOSED')
   })
 
-  it('defines all 15 expected financial centers', () => {
-    expect(MARKET_CENTERS).toHaveLength(15)
+  it('defines all 23 expected financial centers', () => {
+    expect(MARKET_CENTERS).toHaveLength(23)
   })
 
   it('is OPEN during Dubai regular session (no DST, UTC+4 year-round)', () => {
