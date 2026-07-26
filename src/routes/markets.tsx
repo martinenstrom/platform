@@ -4,44 +4,70 @@ import { PageHeader, PageShell } from '~/components/layout/PageHeader'
 import { DashboardCard } from '~/components/ui/DashboardCard'
 import { EmptyState } from '~/components/ui/EmptyState'
 import { MarketTickerList } from '~/components/dashboard/MarketTicker'
-import { marketIndices, marketTrends } from '~/data/mockData'
-import { cn } from '~/lib/cn'
-import { toneText } from '~/lib/tone'
+import { getMarketsFn } from '~/infrastructure/marketData/serverFns'
+import {
+  MARKETS_CRYPTO_SYMBOLS,
+  MARKETS_FX_SYMBOLS,
+  MARKETS_INDEX_INTL_SYMBOLS,
+  MARKETS_INDEX_SE_SYMBOLS,
+  MARKETS_TICKER_ORDER,
+} from '~/application/marketData/getMarkets'
+import {
+  MARKET_INTELLIGENCE_ROWS,
+  toMarketTickerRows,
+} from '~/presentation/marketData/marketsViewModel'
 
 export const Route = createFileRoute('/markets')({
+  loader: () => getMarketsFn(),
   component: MarketsPage,
 })
 
-// Same tone→text mapping as the rest of the app, except this panel shows a
-// neutral market climate at full strength (text-content, not the muted default).
-const TREND_TONE: Record<string, string> = { ...toneText, neutral: 'text-content' }
-
 function MarketsPage() {
+  const snapshot = Route.useLoaderData()
+  const rows = toMarketTickerRows({
+    order: MARKETS_TICKER_ORDER,
+    groups: [
+      { symbols: MARKETS_INDEX_SE_SYMBOLS, envelope: snapshot.indicesSe },
+      { symbols: MARKETS_INDEX_INTL_SYMBOLS, envelope: snapshot.indicesIntl },
+      { symbols: MARKETS_FX_SYMBOLS, envelope: snapshot.fx },
+      { symbols: MARKETS_CRYPTO_SYMBOLS, envelope: snapshot.crypto },
+    ],
+    instruments: snapshot.instruments,
+  })
+
   return (
     <PageShell>
       <PageHeader
         title="Marknader"
-        description="Index, valutor och marknadsklimat. Exempeldata."
+        /*
+         * Neither "all live" nor "all example data" is true any more. Four rows
+         * come from real sources, two have no approved source, and the analysis
+         * panel has none at all — so the description says that rather than
+         * picking one story for the whole page.
+         */
+        description="Fördröjda marknadsnoteringar där källa finns. Instrument utan godkänd källa och kommande analysfunktioner visas som ej tillgängliga."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <DashboardCard title="Index och valutor">
-          <MarketTickerList quotes={marketIndices} />
+        {/* Titled for what it holds: indices, FX and crypto, not just the first two. */}
+        <DashboardCard title="Index, valutor och krypto">
+          <MarketTickerList rows={rows} />
         </DashboardCard>
 
         <DashboardCard title="Marknadsklimat">
+          {/*
+           * Every row is unavailable, and nothing here can compute one. Breadth
+           * needs OMXS30 constituents, trend strength needs moving averages
+           * over real history, volatility needs options data, and flows need
+           * positioning data. The card is the landing place for the future
+           * Market Intelligence panel; the statistics it used to show were
+           * invented and read as measurements.
+           */}
           <dl className="flex flex-col gap-5">
-            {marketTrends.map((trend) => (
-              <div key={trend.id} className="flex items-baseline justify-between gap-4">
-                <dt className="text-sm text-content-muted">{trend.label}</dt>
-                <dd
-                  className={cn(
-                    'text-sm font-medium',
-                    TREND_TONE[trend.tone] ?? 'text-content',
-                  )}
-                >
-                  {trend.value}
-                </dd>
+            {MARKET_INTELLIGENCE_ROWS.map((row) => (
+              <div key={row.id} className="flex items-baseline justify-between gap-4">
+                <dt className="text-sm text-content-muted">{row.label}</dt>
+                <dd className="text-sm text-content-subtle">Ej tillgänglig</dd>
               </div>
             ))}
           </dl>

@@ -19,6 +19,7 @@ import {
   SYM_BTC,
   SYM_DAX,
   SYM_DE10Y,
+  SYM_EURSEK,
   SYM_EURUSD,
   SYM_EVO,
   SYM_FTSE100,
@@ -81,6 +82,9 @@ export const FIXTURE_INDEX_QUOTES: FixtureQuote[] = [
 export const FIXTURE_FX_QUOTES: FixtureQuote[] = [
   { symbol: SYM_USDSEK, value: 10.4127, changePercent: 0.19 },
   { symbol: SYM_EURUSD, value: 1.0812, changePercent: -0.15 },
+  // EUR/SEK is on the Markets card but not the Overview. Without a fixture
+  // the page cannot run offline, which is the one thing fixture mode is for.
+  { symbol: SYM_EURSEK, value: 11.2384, changePercent: -0.12 },
 ]
 
 export const FIXTURE_COMMODITY_QUOTES: FixtureQuote[] = [

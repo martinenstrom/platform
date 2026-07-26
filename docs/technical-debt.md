@@ -59,8 +59,8 @@ real history through unconditionally.
 
 ## TD-3 · International index coverage (decision D1)
 
-**Incurred:** Phase 0. **Severity:** medium. **Blocks:** the Markets migration
-showing S&P 500 and Nasdaq 100.
+**Incurred:** Phase 0. **Severity:** medium — now **visible in the product**.
+**Blocks:** S&P 500 and Nasdaq 100 showing a number in live mode.
 
 `equity-index-intl` is fixture-only. No approved source exists for the five
 international indices, and the two candidate approaches — a licensed vendor
@@ -69,6 +69,11 @@ such as Twelve Data, or index ETFs as proxies — were deferred pending D1.
 Proxies additionally oblige the presentation layer to disclose the
 substitution; `isProxy` and `proxyNote` exist in `Provenance` for exactly this
 and are currently unused.
+
+Since the Markets migration this is no longer invisible: both rows render
+`Ej tillgänglig` in live mode. They were deliberately kept rather than removed,
+so the gap is visible to a reader and the rows remain the landing place for
+whatever D1 approves. Substituting an ETF proxy requires explicit approval.
 
 ---
 
@@ -138,7 +143,7 @@ count is the migration metric.
 | Freeze                 | 13          |
 | AppHeader migrated     | 13 → 13\*   |
 | **Watchlist migrated** | **13 → 12** |
-| Markets                | 12 → 11     |
+| **Markets migrated**   | **12 → 11** |
 | Agents                 | 11 → 10     |
 | Reports                | 10 → 9      |
 | Portfolio              | 9 → 8       |
@@ -212,6 +217,62 @@ authorized to block publication — the **Devil's Advocate** (challenges
 assumptions, seeks alternative explanations, identifies bias) and the
 **Verification Agent** (validates facts, calculations, units, currencies, basis
 points, DCF models, and that summarization lost nothing).
+
+---
+
+## TD-14 · Market Intelligence
+
+**Incurred:** Markets migration. **Severity:** medium. **Blocks:** the
+Marknadsklimat card showing anything.
+
+The card's four fabricated statistics were removed — a breadth percentage, an
+MA50 streak, an implied-volatility comparison and a volume assessment. All four
+read as measurements and none was computable. The card survives as the landing
+place for a genuine **Market Intelligence panel**, whose purpose is to
+synthesize a view of the current market regime rather than list disconnected
+indicators.
+
+Each input is its own missing capability:
+
+| Input                                               | Missing                                         |
+| --------------------------------------------------- | ----------------------------------------------- |
+| Market breadth, % rising or falling                 | OMXS30 constituent data                         |
+| % above moving averages, new highs/lows             | constituents plus real historical series (TD-2) |
+| Volatility and term structure                       | options data                                    |
+| Options positioning                                 | positioning data                                |
+| Liquidity, volume breadth                           | volume history                                  |
+| Capital and fund flows, positioning                 | flow data                                       |
+| Sentiment                                           | a sentiment source, or a derived model (D7)     |
+| Macro regime, policy, yield curves                  | **already built** — Phase 4B and 6A             |
+| Quant models, technical analysis, relative strength | the Quant & Technical Analysis Agent (TD-11)    |
+| Risk regime, cross-asset confirmation               | composition across the above                    |
+
+The destination is **not** an anonymous calculation function. Specialist agents
+— Quant & Technical Analysis, Global Macro, Market Sentiment, Flow and
+Positioning, Volatility and Options, Liquidity — should provide structured
+claims and evidence to a **Market Intelligence Manager**, which aggregates,
+compares and reconciles before reporting upward to the CIO/CEO layer. See
+TD-11 for the organization and its two independent governance agents.
+
+Note the asymmetry worth exploiting later: macro regime, central-bank policy
+and yield curves are the one input group already built to institutional
+standard. A first Market Intelligence increment could be genuine on those
+alone, rather than waiting for all ten.
+
+---
+
+## TD-15 · Bitcoin in SEK, as a derived observation
+
+**Incurred:** Markets migration (D46). **Severity:** low. **Blocks:** nothing.
+
+Bitcoin renders as `Bitcoin (USD)`. The legacy mock showed a SEK figure, and
+reproducing it needs BTC/USD × USD/SEK — the product's **first derived market
+observation**. That requires aligned timestamps between two providers, a
+documented calculation methodology, derived provenance carrying the weaker of
+the two trust levels and qualities, and a display policy.
+
+Deliberately not introduced to preserve a mock's currency choice. If a SEK view
+is wanted, it should be designed on its own terms.
 
 ---
 

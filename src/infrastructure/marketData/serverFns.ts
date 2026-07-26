@@ -21,6 +21,7 @@ import {
   getWatchlist,
   type WatchlistSnapshot,
 } from '~/application/marketData/getWatchlist'
+import { getMarkets, type MarketsSnapshot } from '~/application/marketData/getMarkets'
 import type { Envelope, InstrumentSearchResults } from '~/domain/market'
 import {
   getOverviewSnapshot,
@@ -317,6 +318,16 @@ export async function getContainer(): Promise<Container> {
   })
   return cached
 }
+
+/** The Marknader route's data, server-side. Four categories, no new ones. */
+export const getMarketsFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<MarketsSnapshot> => {
+    const container = await getContainer()
+    const { createMarketsDataSource } = await import('./marketsDataSource')
+    const correlationId = container.newCorrelationId()
+    return getMarkets(createMarketsDataSource(container, correlationId))
+  },
+)
 
 /**
  * The Bevakning route's data, server-side.

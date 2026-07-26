@@ -18,8 +18,14 @@ export const Route = createRootRoute({
       { title: 'Stack' },
       {
         name: 'description',
+        /*
+         * This used to claim every value in the app was example data. That
+         * stopped being true once the Overview, Bevakning and Marknader routes
+         * began serving real quotes. Neither blanket claim is accurate any
+         * more, so this states the mix instead of picking a side.
+         */
         content:
-          'Stack är ett operativsystem för analysagenter, med portfölj- och marknadsöversikt. All data i denna version är exempeldata.',
+          'Stack är ett operativsystem för analysagenter, med portfölj- och marknadsöversikt. Delar av innehållet är fördröjda marknadsnoteringar, övrigt är exempeldata.',
       },
     ],
     links: [{ rel: 'stylesheet', href: appCss }],
