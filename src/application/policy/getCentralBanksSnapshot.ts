@@ -12,6 +12,7 @@
  */
 
 import { isolate } from '~/application/shared/isolate'
+import { withDeadline, DEFAULT_SNAPSHOT_BUDGET_MS } from '~/application/shared/deadline'
 import type { Envelope } from '~/domain/shared/provenance'
 import type {
   EcbPolicyState,
@@ -46,11 +47,17 @@ export interface CentralBanksDataSource {
 
 export async function getCentralBanksSnapshot(
   source: CentralBanksDataSource,
+  budgetMs: number = DEFAULT_SNAPSHOT_BUDGET_MS,
 ): Promise<CentralBanksSnapshot> {
+  const unit = <T>(label: string, run: () => Promise<Envelope<T>>) =>
+    Number.isFinite(budgetMs)
+      ? withDeadline(label, () => isolate(label, run), { budgetMs })
+      : isolate(label, run)
+
   const [federalReserve, ecb, riksbank] = await Promise.all([
-    isolate('federal-reserve', () => source.federalReserve()),
-    isolate('ecb', () => source.ecb()),
-    isolate('riksbank', () => source.riksbank()),
+    unit('federal-reserve', () => source.federalReserve()),
+    unit('ecb', () => source.ecb()),
+    unit('riksbank', () => source.riksbank()),
   ])
 
   const generatedAt = source.now().toISOString()

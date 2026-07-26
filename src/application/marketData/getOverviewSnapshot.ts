@@ -12,6 +12,7 @@
  */
 
 import { isolate } from '~/application/shared/isolate'
+import { withDeadline, DEFAULT_SNAPSHOT_BUDGET_MS } from '~/application/shared/deadline'
 import {
   hasData,
   OVERVIEW_COMMODITY_SYMBOLS,
@@ -137,7 +138,20 @@ const ALL_SYMBOLS: CanonicalSymbol[] = [
 
 export async function getOverviewSnapshot(
   source: OverviewDataSource,
+  /**
+   * Page budget. Every category races it, and whatever has not resolved is
+   * reported as exceeded rather than holding the response. Omit to use the
+   * default; pass `Infinity` to disable, which tests that assert full
+   * resolution do.
+   */
+  budgetMs: number = DEFAULT_SNAPSHOT_BUDGET_MS,
 ): Promise<OverviewSnapshot> {
+  /** One category, isolated from throws AND bounded in time. */
+  const unit = <T>(label: string, run: () => Promise<Envelope<T>>) =>
+    Number.isFinite(budgetMs)
+      ? withDeadline(label, () => isolate(label, run), { budgetMs })
+      : isolate(label, run)
+
   const [
     indices,
     indexSparklines,
@@ -153,19 +167,19 @@ export async function getOverviewSnapshot(
     watchlist,
     watchlistSparklines,
   ] = await Promise.all([
-    isolate('indices', () => source.quotes(OVERVIEW_INDEX_SYMBOLS)),
-    isolate('indexSparklines', () => source.sparklines(OVERVIEW_INDEX_SYMBOLS)),
-    isolate('fx', () => source.fx(OVERVIEW_FX_SYMBOLS)),
-    isolate('commodities', () => source.commodities(OVERVIEW_COMMODITY_SYMBOLS)),
-    isolate('crypto', () => source.crypto(OVERVIEW_CRYPTO_SYMBOLS)),
-    isolate('yields', () => source.yields(OVERVIEW_YIELD_SYMBOLS)),
-    isolate('yieldCurve', () => source.yieldCurve('US')),
-    isolate('sectors', () => source.sectors(OVERVIEW_SECTOR_SYMBOLS)),
-    isolate('sentiment', () => source.sentiment()),
-    isolate('news', () => source.news(4)),
-    isolate('intraday', () => source.intraday()),
-    isolate('watchlist', () => source.watchlist(OVERVIEW_WATCHLIST_SYMBOLS)),
-    isolate('watchlistSparklines', () =>
+    unit('indices', () => source.quotes(OVERVIEW_INDEX_SYMBOLS)),
+    unit('indexSparklines', () => source.sparklines(OVERVIEW_INDEX_SYMBOLS)),
+    unit('fx', () => source.fx(OVERVIEW_FX_SYMBOLS)),
+    unit('commodities', () => source.commodities(OVERVIEW_COMMODITY_SYMBOLS)),
+    unit('crypto', () => source.crypto(OVERVIEW_CRYPTO_SYMBOLS)),
+    unit('yields', () => source.yields(OVERVIEW_YIELD_SYMBOLS)),
+    unit('yieldCurve', () => source.yieldCurve('US')),
+    unit('sectors', () => source.sectors(OVERVIEW_SECTOR_SYMBOLS)),
+    unit('sentiment', () => source.sentiment()),
+    unit('news', () => source.news(4)),
+    unit('intraday', () => source.intraday()),
+    unit('watchlist', () => source.watchlist(OVERVIEW_WATCHLIST_SYMBOLS)),
+    unit('watchlistSparklines', () =>
       source.watchlistSparklines(OVERVIEW_WATCHLIST_SYMBOLS),
     ),
   ])
