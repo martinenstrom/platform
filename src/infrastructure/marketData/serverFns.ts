@@ -27,13 +27,58 @@ let cached: Container | null = null
  */
 async function getContainer(): Promise<Container> {
   if (cached) return cached
-  const [{ createContainer }, { createFixtureProvider }] = await Promise.all([
+  const [
+    { createContainer },
+    { createFixtureProvider },
+    { createFrankfurterProvider },
+    { createHttpClient },
+    { loadMarketDataConfig },
+  ] = await Promise.all([
     import('./container'),
     import('./providers/fixture'),
+    import('./providers/frankfurter'),
+    import('./providers/httpClient'),
+    import('./config'),
   ])
+
+  const config = loadMarketDataConfig(process.env as never)
   const fixture = createFixtureProvider()
+
+  /**
+   * Network providers are REGISTERED conditionally rather than merely failing
+   * their calls. With `MARKETDATA_DISABLE_NETWORK=true` the adapter is never
+   * wired at all, so there is nothing to accidentally invoke — a stronger
+   * guarantee than a runtime guard alone, and what makes the CI no-network
+   * rule structural.
+   */
+  const networkProviders = config.disableNetwork
+    ? []
+    : [
+        {
+          provider: createFrankfurterProvider(
+            createHttpClient({ networkDisabled: false }),
+          ),
+          capabilities: new Set(['fx'] as const),
+          metadata: {
+            expectedLatencyMs: 400,
+            // One publication per TARGET business day; nothing is gained by
+            // asking more often.
+            updateFrequency: 'daily' as const,
+            // An end-of-day reference rate is not a delayed real-time quote,
+            // so it has no meaningful minute delay.
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+      ]
+
   cached = createContainer({
+    config,
     providers: [
+      ...networkProviders,
       {
         provider: fixture,
         metadata: {

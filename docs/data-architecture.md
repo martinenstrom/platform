@@ -1705,3 +1705,154 @@ timestamped categories and one conservative `asOf`:
 Shared invariants every member must keep: category-level `Envelope`s,
 provenance on every value, `asOf` as the oldest populated category, numeric
 until the presentation boundary, and one server round trip.
+
+---
+
+---
+
+# Part V — Phase 2 contracts (Frankfurter FX)
+
+Approved 2026-07-26 with amendments D13–D17 plus four contract refinements.
+Several of these correct earlier decisions; where they do, the correction is
+stated rather than quietly applied.
+
+## 26. Two findings from probing the live API
+
+**v1, not v2.** ECB does not publish at weekends. Probed on Sunday
+2026-07-26, `v1` reported `"date":"2026-07-24"` — honestly Friday's — while
+`v2` reported `"date":"2026-07-26"` for the same underlying value, carrying it
+forward and stamping it with the current date. v2 would silently violate
+"preserve the actual source timestamp", so **Phase 2 targets v1 only**.
+
+**The FX stale ceiling was wrong.** At `maxStaleMs: 48h`, a Friday rate is
+already ~47 h old on Sunday afternoon and ~65 h old on Monday morning — so live
+FX would have errored every Monday despite holding a perfectly valid rate.
+
+## 27. Timestamp semantics (supersedes part of D10)
+
+Three timestamps, three distinct meanings. Conflating them is what produced the
+"Data uppdaterad" defect in the first place, so each is defined exactly.
+
+| Field                  | Meaning                                                                                                              | Displayed?                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `provenance.asOf`      | When **the provider observed** this value. Per category. The only authoritative freshness signal for a given number. | not directly                          |
+| `snapshot.generatedAt` | When **we successfully resolved the snapshot**. Server-side, from the injected clock — never render time.            | **yes — the "Data uppdaterad" label** |
+| `snapshot.asOf`        | Oldest `provenance.asOf` across populated categories. **Diagnostics only.**                                          | no                                    |
+
+**D16 correction.** The Overview label previously read `snapshot.asOf`. That is
+technically conservative but product-wise misleading: categories publish at
+fundamentally different frequencies — FX daily, yields daily, indices intraday,
+news continuously — so one daily source would make the entire dashboard look
+stale. From Phase 2 the label reads `generatedAt`: _"the dashboard was
+refreshed at HH:MM"_, which is true regardless of category age.
+
+The label therefore never claims every observation is equally fresh, and it
+never claims to be render time. Per-category truth is untouched: every
+`Envelope` keeps its own `asOf`, `quality`, `ageMs` and stale state, and
+`snapshot.asOf` is retained for diagnostics and health.
+
+## 28. Timestamp precision (new)
+
+Frankfurter v1 supplies a publication **date**, not a verified instant.
+Converting `2026-07-24` into `2026-07-24T16:00:00+02:00` and presenting it as
+source-provided fact would replace one fabrication with another.
+
+```ts
+export type AsOfPrecision = 'date' | 'minute' | 'second'
+
+interface Provenance {
+  asOf: string // ISO 8601; for 'date' precision, midnight UTC
+  asOfPrecision: AsOfPrecision
+  /** The provider's own date string, preserved exactly. */
+  sourceDate?: string // '2026-07-24'
+  /**
+   * Operational ESTIMATE of when the source published — never authoritative,
+   * never used for `asOf`, never used to compute `ageMs`. Present so an
+   * operator can judge "should newer data exist by now?".
+   */
+  estimatedPublicationAt?: string
+}
+```
+
+For date precision `asOf` is midnight UTC of the publication date, which makes
+`ageMs` **over**-state age by up to ~16 h — the safe direction. The estimate is
+computed DST-correctly for Europe/Brussels and is asserted by test never to
+reach `asOf` or `ageMs`.
+
+## 29. Display precision (D17 correction)
+
+Rendering Frankfurter's `9.717` as `9,7170` implies a digit of precision the
+source did not supply. Precision therefore has two sources of truth:
+
+- `InstrumentRef.precision` — the instrument's conventional display precision.
+- `MarketQuote.sourcePrecision: number | null` — decimals the provider actually
+  supplied, when known.
+
+The presentation boundary uses `sourcePrecision ?? ref.precision`. Formatting
+may pad _within_ known precision but must never manufacture a digit beyond it.
+A future provider quoting 5 decimals simply reports 5.
+
+## 30. EOD is not "delayed" (contract refinement)
+
+`quality: 'delayed'` means _a real-time feed running N minutes behind_.
+`quality: 'eod'` means _an official end-of-day figure_, which is a different
+kind of observation, not a late one. Encoding an ECB reference rate as delayed
+would be contradictory metadata.
+
+| Field          | ECB reference rate |
+| -------------- | ------------------ |
+| `quality`      | `'eod'`            |
+| `isDelayed`    | `false`            |
+| `delayMinutes` | `null`             |
+
+`buildProvenance` already defaults `isDelayed` from `quality === 'delayed'`, so
+the contract needed no change — only this clarification, and the corresponding
+correction to the Phase 2 plan, which had proposed `isDelayed: true`.
+
+## 31. Change period (D15)
+
+A change derived from two consecutive ECB publications is **not** an intraday
+move, and nothing in the code may imply it is.
+
+```ts
+export type ChangePeriod = 'intraday' | 'daily' | 'publication-to-publication' | 'unknown'
+
+interface MarketQuote {
+  percentageChange: Percent | null
+  changePeriod: ChangePeriod
+}
+```
+
+A field is preferred over renaming `percentageChange` to `dailyChange`, because
+`MarketQuote` is shared with genuinely intraday instruments where `daily` would
+be the dishonest name. The field states the period explicitly for every quote;
+Frankfurter sets `'publication-to-publication'`.
+
+**Sanctioned future disclosure task:** the tile carries no period label today.
+Phase 2 preserves the layout; a `D/D` or `ECB reference` marker rides along with
+the proxy-disclosure affordance before Phase 6.
+
+## 32. Operational ownership (contract refinement)
+
+One owner per concern, no competing policies:
+
+| Concern                                                                            | Owner                               |
+| ---------------------------------------------------------------------------------- | ----------------------------------- |
+| timeout, retry, rate limit, breaker, budget                                        | the Phase 1 pipeline (`attempt.ts`) |
+| performing the call, propagating `AbortSignal`, network-disabled guard, safe parse | `httpClient.ts`                     |
+| mapping symbols, validating, normalizing                                           | the adapter                         |
+
+`httpClient.ts` deliberately has **no timeout and no retry of its own** — it
+receives the signal the pipeline aborts.
+
+## 33. FX policy (D13, D14)
+
+|                             | Before | Phase 2                  |
+| --------------------------- | ------ | ------------------------ |
+| `ttlOpenMs` / `ttlClosedMs` | 60 s   | **30 min**, configurable |
+| `maxStaleMs`                | 48 h   | **5 days**               |
+
+The 5-day ceiling is a **wall-clock approximation** of "a few missed TARGET
+business days". It is deliberately not a holiday calendar: no TARGET calendar
+is introduced in Phase 2. A publication-calendar-aware freshness model may
+replace it later.

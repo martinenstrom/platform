@@ -33,7 +33,10 @@ import {
   vi,
 } from 'vitest'
 import { LightCommandCenter } from './LightCommandCenter'
-import { getOverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
+import {
+  getOverviewSnapshot,
+  type OverviewSnapshot,
+} from '~/application/marketData/getOverviewSnapshot'
 import { createContainer } from '~/infrastructure/marketData/container'
 import { createOverviewDataSource } from '~/infrastructure/marketData/overviewDataSource'
 import { createFixtureProvider } from '~/infrastructure/marketData/providers/fixture'
@@ -103,8 +106,12 @@ function buildSnapshot(dataClock: Date = FROZEN_NOW) {
   return getOverviewSnapshot(createOverviewDataSource(container))
 }
 
-async function renderOverview(dataClock?: Date) {
-  const snapshot = await buildSnapshot(dataClock)
+async function renderOverview(
+  dataClock?: Date,
+  transform?: (snapshot: OverviewSnapshot) => OverviewSnapshot,
+) {
+  const base = await buildSnapshot(dataClock)
+  const snapshot = transform ? transform(base) : base
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -277,6 +284,18 @@ describe('timestamps', () => {
   it('displays the data clock, not the render clock', async () => {
     await renderOverview(new Date('2026-07-26T13:05:00+02:00'))
     expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 13:05')
+  })
+
+  it('follows generatedAt, not the oldest category asOf (D16)', async () => {
+    // Force the two apart: an ancient `asOf`, a current `generatedAt`. The
+    // label must track the refresh, or one daily source — an ECB reference
+    // rate, say — would make the entire dashboard look stale.
+    await renderOverview(undefined, (snapshot) => ({
+      ...snapshot,
+      asOf: '2026-07-20T00:00:00.000Z',
+      generatedAt: '2026-07-26T12:32:10.000Z',
+    }))
+    expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 14:32')
   })
 })
 

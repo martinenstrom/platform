@@ -298,20 +298,52 @@ describe('T16 — server-only secrets', () => {
   })
 })
 
-describe('P11 — Phase 1 connects no live provider', () => {
-  it('ships exactly one provider adapter, the fixture', () => {
-    // Phase 1 adds operational guarantees, not data sources. A second adapter
-    // appearing here means a live integration landed without its phase gate.
+describe('P11 — only approved providers are connected', () => {
+  it('ships exactly the adapters their phase gates approved', () => {
+    // A new adapter appearing here means a live integration landed without
+    // its phase gate. Phase 0 approved the fixture; Phase 2 approved
+    // Frankfurter. httpClient is shared plumbing, not a data source.
     const adapters = FILES.filter(
       (f) =>
         f.path.startsWith('infrastructure/marketData/providers/') &&
         !isTest(f) &&
         !f.path.includes('/fixture/'),
-    ).map((f) => f.path)
-    expect(adapters).toEqual(['infrastructure/marketData/providers/fixture.ts'])
+    )
+      .map((f) => f.path)
+      .sort()
+    expect(adapters).toEqual([
+      'infrastructure/marketData/providers/fixture.ts',
+      'infrastructure/marketData/providers/frankfurter.ts',
+      'infrastructure/marketData/providers/httpClient.ts',
+    ])
   })
 
-  it('performs no outbound fetch anywhere in the market-data layer', () => {
+  it('confines every outbound call to the shared http client', () => {
+    // One module owns the network. An adapter calling fetch directly would
+    // also bypass the network-disabled guard.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (!file.path.startsWith('infrastructure/marketData/')) continue
+      if (isTest(file)) continue
+      if (file.path.endsWith('providers/httpClient.ts')) continue
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+      if (/fetch\s*\(/.test(source)) offenders.push(`${file.path}: fetch()`)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps provider response types inside their adapter', () => {
+    const frankfurter = readFileSync(
+      join(SRC, 'infrastructure/marketData/providers/frankfurter.ts'),
+      'utf8',
+    )
+    // The wire contract must never be exported: nothing downstream may depend
+    // on a provider's payload shape.
+    expect(/export\s+interface\s+Frankfurter/.test(frankfurter)).toBe(false)
+    expect(/interface\s+FrankfurterTimeSeries/.test(frankfurter)).toBe(true)
+  })
+
+  it('performs no outbound fetch outside the market-data layer', () => {
     const offenders: string[] = []
     for (const file of FILES) {
       if (!file.path.startsWith('infrastructure/marketData/')) continue
@@ -323,14 +355,16 @@ describe('P11 — Phase 1 connects no live provider', () => {
     expect(offenders).toEqual([])
   })
 
-  it('registers only the fixture provider at the composition root', () => {
+  it('registers only approved providers at the composition root', () => {
     const serverFns = readFileSync(
       join(SRC, 'infrastructure/marketData/serverFns.ts'),
       'utf8',
     )
     const imported = [
       ...serverFns.matchAll(/(?:from|import\()\s*'\.\/providers\/([\w-]+)'/g),
-    ].map((m) => m[1])
-    expect(imported).toEqual(['fixture'])
+    ]
+      .map((m) => m[1])
+      .sort()
+    expect(imported).toEqual(['fixture', 'frankfurter', 'httpClient'])
   })
 })

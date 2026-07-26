@@ -42,7 +42,11 @@ export type Quality =
   | 'realtime'
   /** Real, but behind by a known or unknown delay (most free tiers). */
   | 'delayed'
-  /** End-of-day official value. Correct until the next close. */
+  /**
+   * End-of-day official value, correct until the next close. Distinct from
+   * 'delayed': this is not a late real-time quote, it is a different kind of
+   * observation, so `isDelayed` stays false for it.
+   */
   | 'eod'
   /** Computed in-house from other real values. Production-eligible. */
   | 'derived'
@@ -64,9 +68,33 @@ export interface DataSourceMetadata {
  * carries data, so a caller never has to ask a second question to know what it
  * is holding.
  */
+/**
+ * How precisely the source pinned its own observation.
+ *
+ * A provider that publishes a DATE has not told us a time, and inventing one
+ * would replace an honest gap with a fabricated fact.
+ */
+export type AsOfPrecision = 'date' | 'minute' | 'second'
+
 export interface Provenance {
-  /** When the provider observed the value. ISO 8601 with offset. */
+  /**
+   * When the provider observed the value. ISO 8601 with offset.
+   *
+   * For `asOfPrecision: 'date'` this is midnight UTC of the publication date,
+   * which makes `ageMs` over-state age by up to a day — the safe direction.
+   */
   asOf: string
+  asOfPrecision: AsOfPrecision
+  /** The provider's own date string, preserved exactly. e.g. '2026-07-24'. */
+  sourceDate?: string
+  /**
+   * Operational ESTIMATE of when the source published.
+   *
+   * Never authoritative: not used for `asOf`, not used to compute `ageMs`, not
+   * displayed as fact. It exists so an operator can judge "should newer data
+   * exist by now?" for a source that only publishes a date.
+   */
+  estimatedPublicationAt?: string
   /** When we retrieved it. ISO 8601 with offset. */
   receivedAt: string
   /** `now - asOf` at resolution time. Never negative. */
@@ -174,6 +202,10 @@ export function buildProvenance(args: {
   nowMs: number
   source: DataSourceMetadata
   quality: Quality
+  /** Defaults to 'second'; a date-only source must say so explicitly. */
+  asOfPrecision?: AsOfPrecision
+  sourceDate?: string
+  estimatedPublicationAt?: string
   isDelayed?: boolean
   delayMinutes?: number | null
   isProxy?: boolean
@@ -188,10 +220,20 @@ export function buildProvenance(args: {
   }
   return {
     asOf: args.asOf,
+    asOfPrecision: args.asOfPrecision ?? 'second',
+    ...(args.sourceDate === undefined ? {} : { sourceDate: args.sourceDate }),
+    ...(args.estimatedPublicationAt === undefined
+      ? {}
+      : { estimatedPublicationAt: args.estimatedPublicationAt }),
     receivedAt: new Date(args.nowMs).toISOString(),
+    // Deliberately from `asOf`, never from `estimatedPublicationAt`: an
+    // estimate must not be able to make data look fresher than it is proven
+    // to be.
     ageMs: Math.max(0, args.nowMs - asOfMs),
     source: args.source,
     quality: args.quality,
+    // 'delayed' means a real-time feed running behind. 'eod' is a different
+    // kind of observation, not a late one, so it is NOT delayed.
     isDelayed: args.isDelayed ?? args.quality === 'delayed',
     delayMinutes: args.delayMinutes ?? null,
     isProxy: args.isProxy ?? false,

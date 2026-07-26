@@ -42,12 +42,23 @@ export interface QuoteViewModel {
   changePercent: number
 }
 
+/**
+ * Decimals to render.
+ *
+ * The provider's own precision wins when it is known: padding 9.717 to
+ * "9,7170" would imply a digit the source never published. The instrument's
+ * conventional precision is the fallback for sources that do not say.
+ */
+function displayPrecision(quote: MarketQuote, fallback: number): number {
+  return quote.sourcePrecision ?? fallback
+}
+
 export function toQuoteViewModel(quote: MarketQuote): QuoteViewModel {
   const ref = instrumentRef(quote.symbol)
   return {
     id: quote.symbol,
     label: ref.displayName,
-    value: formatNumber(quote.value, ref.precision),
+    value: formatNumber(quote.value, displayPrecision(quote, ref.precision)),
     changePercent: quote.percentageChange ?? 0,
   }
 }
@@ -196,15 +207,23 @@ export function toNewsViewModel(item: NewsItem, now: Date): NewsViewModel {
 /* --------------------------------------------------------------- freshness */
 
 /**
- * The "Data uppdaterad" label. Reads the snapshot's true `asOf` — the oldest
- * across categories — rather than render time (defects D5/D10). Same `HH:MM`
- * format and position as before; only the value's source changed.
+ * The "Data uppdaterad" label — when the dashboard was last refreshed.
+ *
+ * Reads `snapshot.generatedAt`, the instant the snapshot was successfully
+ * resolved server-side. Never render time (defect D5), and deliberately NOT
+ * `snapshot.asOf` (decision D16): categories publish at fundamentally
+ * different frequencies, so the oldest one — a daily FX reference rate, say —
+ * would otherwise make the whole dashboard look stale.
+ *
+ * The label therefore claims only "refreshed at HH:MM". It never claims every
+ * observation is equally fresh; each category keeps its own `asOf`, `quality`
+ * and stale state for that.
  */
-export function formatDataFreshness(asOf: string): string {
+export function formatDataFreshness(generatedAt: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(asOf))
+  }).format(new Date(generatedAt))
 }
 
 /* ---------------------------------------------------------- range labelling */
@@ -266,7 +285,7 @@ export function toWatchlistViewModel(
   return {
     id: quote.symbol,
     name: ref.displayName,
-    price: formatNumber(quote.value, ref.precision),
+    price: formatNumber(quote.value, displayPrecision(quote, ref.precision)),
     changePercent: quote.percentageChange ?? 0,
     spark: toSparklineValues(series),
   }

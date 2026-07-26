@@ -894,10 +894,12 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
             </span>
           ))}
           <span className="ml-auto shrink-0 text-[11px] text-[#5a6a7c]">
-            {/* The true data timestamp: the oldest asOf across the snapshot's
-                categories, not render time (defects D5/D10). Same HH:MM format
-                and position; only the value's source changed. */}
-            Data uppdaterad {formatDataFreshness(snapshot.asOf)}
+            {/* When the dashboard was refreshed, from the server-resolved
+                snapshot — not render time (D5), and deliberately not the
+                oldest category (D16), which would let one daily source such as
+                an ECB reference rate make the whole screen look stale.
+                Per-category freshness lives on each envelope. */}
+            Data uppdaterad {formatDataFreshness(snapshot.generatedAt)}
           </span>
         </div>
       </main>

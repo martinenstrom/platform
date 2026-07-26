@@ -113,6 +113,9 @@ export function buildDerivedSentiment(args: {
     formulaVersion: args.formulaVersion,
     provenance: {
       asOf: oldestAsOf,
+      // A derived score is only as precise as its stalest input; treat it as
+      // second-precision because it is computed at a known instant.
+      asOfPrecision: 'second',
       receivedAt: new Date(args.nowMs).toISOString(),
       ageMs: Math.max(0, args.nowMs - asOfMs),
       source: args.source,

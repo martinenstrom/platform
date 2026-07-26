@@ -191,6 +191,7 @@ describe('createContainer', () => {
     const container = createContainer({ env: {}, clock })
     const provenance = {
       asOf: clock.isoNow(),
+      asOfPrecision: 'second' as const,
       receivedAt: clock.isoNow(),
       ageMs: 0,
       source: { providerId: 'p', providerName: 'P' },

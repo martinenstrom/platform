@@ -4,3 +4,7 @@ node_modules
 dist
 src/routeTree.gen.ts
 package-lock.json
+
+# Recorded provider payloads: byte-exact as the API returned them.
+# Reformatting would defeat the point of recording them.
+src/infrastructure/marketData/providers/__fixtures__/

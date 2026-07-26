@@ -13,6 +13,24 @@ import type { Provenance } from './provenance'
 /** Where an instrument's venue is in its trading day. */
 export type SessionState = 'open' | 'closed' | 'pre-market' | 'after-hours' | 'unknown'
 
+/**
+ * The period a change figure actually covers.
+ *
+ * Stated explicitly rather than assumed, because the same `percentageChange`
+ * field means different things per source: an index tick is intraday, while
+ * two consecutive ECB reference rates are a publication-to-publication move
+ * that must never be presented as intraday.
+ *
+ * A field is used rather than renaming `percentageChange` to `dailyChange`,
+ * because `MarketQuote` is shared with genuinely intraday instruments where
+ * `daily` would itself be the dishonest name.
+ */
+export type ChangePeriod =
+  | 'intraday'
+  | 'daily'
+  | 'publication-to-publication'
+  | 'unknown'
+
 export interface MarketQuote {
   symbol: CanonicalSymbol
   /** Current level or price, in the instrument's `unit`. */
@@ -26,6 +44,16 @@ export interface MarketQuote {
   dayHigh: Price | null
   dayLow: Price | null
   session: SessionState
+  /** What period `absoluteChange` and `percentageChange` span. */
+  changePeriod: ChangePeriod
+  /**
+   * Decimals the provider actually supplied, when known.
+   *
+   * Presentation uses `sourcePrecision ?? instrument.precision`, so a source
+   * quoting 9.717 renders as `9,717` rather than `9,7170` — padding a digit
+   * the source never published would imply precision it does not have.
+   */
+  sourcePrecision: number | null
   provenance: Provenance
 }
 
@@ -35,6 +63,14 @@ export interface MarketQuote {
  * levels it also reported. Providers that supply their own change values are
  * deliberately ignored here — one derivation, one truth.
  */
+/** Decimals present in a number as the provider published it. */
+export function decimalsOf(value: number): number {
+  const text = String(value)
+  const dot = text.indexOf('.')
+  if (dot === -1 || text.includes('e') || text.includes('E')) return 0
+  return text.length - dot - 1
+}
+
 export function buildQuote(args: {
   symbol: CanonicalSymbol
   value: number
@@ -42,6 +78,8 @@ export function buildQuote(args: {
   dayHigh?: number | null
   dayLow?: number | null
   session?: SessionState
+  changePeriod?: ChangePeriod
+  sourcePrecision?: number | null
   provenance: Provenance
 }): MarketQuote {
   const value = price(args.value)
@@ -60,6 +98,8 @@ export function buildQuote(args: {
       args.dayHigh === null || args.dayHigh === undefined ? null : price(args.dayHigh),
     dayLow: args.dayLow === null || args.dayLow === undefined ? null : price(args.dayLow),
     session: args.session ?? 'unknown',
+    changePeriod: args.changePeriod ?? 'unknown',
+    sourcePrecision: args.sourcePrecision ?? null,
     provenance: args.provenance,
   }
 }

@@ -73,11 +73,20 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       staleWhileRevalidate: true,
     },
     fx: {
-      ttlOpenMs: 60 * SECOND,
-      ttlClosedMs: 60 * SECOND,
-      // ECB publishes reference rates once daily, so a day-old rate is the
-      // normal case rather than a degradation.
-      fallback: { ...PRICE_FALLBACK, maxStaleMs: 48 * HOUR },
+      // The ECB publishes once per TARGET business day and Frankfurter sends
+      // `cache-control: max-age=86400`, so polling faster re-fetches identical
+      // bytes. Configurable, so a publication-window-aware refresh can replace
+      // the fixed interval later (D14).
+      ttlOpenMs: 30 * MINUTE,
+      ttlClosedMs: 30 * MINUTE,
+      // 5 days, not 48 hours (D13). A Friday rate is ~65 h old on Monday
+      // morning and older still after a long weekend, so a 48-hour ceiling
+      // would have errored every Monday while holding a perfectly valid rate.
+      //
+      // This is a WALL-CLOCK APPROXIMATION of "a few missed business days".
+      // No TARGET holiday calendar is introduced in Phase 2; a
+      // publication-calendar-aware model may replace it later.
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
       staleWhileRevalidate: true,
     },
     'yields-us': {

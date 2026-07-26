@@ -291,6 +291,7 @@ describe('TieredCache', () => {
   function provenance(): Provenance {
     return {
       asOf: clock.isoNow(),
+      asOfPrecision: 'second' as const,
       receivedAt: clock.isoNow(),
       ageMs: 0,
       source: { providerId: 'p', providerName: 'P' },
