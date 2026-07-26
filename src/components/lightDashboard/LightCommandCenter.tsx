@@ -548,8 +548,11 @@ export function LightCommandCenter() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-y-0 left-0 z-0 w-[46vw] max-w-[760px] overflow-hidden"
       >
+        {/* Overscanned by 8px top and bottom so the 6px environmental drift
+            (.hero-photo-drift) never exposes an edge inside the clip. The
+            photo stays vertically centred, so the framing is unchanged. */}
         <div
-          className="absolute inset-0 bg-[length:auto_100%] bg-[position:-46px_center] bg-no-repeat"
+          className="hero-photo-drift absolute -inset-y-[8px] right-0 left-0 bg-[length:auto_100%] bg-[position:-46px_center] bg-no-repeat"
           style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
         />
         <div className="absolute inset-0 bg-black/[0.12]" />

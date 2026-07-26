@@ -369,3 +369,34 @@
     transform: translateY(0);
   }
 }
+
+@layer utilities {
+  /*
+   * Environmental drift on the hero photograph — a locked camera that
+   * "breathes". 6px of vertical travel over 80s, nothing else: no scale, no
+   * rotation, no opacity, no filter. The layer is overscanned by 8px on both
+   * edges (see the hero block in LightCommandCenter) so the travel never
+   * exposes a seam inside the clipping parent. Velocity is zero at 0%/100%,
+   * so the loop has no perceptible restart.
+   */
+  .hero-photo-drift {
+    animation: hero-photo-drift 80s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-photo-drift {
+      animation: none;
+    }
+  }
+}
+
+@keyframes hero-photo-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
