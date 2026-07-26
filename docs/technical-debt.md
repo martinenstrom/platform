@@ -1,0 +1,242 @@
+# Technical Debt & Future Improvements
+
+The register of everything intentionally deferred. Nothing is silently
+postponed: if a phase chose not to do something, it is written here with the
+reason and the preferred resolution.
+
+Ordered by the phase that incurred the debt. Items are removed only when
+resolved, never when they become inconvenient.
+
+---
+
+## TD-1 · MCP child-process warm-up
+
+**Incurred:** Watchlist migration. **Severity:** medium. **Blocks:** nothing.
+
+The snapshot deadline was raised from 3s to 6s. That is an **operational
+workaround, not the desired architecture**, and it is recorded here so it does
+not quietly become the new normal.
+
+Measured on the Watchlist route:
+
+|                                                         |         |
+| ------------------------------------------------------- | ------- |
+| cold — `uvx` spawn + 7 MCP round trips at concurrency 4 | 3271 ms |
+| warm — cache hit                                        | 1 ms    |
+
+The cost is dominated by spawning a Python child process, not by Avanza. A 3s
+budget therefore failed the first request after every restart and passed every
+one after — the worst possible profile.
+
+**Preferred resolution:**
+
+1. pre-warm the `avanza-mcp` child process at container construction
+2. keep the connection alive between requests, with health checking and
+   restart-on-death
+3. re-measure, and return `DEFAULT_SNAPSHOT_BUDGET_MS` to ~3s
+
+**Rule:** deadlines do not ratchet upward. Any future increase requires a
+measurement and an entry here, and the standing intent is to bring this one
+back down.
+
+---
+
+## TD-2 · Real intraday and historical series
+
+**Incurred:** Phase 0, deepened at Phase 5 and Watchlist. **Severity:** medium.
+**Blocks:** sparklines and the intraday chart showing anything in live mode.
+
+The `series` capability has no live provider. Sparklines and the "Utveckling
+idag" chart are fixture-only, so in live mode they render empty — correctly,
+but emptily. Three call sites still reach past the port interface with
+`provider as unknown as FixtureProvider`, documented at each site.
+
+**Preferred resolution:** a real `SeriesProvider`, at which point the three
+casts become ordinary port calls and the Watchlist's unified demo gate lets
+real history through unconditionally.
+
+---
+
+## TD-3 · International index coverage (decision D1)
+
+**Incurred:** Phase 0. **Severity:** medium. **Blocks:** the Markets migration
+showing S&P 500 and Nasdaq 100.
+
+`equity-index-intl` is fixture-only. No approved source exists for the five
+international indices, and the two candidate approaches — a licensed vendor
+such as Twelve Data, or index ETFs as proxies — were deferred pending D1.
+
+Proxies additionally oblige the presentation layer to disclose the
+substitution; `isProxy` and `proxyNote` exist in `Provenance` for exactly this
+and are currently unused.
+
+---
+
+## TD-4 · TradingView as a visualization layer
+
+**Incurred:** Phase 4 investigation. **Severity:** low. **Blocks:** nothing.
+
+Recorded precisely, because the framing matters: **TradingView is not a market
+data source.** Their Charting Library documentation states the integrator
+connects their own data, and the Datafeed API is an interface _we_ would
+implement. There is nothing to adapt as a provider, which is why no
+`TradingViewProvider` exists and why the import graph asserts none appears.
+
+What remains genuinely open is TradingView as a **charting front end fed by our
+own provenance-carrying data**. That is a presentation decision, evaluated on
+its merits against the current recharts implementation, and it would not change
+where a single number comes from.
+
+Constraints from the original investigation still stand: no scraping, no
+browser automation, no private or undocumented endpoints, no community
+wrappers, no redistribution of TradingView-sourced data.
+
+---
+
+## TD-5 · Operational endpoints are built but unexposed
+
+**Incurred:** Phase 3.5. **Severity:** high. **Blocks:** production launch.
+
+`renderPrometheus` and the aggregate health check exist, are tested, and are
+reachable only through POST server functions guarded by a shared operator
+token. No `/metrics` or `/health` route exists, so a deployment would be blind
+to breaker state, budget consumption and provider degradation — with the data
+already being collected.
+
+**Preferred resolution:** expose both behind the operator token; roughly half a
+day. The token itself is a temporary measure and should move behind real
+authentication (TD-8).
+
+---
+
+## TD-6 · Shared cache store for multi-instance deployment
+
+**Incurred:** Phase 1, hardened during the consolidation phase.
+**Severity:** high. **Blocks:** any multi-instance production deployment.
+
+The container is a module singleton over `MemoryCacheStore`, so budgets,
+breakers and rate limits are per process. Live mode now _refuses to start_ with
+`instanceCount > 1` and a non-shared store — correct, and it also means the
+system cannot scale horizontally at all.
+
+**Preferred resolution:** implement the KV `CacheStore`. The interface exists
+and is unused.
+
+---
+
+## TD-7 · The legacy stack (C1)
+
+**Incurred:** pre-Phase-0. **Severity:** critical. **Blocks:** production
+launch.
+
+~6,700 LOC across `services/`, `data/` and `types/` with almost no tests, and a
+second data model. Frozen by a fitness rule that pins the consumer list; the
+count is the migration metric.
+
+| Milestone              | Freeze list |
+| ---------------------- | ----------- |
+| Freeze                 | 13          |
+| AppHeader migrated     | 13 → 13\*   |
+| **Watchlist migrated** | **13 → 12** |
+| Markets                | 12 → 11     |
+| Agents                 | 11 → 10     |
+| Reports                | 10 → 9      |
+| Portfolio              | 9 → 8       |
+
+\* AppHeader was removed from the list in the same commit that created it.
+
+The residue after all five routes — `services/investmentLetter`,
+`avanzaMcpAdapter`, `mockFixtures`, `types/` — retires with the AI and
+portfolio phases, not with the route migrations.
+
+---
+
+## TD-8 · Authentication
+
+**Incurred:** never built. **Severity:** high. **Blocks:** portfolio modes 2
+and 3, per-user agents, personal watchlists, production launch with any private
+data.
+
+There is no session, no user and no authorization anywhere. Health and metrics
+sit behind a shared operator token that the code itself describes as "a
+narrowly scoped temporary measure, not an authorization model".
+
+---
+
+## TD-9 · Authenticated personal watchlists
+
+**Incurred:** Watchlist migration (D44). **Severity:** low. **Depends on:**
+TD-8.
+
+The curated six-instrument list is product state, not user state, and the page
+now says so. A real watchlist needs identity, owned persistence, add/remove,
+canonical instrument selection, synchronization and conflict handling. The
+"Egen bevakningslista – kommer senare" control is the placeholder, deliberately
+non-interactive.
+
+---
+
+## TD-10 · Portfolio modes
+
+**Incurred:** documented in `data-architecture.md` Part X. **Severity:** medium.
+**Depends on:** TD-8 for modes 2 and 3.
+
+`avanza-mcp` wraps a public unauthenticated API, so no source can make the
+current portfolio real. Three modes are documented — demo, manually managed,
+connected — and only mode 1 is in scope for the C1 migration. Mode 1 still owes
+portfolio values real provenance so "this is synthetic" travels with the
+numbers rather than sitting beside them in prose.
+
+---
+
+## TD-11 · AI agent platform
+
+**Incurred:** pre-Phase-0 prototype, reviewed in the AI architecture review.
+**Severity:** high for the product, zero for current correctness.
+
+The eleven-agent pipeline in `services/investmentLetter` is a **product
+specification and prototype**, not the runtime architecture. Its prose-in /
+prose-out contracts would destroy provenance at the first agent boundary.
+
+Preserved for their value: agent roles, responsibilities, output concepts,
+compliance rules, editorial flow. Explicitly _not_ preserved: the accumulating
+mutable context and the prose-only contracts.
+
+Sequenced as AI Phase A (contracts and evidence identity), Phase B (evidence
+read model and runtime), Phase C (one real agent end to end, Macro first).
+
+The future organization is institutional rather than a flat collection of
+agents: specialists report to managers, managers aggregate, the CIO receives
+summarized reports. Two governance agents are mandatory, independent, and
+authorized to block publication — the **Devil's Advocate** (challenges
+assumptions, seeks alternative explanations, identifies bias) and the
+**Verification Agent** (validates facts, calculations, units, currencies, basis
+points, DCF models, and that summarization lost nothing).
+
+---
+
+## TD-12 · Deferred architecture cleanups
+
+**Severity:** low to medium. **Blocks:** nothing.
+
+| Item                                  | Note                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `presentation/viewModels.ts` untested | 299 LOC at the numeric→string boundary, covered only transitively          |
+| Speculative infrastructure            | ~1,500 LOC: metrics consumers, `ProviderCapabilityMetadata`, domain events |
+| `marketCenters` layer violation       | The one sanctioned `data/` import; belongs in `domain/market/sessions.ts`  |
+| `config.ts` at 517 LOC                | Five responsibilities in one file                                          |
+| Fixture provider god object           | 465 LOC implementing ten ports                                             |
+| `domain/shared` residue               | `Unit`, `Money`, `addMoney` are market-specific                            |
+| Category count                        | 19 categories; revisit the descriptor shape at ~25                         |
+| Data licensing                        | `requiresAttribution: true` on five sources, and no attribution rendered   |
+
+---
+
+## TD-13 · Provider evaluations not yet made
+
+**Severity:** low. **Blocks:** nothing.
+
+Deferred deliberately, each needing its own gate: FRED (keyed, deferred to keep
+Phase 4B keyless), Twelve Data (D1), sector data (D5), news providers, sentiment
+formula weights (D7), and market-implied policy probabilities — the last gated
+on the seven documentation requirements in `data-architecture.md` §59.
