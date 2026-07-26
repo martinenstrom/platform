@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { CHART_AXIS_TEXT, CHART_GRID, SERIES } from '~/lib/chartTheme'
+import { CHART_AXIS_TEXT, CHART_GRID, CHART_SURFACE, SERIES } from '~/lib/chartTheme'
 import { formatNumber } from '~/lib/format'
 import type { PerformancePoint, TimeRange } from '~/types'
 import { ChartTooltip } from './ChartTooltip'
@@ -44,7 +44,12 @@ export function PerformanceChart({ data, range }: PerformanceChartProps) {
                 <stop offset="100%" stopColor={SERIES.portfolio} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid
+              stroke={CHART_GRID}
+              strokeOpacity={0.55}
+              strokeDasharray="3 3"
+              vertical={false}
+            />
             <XAxis
               dataKey="t"
               tickFormatter={(value: string) => formatAxisLabel(value, range)}
@@ -64,16 +69,19 @@ export function PerformanceChart({ data, range }: PerformanceChartProps) {
             <Tooltip
               cursor={{ stroke: CHART_GRID, strokeWidth: 1 }}
               content={<PerformanceTooltip range={range} />}
+              isAnimationActive={false}
             />
+            {/* Benchmark is the reference line — dashed and lighter so the
+                portfolio (solid, filled) stays the primary read. */}
             <Area
               type="monotone"
               dataKey="benchmark"
               stroke={SERIES.benchmark}
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeDasharray="4 3"
               fill="none"
               dot={false}
-              activeDot={{ r: 3, strokeWidth: 0 }}
+              activeDot={{ r: 3.5, strokeWidth: 2, stroke: CHART_SURFACE }}
               isAnimationActive={false}
             />
             <Area
@@ -83,7 +91,7 @@ export function PerformanceChart({ data, range }: PerformanceChartProps) {
               strokeWidth={2}
               fill={`url(#${gradientId}-portfolio)`}
               dot={false}
-              activeDot={{ r: 3, strokeWidth: 0 }}
+              activeDot={{ r: 3.5, strokeWidth: 2, stroke: CHART_SURFACE }}
               isAnimationActive={false}
             />
           </AreaChart>

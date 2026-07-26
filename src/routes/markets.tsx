@@ -6,23 +6,23 @@ import { EmptyState } from '~/components/ui/EmptyState'
 import { MarketTickerList } from '~/components/dashboard/MarketTicker'
 import { marketIndices, marketTrends } from '~/data/mockData'
 import { cn } from '~/lib/cn'
+import { toneText } from '~/lib/tone'
 
 export const Route = createFileRoute('/markets')({
   component: MarketsPage,
 })
 
-const TREND_TONE: Record<string, string> = {
-  positive: 'text-positive',
-  negative: 'text-negative',
-  warning: 'text-warning',
-  accent: 'text-accent',
-  neutral: 'text-content',
-}
+// Same tone→text mapping as the rest of the app, except this panel shows a
+// neutral market climate at full strength (text-content, not the muted default).
+const TREND_TONE: Record<string, string> = { ...toneText, neutral: 'text-content' }
 
 function MarketsPage() {
   return (
     <PageShell>
-      <PageHeader title="Marknader" />
+      <PageHeader
+        title="Marknader"
+        description="Index, valutor och marknadsklimat. Exempeldata."
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <DashboardCard title="Index och valutor">

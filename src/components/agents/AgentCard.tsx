@@ -12,7 +12,7 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
   return (
     <article
       className={cn(
-        'group flex flex-col rounded-xl bg-surface p-5 shadow-card transition-colors duration-150 hover:bg-surface-2',
+        'hud-frame group flex flex-col rounded-xl bg-surface p-6 shadow-card transition-colors duration-150 hover:bg-surface-2',
         className,
       )}
     >
@@ -35,7 +35,7 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
           aria-label={`Förlopp för ${agent.name}`}
         >
           <div
-            className="h-full rounded-full bg-accent transition-[width] duration-500"
+            className="h-full rounded-full bg-accent transition-[width] duration-500 motion-reduce:transition-none"
             style={{ width: `${agent.progress}%` }}
           />
         </div>

@@ -115,7 +115,7 @@ function SidebarLink({
       activeOptions={{ exact: item.to === '/' }}
       title={collapsed ? item.label : undefined}
       className={cn(
-        'hud-label relative flex items-center gap-3 rounded-md px-3 py-2 text-[11px] transition-all duration-150',
+        'type-nav relative flex items-center gap-3 rounded-md px-3 py-2 transition-colors duration-150',
         'text-content-muted hover:bg-surface-2 hover:text-content',
         collapsed && 'justify-center px-0',
       )}

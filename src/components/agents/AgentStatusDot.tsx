@@ -26,14 +26,14 @@ export function AgentStatusDot({
   return (
     <span
       className={cn(
-        'hud-label inline-flex items-center gap-2 text-[10px]',
+        'type-badge inline-flex items-center gap-2',
         meta.text,
         className,
       )}
     >
       <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
         {status === 'running' && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+          <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 motion-safe:animate-ping" />
         )}
         <span className={cn('relative inline-flex h-1.5 w-1.5 rounded-full', meta.dot)} />
       </span>

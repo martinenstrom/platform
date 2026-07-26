@@ -34,7 +34,10 @@ function PortfolioPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Portfölj" />
+      <PageHeader
+        title="Portfölj"
+        description="Innehav, utveckling och fördelning. Exempeldata."
+      />
 
       <div className="grid grid-cols-2 gap-x-8 gap-y-8 lg:grid-cols-4">
         <Stat
@@ -99,9 +102,7 @@ function PortfolioPage() {
                 <Tr key={holding.id}>
                   <Td>
                     <span className="block text-sm text-content">{holding.name}</span>
-                    <span className="block text-xs text-content-subtle">
-                      {holding.ticker}
-                    </span>
+                    <span className="type-metadata block">{holding.ticker}</span>
                   </Td>
                   <Td numeric>{formatNumber(holding.quantity, 0)}</Td>
                   <Td numeric>{formatNumber(holding.averagePrice)}</Td>

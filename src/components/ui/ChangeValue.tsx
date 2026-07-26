@@ -1,12 +1,7 @@
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { changeTone, formatPercent } from '~/lib/format'
-
-const TONE_CLASS = {
-  positive: 'text-positive',
-  negative: 'text-negative',
-  neutral: 'text-content-muted',
-} as const
+import { toneText } from '~/lib/tone'
 
 interface ChangeValueProps {
   value: number
@@ -31,7 +26,7 @@ export function ChangeValue({
     <span
       className={cn(
         'tabular inline-flex items-center gap-1 font-medium',
-        TONE_CLASS[tone],
+        toneText[tone],
         className,
       )}
     >

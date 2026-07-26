@@ -19,9 +19,9 @@ export function PageHeader({ title, description, actions, className }: PageHeade
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-content">{title}</h1>
+        <h1 className="type-page-title">{title}</h1>
         {description && (
-          <p className="mt-1 max-w-2xl text-sm text-content-muted">{description}</p>
+          <p className="type-page-subtitle mt-1 max-w-2xl">{description}</p>
         )}
       </div>
       {actions && (

@@ -50,8 +50,10 @@ export function DashboardCard({
           {title && (
             <h2
               className={cn(
-                'hud-label truncate text-content-muted',
-                dense ? 'text-[11px]' : 'text-xs',
+                'truncate',
+                // Dense keeps its exact 11px inline treatment (its line-height
+                // inherits, which the token would otherwise pin) — no geometry shift.
+                dense ? 'hud-label text-[11px] text-content-muted' : 'type-heading',
               )}
             >
               {title}
@@ -75,7 +77,7 @@ export function SectionHeading({
 }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-4">
-      <h2 className="hud-label text-xs text-content-muted">{children}</h2>
+      <h2 className="type-heading">{children}</h2>
       {action}
     </div>
   )

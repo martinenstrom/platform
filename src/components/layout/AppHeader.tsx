@@ -157,7 +157,7 @@ function InstrumentSearch() {
             className={cn(
               'hud-frame h-9 w-full rounded-lg bg-surface pr-14 pl-9 text-sm text-content',
               'placeholder:text-content-subtle transition-colors duration-150',
-              'hover:bg-surface-2 focus:bg-surface-2 focus:outline-none',
+              'hover:bg-surface-2 focus:bg-surface-2',
               '[&::-webkit-search-cancel-button]:appearance-none',
             )}
           />

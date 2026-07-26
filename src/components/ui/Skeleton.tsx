@@ -3,7 +3,7 @@ import { cn } from '~/lib/cn'
 export function Skeleton({ className }: { className?: string }) {
   return (
     <div
-      className={cn('animate-pulse rounded-xs bg-surface-3', className)}
+      className={cn('rounded-xs bg-surface-3 motion-safe:animate-pulse', className)}
       aria-hidden="true"
     />
   )
@@ -25,7 +25,7 @@ export function SkeletonCard({
 }: SkeletonCardProps) {
   return (
     <section
-      className={cn('rounded-xl bg-surface p-6 shadow-card', className)}
+      className={cn('hud-frame rounded-xl bg-surface p-6 shadow-card', className)}
       aria-busy="true"
       aria-label="Innehåll laddas"
     >

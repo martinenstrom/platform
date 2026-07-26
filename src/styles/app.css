@@ -54,6 +54,9 @@
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* One letter-spacing value for every uppercase mono label/heading. */
+  --tracking-label: 0.14em;
 }
 
 @layer base {
@@ -91,6 +94,70 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-content-subtle);
     background-clip: content-box;
+  }
+}
+
+@layer components {
+  /*
+   * Semantic micro-type roles — one place to decide size / weight / line-height /
+   * letter-spacing / transform / default colour per ROLE, instead of re-picking
+   * the same utility combo inline. Colour is a *default*: a utility class on the
+   * element still wins (utilities cascade after components), so stateful nav
+   * colours and badge tones keep working. Sizes and line-heights mirror the
+   * Tailwind steps they replace, so migrating changes nothing visually.
+   * Uppercase label roles share --tracking-label. The inline caps labels
+   * (type-nav / type-badge) intentionally omit line-height: they sit in
+   * flex-centred rows whose height is set by padding/icon, so inheriting the
+   * line-height (exactly as the `text-[11px]`/`text-[10px]` utilities did)
+   * preserves the pill/row geometry.
+   */
+  .type-page-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: var(--color-content);
+  }
+  .type-page-subtitle {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    color: var(--color-content-muted);
+  }
+  .type-heading {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--color-content-muted);
+  }
+  .type-nav {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+  .type-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+  .type-label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 400;
+    color: var(--color-content-muted);
+  }
+  .type-metadata {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 400;
+    color: var(--color-content-subtle);
   }
 }
 
@@ -150,7 +217,7 @@
   .hud-label {
     font-family: var(--font-mono);
     font-weight: 500;
-    letter-spacing: 0.14em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
   }
 
@@ -260,5 +327,45 @@
       180px 180px,
       -200px 380px,
       -140px 380px;
+  }
+}
+
+@layer utilities {
+  /*
+   * Chart rendering polish — recharts-specific hooks applied once so every
+   * chart inherits them identically. No colour, palette or layout change:
+   * rounder curve joins, smoother curve geometry, tabular axis figures, and a
+   * gentle tooltip settle (per-chart the recharts position animation is turned
+   * off, so the tooltip tracks the cursor crisply instead of lagging behind it).
+   */
+  .recharts-curve {
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .recharts-line-curve,
+  .recharts-area-curve {
+    shape-rendering: geometricPrecision;
+  }
+  .recharts-cartesian-axis-tick-value {
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-tooltip-in {
+    animation: chart-tooltip-in 130ms ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chart-tooltip-in {
+      animation: none;
+    }
+  }
+}
+
+@keyframes chart-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

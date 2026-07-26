@@ -1,14 +1,7 @@
 import type { ReactNode } from 'react'
 import { cn } from '~/lib/cn'
+import { toneSoftBg, toneText } from '~/lib/tone'
 import type { AnalysisStatus, SignalType, Tone } from '~/types'
-
-const TONE_CLASS: Record<Tone, string> = {
-  positive: 'bg-positive-soft text-positive',
-  negative: 'bg-negative-soft text-negative',
-  warning: 'bg-warning-soft text-warning',
-  accent: 'bg-accent-soft text-accent',
-  neutral: 'bg-surface-3 text-content-muted',
-}
 
 interface StatusBadgeProps {
   tone?: Tone
@@ -27,8 +20,9 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        'hud-label inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] whitespace-nowrap',
-        TONE_CLASS[tone],
+        'type-badge inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 whitespace-nowrap',
+        toneSoftBg[tone],
+        toneText[tone],
         className,
       )}
     >

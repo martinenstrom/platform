@@ -60,20 +60,18 @@ function AgentsPage() {
                 <span className="block truncate text-sm text-content">
                   {run.instrument}
                 </span>
-                <span className="block truncate text-xs text-content-subtle">
-                  {run.type}
-                </span>
+                <span className="type-metadata block truncate">{run.type}</span>
               </span>
               <time
                 dateTime={run.generatedAt}
-                className="tabular shrink-0 text-xs text-content-subtle"
+                className="type-metadata tabular shrink-0"
               >
                 {formatDateTime(run.generatedAt)}
               </time>
             </li>
           ))}
         </ul>
-        <p className="mt-6 text-xs text-content-subtle">
+        <p className="type-metadata mt-6">
           Simulerade agentkörningar. Innehållet utgör inte investeringsrådgivning.
         </p>
       </section>

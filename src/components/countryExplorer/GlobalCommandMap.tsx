@@ -151,125 +151,330 @@ const HUB_MARKET_DATA: Partial<
 }
 
 /**
- * Curated "major corridors" between financial hubs — a stylized "the world's
- * markets are connected" visualization, not sourced trade/capital-flow
- * statistics. Stands in for Trade Routes / Shipping Lanes / Capital Flows,
- * which the request frames mainly as atmosphere/motion rather than analytical
- * data layers.
+ * The financial network layer — a stylized "the world's markets are connected"
+ * visualization, not sourced trade/capital-flow statistics. It stands in for
+ * Trade Routes / Shipping Lanes / Capital Flows, framed mainly as atmosphere
+ * and motion rather than an analytical data layer.
+ *
+ * The system is hub-weighted and geographic (never random point-to-point):
+ * curated corridors between real financial centers, organised into a three-tier
+ * depth hierarchy (global trunk / hero → primary intercontinental → regional
+ * mesh). Everything below — altitude, stroke, opacity, packet presence, speed,
+ * direction and start offset — is derived deterministically from the route's
+ * tier, its great-circle distance and a seeded hash of its endpoints, so the
+ * network is stable across renders and never stacks equal-length arcs.
  */
-type ArcTone = 'cyan' | 'teal' | 'blue' | 'amber' | 'red' | 'violet'
+
+/** Endpoints that aren't in `MARKET_CENTERS` (which drives the separate Market
+ *  Status layer). Kept local so the network can reach further into Africa, South
+ *  America and the Americas gateways without touching that layer or its tests. */
+const NETWORK_HUBS: Record<string, { lat: number; lng: number }> = {
+  cairo: { lat: 30.04, lng: 31.24 },
+  accra: { lat: 5.6, lng: -0.19 },
+  mauritius: { lat: -20.16, lng: 57.5 },
+  lima: { lat: -12.05, lng: -77.04 },
+  madrid: { lat: 40.42, lng: -3.7 },
+  'mexico-city': { lat: 19.43, lng: -99.13 },
+  'panama-city': { lat: 8.98, lng: -79.52 },
+}
+
+const MARKET_CENTER_BY_ID = new Map(MARKET_CENTERS.map((center) => [center.id, center]))
+
+/** Resolve a hub id to a coordinate from either the Market Status centers or the
+ *  network-only supplement above. */
+function resolveHub(id: string): { lat: number; lng: number } | null {
+  const center = MARKET_CENTER_BY_ID.get(id)
+  if (center) return { lat: center.lat, lng: center.lng }
+  return NETWORK_HUBS[id] ?? null
+}
+
+type RouteTier = 1 | 2 | 3
+interface RouteSpec {
+  a: string
+  b: string
+  tier: RouteTier
+  /** Tier-1 hero routes: highest altitude, brightest warm-gold, bidirectional. */
+  hero?: true
+  /** The ~7% of routes rendered in subtle blue-white instead of warm gold. */
+  accent?: 'blue'
+}
 
 /**
- * [from, to, tone] — tone only varies the arc's colour for visual depth, not
- * meaning (there is no sourced flow data behind these). Density is deliberately
- * concentrated around Europe, North America, East Asia and Southeast Asia.
+ * Curated routes in priority order (Tier 1 → 3). Duplicate unordered pairs are
+ * skipped by the builder, so the first (highest-priority) listing of a pair wins.
+ * Africa and South America are meaningfully integrated across Europe, the Middle
+ * East, South/East/Southeast Asia, North America and each other — a strong second
+ * layer, without overwhelming the NY/London/Frankfurt/Singapore/HK/Tokyo core.
  */
-const NETWORK_LINKS: Array<[string, string, ArcTone]> = [
-  // Europe internal
-  ['london', 'paris', 'cyan'],
-  ['paris', 'frankfurt', 'teal'],
-  ['london', 'stockholm', 'cyan'],
-  ['london', 'zurich', 'teal'],
-  ['frankfurt', 'zurich', 'blue'],
-  ['stockholm', 'frankfurt', 'cyan'],
-  ['london', 'frankfurt', 'blue'],
-  ['paris', 'zurich', 'cyan'],
-  // Transatlantic
-  ['new-york', 'london', 'cyan'],
-  ['new-york', 'frankfurt', 'teal'],
-  ['new-york', 'paris', 'blue'],
-  ['toronto', 'london', 'blue'],
-  ['new-york', 'toronto', 'teal'],
-  ['new-york', 'sao-paulo', 'amber'],
-  ['sao-paulo', 'london', 'blue'],
-  ['sao-paulo', 'frankfurt', 'violet'],
-  // Europe — Middle East — South Asia
-  ['london', 'dubai', 'blue'],
-  ['frankfurt', 'dubai', 'cyan'],
-  ['paris', 'dubai', 'teal'],
-  ['dubai', 'mumbai', 'teal'],
-  ['dubai', 'singapore', 'red'],
-  ['mumbai', 'singapore', 'cyan'],
-  ['london', 'hong-kong', 'violet'],
-  ['frankfurt', 'shanghai', 'blue'],
-  ['london', 'singapore', 'teal'],
-  // East / Southeast Asia
-  ['singapore', 'hong-kong', 'teal'],
-  ['hong-kong', 'shanghai', 'blue'],
-  ['shanghai', 'tokyo', 'cyan'],
-  ['hong-kong', 'tokyo', 'teal'],
-  ['tokyo', 'singapore', 'blue'],
-  ['mumbai', 'hong-kong', 'cyan'],
-  // Oceania
-  ['tokyo', 'sydney', 'blue'],
-  ['singapore', 'sydney', 'cyan'],
-  ['hong-kong', 'sydney', 'teal'],
-  // Transpacific
-  ['new-york', 'tokyo', 'cyan'],
-  ['tokyo', 'new-york', 'blue'],
-  ['new-york', 'hong-kong', 'amber'],
-  ['toronto', 'tokyo', 'teal'],
-  ['sydney', 'new-york', 'violet'],
-  // Densifying corridors
-  ['stockholm', 'new-york', 'blue'],
-  ['zurich', 'dubai', 'cyan'],
-  ['paris', 'singapore', 'violet'],
-  ['toronto', 'frankfurt', 'cyan'],
-  ['shanghai', 'singapore', 'teal'],
-  ['tokyo', 'mumbai', 'blue'],
-  ['dubai', 'hong-kong', 'amber'],
-  ['sao-paulo', 'toronto', 'teal'],
-  ['zurich', 'singapore', 'blue'],
-  // Long orbital corridors
-  ['london', 'sydney', 'blue'],
-  ['frankfurt', 'singapore', 'cyan'],
-  ['paris', 'hong-kong', 'teal'],
-  ['stockholm', 'tokyo', 'violet'],
-  ['new-york', 'dubai', 'blue'],
-  ['mumbai', 'sydney', 'teal'],
-  ['shanghai', 'sydney', 'blue'],
-  ['zurich', 'hong-kong', 'cyan'],
-  // Regional density: Europe / North America / East Asia
-  ['stockholm', 'paris', 'teal'],
-  ['zurich', 'stockholm', 'blue'],
-  ['toronto', 'zurich', 'teal'],
-  ['frankfurt', 'tokyo', 'cyan'],
-  ['london', 'shanghai', 'blue'],
-  ['new-york', 'shanghai', 'violet'],
-  ['shanghai', 'mumbai', 'amber'],
-  ['paris', 'tokyo', 'blue'],
-  ['new-york', 'singapore', 'cyan'],
-  ['london', 'mumbai', 'teal'],
-  ['stockholm', 'hong-kong', 'cyan'],
-  ['zurich', 'tokyo', 'teal'],
-  ['paris', 'shanghai', 'blue'],
-  ['frankfurt', 'hong-kong', 'teal'],
-  ['london', 'tokyo', 'cyan'],
-  ['toronto', 'shanghai', 'blue'],
-  ['dubai', 'tokyo', 'violet'],
-  ['sao-paulo', 'singapore', 'amber'],
-  ['stockholm', 'singapore', 'blue'],
-  ['zurich', 'shanghai', 'teal'],
-  ['paris', 'mumbai', 'cyan'],
-  ['stockholm', 'dubai', 'teal'],
-  ['zurich', 'mumbai', 'blue'],
-  ['toronto', 'singapore', 'cyan'],
-  ['frankfurt', 'sydney', 'teal'],
-  ['sao-paulo', 'shanghai', 'blue'],
-  ['dubai', 'shanghai', 'cyan'],
-  ['paris', 'sydney', 'violet'],
-  ['sao-paulo', 'dubai', 'amber'],
-  ['sydney', 'dubai', 'teal'],
+const ROUTES: RouteSpec[] = [
+  // ── Tier 1 · hero routes — the global trunk lines ──────────────────────────
+  { a: 'new-york', b: 'london', tier: 1, hero: true },
+  { a: 'new-york', b: 'singapore', tier: 1, hero: true },
+  { a: 'london', b: 'singapore', tier: 1, hero: true },
+  { a: 'london', b: 'sydney', tier: 1, hero: true },
+  { a: 'frankfurt', b: 'tokyo', tier: 1, hero: true },
+  { a: 'hong-kong', b: 'new-york', tier: 1, hero: true },
+  { a: 'tokyo', b: 'sao-paulo', tier: 1, hero: true },
+  { a: 'new-york', b: 'sao-paulo', tier: 1, hero: true },
+  // ── Tier 1 · additional global trunk (non-hero, prominent but not apex) ─────
+  { a: 'dubai', b: 'sao-paulo', tier: 1 },
+  { a: 'london', b: 'johannesburg', tier: 1 },
+  { a: 'new-york', b: 'tokyo', tier: 1 },
+  { a: 'london', b: 'hong-kong', tier: 1 },
+  { a: 'frankfurt', b: 'singapore', tier: 1 },
+
+  // ── Tier 2 · primary intercontinental · core ───────────────────────────────
+  // Europe ↔ North America
+  { a: 'new-york', b: 'frankfurt', tier: 2 },
+  { a: 'new-york', b: 'paris', tier: 2 },
+  { a: 'new-york', b: 'zurich', tier: 2 },
+  { a: 'toronto', b: 'london', tier: 2 },
+  { a: 'toronto', b: 'frankfurt', tier: 2 },
+  { a: 'stockholm', b: 'new-york', tier: 2 },
+  // Europe ↔ Middle East ↔ South Asia
+  { a: 'london', b: 'dubai', tier: 2 },
+  { a: 'frankfurt', b: 'dubai', tier: 2 },
+  { a: 'paris', b: 'dubai', tier: 2 },
+  { a: 'zurich', b: 'dubai', tier: 2 },
+  { a: 'london', b: 'mumbai', tier: 2 },
+  { a: 'frankfurt', b: 'mumbai', tier: 2 },
+  { a: 'dubai', b: 'mumbai', tier: 2 },
+  // Europe ↔ East Asia
+  { a: 'frankfurt', b: 'shanghai', tier: 2 },
+  { a: 'london', b: 'shanghai', tier: 2 },
+  { a: 'paris', b: 'tokyo', tier: 2 },
+  { a: 'zurich', b: 'hong-kong', tier: 2, accent: 'blue' },
+  { a: 'stockholm', b: 'tokyo', tier: 2, accent: 'blue' },
+  // Europe ↔ Southeast Asia / Oceania
+  { a: 'paris', b: 'singapore', tier: 2 },
+  { a: 'zurich', b: 'singapore', tier: 2 },
+  { a: 'stockholm', b: 'singapore', tier: 2 },
+  { a: 'frankfurt', b: 'sydney', tier: 2 },
+  { a: 'paris', b: 'sydney', tier: 2 },
+  // North America ↔ Asia / Oceania
+  { a: 'new-york', b: 'shanghai', tier: 2 },
+  { a: 'toronto', b: 'tokyo', tier: 2, accent: 'blue' },
+  { a: 'toronto', b: 'singapore', tier: 2 },
+  { a: 'sydney', b: 'new-york', tier: 2 },
+  // North America ↔ Middle East / South Asia
+  { a: 'new-york', b: 'dubai', tier: 2 },
+  { a: 'new-york', b: 'mumbai', tier: 2 },
+  // Middle East / South Asia ↔ East / Southeast Asia / Oceania
+  { a: 'dubai', b: 'singapore', tier: 2, accent: 'blue' },
+  { a: 'dubai', b: 'hong-kong', tier: 2 },
+  { a: 'dubai', b: 'tokyo', tier: 2 },
+  { a: 'dubai', b: 'shanghai', tier: 2 },
+  { a: 'mumbai', b: 'singapore', tier: 2 },
+  { a: 'mumbai', b: 'hong-kong', tier: 2 },
+  { a: 'mumbai', b: 'tokyo', tier: 2 },
+  { a: 'mumbai', b: 'sydney', tier: 2 },
+  // East Asia ↔ Oceania
+  { a: 'tokyo', b: 'sydney', tier: 2, accent: 'blue' },
+  { a: 'hong-kong', b: 'sydney', tier: 2 },
+  { a: 'singapore', b: 'sydney', tier: 2 },
+  { a: 'shanghai', b: 'sydney', tier: 2 },
+  // Asia medium
+  { a: 'singapore', b: 'shanghai', tier: 2 },
+
+  // ── Tier 2 · primary intercontinental · Africa ─────────────────────────────
+  { a: 'johannesburg', b: 'frankfurt', tier: 2 },
+  { a: 'johannesburg', b: 'dubai', tier: 2 },
+  { a: 'johannesburg', b: 'singapore', tier: 2 },
+  { a: 'johannesburg', b: 'sao-paulo', tier: 2 }, // Africa ↔ South America
+  { a: 'cape-town', b: 'london', tier: 2 },
+  { a: 'cape-town', b: 'dubai', tier: 2 },
+  { a: 'lagos', b: 'london', tier: 2 },
+  { a: 'lagos', b: 'new-york', tier: 2 },
+  { a: 'lagos', b: 'sao-paulo', tier: 2 }, // Africa ↔ South America
+  { a: 'nairobi', b: 'dubai', tier: 2 },
+  { a: 'nairobi', b: 'mumbai', tier: 2 }, // Africa ↔ South Asia
+  { a: 'cairo', b: 'london', tier: 2 },
+  { a: 'casablanca', b: 'paris', tier: 2 },
+  { a: 'mauritius', b: 'singapore', tier: 2 }, // Africa ↔ Southeast Asia
+
+  // ── Tier 2 · primary intercontinental · South America ──────────────────────
+  { a: 'sao-paulo', b: 'london', tier: 2 },
+  { a: 'sao-paulo', b: 'frankfurt', tier: 2 },
+  { a: 'sao-paulo', b: 'mumbai', tier: 2 }, // South America ↔ South Asia
+  { a: 'sao-paulo', b: 'singapore', tier: 2 }, // South America ↔ Southeast Asia
+  { a: 'buenos-aires', b: 'new-york', tier: 2 },
+  { a: 'buenos-aires', b: 'london', tier: 2 },
+  { a: 'buenos-aires', b: 'madrid', tier: 2 },
+  { a: 'santiago', b: 'new-york', tier: 2 },
+  { a: 'santiago', b: 'madrid', tier: 2 },
+  { a: 'santiago', b: 'sydney', tier: 2 }, // South America ↔ Oceania
+  { a: 'bogota', b: 'new-york', tier: 2 },
+  { a: 'bogota', b: 'madrid', tier: 2 },
+  { a: 'lima', b: 'madrid', tier: 2 },
+
+  // ── Tier 3 · regional mesh · Europe ────────────────────────────────────────
+  { a: 'london', b: 'paris', tier: 3 },
+  { a: 'paris', b: 'frankfurt', tier: 3 },
+  { a: 'london', b: 'frankfurt', tier: 3, accent: 'blue' },
+  { a: 'london', b: 'zurich', tier: 3 },
+  { a: 'frankfurt', b: 'zurich', tier: 3, accent: 'blue' },
+  { a: 'stockholm', b: 'frankfurt', tier: 3 },
+  { a: 'london', b: 'stockholm', tier: 3 },
+  { a: 'paris', b: 'zurich', tier: 3 },
+  { a: 'stockholm', b: 'paris', tier: 3 },
+  // ── Tier 3 · regional mesh · East / Southeast Asia ─────────────────────────
+  { a: 'shanghai', b: 'tokyo', tier: 3, accent: 'blue' },
+  { a: 'hong-kong', b: 'tokyo', tier: 3 },
+  { a: 'singapore', b: 'hong-kong', tier: 3, accent: 'blue' },
+  { a: 'hong-kong', b: 'shanghai', tier: 3 },
+  { a: 'singapore', b: 'tokyo', tier: 3 },
+  // ── Tier 3 · regional mesh · North America + gateways ──────────────────────
+  { a: 'new-york', b: 'toronto', tier: 3, accent: 'blue' },
+  { a: 'new-york', b: 'mexico-city', tier: 3 },
+  { a: 'new-york', b: 'panama-city', tier: 3 },
+  { a: 'mexico-city', b: 'bogota', tier: 3 },
+  { a: 'panama-city', b: 'bogota', tier: 3 },
+  // ── Tier 3 · regional mesh · intra-Africa ──────────────────────────────────
+  { a: 'johannesburg', b: 'cape-town', tier: 3 },
+  { a: 'johannesburg', b: 'lagos', tier: 3 },
+  { a: 'lagos', b: 'accra', tier: 3 },
+  { a: 'lagos', b: 'nairobi', tier: 3 },
+  { a: 'cairo', b: 'casablanca', tier: 3 },
+  { a: 'nairobi', b: 'johannesburg', tier: 3 },
+  { a: 'cairo', b: 'nairobi', tier: 3 },
+  { a: 'cairo', b: 'lagos', tier: 3 },
+  // ── Tier 3 · regional mesh · intra-South America ───────────────────────────
+  { a: 'sao-paulo', b: 'buenos-aires', tier: 3 },
+  { a: 'sao-paulo', b: 'santiago', tier: 3 },
+  { a: 'sao-paulo', b: 'bogota', tier: 3 },
+  { a: 'buenos-aires', b: 'santiago', tier: 3 },
+  { a: 'bogota', b: 'lima', tier: 3 },
+  { a: 'lima', b: 'santiago', tier: 3 },
+  { a: 'buenos-aires', b: 'lima', tier: 3 },
+  // ── Tier 3 · secondary Africa corridors ────────────────────────────────────
+  { a: 'casablanca', b: 'madrid', tier: 3 },
+  { a: 'casablanca', b: 'london', tier: 3 },
+  { a: 'cairo', b: 'dubai', tier: 3 },
+  { a: 'cairo', b: 'frankfurt', tier: 3 },
+  { a: 'nairobi', b: 'london', tier: 3 },
+  { a: 'lagos', b: 'frankfurt', tier: 3 },
+  { a: 'cape-town', b: 'frankfurt', tier: 3 },
+  // ── Tier 3 · secondary South America corridors ─────────────────────────────
+  { a: 'santiago', b: 'london', tier: 3 },
+  { a: 'bogota', b: 'london', tier: 3 },
+  { a: 'lima', b: 'new-york', tier: 3 },
+  { a: 'sao-paulo', b: 'paris', tier: 3 },
+  { a: 'santiago', b: 'frankfurt', tier: 3 },
+  { a: 'buenos-aires', b: 'johannesburg', tier: 3 }, // South America ↔ Africa
+  { a: 'bogota', b: 'lagos', tier: 3 }, // South America ↔ Africa
 ]
 
-/** Per tone: faint base-stream head/tail plus a bright comet color that crosses the bloom threshold. */
-const ARC_TONE_COLOR: Record<ArcTone, { base: [string, string]; comet: string }> = {
-  cyan: { base: ['rgba(76,198,232,0.42)', 'rgba(76,198,232,0.08)'], comet: 'rgba(76,198,232,0.95)' },
-  teal: { base: ['rgba(46,204,132,0.45)', 'rgba(46,204,132,0.09)'], comet: 'rgba(46,204,132,0.9)' },
-  blue: { base: ['rgba(54,181,235,0.45)', 'rgba(54,181,235,0.08)'], comet: 'rgba(54,201,255,0.92)' },
-  amber: { base: ['rgba(234,167,60,0.45)', 'rgba(234,167,60,0.09)'], comet: 'rgba(234,167,60,0.9)' },
-  red: { base: ['rgba(242,85,90,0.42)', 'rgba(242,85,90,0.08)'], comet: 'rgba(242,85,90,0.85)' },
-  violet: { base: ['rgba(139,123,245,0.45)', 'rgba(139,123,245,0.09)'], comet: 'rgba(139,123,245,0.9)' },
+/** Deterministic string hash (FNV-1a) → 32-bit seed, so a route's every derived
+ *  property (altitude jitter, packet presence, speed, offset) is stable. */
+function hashString(value: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+/** mulberry32 PRNG — same family as the projector's, seeded per route. */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Great-circle central angle as a 0–1 fraction of π (0 = same point, 1 =
+ *  antipodal). Couples altitude and apparent packet speed to real distance. */
+function distanceFraction(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const cos = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  return Math.acos(Math.max(-1, Math.min(1, cos))) / Math.PI
+}
+
+type RouteClass = 'hero' | 'trunk' | 't2' | 't3' | 't3low'
+
+/**
+ * Per-class visual budget. `alt` scales `arcAltitudeAutoScale` (which is itself
+ * proportional to distance) so height depends on BOTH tier and distance; `altJitter`
+ * separates equal-length routes. Strokes are ~7% thinner than the previous single
+ * tier. `packetProb` is the share of routes in the class that carry a live packet.
+ */
+const ROUTE_STYLE: Record<
+  RouteClass,
+  {
+    alt: number
+    altJitter: number
+    baseStroke: number
+    baseMid: number
+    baseEnd: number
+    packetStroke: number
+    packetDash: number
+    packetProb: number
+  }
+> = {
+  // Hero routes are lifted higher and slightly more opaque with less altitude
+  // jitter — cleaner separation and a rounder, smoother arc — so the backbone
+  // reads first, without any extra stroke width or bloom.
+  // Hero backbone: lifted highest with the least jitter, so the 8 trunk lines
+  // sit on a clean, well-spaced upper shell and guide the eye — no extra stroke
+  // width or glow, just altitude, elegant spacing and slightly higher opacity.
+  hero: { alt: 0.62, altJitter: 0.02, baseStroke: 0.3, baseMid: 0.58, baseEnd: 0.1, packetStroke: 0.66, packetDash: 0.05, packetProb: 0.62 },
+  trunk: { alt: 0.42, altJitter: 0.045, baseStroke: 0.28, baseMid: 0.44, baseEnd: 0.08, packetStroke: 0.64, packetDash: 0.05, packetProb: 0.6 },
+  // Tier 2/3 opacity pulled down ~25–29% and packet probability down ~30% from
+  // Tier 1, so hero routes read first and the regional mesh recedes into a
+  // discovered-later background — layered density, not maximum visible density.
+  t2: { alt: 0.28, altJitter: 0.04, baseStroke: 0.24, baseMid: 0.27, baseEnd: 0.05, packetStroke: 0.6, packetDash: 0.045, packetProb: 0.25 },
+  // The two regional strata are pushed further down and apart, widening the gap
+  // to the primary shell so three altitude layers read cleanly: hero → primary →
+  // regional.
+  t3: { alt: 0.11, altJitter: 0.03, baseStroke: 0.17, baseMid: 0.17, baseEnd: 0.035, packetStroke: 0.52, packetDash: 0.04, packetProb: 0.1 },
+  // Short nearby-hub Tier-3 routes hug the surface even more closely — the
+  // deepest stratum, reading as depth rather than as information.
+  t3low: { alt: 0.035, altJitter: 0.018, baseStroke: 0.15, baseMid: 0.14, baseEnd: 0.03, packetStroke: 0.5, packetDash: 0.04, packetProb: 0.08 },
+}
+
+// Warm-gold carries almost every route; a restrained blue-white is the only accent.
+const GOLD: [number, number, number] = [236, 178, 84]
+const GOLD_BRIGHT: [number, number, number] = [246, 200, 128]
+const BLUE: [number, number, number] = [150, 205, 245]
+const PACKET_GOLD: [number, number, number] = [255, 240, 214] // tiny warm-white/gold core
+const PACKET_BLUE: [number, number, number] = [220, 238, 255]
+
+const rgba = ([r, g, b]: [number, number, number], alpha: number) =>
+  `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`
+
+/**
+ * Symmetric multi-stop gradient with a smoothstep-eased alpha ramp: `endAlpha`
+ * at both hubs, easing up to `peakAlpha` across `fade` of the arc near the
+ * origin and easing back down near the destination. Because three-globe's dash
+ * engine moves a packet at constant speed (no positional easing, and we must not
+ * drive it from React per frame), we express the easing as opacity instead — a
+ * packet brightening as it departs reads as acceleration, and dimming as it
+ * arrives reads as deceleration, while the same ramp gives the smooth fade-in /
+ * fade-out. It is symmetric, so it holds for bidirectional packets, and the
+ * eased shape (vs. a linear ramp) also makes the persistent base streams fade
+ * into their hubs more softly. */
+function easedGradient(
+  rgb: [number, number, number],
+  peakAlpha: number,
+  endAlpha: number,
+  fade: number,
+  stops: number,
+): string[] {
+  const smooth = (t: number) => t * t * (3 - 2 * t)
+  const out: string[] = []
+  for (let i = 0; i < stops; i++) {
+    const p = i / (stops - 1)
+    const edge = p < fade ? smooth(p / fade) : p > 1 - fade ? smooth((1 - p) / fade) : 1
+    out.push(rgba(rgb, endAlpha + edge * (peakAlpha - endAlpha)))
+  }
+  return out
 }
 
 interface ArcDatum {
@@ -278,59 +483,138 @@ interface ArcDatum {
   startLng: number
   endLat: number
   endLng: number
-  color: [string, string] | string
-  layer: 'base' | 'comet'
+  color: string[] | string
+  layer: 'base' | 'packet'
   dashLength: number
   dashGap: number
+  dashInitialGap: number
   animMs: number
   stroke: number
   altScale: number
 }
 
-const MARKET_CENTER_BY_ID = new Map(MARKET_CENTERS.map((center) => [center.id, center]))
-
 /**
- * Every route renders twice: a faint, near-solid "stream" that gives the
- * network its persistent shape, and a short bright "comet" pulse travelling
- * along the same path — the flowing-energy look, not a dashed line.
+ * Builds the arc dataset. Every route contributes a persistent, softly-fading
+ * "base" stream that defines the network's shape. A probabilistic subset also
+ * carries travelling "packet" pulses — a tiny bright warm-white/gold core that
+ * fades in at the origin and out at the destination. Packets get asynchronous
+ * start offsets (`dashInitialGap`), distance-coupled speeds, size variation, a
+ * seeded travel direction, and a dash gap wide enough that each route sits empty
+ * for part of its cycle — so the field never pulses in a synchronized wave and
+ * not every route shows a packet at once. Selected Tier-1 routes occasionally get
+ * a second, opposite-direction packet (bidirectional flow).
  */
-const ARCS_DATA: ArcDatum[] = NETWORK_LINKS.flatMap(([fromId, toId, tone], index) => {
-  const from = MARKET_CENTER_BY_ID.get(fromId)
-  const to = MARKET_CENTER_BY_ID.get(toId)
-  if (!from || !to) return []
-  const id = `${fromId}-${toId}`
-  const shared = {
-    startLat: from.lat,
-    startLng: from.lng,
-    endLat: to.lat,
-    endLng: to.lng,
-    altScale: 0.16 + (id.length % 5) * 0.045,
-  }
-  return [
-    {
-      ...shared,
-      id: `${id}-base`,
-      color: ARC_TONE_COLOR[tone].base,
-      layer: 'base' as const,
-      dashLength: 0.92,
-      dashGap: 0.08,
-      animMs: 20000 + (index % 5) * 2000,
-      stroke: 0.26 + (id.length % 3) * 0.06,
-    },
-    {
-      ...shared,
-      id: `${id}-comet`,
-      color: ARC_TONE_COLOR[tone].comet,
-      layer: 'comet' as const,
-      dashLength: 0.045,
-      dashGap: 0.955,
-      animMs: 1500 + (index % 9) * 380,
-      stroke: 0.7,
-    },
-  ]
-})
+const ARCS_DATA: ArcDatum[] = (() => {
+  const arcs: ArcDatum[] = []
+  const seen = new Set<string>()
 
-/** Under reduced motion only the static base streams render — frozen comet dots would read as debris. */
+  for (const route of ROUTES) {
+    const key = [route.a, route.b].sort().join('~')
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const from = resolveHub(route.a)
+    const to = resolveHub(route.b)
+    if (!from || !to) continue
+
+    const distFrac = distanceFraction(from, to)
+    // Short nearby-hub Tier-3 routes drop into the very-low surface stratum.
+    const cls: RouteClass = route.hero
+      ? 'hero'
+      : route.tier === 1
+        ? 'trunk'
+        : route.tier === 2
+          ? 't2'
+          : distFrac < 0.15
+            ? 't3low'
+            : 't3'
+    const style = ROUTE_STYLE[cls]
+    const isBlue = route.accent === 'blue'
+    const rand = seededRandom(hashString(key))
+
+    const altScale = style.alt + (rand() - 0.5) * style.altJitter
+    const baseRgb = isBlue ? BLUE : cls === 'hero' || cls === 'trunk' ? GOLD_BRIGHT : GOLD
+    const baseMid = isBlue ? style.baseMid * 0.92 : style.baseMid
+
+    arcs.push({
+      id: `${key}-base`,
+      startLat: from.lat,
+      startLng: from.lng,
+      endLat: to.lat,
+      endLng: to.lng,
+      // Softly eased fade into both hubs — persistent network shape, calm edges.
+      color: easedGradient(baseRgb, baseMid, style.baseEnd, 0.16, 10),
+      layer: 'base',
+      dashLength: 0.9,
+      dashGap: 0.1,
+      dashInitialGap: rand(),
+      animMs: 20000 + rand() * 9000,
+      stroke: style.baseStroke,
+      altScale,
+    })
+
+    const packetRgb = isBlue ? PACKET_BLUE : PACKET_GOLD
+    // Longer eased ramp (22% each end, 14 stops): the packet accelerates out of
+    // its origin and decelerates into its destination, with a smooth fade both ways.
+    const packetColor = easedGradient(packetRgb, 0.96, 0, 0.22, 14)
+
+    const addPacket = (reverse: boolean, salt: number) => {
+      const pr = seededRandom(hashString(`${key}:${salt}`))
+      // Slight per-packet size variation (core width + a touch of length).
+      const dashLength = style.packetDash + pr() * 0.014
+      const stroke = style.packetStroke + (pr() - 0.5) * 0.1
+      // A wide, highly variable gap (pattern length up to ~3.3× the arc) keeps
+      // each packet off the wire for long, uneven stretches — routes fall quiet
+      // and re-enter out of step, so nothing ever pulses on a visible beat.
+      const dashGap = 1.7 + pr() * 1.6
+      // Continuous speed: a calm majority (~0.85–1.5×) with an occasional quicker
+      // dart (~0.6–0.78×). Continuous — never quantised — so no two packets share
+      // a period and the field can never resolve into a synchronized wave.
+      const quick = pr() < 0.16
+      const speedFactor = quick ? 0.6 + pr() * 0.18 : 0.85 + pr() * 0.65
+      const speedBase = cls === 'hero' || cls === 'trunk' ? 4200 : cls === 't2' ? 5200 : 5600
+      arcs.push({
+        id: `${key}-packet-${salt}`,
+        startLat: reverse ? to.lat : from.lat,
+        startLng: reverse ? to.lng : from.lng,
+        endLat: reverse ? from.lat : to.lat,
+        endLng: reverse ? from.lng : to.lng,
+        color: packetColor,
+        layer: 'packet',
+        dashLength,
+        dashGap,
+        // Random start offset across the whole pattern → fully asynchronous entry.
+        dashInitialGap: pr() * (dashLength + dashGap),
+        // Distance-coupled so long arcs never streak; continuous factor per packet.
+        animMs: Math.round((speedBase + pr() * 3600) * (0.8 + 0.55 * distFrac) * speedFactor),
+        stroke,
+        altScale,
+      })
+    }
+
+    if (rand() < style.packetProb) {
+      const reverse = rand() < 0.5
+      addPacket(reverse, 0)
+      // Extra counter-flowing, independently-timed packets on the more important
+      // routes. Each has its own incommensurate period and offset, so their
+      // overlaps and gaps drift endlessly: hero routes occasionally burst to
+      // three, then fall quiet, with no repeating cadence — emergent, not scripted.
+      // The regional mesh (t3 / t3low) stays single-packet, so it never crowds.
+      if (cls === 'hero') {
+        if (rand() < 0.7) addPacket(!reverse, 1)
+        if (rand() < 0.35) addPacket(reverse, 2)
+      } else if (cls === 'trunk') {
+        if (rand() < 0.5) addPacket(!reverse, 1)
+      } else if (cls === 't2') {
+        if (rand() < 0.2) addPacket(!reverse, 1)
+      }
+    }
+  }
+
+  return arcs
+})()
+
+/** Under reduced motion only the static base streams render — frozen packet dots would read as debris. */
 const BASE_ARCS_DATA: ArcDatum[] = ARCS_DATA.filter((arc) => arc.layer === 'base')
 
 function heatmapValue(layer: HeatmapLayerId, macro: CountryHeadlineMacro): number {
@@ -1136,10 +1420,12 @@ export function GlobalCommandMap({
               arcEndLat={(d) => (d as ArcDatum).endLat}
               arcEndLng={(d) => (d as ArcDatum).endLng}
               arcColor={(d: object) => (d as ArcDatum).color}
+              arcCurveResolution={128}
               arcAltitudeAutoScale={(d) => (d as ArcDatum).altScale}
               arcStroke={(d) => (d as ArcDatum).stroke}
               arcDashLength={(d: object) => (d as ArcDatum).dashLength}
               arcDashGap={(d: object) => (d as ArcDatum).dashGap}
+              arcDashInitialGap={(d: object) => (d as ArcDatum).dashInitialGap}
               arcDashAnimateTime={(d) =>
                 reducedMotion ? 0 : (d as ArcDatum).animMs
               }

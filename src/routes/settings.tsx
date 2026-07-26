@@ -25,7 +25,7 @@ function SettingsPage() {
         description="Kontoinställningar, format och framtida datakällor."
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <DashboardCard title="Visning" className="lg:col-span-6" bodyClassName="p-0">
           <dl className="divide-y divide-line">
             {PREFERENCES.map((preference) => (

@@ -41,7 +41,7 @@ export function Stat({
 }: StatProps) {
   return (
     <div className={cn('min-w-0', className)}>
-      <p className="text-xs text-content-muted">{label}</p>
+      <p className="type-label">{label}</p>
       <p
         className={cn(
           'tabular mt-2 font-semibold tracking-tight',

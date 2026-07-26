@@ -36,7 +36,7 @@ export function Th({
     <th
       scope="col"
       className={cn(
-        'px-3 pb-3 text-xs font-normal text-content-subtle',
+        'type-metadata px-3 pb-3',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         align === 'left' && 'text-left',

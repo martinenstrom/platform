@@ -1,22 +1,29 @@
 /**
  * Chart colour tokens.
  *
- * The categorical palette below was validated against the dark chart surface
- * (#10151f) for lightness band, chroma floor, colour-vision-deficiency
- * separation and contrast. Assign slots in fixed order — never cycle or
- * recolour by rank, and never reuse the status colours as a series colour.
+ * Categorical series palette — vibrant but colour-blind-safe on the dark chart
+ * surfaces. Validated with the dataviz validator against BOTH surfaces the app
+ * renders charts on (#10151f dark pages, #040e17 Overview): dark lightness band,
+ * chroma floor, and ≥3:1 contrast all pass; the four line hues (slots 1–4) clear
+ * the CVD gate on adjacent AND all-pairs (worst ΔE 8.3 deutan) and the
+ * normal-vision floor (worst ΔE 17.2), so every viewer can separate them.
  *
- * The single remaining protan pair (indigo ↔ magenta, ΔE 6.5) is inside the
- * permitted floor band because every categorical chart here carries secondary
- * encoding: the donut legend direct-labels each slice with name, percent and
- * amount, and slices are separated by a 2px surface gap.
+ * Every hue deliberately avoids the reserved status colours (green/red/amber
+ * below), so a series can never impersonate up/down/warning — assign in fixed
+ * slot order, never cycle or recolour by rank:
+ *   1 indigo  #4361e6 — confident blue lead; max-separated from red/amber/green
+ *   2 magenta #ec4899 — warm counterpoint; reads as pink, not the negative red
+ *   3 teal    #1596ae — cool cyan; clears magenta by ΔE 8.3 (deutan), the tightest pair
+ *   4 orange  #e06a24 — the warm energy; only ever a line among 1–3, never beside red status
+ *   5 violet  #9d5cff — donut-ONLY 5th slot (violet collapses into indigo under
+ *             CVD, so it is quarantined to the spatially-separated, direct-labelled pie)
  */
 export const CATEGORICAL = [
-  '#5f71d8', // 1 — indigo
-  '#00a0b5', // 2 — cyan
-  '#af4aba', // 3 — magenta
-  '#3f821e', // 4 — olive
-  '#b08b34', // 5 — bronze
+  '#4361e6', // 1 — indigo
+  '#ec4899', // 2 — magenta
+  '#1596ae', // 3 — teal
+  '#e06a24', // 4 — orange
+  '#9d5cff', // 5 — violet (donut only)
 ] as const
 
 /** Reserved status colours — state only, never series identity. */

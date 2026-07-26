@@ -33,6 +33,8 @@ import {
   YAxis,
 } from 'recharts'
 import { Sparkline } from '~/components/charts/Sparkline'
+import { ChartTooltip } from '~/components/charts/ChartTooltip'
+import { CATEGORICAL } from '~/lib/chartTheme'
 import { CountryAnalysis } from '~/components/countryExplorer/CountryAnalysis'
 import { CountryExplorerSkeleton } from '~/components/countryExplorer/CountryExplorerSkeleton'
 
@@ -62,11 +64,10 @@ import type {
 } from '~/types/countryExplorer'
 
 /**
- * Wall Street photograph for the strip beside the sidebar.
- * "Sign of the New York Stock Exchange, Broad Street" by Billie Grace Ward —
- * CC0 (public domain dedication, no attribution required), sourced from
- * Wikimedia Commons:
- * https://commons.wikimedia.org/wiki/File:Sign_of_the_New_York_Stock_Exchange,_Broad_Street.jpg
+ * Financial-District night photograph used as the sidebar background — a dark,
+ * cinematic Lower-Manhattan scene (anonymous lit stone building, an illuminated
+ * Handelsbanken flag, wet pavement). User-supplied asset; swap the file at this
+ * path to change it.
  */
 const WALL_STREET_PHOTO_URL = '/data/wall-street.jpg'
 
@@ -75,11 +76,17 @@ const PANEL =
   'rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)]'
 const CARD_INNER =
   'rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)]'
+// These tiles are informational, not links — no lift or pointer that would
+// promise navigation. Just an extremely subtle same-hue border response so the
+// surface still feels alive under the cursor. (Navigation lives in each
+// section's explicit "Visa alla / Lägg till" link.)
 const CARD_HOVER =
-  'transition-all duration-200 hover:-translate-y-[2px] hover:border-[rgba(72,167,232,0.42)]'
+  'transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)]'
 const LABEL = 'text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]'
-const POSITIVE = '#27d879'
-const NEGATIVE = '#ff4f55'
+// Semantic up/down colours are the app-wide tokens, not local literals, so a
+// gain reads the same green here as on every dark page and chart.
+const POSITIVE = 'var(--color-positive)'
+const NEGATIVE = 'var(--color-negative)'
 
 /* ------------------------------------------------------------------ data — */
 
@@ -219,11 +226,14 @@ const SECTORS: Array<{ label: string; change: number; icon: typeof Cpu }> = [
 const INTRADAY_RANGES = ['1D', '1V', '1M', '3M', '1Å', 'YTD'] as const
 type IntradayRange = (typeof INTRADAY_RANGES)[number]
 
+// Series colours come from the shared, CVD-validated CATEGORICAL palette — no
+// ad-hoc per-screen colours, and OMXS30 is no longer green (which collided with
+// the semantic positive/up green).
 const INTRADAY_SERIES = [
-  { id: 'omxs30', label: 'OMXS30', color: '#27d879' },
-  { id: 'sp500', label: 'S&P 500', color: '#4382f6' },
-  { id: 'dax', label: 'DAX', color: '#a855f7' },
-  { id: 'nikkei', label: 'Nikkei 225', color: '#22cdeb' },
+  { id: 'omxs30', label: 'OMXS30', color: CATEGORICAL[0] },
+  { id: 'sp500', label: 'S&P 500', color: CATEGORICAL[1] },
+  { id: 'dax', label: 'DAX', color: CATEGORICAL[2] },
+  { id: 'nikkei', label: 'Nikkei 225', color: CATEGORICAL[3] },
 ]
 
 function buildIntraday(range: IntradayRange) {
@@ -249,91 +259,89 @@ const RATE_CURVE = seededSeries(61, 14, 0.02)
 /* ------------------------------------------------------------- sections — */
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Overview', icon: LayoutGrid },
-  { to: '/markets', label: 'Markets', icon: TrendingUp },
-  { to: '/watchlist', label: 'Watchlist', icon: Star },
-  { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
-  { to: '/agents', label: 'Analytics', icon: BarChart3 },
-  { to: '/reports', label: 'News', icon: Newspaper },
-  { to: '/reports', label: 'Reports', icon: FileText },
-  { to: '/settings', label: 'Alerts', icon: BellRing },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/', label: 'Översikt', icon: LayoutGrid },
+  { to: '/markets', label: 'Marknader', icon: TrendingUp },
+  { to: '/watchlist', label: 'Bevakning', icon: Star },
+  { to: '/portfolio', label: 'Portfölj', icon: Briefcase },
+  { to: '/agents', label: 'Analys', icon: BarChart3 },
+  { to: '/reports', label: 'Nyheter', icon: Newspaper },
+  { to: '/reports', label: 'Rapporter', icon: FileText },
+  { to: '/settings', label: 'Aviseringar', icon: BellRing },
+  { to: '/settings', label: 'Inställningar', icon: Settings },
 ] as const
 
-/** Narrow dark icon rail on the far left. */
+/**
+ * Left sidebar: the Financial-District photograph full-bleed, with the logo,
+ * navigation and active state sitting on top of it. The image keeps its OWN
+ * tones — no filters, blur or artistic gradients — under only a light ~12%
+ * veil for legibility, with a soft darkening behind the nav band so the labels
+ * hold, and the right edge seaming into the main surface. Swap the photo by
+ * replacing the file at `WALL_STREET_PHOTO_URL` (a dark portrait crop reads
+ * best); adjust `bg-[position]` afterwards to frame the flag/lit edges.
+ */
 function Sidebar() {
   return (
-    <aside
-      className="relative hidden w-[96px] shrink-0 flex-col items-center py-5 md:flex"
-      style={{ background: 'linear-gradient(180deg, #02070D 0%, #06101A 100%)' }}
-    >
-      <Link
-        to="/"
-        aria-label="Overview"
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.35)] text-[15px] font-bold text-[#ffb366]"
-      >
-        HX
-      </Link>
-      <nav className="mt-8 flex flex-1 flex-col gap-1.5">
-        {NAV_ITEMS.map((item, index) => {
-          const Icon = item.icon
-          const active = index === 0
-          return (
-            <Link
-              key={item.label}
-              to={item.to}
-              className={cn(
-                'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
-                active
-                  ? 'border border-[rgba(240,151,66,0.28)] bg-[rgba(111,66,29,0.42)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.12)]'
-                  : 'border border-transparent text-[#6b7d90] hover:bg-white/[0.04] hover:text-[#c9d6e2]',
-              )}
-            >
-              <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} aria-hidden="true" />
-              <span className="text-[9px] font-medium tracking-wide">{item.label}</span>
-            </Link>
-          )
-        })}
-      </nav>
-      <div className="mt-4 flex flex-col items-center gap-1">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.3)] bg-[rgba(9,24,37,0.9)] text-[12px] font-semibold text-[#c9d6e2]">
-          AS
-        </span>
-        <span className="text-center text-[8px] leading-tight text-[#6b7d90]">
-          Anders
-          <br />
-          Private Banking
-        </span>
-      </div>
-    </aside>
-  )
-}
-
-/** Full-height cinematic Wall Street photographic strip beside the sidebar. */
-function WallStreetStrip() {
-  return (
-    <div className="relative hidden w-[210px] shrink-0 overflow-hidden lg:block">
+    <aside className="relative isolate hidden w-[306px] shrink-0 overflow-hidden md:flex">
+      {/* Full-bleed photograph — the image's own grade, untouched. */}
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
       />
-      {/* Cinematic night grade: deep shadows top/bottom, warm mid, cyan cast. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            'linear-gradient(180deg, rgba(3,8,15,0.55), rgba(3,8,15,0.10) 42%, rgba(3,8,15,0.62))',
-        }}
-      />
-      <div
-        className="absolute inset-0 mix-blend-soft-light"
-        style={{ background: 'linear-gradient(120deg, rgba(20,90,140,0.35), transparent 60%)' }}
-      />
+      {/* Minimal readability veil (~12%). */}
+      <div className="absolute inset-0 bg-black/[0.12]" />
+      {/* Soft darkening behind the nav band only — just enough to hold the labels. */}
+      <div className="absolute inset-y-0 left-0 w-[160px] bg-gradient-to-r from-[rgba(3,7,14,0.62)] to-transparent" />
       {/* Seam into the main surface. */}
       <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#020711] to-transparent" />
-      {/* Subtle vignette. */}
-      <div className="absolute inset-0 shadow-[inset_0_0_60px_20px_rgba(2,7,17,0.6)]" />
-    </div>
+
+      {/* UI on top. */}
+      <div className="relative z-10 flex w-[112px] flex-col items-center py-5">
+        <Link
+          to="/"
+          aria-label="Översikt"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(240,151,66,0.35)] bg-[rgba(111,66,29,0.55)] text-[15px] font-bold text-[#ffb366] shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-sm"
+        >
+          HX
+        </Link>
+        <nav className="mt-8 flex flex-1 flex-col gap-1.5">
+          {NAV_ITEMS.map((item, index) => {
+            const Icon = item.icon
+            const active = index === 0
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                className={cn(
+                  'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
+                  active
+                    ? 'border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.55)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.14)] backdrop-blur-sm'
+                    : 'border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white',
+                )}
+              >
+                <Icon
+                  className="h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                />
+                <span className="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+                  {item.label}
+                </span>
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="mt-4 flex flex-col items-center gap-1">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.35)] bg-[rgba(9,24,37,0.75)] text-[12px] font-semibold text-[#dbe4ee] backdrop-blur-sm">
+            AS
+          </span>
+          <span className="text-center text-[8px] leading-tight text-[#c4d0dd] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+            Anders
+            <br />
+            Private Banking
+          </span>
+        </div>
+      </div>
+    </aside>
   )
 }
 
@@ -387,7 +395,9 @@ function Header() {
             aria-hidden="true"
             className={cn(
               'h-2 w-2 rounded-full',
-              openCount > 0 ? 'bg-[#27d879] shadow-[0_0_8px_#27d879]' : 'bg-[#ff4f55]',
+              openCount > 0
+                ? 'bg-positive shadow-[0_0_8px_var(--color-positive)]'
+                : 'bg-negative',
             )}
           />
           {openCount > 0 ? 'Marknader öppna' : 'Marknader stängda'}
@@ -425,6 +435,39 @@ function ChangeText({ value, className }: { value: number; className?: string })
     >
       {formatPercent(value)}
     </span>
+  )
+}
+
+interface IntradayTooltipEntry {
+  dataKey?: string | number
+  value?: number
+}
+
+/** Routes the intraday chart's hover through the shared ChartTooltip, on the
+ *  Overview's own dark ground — one tooltip component, theme-aware surface. */
+function IntradayTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: IntradayTooltipEntry[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  return (
+    <ChartTooltip
+      surface="overview"
+      title={String(label ?? '')}
+      rows={payload.map((entry) => {
+        const series = INTRADAY_SERIES.find((s) => s.id === entry.dataKey)
+        return {
+          label: series?.label ?? String(entry.dataKey),
+          value: `${formatNumber(entry.value ?? 0, 2)} %`,
+          color: series?.color,
+        }
+      })}
+    />
   )
 }
 
@@ -513,7 +556,6 @@ export function LightCommandCenter() {
       }}
     >
       <Sidebar />
-      <WallStreetStrip />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
@@ -665,11 +707,16 @@ export function LightCommandCenter() {
               title="Utveckling idag"
               className="xl:col-span-5"
               action={
-                <div className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5">
+                <div
+                  role="group"
+                  aria-label="Tidsintervall"
+                  className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5"
+                >
                   {INTRADAY_RANGES.map((r) => (
                     <button
                       key={r}
                       type="button"
+                      aria-pressed={r === range}
                       onClick={() => setRange(r)}
                       className={cn(
                         'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200',
@@ -703,19 +750,8 @@ export function LightCommandCenter() {
                     />
                     <Tooltip
                       cursor={{ stroke: 'rgba(114,164,255,0.4)' }}
-                      contentStyle={{
-                        borderRadius: 10,
-                        border: '1px solid rgba(70,130,163,0.3)',
-                        background: 'rgba(6,18,29,0.96)',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
-                        fontSize: 12,
-                        color: '#f2f6fa',
-                      }}
-                      labelStyle={{ color: '#9aa7b7' }}
-                      formatter={(value, name) => [
-                        `${Number(value ?? 0).toFixed(2)}%`,
-                        INTRADAY_SERIES.find((s) => s.id === name)?.label ?? String(name),
-                      ]}
+                      content={<IntradayTooltip />}
+                      isAnimationActive={false}
                     />
                     {INTRADAY_SERIES.map((s) => (
                       <Line
@@ -725,7 +761,10 @@ export function LightCommandCenter() {
                         stroke={s.color}
                         strokeWidth={1.6}
                         dot={false}
+                        activeDot={{ r: 3, strokeWidth: 2, stroke: '#06121d' }}
                         isAnimationActive={!reducedMotion}
+                        animationDuration={850}
+                        animationEasing="ease-out"
                       />
                     ))}
                   </LineChart>

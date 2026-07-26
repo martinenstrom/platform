@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { CHART_AXIS_TEXT, CHART_GRID, STATUS } from '~/lib/chartTheme'
+import { CHART_AXIS_TEXT, CHART_GRID, CHART_SURFACE, STATUS } from '~/lib/chartTheme'
 import { formatNumber } from '~/lib/format'
 import type { ChartPoint } from '~/data/countryExplorer/trendSeries'
 import { ChartTooltip } from './ChartTooltip'
@@ -41,7 +41,12 @@ export function TrendChart({ data, title, trendUp, unit = '' }: TrendChartProps)
                 <stop offset="100%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid
+              stroke={CHART_GRID}
+              strokeOpacity={0.55}
+              strokeDasharray="3 3"
+              vertical={false}
+            />
             <XAxis
               dataKey="t"
               tick={{ fill: CHART_AXIS_TEXT, fontSize: 10 }}
@@ -60,6 +65,7 @@ export function TrendChart({ data, title, trendUp, unit = '' }: TrendChartProps)
             <Tooltip
               cursor={{ stroke: CHART_GRID, strokeWidth: 1 }}
               content={<TrendTooltip unit={unit} />}
+              isAnimationActive={false}
             />
             <Area
               type="monotone"
@@ -68,7 +74,7 @@ export function TrendChart({ data, title, trendUp, unit = '' }: TrendChartProps)
               strokeWidth={2}
               fill={`url(#${gradientId})`}
               dot={false}
-              activeDot={{ r: 3, strokeWidth: 0 }}
+              activeDot={{ r: 3, strokeWidth: 2, stroke: CHART_SURFACE }}
               isAnimationActive={false}
             />
           </AreaChart>

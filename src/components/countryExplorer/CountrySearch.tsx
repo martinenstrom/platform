@@ -48,7 +48,7 @@ export function CountrySearch({
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
-          className="hud-frame h-8 w-full rounded-lg bg-surface pr-3 pl-8 text-xs text-content placeholder:text-content-subtle transition-colors duration-150 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none"
+          className="hud-frame h-8 w-full rounded-lg bg-surface pr-3 pl-8 text-xs text-content placeholder:text-content-subtle transition-colors duration-150 hover:bg-surface-2 focus:bg-surface-2"
         />
       </div>
 
