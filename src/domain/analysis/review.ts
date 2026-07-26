@@ -21,6 +21,24 @@ import type { ClaimId } from './claims'
 import type { CaseId } from './cases'
 import type { DepartmentId, EmployeeId } from './organization'
 import type { EvidenceRef } from './identity'
+import type { ThesisId } from './theses'
+
+/**
+ * What a review is ABOUT.
+ *
+ * A case-level review answers "is this body of work sound". A thesis-level one
+ * answers "is THIS argument sound", and with competing theses that is the only
+ * useful question: Buy and Sell have opposite downsides, so a single risk
+ * verdict per case says nothing about either.
+ *
+ * Optional rather than required, because early-stage work legitimately has no
+ * theses yet — but once a case has them, reviews attach to them.
+ */
+export interface ReviewScope {
+  caseId: CaseId
+  /** Absent for a case-wide review; present once theses exist. */
+  thesisId?: ThesisId
+}
 
 /* ------------------------------------------------------------- verification */
 
@@ -70,6 +88,8 @@ export type VerificationStatus =
 
 export interface VerificationReview {
   caseId: CaseId
+  /** Which thesis this verdict concerns. See `ReviewScope`. */
+  thesisId?: ThesisId
   byEmployeeId: EmployeeId
   byDepartmentId: DepartmentId
   at: string
@@ -108,6 +128,15 @@ export interface Challenge {
   id: string
   /** The claim being contested. */
   contests: ClaimId
+  /**
+   * The thesis being contested, where the objection is to the whole argument
+   * rather than to one of its claims.
+   *
+   * The Devil's Advocate may also PROPOSE a competing thesis rather than
+   * challenge an existing one; that is an `InvestmentThesis` with the Devil's
+   * Advocate as proposer, not a `Challenge`.
+   */
+  contestsThesis?: ThesisId
   kind:
     | 'alternative-explanation'
     | 'fragile-assumption'
@@ -144,6 +173,8 @@ export type ChallengeStatus = 'open' | 'accepted' | 'rejected' | 'resolved'
 
 export interface DevilsAdvocateReview {
   caseId: CaseId
+  /** Which thesis is being challenged. */
+  thesisId?: ThesisId
   byEmployeeId: EmployeeId
   byDepartmentId: DepartmentId
   at: string
@@ -168,6 +199,8 @@ export interface ComplianceFinding {
 
 export interface ComplianceReview {
   caseId: CaseId
+  /** Which thesis this verdict concerns. See `ReviewScope`. */
+  thesisId?: ThesisId
   byEmployeeId: EmployeeId
   byDepartmentId: DepartmentId
   at: string
@@ -183,6 +216,8 @@ export function complianceBlocks(review: ComplianceReview): boolean {
 
 export interface RiskReview {
   caseId: CaseId
+  /** Which thesis this verdict concerns. See `ReviewScope`. */
+  thesisId?: ThesisId
   byEmployeeId: EmployeeId
   byDepartmentId: DepartmentId
   at: string
@@ -237,6 +272,11 @@ export interface GateResult {
   blockers: readonly string[]
 }
 
+/** One gate verdict per thesis, plus the case-wide reviews that apply to all. */
+export interface ThesisGateResult extends GateResult {
+  thesisId: ThesisId
+}
+
 /**
  * Whether a case may reach the CIO.
  *
@@ -268,4 +308,42 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
   }
 
   return { passed: blockers.length === 0, blockers: Object.freeze(blockers) }
+}
+
+/**
+ * Evaluates the gate for each thesis separately.
+ *
+ * Necessary once a case holds competing positions: thesis A may clear while
+ * thesis B is blocked, and collapsing that into one verdict would either hide
+ * a blocked argument or suppress a sound one. The CIO is entitled to both
+ * facts.
+ *
+ * Reviews with no `thesisId` are case-wide and apply to every thesis —
+ * compliance on the language of the whole report, for instance.
+ */
+export function evaluateThesisGates(
+  thesisIds: readonly ThesisId[],
+  reviews: {
+    verification?: readonly VerificationReview[]
+    devilsAdvocate?: readonly DevilsAdvocateReview[]
+    compliance?: readonly ComplianceReview[]
+    risk?: readonly RiskReview[]
+  },
+): ThesisGateResult[] {
+  const forThesis = <T extends { thesisId?: ThesisId }>(
+    all: readonly T[] | undefined,
+    thesisId: ThesisId,
+  ): T | undefined =>
+    all?.find((r) => r.thesisId === thesisId) ??
+    all?.find((r) => r.thesisId === undefined)
+
+  return thesisIds.map((thesisId) => {
+    const result = evaluateGate({
+      verification: forThesis(reviews.verification, thesisId),
+      devilsAdvocate: forThesis(reviews.devilsAdvocate, thesisId),
+      compliance: forThesis(reviews.compliance, thesisId),
+      risk: forThesis(reviews.risk, thesisId),
+    })
+    return { thesisId, ...result }
+  })
 }

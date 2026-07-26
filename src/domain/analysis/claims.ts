@@ -223,6 +223,16 @@ interface ClaimBase {
   status: ClaimStatus
   /** For a counterclaim: the claim being contested. */
   contests?: ClaimId
+  /**
+   * The thesis this claim argues for or against.
+   *
+   * Without it, Equity Research supporting Buy and Quant supporting Hold are
+   * indistinguishable in the record — the disagreement between desks would
+   * have to be reconstructed from prose, which is the failure this whole
+   * module exists to prevent.
+   */
+  supportsThesisId?: string
+  opposesThesisId?: string
 }
 
 /**

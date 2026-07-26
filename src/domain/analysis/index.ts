@@ -12,6 +12,7 @@
 
 export * from './organization'
 export * from './cases'
+export * from './theses'
 export * from './work'
 export * from './identity'
 export * from './evidence'
