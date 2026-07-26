@@ -16,6 +16,11 @@ import type { DataCategory } from '~/application/marketData/ports'
 
 export type MarketDataMode = 'fixture' | 'hybrid' | 'live'
 
+/**
+ * Records only that a credential EXISTS, never its value. Nothing downstream
+ * can leak what it was never given — which is why `MarketDataConfig` is safe
+ * to log, serialize or inspect in full.
+ */
 export interface ProviderCredential {
   providerId: string
   envVar: string
@@ -38,6 +43,9 @@ export interface MarketDataConfig {
   chains: Record<DataCategory, string[]>
   credentials: Record<string, ProviderCredential>
   limits: Record<string, ProviderLimits>
+  /** Per-provider request deadline; falls back to `defaultTimeoutMs`. */
+  timeouts: Record<string, number>
+  defaultTimeoutMs: number
   /** Non-fatal problems found while reading the environment. */
   warnings: string[]
 }
@@ -185,9 +193,19 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
     },
   }
 
+  const timeouts: Record<string, number> = {}
+  for (const providerId of Object.keys(credentials)) {
+    const raw = env[`MARKETDATA_TIMEOUT_MS_${providerId.toUpperCase()}`]
+    const parsed = parseInteger(raw, `MARKETDATA_TIMEOUT_MS_${providerId.toUpperCase()}`)
+    if (parsed !== null) timeouts[providerId] = parsed
+  }
+
   return {
     mode,
     production,
+    timeouts,
+    defaultTimeoutMs:
+      parseInteger(env.MARKETDATA_TIMEOUT_MS, 'MARKETDATA_TIMEOUT_MS') ?? 5_000,
     cacheDir: env.MARKETDATA_CACHE_DIR?.trim() || '.cache',
     persistCache: parseBoolean(
       env.MARKETDATA_PERSIST_CACHE,

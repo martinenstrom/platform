@@ -1549,3 +1549,159 @@ the first action and not the last.
 - [CoinGecko API pricing](https://www.coingecko.com/en/api/pricing) · [public plan rate limits](https://support.coingecko.com/hc/en-us/articles/4538771776153-What-is-the-rate-limit-for-CoinGecko-API-public-plan)
 - [Marketaux](https://www.marketaux.com/) · [Financial news sentiment APIs 2026](https://adanos.org/insights/blog/best-financial-news-sentiment-apis-2026/) · [Financial news APIs for AI agents](https://qveris.ai/guides/financial-news-api-for-ai-agents/)
 - [API Ninjas commodity price](https://api-ninjas.com/api/commodityprice) · [Oil Price API](https://www.oilpriceapi.com/) · [Commodities-API](https://commodities-api.com/)
+
+---
+
+---
+
+# Part IV — Phase 1 architecture (resilience infrastructure)
+
+Approved 2026-07-26 with seven refinements, recorded below. Phase 1 adds
+operational guarantees behind the **existing** `resolve()` signature; no live
+provider is connected and no UI changes.
+
+## 19. Retry accounting (refinement 1)
+
+**Decision: one daily-budget unit per attempt, not per logical resolution.**
+
+|                                        | Per attempt (chosen)                                      | Per logical resolution                                                                    |
+| -------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Fidelity to the provider's own counter | Exact — providers count HTTP requests, and a retry is one | Drifts: three retries decrement our counter once but the provider's three times           |
+| Worst-case real overshoot              | None                                                      | Up to the retry factor (3×), and precisely during an outage, when retries are most likely |
+| Feature-throughput predictability      | Weaker — a bad afternoon can consume the day's refreshes  | Stronger — "news refreshes 100×/day" holds regardless                                     |
+| Starvation risk                        | Real, and bounded (below)                                 | Lower                                                                                     |
+
+The deciding argument: a budget that does not match the provider's own
+accounting is not a budget. Its purpose is to keep us inside a quota we do not
+control, and Marketaux counts requests, not intentions. Per-resolution
+accounting would silently exceed the real quota by up to 3× at exactly the
+moment the provider is already unhealthy — the failure mode the budget exists
+to prevent.
+
+The starvation risk is accepted because it is bounded from three directions:
+retries are capped at 3 and only fire for `retryable` errors; the circuit
+breaker opens after 5 consecutive failures and stops attempts entirely; and
+`ProviderHealth.budget.remaining` makes consumption observable rather than
+mysterious. A partial outage can cost at most a 3× burn on the categories still
+attempting, and the breaker curtails even that within a handful of requests.
+
+## 20. Cache-key evolution (refinement 2)
+
+Three independent version axes, so a change invalidates exactly what it must:
+
+```
+s<schemaVersion>.n<normalizationVersion>:<capability>:<request-identity>
+e.g.  s1.n1:quotes:idx:dax|idx:sp500
+```
+
+| Axis                     | Bumped when                                                                                                                                    | Invalidates                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **schemaVersion**        | A domain model's _shape_ changes — a field added, removed or retyped                                                                           | Everything                                                                                                                          |
+| **normalizationVersion** | An adapter's _mapping semantics_ change — a unit correction, a different `previousClose` source, a rounding fix — while the shape is identical | Everything, but for a different reason: old entries are structurally valid and semantically wrong, which is the more dangerous case |
+| **request identity**     | Never bumped; it _is_ the request (sorted symbols, interval, range, limit)                                                                     | Only the affected request                                                                                                           |
+
+Separating schema from normalization matters because a normalization change is
+invisible to the type system. Without its own axis, a corrected unit mapping
+would leave plausible, well-typed, wrong values in the cache until their TTL
+expired.
+
+## 21. Metrics contracts (refinement 3)
+
+A `Metrics` port; no dashboards, no exporter, no implementation beyond an
+in-memory recorder and a no-op. Defining the contract now means the call sites
+exist before anyone needs the data.
+
+| Metric                                          | Type      | Labels                                       |
+| ----------------------------------------------- | --------- | -------------------------------------------- |
+| `marketdata.cache.hit` / `.miss` / `.stale_hit` | counter   | `category`, `capability`                     |
+| `marketdata.provider.latency_ms`                | histogram | `provider`, `capability`, `outcome`          |
+| `marketdata.provider.request`                   | counter   | `provider`, `capability`, `outcome`          |
+| `marketdata.provider.retry`                     | counter   | `provider`, `attempt`                        |
+| `marketdata.provider.timeout`                   | counter   | `provider`, `capability`                     |
+| `marketdata.breaker.opened`                     | counter   | `provider`                                   |
+| `marketdata.breaker.state`                      | gauge     | `provider`                                   |
+| `marketdata.budget.used` / `.remaining`         | gauge     | `provider`                                   |
+| `marketdata.resolution`                         | counter   | `category`, `state` (ok/stale/fixture/error) |
+
+Cache hit ratio, stale hit ratio and provider success rate are **derived** from
+these counters rather than stored — a ratio recorded as a gauge is a ratio that
+goes stale.
+
+## 22. Correlation IDs (refinement 4)
+
+A `CorrelationId` is minted once per inbound request (one per
+`getOverviewSnapshot`) and threaded through `FetchContext` → every provider
+call → every log record and metric → and, when the bus exists, onto
+`DomainEventBase.correlationId`, which already reserves the field.
+
+Generated from the injected `Random`, so tests are reproducible. Never derived
+from user input, and never contains one.
+
+## 23. Provider capabilities metadata (refinement 5)
+
+Declared at registration, so orchestration can reason about a provider without
+hardcoding its name:
+
+```ts
+export interface ProviderCapabilityMetadata {
+  /** Typical successful round trip, for timeout and ordering decisions. */
+  expectedLatencyMs: number
+  /** How often the upstream itself changes. Nothing is gained by polling faster. */
+  updateFrequency: 'realtime' | 'minutely' | 'hourly' | 'daily' | 'static'
+  /** Known delay behind the live market; null when the provider does not say. */
+  delayMinutes: number | null
+  supportsHistory: boolean
+  supportsIntraday: boolean
+  /** True when one call can serve many symbols — the free-tier survival trait. */
+  supportsBatch: boolean
+  /** Attribution the presentation layer is obliged to surface, if any. */
+  requiresAttribution: boolean
+}
+```
+
+Future uses this enables without a rewrite: ordering a chain by latency,
+skipping a daily-update provider whose value cannot have changed, choosing a
+history-capable provider for a range request, and sizing timeouts per provider
+instead of globally.
+
+## 24. Aggregate system health (refinement 6)
+
+Operational metadata, not a UI feature.
+
+```ts
+export interface MarketDataHealth {
+  status: 'healthy' | 'degraded' | 'critical'
+  checkedAt: string
+  providers: ProviderHealth[]
+  categories: Array<{
+    category: DataCategory
+    /** Best state currently achievable, given breakers and budgets. */
+    bestAvailable: 'live' | 'stale' | 'fixture' | 'unavailable'
+    liveProvidersConfigured: number
+    liveProvidersAvailable: number
+  }>
+  /** Categories that would error rather than render in live mode. */
+  unservableCategories: DataCategory[]
+}
+```
+
+`degraded` = at least one category cannot reach a live provider. `critical` =
+at least one category is `unavailable` — no live provider, no acceptable stale
+value, and fixtures forbidden.
+
+## 25. Snapshot family (refinement 7)
+
+`OverviewSnapshot` is the first of a family, not a one-off. Each is an
+application-level aggregate assembled server-side, with independently
+timestamped categories and one conservative `asOf`:
+
+| Snapshot            | Status     | Serves                                                                                    |
+| ------------------- | ---------- | ----------------------------------------------------------------------------------------- |
+| `OverviewSnapshot`  | ✅ Phase 0 | the Overview                                                                              |
+| `CountrySnapshot`   | documented | the country modal; migration target for `types/countryExplorer.ts`                        |
+| `PortfolioSnapshot` | documented | `/portfolio`; migration target for `Holding`, `AllocationSlice`                           |
+| `AgentSnapshot`     | documented | the AI-agent experience; the natural consumer of `MarketDataHealth` and the domain events |
+
+Shared invariants every member must keep: category-level `Envelope`s,
+provenance on every value, `asOf` as the oldest populated category, numeric
+until the presentation boundary, and one server round trip.

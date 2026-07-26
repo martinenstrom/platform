@@ -3,11 +3,13 @@ import { FakeClock } from '~/domain/shared/clock'
 import {
   buildProvenance,
   type DataSourceMetadata,
+  type ErrorCode,
   type Provenance,
 } from '~/domain/market'
 import {
   createProviderRegistry,
   FIXTURE_PROVIDER_ID,
+  noopLogger,
   resolve,
   type CachedValue,
   type ResolutionCache,
@@ -15,6 +17,9 @@ import {
   type ResolveDeps,
 } from './providerRegistry'
 import type { AnyProvider, ProviderRegistration, QuoteProvider } from './ports'
+import { noopMetrics } from './metrics'
+import type { RunAttempt } from './resolution'
+import { NO_CORRELATION } from '~/domain/shared/correlation'
 
 /* --------------------------------------------------------------- test doubles */
 
@@ -67,10 +72,52 @@ function attemptReturning(marker: string) {
   })
 }
 
+/**
+ * Pass-through attempt runner. The operational pipeline — breaker, budget,
+ * limiter, timeout, retry — has its own suites; these tests exercise chain
+ * ordering, staleness and fallback in isolation from it.
+ */
+const passThrough: RunAttempt = async ({ providerId, call }) => {
+  try {
+    const value = await call({
+      signal: new AbortController().signal,
+      clock,
+      correlationId: NO_CORRELATION,
+    })
+    return { kind: 'success', value, latencyMs: 0, attempts: 1 }
+  } catch (error) {
+    const code =
+      error instanceof Error && 'code' in error && typeof error.code === 'string'
+        ? (error.code as ErrorCode)
+        : 'unknown'
+    return {
+      kind: 'failed',
+      error: {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+        providerId,
+        retryable: false,
+      },
+      attempts: 1,
+    }
+  }
+}
+
 function deps(
   overrides: Partial<ResolveDeps> & Pick<ResolveDeps, 'registry'>,
 ): ResolveDeps {
-  return { clock, production: false, ...overrides }
+  return {
+    clock,
+    production: false,
+    logger: noopLogger,
+    metrics: noopMetrics,
+    runAttempt: passThrough,
+    // Not deduplicated here: single-flight has its own suite, and sharing an
+    // execution would mask the per-call assertions below.
+    singleFlight: (_key, execute) => execute(),
+    correlationId: NO_CORRELATION,
+    ...overrides,
+  }
 }
 
 beforeEach(() => {
@@ -152,6 +199,25 @@ describe('resolve — fallback chain', () => {
     expect(result.state === 'ok' && result.provenance.source.providerId).toBe('b')
   })
 
+  it('serves a stale entry immediately under stale-while-revalidate', async () => {
+    // Crypto enables SWR, so an expired-but-usable entry is returned without
+    // waiting for a provider — and still labelled `stale`, never `ok`.
+    const cache = memoryCache()
+    cache.entries.set(base.cacheKey, {
+      value: 'cached-real',
+      provenance: provenanceFor('a', '2026-07-26T11:00:00.000Z'),
+      expiresAtMs: clock.epochMs() - 1,
+    })
+    const registry = createProviderRegistry([stubProvider('a', 'ok')])
+    const result = await resolve(deps({ registry, cache }), {
+      ...base,
+      chain: ['a'],
+      attempt: attemptReturning('fresh'),
+    })
+    expect(result.state).toBe('stale')
+    expect(result.state === 'stale' && result.data).toBe('cached-real')
+  })
+
   it('serves a stale cached value before ever reaching the fixture', async () => {
     // An explicitly stale real value beats an invented one.
     const cache = memoryCache()
@@ -164,8 +230,11 @@ describe('resolve — fallback chain', () => {
       stubProvider('a', new Error('down')),
       stubProvider(FIXTURE_PROVIDER_ID, 'ok'),
     ])
+    // yields-us disables SWR, so the chain is tried first and the stale
+    // reason reflects why it failed rather than a generic label.
     const result = await resolve(deps({ registry, cache }), {
       ...base,
+      category: 'yields-us',
       chain: ['a', FIXTURE_PROVIDER_ID],
       attempt: async (provider) => {
         if (provider.id === 'a') throw new Error('down')
@@ -283,7 +352,9 @@ describe('resolve — provenance propagation', () => {
     const rateLimited = Object.assign(new Error('429'), { code: 'rate-limit' })
     const registry = createProviderRegistry([stubProvider('a', rateLimited)])
     const result = await resolve(deps({ registry, cache }), {
-      category: 'fx',
+      // Non-SWR, so the provider is actually attempted and its failure code
+      // is what selects the stale reason.
+      category: 'yields-us',
       capability: 'quotes',
       cacheKey: 'v1:fx',
       marketOpen: true,

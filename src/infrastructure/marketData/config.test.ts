@@ -7,7 +7,7 @@ import {
   loadMarketDataConfig,
   type EnvSource,
 } from './config'
-import { budgetKey, newsKey, quotesKey, seriesKey } from './keys'
+import { budgetKey, newsKey, quotesKey, seriesKey, withProxy } from './keys'
 import { createContainer } from './container'
 import { canonicalSymbol } from '~/domain/market'
 
@@ -140,15 +140,24 @@ describe('cache keys', () => {
   const a = canonicalSymbol('idx:sp500')
   const b = canonicalSymbol('idx:dax')
 
+  it('separate proxied results from real ones', () => {
+    // A proxy is different data and must never occupy the real slot.
+    expect(withProxy(quotesKey('quotes', [a]), true)).not.toBe(quotesKey('quotes', [a]))
+    expect(withProxy(quotesKey('quotes', [a]), false)).toBe(quotesKey('quotes', [a]))
+  })
+
   it('are independent of argument order', () => {
     expect(quotesKey('quotes', [a, b])).toBe(quotesKey('quotes', [b, a]))
   })
 
-  it('are versioned so a model change can invalidate everything at once', () => {
-    expect(quotesKey('quotes', [a]).startsWith('v1:')).toBe(true)
-    expect(seriesKey(a, '1h', { from: 'x', to: 'y' }).startsWith('v1:')).toBe(true)
-    expect(newsKey([], 4).startsWith('v1:')).toBe(true)
-    expect(budgetKey('marketaux', '2026-07-26')).toBe('v1:budget:marketaux:2026-07-26')
+  it('carry schema and normalization versions', () => {
+    // Two axes: schema shape and normalization semantics.
+    expect(quotesKey('quotes', [a]).startsWith('s1.n1:')).toBe(true)
+    expect(seriesKey(a, '1h', { from: 'x', to: 'y' }).startsWith('s1.n1:')).toBe(true)
+    expect(newsKey([], 4).startsWith('s1.n1:')).toBe(true)
+    // Deliberately unversioned: a schema bump must not hand a provider a
+    // fresh quota for the day.
+    expect(budgetKey('marketaux', '2026-07-26')).toBe('budget:marketaux:2026-07-26')
   })
 
   it('distinguish requests that differ only by scope', () => {

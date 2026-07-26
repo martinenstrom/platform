@@ -8,6 +8,7 @@
  * fallback.
  */
 
+import { getMarketStatus, MARKET_CENTERS } from '~/data/countryExplorer/marketCenters'
 import type { OverviewDataSource } from '~/application/marketData/getOverviewSnapshot'
 import { resolve, type ResolveDeps } from '~/application/marketData/providerRegistry'
 import type {
@@ -30,17 +31,18 @@ import {
   type Provenance,
   type SeriesRange,
 } from '~/domain/market'
+import type { CorrelationId } from '~/domain/shared/correlation'
 import type { Container } from './container'
 import type { FixtureProvider } from './providers/fixture'
-import { newsKey, quotesKey, sentimentKey, seriesKey } from './keys'
+import { newsKey, quotesKey, sentimentKey, seriesKey, yieldCurveKey } from './keys'
 
 /**
- * Whether the relevant market is open, for TTL selection. Phase 0 has only
- * fixture data, whose TTL is immaterial; Phase 2 onward wires this to
- * `getMarketStatus` over `MARKET_CENTERS`.
+ * Whether any major venue is currently trading, for TTL selection: a closed
+ * market has nothing new to report, so spending quota on it is waste. Uses the
+ * existing published-session calendar rather than a new mechanism.
  */
-function marketOpen(): boolean {
-  return true
+function marketOpen(now: Date): boolean {
+  return MARKET_CENTERS.some((center) => getMarketStatus(center, now) === 'OPEN')
 }
 
 /** Provenance for a set of values that were resolved together. */
@@ -54,13 +56,21 @@ function mergedProvenance(items: Array<{ provenance: Provenance }>): Provenance 
   ).provenance
 }
 
-export function createOverviewDataSource(container: Container): OverviewDataSource {
+export function createOverviewDataSource(
+  container: Container,
+  /** One id for the whole snapshot, so every category shares a request chain. */
+  correlationId: CorrelationId = container.newCorrelationId(),
+): OverviewDataSource {
   const deps: ResolveDeps = {
     registry: container.registry,
     clock: container.clock,
     production: container.config.production,
     cache: container.cache,
     logger: container.logger,
+    metrics: container.metrics,
+    runAttempt: container.runAttempt,
+    singleFlight: (key, execute) => container.singleFlight.run(key, execute),
+    correlationId,
   }
 
   const chain = (category: DataCategory) => container.config.chains[category]
@@ -80,7 +90,7 @@ export function createOverviewDataSource(container: Container): OverviewDataSour
       capability: args.capability,
       cacheKey: args.cacheKey,
       chain: chain(args.category),
-      marketOpen: marketOpen(),
+      marketOpen: marketOpen(container.clock.now()),
       attempt: args.attempt,
     })
   }
@@ -147,7 +157,7 @@ export function createOverviewDataSource(container: Container): OverviewDataSour
       run({
         category: 'yields-us',
         capability: 'yields',
-        cacheKey: `v1:yieldcurve:${countryCode}`,
+        cacheKey: yieldCurveKey(countryCode),
         attempt: async (provider, ctx) => {
           const yieldProvider = provider as YieldProvider
           if (!yieldProvider.fetchYieldCurve) {

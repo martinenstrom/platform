@@ -36,6 +36,16 @@ async function getContainer(): Promise<Container> {
     providers: [
       {
         provider: fixture,
+        metadata: {
+          // A local fixture: instant, never delayed, no attribution owed.
+          expectedLatencyMs: 0,
+          updateFrequency: 'static',
+          delayMinutes: null,
+          supportsHistory: true,
+          supportsIntraday: true,
+          supportsBatch: true,
+          requiresAttribution: false,
+        },
         // The fixture serves every capability — it is the tail of every chain.
         capabilities: new Set([
           'quotes',
@@ -58,6 +68,9 @@ export const getOverviewSnapshotFn = createServerFn({ method: 'GET' }).handler(
   async (): Promise<OverviewSnapshot> => {
     const container = await getContainer()
     const { createOverviewDataSource } = await import('./overviewDataSource')
-    return getOverviewSnapshot(createOverviewDataSource(container))
+    // One correlation id per inbound request, shared by every category so the
+    // whole snapshot can be reconstructed from the logs as a single chain.
+    const correlationId = container.newCorrelationId()
+    return getOverviewSnapshot(createOverviewDataSource(container, correlationId))
   },
 )

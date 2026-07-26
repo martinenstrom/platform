@@ -22,6 +22,7 @@ import type {
   YieldCurve,
 } from '~/domain/market'
 import type { Clock } from '~/domain/shared/clock'
+import type { CorrelationId } from '~/domain/shared/correlation'
 
 export type Capability =
   'quotes' | 'series' | 'fx' | 'yields' | 'commodities' | 'crypto' | 'news' | 'sentiment'
@@ -50,6 +51,11 @@ export type DataCategory =
 export interface FetchContext {
   signal: AbortSignal
   clock: Clock
+  /**
+   * Threaded from the inbound request through every provider call, log record
+   * and metric, so a complete request chain can be reconstructed later.
+   */
+  correlationId: CorrelationId
 }
 
 export interface ProviderIdentity {
@@ -141,11 +147,47 @@ export interface PortByCapability {
 }
 
 /**
- * A registered provider: its identity plus which capabilities it serves.
- * Registration is explicit rather than inferred from method presence, so a
- * partially-implemented adapter cannot silently advertise a capability.
+ * Declared operational characteristics of a provider.
+ *
+ * Lets orchestration reason about a provider without hardcoding its name:
+ * ordering a chain by latency, skipping a daily-update source whose value
+ * cannot have changed, choosing a history-capable provider for a range
+ * request, or sizing a timeout per provider instead of globally.
+ */
+export interface ProviderCapabilityMetadata {
+  /** Typical successful round trip, for timeout and ordering decisions. */
+  expectedLatencyMs: number
+  /** How often the upstream itself changes; polling faster gains nothing. */
+  updateFrequency: 'realtime' | 'minutely' | 'hourly' | 'daily' | 'static'
+  /** Known delay behind the live market; null when the provider does not say. */
+  delayMinutes: number | null
+  supportsHistory: boolean
+  supportsIntraday: boolean
+  /** True when one call serves many symbols — the free-tier survival trait. */
+  supportsBatch: boolean
+  /** Attribution the presentation layer is obliged to surface, if any. */
+  requiresAttribution: boolean
+}
+
+/** Sensible defaults so a provider declares only what differs. */
+export const DEFAULT_PROVIDER_METADATA: ProviderCapabilityMetadata = {
+  expectedLatencyMs: 500,
+  updateFrequency: 'minutely',
+  delayMinutes: null,
+  supportsHistory: false,
+  supportsIntraday: false,
+  supportsBatch: false,
+  requiresAttribution: false,
+}
+
+/**
+ * A registered provider: its identity, which capabilities it serves, and how
+ * it behaves. Registration is explicit rather than inferred from method
+ * presence, so a partially-implemented adapter cannot silently advertise a
+ * capability.
  */
 export interface ProviderRegistration {
   provider: AnyProvider
   capabilities: ReadonlySet<Capability>
+  metadata?: ProviderCapabilityMetadata
 }

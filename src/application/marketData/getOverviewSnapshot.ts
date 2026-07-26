@@ -123,6 +123,35 @@ const ALL_SYMBOLS: CanonicalSymbol[] = [
   ...OVERVIEW_WATCHLIST_SYMBOLS,
 ]
 
+/**
+ * Isolates one category.
+ *
+ * `resolve()` is designed never to throw, but "designed never to" is not a
+ * guarantee: a bug in an adapter, a normalizer or the pipeline itself would
+ * otherwise reject `Promise.all` and take the entire page down with it. One
+ * failing category must degrade one panel.
+ */
+async function isolate<T>(
+  label: string,
+  run: () => Promise<Envelope<T>>,
+): Promise<Envelope<T>> {
+  try {
+    return await run()
+  } catch (error) {
+    return {
+      state: 'error',
+      error: {
+        code: 'unknown',
+        message: `Category "${label}" failed unexpectedly: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        providerId: null,
+        retryable: true,
+      },
+    }
+  }
+}
+
 export async function getOverviewSnapshot(
   source: OverviewDataSource,
 ): Promise<OverviewSnapshot> {
@@ -141,19 +170,21 @@ export async function getOverviewSnapshot(
     watchlist,
     watchlistSparklines,
   ] = await Promise.all([
-    source.quotes(OVERVIEW_INDEX_SYMBOLS),
-    source.sparklines(OVERVIEW_INDEX_SYMBOLS),
-    source.fx(OVERVIEW_FX_SYMBOLS),
-    source.commodities(OVERVIEW_COMMODITY_SYMBOLS),
-    source.crypto(OVERVIEW_CRYPTO_SYMBOLS),
-    source.yields(OVERVIEW_YIELD_SYMBOLS),
-    source.yieldCurve('US'),
-    source.sectors(OVERVIEW_SECTOR_SYMBOLS),
-    source.sentiment(),
-    source.news(4),
-    source.intraday(),
-    source.watchlist(OVERVIEW_WATCHLIST_SYMBOLS),
-    source.watchlistSparklines(OVERVIEW_WATCHLIST_SYMBOLS),
+    isolate('indices', () => source.quotes(OVERVIEW_INDEX_SYMBOLS)),
+    isolate('indexSparklines', () => source.sparklines(OVERVIEW_INDEX_SYMBOLS)),
+    isolate('fx', () => source.fx(OVERVIEW_FX_SYMBOLS)),
+    isolate('commodities', () => source.commodities(OVERVIEW_COMMODITY_SYMBOLS)),
+    isolate('crypto', () => source.crypto(OVERVIEW_CRYPTO_SYMBOLS)),
+    isolate('yields', () => source.yields(OVERVIEW_YIELD_SYMBOLS)),
+    isolate('yieldCurve', () => source.yieldCurve('US')),
+    isolate('sectors', () => source.sectors(OVERVIEW_SECTOR_SYMBOLS)),
+    isolate('sentiment', () => source.sentiment()),
+    isolate('news', () => source.news(4)),
+    isolate('intraday', () => source.intraday()),
+    isolate('watchlist', () => source.watchlist(OVERVIEW_WATCHLIST_SYMBOLS)),
+    isolate('watchlistSparklines', () =>
+      source.watchlistSparklines(OVERVIEW_WATCHLIST_SYMBOLS),
+    ),
   ])
 
   const categories: Array<Envelope<unknown>> = [

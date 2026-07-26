@@ -52,6 +52,25 @@ function parse(fullPath: string): SourceFile {
   }
 }
 
+/**
+ * Removes comments and string literals before a source-level scan.
+ *
+ * Without this, a doc comment explaining "Date.now() is banned here" would
+ * itself trip the ban — so the rule could never be documented beside the code
+ * it governs.
+ */
+function codeOnly(source: string): string {
+  const blockComment = /\/\*[\s\S]*?\*\//g
+  const lineComment = /\/\/[^\n]*/g
+  const singleQuoted = /'(?:[^'\\\n]|\\.)*'/g
+  const doubleQuoted = /"(?:[^"\\\n]|\\.)*"/g
+  return source
+    .replace(blockComment, ' ')
+    .replace(lineComment, ' ')
+    .replace(singleQuoted, "''")
+    .replace(doubleQuoted, '""')
+}
+
 const FILES: SourceFile[] = listFiles(SRC).map(parse)
 
 const inLayer = (file: SourceFile, prefix: string) => file.path.startsWith(prefix)
@@ -119,15 +138,23 @@ describe('T3 — domain purity', () => {
     // Source-level checks for things that are not imports.
     const offenders: string[] = []
     for (const file of domain) {
-      const source = readFileSync(join(SRC, file.path), 'utf8')
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
       if (/\bprocess\.env\b/.test(source)) offenders.push(`${file.path}: process.env`)
       if (/\bfetch\s*\(/.test(source)) offenders.push(`${file.path}: fetch()`)
-      // Only the Clock abstraction may read the wall clock.
+      // Only the Clock abstraction may read the wall clock, and only the
+      // Random abstraction may read entropy. Everything else takes them as
+      // inputs, which is what makes the domain deterministic under test.
       if (
         !file.path.startsWith('domain/shared/clock') &&
         /\bDate\.now\s*\(/.test(source)
       ) {
         offenders.push(`${file.path}: Date.now()`)
+      }
+      if (
+        !file.path.startsWith('domain/shared/random') &&
+        /\bMath\.random\s*\(/.test(source)
+      ) {
+        offenders.push(`${file.path}: Math.random()`)
       }
     }
     expect(offenders).toEqual([])
@@ -268,5 +295,42 @@ describe('T16 — server-only secrets', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+describe('P11 — Phase 1 connects no live provider', () => {
+  it('ships exactly one provider adapter, the fixture', () => {
+    // Phase 1 adds operational guarantees, not data sources. A second adapter
+    // appearing here means a live integration landed without its phase gate.
+    const adapters = FILES.filter(
+      (f) =>
+        f.path.startsWith('infrastructure/marketData/providers/') &&
+        !isTest(f) &&
+        !f.path.includes('/fixture/'),
+    ).map((f) => f.path)
+    expect(adapters).toEqual(['infrastructure/marketData/providers/fixture.ts'])
+  })
+
+  it('performs no outbound fetch anywhere in the market-data layer', () => {
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (!file.path.startsWith('infrastructure/marketData/')) continue
+      if (isTest(file)) continue
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+      if (/fetch\s*\(/.test(source)) offenders.push(`${file.path}: fetch()`)
+      if (/XMLHttpRequest/.test(source)) offenders.push(`${file.path}: XMLHttpRequest`)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('registers only the fixture provider at the composition root', () => {
+    const serverFns = readFileSync(
+      join(SRC, 'infrastructure/marketData/serverFns.ts'),
+      'utf8',
+    )
+    const imported = [
+      ...serverFns.matchAll(/(?:from|import\()\s*'\.\/providers\/([\w-]+)'/g),
+    ].map((m) => m[1])
+    expect(imported).toEqual(['fixture'])
   })
 })
