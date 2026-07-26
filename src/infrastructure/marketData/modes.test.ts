@@ -33,6 +33,9 @@ const ALL_CAPS = new Set([
 /** Fails the test if anything reaches it. */
 function forbiddenHttp(onCall: () => void): HttpClient {
   return {
+    async getText(): Promise<string> {
+      throw new Error('getText not used in this stub')
+    },
     async getJson<T>(): Promise<T> {
       onCall()
       throw new Error('network must not be reached')

@@ -24,9 +24,11 @@ import type {
   YieldProvider,
 } from '~/application/marketData/ports'
 import {
+  hasData,
   SERIES_RANGES,
   type CanonicalSymbol,
   type Envelope,
+  type GovernmentYield,
   type MarketSeries,
   type Provenance,
   type SeriesRange,
@@ -54,6 +56,60 @@ function mergedProvenance(items: Array<{ provenance: Provenance }>): Provenance 
       new Date(item.provenance.asOf) < new Date(oldest.provenance.asOf) ? item : oldest,
     first,
   ).provenance
+}
+
+/**
+ * Recombines per-country yield envelopes into the single envelope the panel
+ * consumes, preserving the Overview's display order.
+ *
+ * The combined state is the WORST of the parts, on the same ordering the rest
+ * of the system uses: a panel that is partly stale is stale, and a panel where
+ * one country failed outright reports that rather than quietly showing three
+ * rows as though nothing happened.
+ */
+export function combineYieldEnvelopes(
+  envelopes: Array<Envelope<GovernmentYield[]>>,
+  order: readonly CanonicalSymbol[],
+): Envelope<GovernmentYield[]> {
+  const withData = envelopes.filter(hasData)
+  const merged = withData.flatMap((envelope) => envelope.data)
+  const ordered = order
+    .map((symbol) => merged.find((entry) => entry.symbol === symbol))
+    .filter((entry): entry is GovernmentYield => entry !== undefined)
+
+  const failed = envelopes.find((envelope) => envelope.state === 'error')
+  if (ordered.length === 0) {
+    return failed ?? { state: 'error', error: NO_YIELDS_ERROR }
+  }
+
+  const provenance = mergedProvenance(
+    withData.map((envelope) => ({ provenance: envelope.provenance })),
+  )
+  const fixture = withData.find((envelope) => envelope.state === 'fixture')
+  const stale = withData.find((envelope) => envelope.state === 'stale')
+
+  if (failed) {
+    return {
+      state: 'stale',
+      data: ordered,
+      provenance,
+      staleReason: 'provider-error',
+    }
+  }
+  if (fixture && fixture.state === 'fixture') {
+    return { state: 'fixture', data: ordered, provenance, reason: fixture.reason }
+  }
+  if (stale && stale.state === 'stale') {
+    return { state: 'stale', data: ordered, provenance, staleReason: stale.staleReason }
+  }
+  return { state: 'ok', data: ordered, provenance }
+}
+
+const NO_YIELDS_ERROR = {
+  code: 'unknown' as const,
+  message: 'No country produced a yield observation',
+  providerId: null,
+  retryable: true,
 }
 
 export function createOverviewDataSource(
@@ -149,14 +205,48 @@ export function createOverviewDataSource(
         p.fetchQuotes(s, ctx),
       ) as never,
 
-    yields: (symbols) =>
-      quoteLike('yields-us', 'yields', symbols, (p: YieldProvider, s, ctx) =>
-        p.fetchYields(s, ctx),
-      ) as never,
+    /**
+     * Yields resolve PER COUNTRY, because the sources differ and so do their
+     * methodologies: US par yields from the Treasury, a Bundesbank fitted zero
+     * rate for Germany, a Refinitiv benchmark via the Riksbank for Sweden.
+     * One shared chain would let a failure in one country silently pull in a
+     * different measure from another.
+     *
+     * The results are recombined in display order. A country that fails
+     * entirely contributes no rows and its state surfaces on the combined
+     * envelope, so a missing row is visible as a degraded panel rather than a
+     * silent omission.
+     */
+    yields: async (symbols) => {
+      const byCountry: Array<[DataCategory, CanonicalSymbol[]]> = [
+        ['yields-us', symbols.filter((symbol) => symbol.startsWith('rate:us'))],
+        ['yields-de', symbols.filter((symbol) => symbol.startsWith('rate:de'))],
+        ['yields-se', symbols.filter((symbol) => symbol.startsWith('rate:se'))],
+      ]
+
+      const resolved = await Promise.all(
+        byCountry
+          .filter(([, group]) => group.length > 0)
+          .map(async ([category, group]) => {
+            const envelope = await run<GovernmentYield[]>({
+              category,
+              capability: 'yields',
+              cacheKey: quotesKey('yields', group),
+              attempt: async (provider, ctx) => {
+                const data = await (provider as YieldProvider).fetchYields(group, ctx)
+                return { data, provenance: mergedProvenance(data) }
+              },
+            })
+            return envelope
+          }),
+      )
+
+      return combineYieldEnvelopes(resolved, symbols)
+    },
 
     yieldCurve: (countryCode) =>
       run({
-        category: 'yields-us',
+        category: 'curve-us',
         capability: 'yields',
         cacheKey: yieldCurveKey(countryCode),
         attempt: async (provider, ctx) => {

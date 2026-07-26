@@ -37,6 +37,9 @@ export async function getContainer(): Promise<Container> {
     { createFixtureProvider },
     { createFrankfurterProvider },
     { createCoinGeckoProvider },
+    { createUsTreasuryProvider },
+    { createBundesbankProvider },
+    { createRiksbankProvider },
     { createHttpClient },
     { loadMarketDataConfig },
   ] = await Promise.all([
@@ -44,6 +47,9 @@ export async function getContainer(): Promise<Container> {
     import('./providers/fixture'),
     import('./providers/frankfurter'),
     import('./providers/coinGecko'),
+    import('./providers/usTreasury'),
+    import('./providers/bundesbank'),
+    import('./providers/riksbank'),
     import('./providers/httpClient'),
     import('./config'),
   ])
@@ -63,6 +69,56 @@ export async function getContainer(): Promise<Container> {
   const networkProviders = !config.allowNetworkProviders
     ? []
     : [
+        {
+          provider: createUsTreasuryProvider(
+            createHttpClient({ networkDisabled: false }),
+          ),
+          capabilities: new Set(['yields'] as const),
+          metadata: {
+            // The Treasury issues the securities and publishes the curve.
+            trust: 'issuer' as const,
+            expectedLatencyMs: 600,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: true,
+            requiresAttribution: false,
+          },
+        },
+        {
+          provider: createBundesbankProvider(
+            createHttpClient({ networkDisabled: false }),
+          ),
+          capabilities: new Set(['yields'] as const),
+          metadata: {
+            trust: 'central-bank' as const,
+            expectedLatencyMs: 600,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
+          provider: createRiksbankProvider(createHttpClient({ networkDisabled: false })),
+          capabilities: new Set(['yields'] as const),
+          metadata: {
+            // Route trust only. The series originate with Refinitiv, which
+            // `RIKSBANK_SOURCE.originatorTrust` records, so `effectiveTrust`
+            // reports vendor grade.
+            trust: 'central-bank' as const,
+            expectedLatencyMs: 500,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
         {
           provider: createCoinGeckoProvider(
             createHttpClient({ networkDisabled: false }),

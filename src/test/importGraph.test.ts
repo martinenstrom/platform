@@ -312,10 +312,13 @@ describe('P11 — only approved providers are connected', () => {
       .map((f) => f.path)
       .sort()
     expect(adapters).toEqual([
+      'infrastructure/marketData/providers/bundesbank.ts',
       'infrastructure/marketData/providers/coinGecko.ts',
       'infrastructure/marketData/providers/fixture.ts',
       'infrastructure/marketData/providers/frankfurter.ts',
       'infrastructure/marketData/providers/httpClient.ts',
+      'infrastructure/marketData/providers/riksbank.ts',
+      'infrastructure/marketData/providers/usTreasury.ts',
     ])
   })
 
@@ -339,6 +342,8 @@ describe('P11 — only approved providers are connected', () => {
     for (const [file, wireType] of [
       ['frankfurter.ts', 'FrankfurterTimeSeries'],
       ['coinGecko.ts', 'CoinGeckoSimplePrice'],
+      ['usTreasury.ts', 'TreasuryObservation'],
+      ['riksbank.ts', 'SweaObservation'],
     ] as const) {
       const source = readFileSync(
         join(SRC, `infrastructure/marketData/providers/${file}`),
@@ -385,6 +390,52 @@ describe('P11 — only approved providers are connected', () => {
     ]
       .map((m) => m[1])
       .sort()
-    expect(imported).toEqual(['coinGecko', 'fixture', 'frankfurter', 'httpClient'])
+    expect(imported).toEqual([
+      'bundesbank',
+      'coinGecko',
+      'fixture',
+      'frankfurter',
+      'httpClient',
+      'riksbank',
+      'usTreasury',
+    ])
+  })
+})
+
+describe('Phase 4B guards', () => {
+  it('contains no TradingView provider', () => {
+    // TradingView supplies no market data: their Charting Library docs state
+    // the integrator connects their own source, and the Datafeed API is an
+    // interface WE implement. There is nothing to adapt, so there is no
+    // adapter — and no scraping, private endpoint or community wrapper either.
+    const offenders = FILES.filter((f) => /tradingview/i.test(f.path)).map((f) => f.path)
+    expect(offenders).toEqual([])
+
+    const mentions: string[] = []
+    for (const file of FILES) {
+      if (!file.path.startsWith('infrastructure/')) continue
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+      if (/tradingview/i.test(source)) mentions.push(file.path)
+    }
+    expect(mentions).toEqual([])
+  })
+
+  it('leaves no synthetic series in the yield path', () => {
+    // The mulberry32 walk that used to be drawn as a yield curve is gone from
+    // every yield producer. It survives only for sparklines, which are
+    // Phase 6's problem.
+    const yieldFiles = [
+      'infrastructure/marketData/providers/usTreasury.ts',
+      'infrastructure/marketData/providers/bundesbank.ts',
+      'infrastructure/marketData/providers/riksbank.ts',
+    ]
+    for (const path of yieldFiles) {
+      const source = codeOnly(readFileSync(join(SRC, path), 'utf8'))
+      expect(/syntheticSeries|Math\.random/.test(source)).toBe(false)
+    }
+  })
+
+  it('adds no FRED adapter in this phase', () => {
+    expect(FILES.filter((f) => /fred/i.test(f.path))).toEqual([])
   })
 })

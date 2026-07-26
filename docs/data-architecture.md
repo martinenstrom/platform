@@ -2100,3 +2100,110 @@ embedded by each model, with bodies staying type-specific. `NewsItem` and
 `MarketSentiment` remain outside it entirely: one is content, one is derived,
 and forcing them into an observation hierarchy would be modelling for symmetry
 rather than for meaning.
+
+---
+
+---
+
+# Part VIII — Phase 4B: government yields
+
+Three keyless official sources. No FRED, no TradingView, no visual redesign.
+
+## 49. Source mappings
+
+| Row         | Provider        | Route trust    | Originator    | Effective trust       | Series id                                         | Methodology            |
+| ----------- | --------------- | -------------- | ------------- | --------------------- | ------------------------------------------------- | ---------------------- |
+| 10Y U.S.    | US Treasury     | `issuer`       | —             | `issuer`              | `BC_10YEAR`                                       | `par-yield`            |
+| 2Y U.S.     | US Treasury     | `issuer`       | —             | `issuer`              | `BC_2YEAR`                                        | `par-yield`            |
+| 10Y Germany | Bundesbank      | `central-bank` | —             | `central-bank`        | `D.I.ZST.ZI.EUR.S1311.B.A604.R10XX.R.A.A._Z._Z.A` | `zero-coupon-fitted`   |
+| Sweden 10Y  | Riksbank (SWEA) | `central-bank` | **Refinitiv** | **`licensed-vendor`** | `SEGVB10YC`                                       | `benchmark-bond-yield` |
+| Curve       | US Treasury     | `issuer`       | —             | `issuer`              | 13 `BC_*` tags                                    | `par-yield`            |
+
+Four rows, three methodologies. They sit in one panel because each is that
+country's own headline rate, which is normal presentation — but they may never
+sit in one _curve_, and `buildYieldCurve` enforces that.
+
+**Riksbank's `DEGVB10Y` is deliberately not a German fallback.** SWEA carries
+it, but it is a Refinitiv benchmark rather than the Bundesbank's fitted zero
+rate. Substituting one for the other on a failure is exactly what the
+methodology type exists to prevent.
+
+## 50. Per-country resolution
+
+Yields resolve through **three separate chains**, because the sources, the
+methodologies and the failure modes all differ:
+
+```
+yields-us:  treasury   → stale → fixture(non-prod) → error
+yields-de:  bundesbank → stale → fixture(non-prod) → error
+yields-se:  riksbank   → stale → fixture(non-prod) → error
+curve-us:   treasury   → stale → fixture(non-prod) → error
+```
+
+`combineYieldEnvelopes` recombines them in display order and takes the **worst**
+state of the parts: a partly-stale panel is stale, and a country that fails
+outright surfaces as a degraded panel rather than three rows shown as though
+nothing happened.
+
+TTL 12 h, `maxStaleMs` 5 days, SWR off — an official daily observation is
+either current or it is not. No budget or rate limit configured: all three
+sources are public and uncapped.
+
+## 51. Payload traps, each covered by a recorded fixture
+
+- **Treasury**: an empty or `m:null` tag means no publication for that maturity
+  that day. Skipped, never read as `0.00%`. `BC_1` and `BC_30YEARDISPLAY` are
+  deliberately unmapped — an artefact and a presentation duplicate.
+- **Bundesbank**: `;`-delimited CSV with a metadata preamble, **comma decimal
+  separator**, and `.` / "Kein Wert vorhanden" on non-publication days. Rows
+  that do not parse as a date and a number are dropped.
+- **Riksbank**: JSON `[{date,value}]`, which is straightforward — the trap here
+  is provenance, not parsing.
+
+## 52. PRNG retirement
+
+`RATE_CURVE = seededSeries(61, 14, 0.02)` is gone. It was 14 points of
+mulberry32 noise with no maturities, no observation date and no source, drawn
+as though it were a term structure. It is replaced by the real US par curve:
+13 maturities, one methodology, one date, no interpolation.
+
+The synthetic generator survives **only** for sparklines, which are Phase 6's
+concern. A boundary test asserts no yield adapter references it.
+
+**This was the last synthetic production yield data in the product.**
+
+## 53. Design note: a future confidence score
+
+Not implemented, and not required anywhere today. Recorded because the
+provenance model already carries every input it would need, and writing that
+down now is cheaper than rediscovering it later.
+
+An observation's confidence would be a function of signals the `Envelope` and
+`Provenance` already hold:
+
+| Signal                  | Already available as                       | Direction                                                   |
+| ----------------------- | ------------------------------------------ | ----------------------------------------------------------- |
+| Provider trust          | `source.trust`                             | `issuer` > `central-bank` > … > `synthetic`                 |
+| Originator trust        | `source.originatorTrust`                   | combined via `effectiveTrust` — the weaker wins             |
+| Methodology consistency | `GovernmentYield.methodology`              | a curve of one methodology scores above a mixed set         |
+| Freshness               | `provenance.ageMs` vs the category TTL     | decays with age, relative to how often the source publishes |
+| Stale state             | `Envelope.state`, `staleReason`            | `ok` > `stale` > `fixture`                                  |
+| Fallback usage          | which chain position answered              | a first-choice source scores above a fallback               |
+| Missing observations    | absent maturities in a curve               | a 13-point curve scores above a 4-point one                 |
+| Source agreement        | two providers for one series               | agreement raises, disagreement lowers                       |
+| Timestamp agreement     | differing `observationDate` for one series | a mismatch lowers confidence sharply                        |
+
+Two rules it should keep, both learned in earlier phases:
+
+1. **Never average disagreeing sources.** A discrepancy is information; hiding
+   it in a mean destroys the information and invents a number neither source
+   published. The discrepancy model — `source-disagreement`,
+   `methodology-mismatch`, `timestamp-mismatch`, `instrument-mismatch` — should
+   be recorded alongside a lowered score, not resolved by arithmetic.
+2. **Confidence is not a substitute for provenance.** It is a summary for
+   ranking and alerting. Anything user-visible must still be able to state its
+   actual source, methodology and observation date, because a single number
+   cannot carry "a Refinitiv benchmark via the Riksbank, published Friday".
+
+The natural home is a derived field on the envelope, computed at resolution
+time from data already present — no new domain model, and no adapter change.

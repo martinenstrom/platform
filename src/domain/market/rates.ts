@@ -95,13 +95,10 @@ export interface GovernmentYield {
   /** Currency the bond is denominated in. */
   currency: IsoCurrencyCode
   /**
-   * Canonical maturity, when the source publishes one.
-   *
-   * `null` only for the legacy synthetic curve, whose tenor ladder predates
-   * this model and is retired in Phase 4B. Every real adapter supplies it, and
-   * it becomes required once the last synthetic producer is gone.
+   * Canonical maturity. Required: every producer now maps a SERIES ID to one
+   * of these, and none infers a maturity from a display label.
    */
-  maturity: Maturity | null
+  maturity: Maturity
   /** The source's own identifier for this series. */
   seriesId: string
   methodology: YieldMethodology
@@ -124,10 +121,8 @@ export function buildYield(args: {
   symbol: CanonicalSymbol
   countryCode: string
   currency: IsoCurrencyCode
-  /** Preferred. When given, `tenorMonths` is derived from it. */
-  maturity?: Maturity
-  /** Accepted only where no canonical maturity applies (the legacy curve). */
-  tenorMonths?: number
+  /** `tenorMonths` is derived from it; the two cannot disagree. */
+  maturity: Maturity
   seriesId: string
   methodology: YieldMethodology
   observationDate: string
@@ -135,27 +130,9 @@ export function buildYield(args: {
   previousYieldPercent?: number | null
   provenance: Provenance
 }): GovernmentYield {
-  const tenorMonths =
-    args.maturity !== undefined ? MATURITY_MONTHS[args.maturity] : args.tenorMonths
+  const tenorMonths = MATURITY_MONTHS[args.maturity]
   if (tenorMonths === undefined) {
-    throw new Error(`buildYield(${args.symbol}): supply a maturity or a tenorMonths`)
-  }
-  if (tenorMonths <= 0 || !Number.isInteger(tenorMonths)) {
-    throw new Error(
-      `buildYield: tenorMonths must be a positive integer, got ${tenorMonths}`,
-    )
-  }
-  // A maturity and a contradicting tenor would leave two answers to one
-  // question, so the disagreement is refused rather than silently resolved.
-  if (
-    args.maturity !== undefined &&
-    args.tenorMonths !== undefined &&
-    args.tenorMonths !== MATURITY_MONTHS[args.maturity]
-  ) {
-    throw new Error(
-      `buildYield(${args.symbol}): maturity ${args.maturity} is ` +
-        `${MATURITY_MONTHS[args.maturity]} months, not ${args.tenorMonths}`,
-    )
+    throw new Error(`buildYield(${args.symbol}): unknown maturity ${args.maturity}`)
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(args.observationDate)) {
     throw new Error(
@@ -172,7 +149,7 @@ export function buildYield(args: {
     symbol: args.symbol,
     countryCode: args.countryCode,
     currency: args.currency,
-    maturity: args.maturity ?? null,
+    maturity: args.maturity,
     seriesId: args.seriesId,
     methodology: args.methodology,
     observationDate: args.observationDate,

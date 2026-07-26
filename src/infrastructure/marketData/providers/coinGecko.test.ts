@@ -33,6 +33,9 @@ function stub(
   capture?: (url: string, headers?: Record<string, string>) => void,
 ): HttpClient {
   return {
+    async getText(): Promise<string> {
+      throw new Error('getText not used in this stub')
+    },
     async getJson<T>(
       url: string,
       _signal: AbortSignal,
@@ -176,6 +179,9 @@ describe('CoinGecko adapter — credentials', () => {
 describe('CoinGecko adapter — rate limiting', () => {
   it('surfaces 429 as a retryable rate-limit error carrying Retry-After', async () => {
     const client = {
+      async getText(): Promise<string> {
+        throw new Error('getText not used in this stub')
+      },
       async getJson<T>(): Promise<T> {
         throw new HttpError('rate-limit', 'HTTP 429 from upstream', 429, 30_000)
       },

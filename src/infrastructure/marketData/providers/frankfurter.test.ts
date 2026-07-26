@@ -41,6 +41,9 @@ function ctx(): FetchContext {
 /** Serves recorded payloads by matching the request URL. */
 function stubHttp(byUrlFragment: Record<string, unknown>): HttpClient {
   return {
+    async getText(): Promise<string> {
+      throw new Error('getText not used in this stub')
+    },
     async getJson<T>(url: string): Promise<T> {
       for (const [fragment, payload] of Object.entries(byUrlFragment)) {
         if (url.includes(fragment)) return payload as T

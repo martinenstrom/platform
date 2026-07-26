@@ -108,9 +108,14 @@ const DEFAULT_CHAINS: Record<DataCategory, string[]> = {
   'equity-index-intl': ['fixture'],
   'equity-se': ['avanza', 'fixture'],
   fx: ['frankfurter', 'fixture'],
-  'yields-us': ['treasury', 'fred', 'fixture'],
-  'yields-de': ['fred', 'fixture'],
+  // No universal chain: coverage and methodology differ per country. The
+  // Riksbank also carries a German 10Y, but it is a Refinitiv benchmark rather
+  // than the Bundesbank's fitted zero rate, so it is deliberately NOT wired as
+  // a German fallback.
+  'yields-us': ['treasury', 'fixture'],
+  'yields-de': ['bundesbank', 'fixture'],
   'yields-se': ['riksbank', 'fixture'],
+  'curve-us': ['treasury', 'fixture'],
   commodities: ['fixture'],
   crypto: ['coingecko', 'fixture'],
   news: ['marketaux', 'fixture'],
@@ -137,6 +142,8 @@ const PROVIDER_KEY_ENV: Record<string, string> = {
 const KEYLESS_PROVIDERS = [
   'frankfurter',
   'treasury',
+  'bundesbank',
+  'riksbank',
   'avanza',
   'derived',
   'fixture',
@@ -150,6 +157,7 @@ const CATEGORY_ENV: Record<DataCategory, string> = {
   'yields-us': 'MARKETDATA_CHAIN_YIELDS_US',
   'yields-de': 'MARKETDATA_CHAIN_YIELDS_DE',
   'yields-se': 'MARKETDATA_CHAIN_YIELDS_SE',
+  'curve-us': 'MARKETDATA_CHAIN_CURVE_US',
   commodities: 'MARKETDATA_CHAIN_COMMODITIES',
   crypto: 'MARKETDATA_CHAIN_CRYPTO',
   news: 'MARKETDATA_CHAIN_NEWS',

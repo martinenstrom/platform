@@ -108,6 +108,14 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
       staleWhileRevalidate: false,
     },
+    'curve-us': {
+      // Same source and cadence as the US headline rates: one Treasury
+      // payload published once per business day.
+      ttlOpenMs: 12 * HOUR,
+      ttlClosedMs: 12 * HOUR,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+      staleWhileRevalidate: false,
+    },
     commodities: {
       ttlOpenMs: 5 * MINUTE,
       ttlClosedMs: 15 * MINUTE,

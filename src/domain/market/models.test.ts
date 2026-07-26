@@ -233,38 +233,22 @@ describe('yields', () => {
     expect(y.changeBasisPoints).toBeCloseTo(4, 6)
   })
 
-  it('rejects a maturity that contradicts an explicit tenor', () => {
-    // Two answers to one question is worse than none, so the disagreement is
-    // refused rather than silently resolved in favour of either.
-    expect(() =>
-      buildYield({
-        symbol: SYM_US10Y,
-        countryCode: 'US',
-        currency: isoCurrency('USD'),
-        maturity: '10Y',
-        tenorMonths: 24,
-        seriesId: 'TEST',
-        methodology: 'par-yield',
-        observationDate: '2026-07-24',
-        yieldPercent: 4,
-        provenance: provenance(),
-      }),
-    ).toThrow(/is 120 months, not 24/)
-  })
-
-  it('requires either a maturity or a tenor', () => {
-    expect(() =>
-      buildYield({
-        symbol: SYM_US10Y,
-        countryCode: 'US',
-        currency: isoCurrency('USD'),
-        seriesId: 'TEST',
-        methodology: 'par-yield',
-        observationDate: '2026-07-24',
-        yieldPercent: 4,
-        provenance: provenance(),
-      }),
-    ).toThrow(/supply a maturity or a tenorMonths/)
+  it('derives tenorMonths from the canonical maturity', () => {
+    // Maturity is now required and is the single source of the tenor, so the
+    // two can no longer disagree.
+    const entry = buildYield({
+      symbol: SYM_US10Y,
+      countryCode: 'US',
+      currency: isoCurrency('USD'),
+      maturity: '10Y',
+      seriesId: 'BC_10YEAR',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
+      yieldPercent: 4.69,
+      provenance: provenance(),
+    })
+    expect(entry.tenorMonths).toBe(120)
+    expect(entry.maturity).toBe('10Y')
   })
 
   it('refuses to mix issuers in one curve', () => {

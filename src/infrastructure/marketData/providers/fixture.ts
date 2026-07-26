@@ -65,8 +65,7 @@ import {
   FIXTURE_SECTOR_CHANGES,
   FIXTURE_SENTIMENT_SCORE,
   FIXTURE_WATCHLIST,
-  FIXTURE_YIELD_CURVE_POINTS,
-  FIXTURE_YIELD_CURVE_SEED,
+  FIXTURE_US_PAR_CURVE,
   FIXTURE_YIELDS,
   type FixtureQuote,
 } from './fixture/data'
@@ -278,34 +277,33 @@ function yieldsFor(
 }
 
 /**
- * Curve preview. Still the legacy synthetic shape — Phase 4 replaces it with a
- * real term structure (defects D6/D9). Kept only because it is fixture data,
- * barred from production, and Phase 0's contract is to change nothing visible.
+ * US par curve.
+ *
+ * The PRNG series this replaced is gone: it was 14 points of mulberry32 noise
+ * with no maturities, no date and no source, drawn as though it were a term
+ * structure. These are the same 13 maturities the Treasury publishes, with one
+ * methodology and one observation date, so the shape is a real curve even
+ * while the values are fixture data.
  */
 function yieldCurveFor(countryCode: string, ctx: FetchContext): YieldCurve {
-  const values = syntheticSeries(
-    FIXTURE_YIELD_CURVE_SEED,
-    FIXTURE_YIELD_CURVE_POINTS,
-    0.02,
-  )
+  if (countryCode !== 'US') {
+    throw new Error(`No fixture curve for ${countryCode}`)
+  }
   const provenance = fixtureProvenance(ctx)
   const observationDate = ctx.clock.now().toISOString().slice(0, 10)
+
   return buildYieldCurve({
-    countryCode,
-    points: values.map((v, i) =>
+    countryCode: 'US',
+    points: FIXTURE_US_PAR_CURVE.map((point) =>
       buildYield({
-        symbol: FIXTURE_YIELDS[0]!.symbol,
-        countryCode,
+        symbol: point.symbol,
+        countryCode: 'US',
         currency: isoCurrency('USD'),
-        seriesId: 'fixture-curve',
-        // One methodology and one date across every point, so the curve
-        // passes the integrity checks even while its values are synthetic.
+        maturity: point.maturity,
+        seriesId: point.seriesId,
         methodology: 'par-yield',
         observationDate,
-        // Synthetic tenor ladder with no canonical maturity — the reason
-        // `maturity` is still optional. Retired in Phase 4B.
-        tenorMonths: (i + 1) * 12,
-        yieldPercent: v,
+        yieldPercent: point.yieldPercent,
         provenance,
       }),
     ),

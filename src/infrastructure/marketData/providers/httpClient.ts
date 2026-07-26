@@ -54,12 +54,73 @@ export interface HttpClient {
     signal: AbortSignal,
     headers?: Record<string, string>,
   ): Promise<T>
+  /**
+   * For sources that publish XML or CSV rather than JSON. Same guards, same
+   * signal, same error classification — only the body decoding differs.
+   */
+  getText(
+    url: string,
+    signal: AbortSignal,
+    headers?: Record<string, string>,
+  ): Promise<string>
 }
 
 export function createHttpClient(options: HttpClientOptions): HttpClient {
   const doFetch = options.fetchImpl ?? globalThis.fetch
 
+  /** Everything up to decoding, shared by the JSON and text readers. */
+  async function request(
+    url: string,
+    signal: AbortSignal,
+    headers: Record<string, string>,
+  ): Promise<Response> {
+    if (options.networkDisabled) {
+      // Non-retryable on purpose: retrying a configuration decision would
+      // burn budget and delay the fallback for no possible benefit.
+      throw new HttpError(
+        'network',
+        'Outbound network access is disabled (MARKETDATA_DISABLE_NETWORK)',
+      )
+    }
+
+    let response: Response
+    try {
+      response = await doFetch(url, {
+        signal,
+        headers: { accept: 'application/json, text/csv, application/xml', ...headers },
+      })
+    } catch (error) {
+      // An abort is the pipeline's deadline firing; surface it as a timeout
+      // so the breaker and stale reason classify it correctly.
+      if (signal.aborted) throw new HttpError('timeout', 'Request aborted by deadline')
+      throw new HttpError(
+        'network',
+        error instanceof Error ? error.message : 'Network request failed',
+      )
+    }
+
+    if (!response.ok) {
+      const retryAfter = Number(response.headers.get('retry-after'))
+      throw new HttpError(
+        classify(response.status),
+        `HTTP ${response.status} from upstream`,
+        response.status,
+        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1_000 : undefined,
+      )
+    }
+    return response
+  }
+
   return {
+    async getText(url, signal, headers = {}) {
+      const response = await request(url, signal, headers)
+      try {
+        return await response.text()
+      } catch {
+        throw new HttpError('schema', 'Upstream returned an unreadable body')
+      }
+    },
+
     async getJson<T>(
       url: string,
       signal: AbortSignal,

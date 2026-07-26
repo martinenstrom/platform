@@ -41,6 +41,8 @@ export type DataCategory =
   | 'yields-us'
   | 'yields-de'
   | 'yields-se'
+  /** The US par curve, resolved separately from the headline rates. */
+  | 'curve-us'
   | 'commodities'
   | 'crypto'
   | 'news'

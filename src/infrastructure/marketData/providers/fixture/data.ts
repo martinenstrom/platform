@@ -40,7 +40,18 @@ import {
   SYM_SECTOR_TECH,
   SYM_SP500,
   SYM_US10Y,
+  SYM_US1M,
+  SYM_US1Y,
+  SYM_US20Y,
+  SYM_US2M,
   SYM_US2Y,
+  SYM_US30Y,
+  SYM_US3M,
+  SYM_US3Y,
+  SYM_US4M,
+  SYM_US5Y,
+  SYM_US6M,
+  SYM_US7Y,
   SYM_USDSEK,
   SYM_VOLV_B,
   type CanonicalSymbol,
@@ -145,9 +156,33 @@ export const FIXTURE_YIELDS: FixtureYield[] = [
   },
 ]
 
-/** Seed for the yield-curve preview series (legacy `RATE_CURVE`). */
-export const FIXTURE_YIELD_CURVE_SEED = 61
-export const FIXTURE_YIELD_CURVE_POINTS = 14
+/**
+ * US par curve, the 13 maturities the Treasury publishes.
+ *
+ * Replaces a 14-point PRNG walk that had no maturities, no observation date
+ * and no source. A plausible upward-sloping shape, but fixture data: labelled
+ * `quality: 'fixture'` and barred from production like everything else here.
+ */
+export const FIXTURE_US_PAR_CURVE: Array<{
+  symbol: CanonicalSymbol
+  maturity: Maturity
+  seriesId: string
+  yieldPercent: number
+}> = [
+  { symbol: SYM_US1M, maturity: '1M', seriesId: 'BC_1MONTH', yieldPercent: 4.1 },
+  { symbol: SYM_US2M, maturity: '2M', seriesId: 'BC_2MONTH', yieldPercent: 4.13 },
+  { symbol: SYM_US3M, maturity: '3M', seriesId: 'BC_3MONTH', yieldPercent: 4.16 },
+  { symbol: SYM_US4M, maturity: '4M', seriesId: 'BC_4MONTH', yieldPercent: 4.19 },
+  { symbol: SYM_US6M, maturity: '6M', seriesId: 'BC_6MONTH', yieldPercent: 4.22 },
+  { symbol: SYM_US1Y, maturity: '1Y', seriesId: 'BC_1YEAR', yieldPercent: 4.25 },
+  { symbol: SYM_US2Y, maturity: '2Y', seriesId: 'BC_2YEAR', yieldPercent: 3.91 },
+  { symbol: SYM_US3Y, maturity: '3Y', seriesId: 'BC_3YEAR', yieldPercent: 3.95 },
+  { symbol: SYM_US5Y, maturity: '5Y', seriesId: 'BC_5YEAR', yieldPercent: 4.05 },
+  { symbol: SYM_US7Y, maturity: '7Y', seriesId: 'BC_7YEAR', yieldPercent: 4.18 },
+  { symbol: SYM_US10Y, maturity: '10Y', seriesId: 'BC_10YEAR', yieldPercent: 4.32 },
+  { symbol: SYM_US20Y, maturity: '20Y', seriesId: 'BC_20YEAR', yieldPercent: 4.61 },
+  { symbol: SYM_US30Y, maturity: '30Y', seriesId: 'BC_30YEAR', yieldPercent: 4.74 },
+]
 
 /** "Sektorer (S&P 500)", in display order. */
 export const FIXTURE_SECTOR_CHANGES: Array<{

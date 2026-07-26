@@ -42,6 +42,9 @@ const ALL_CAPS = new Set([
 
 function liveHttp(): HttpClient {
   return {
+    async getText(): Promise<string> {
+      throw new Error('getText not used in this stub')
+    },
     async getJson<T>(url: string): Promise<T> {
       if (url.includes('base=USD')) {
         return recorded('frankfurter.usdsek.timeseries.json') as T
@@ -53,6 +56,9 @@ function liveHttp(): HttpClient {
 
 function failingHttp(code = 'network'): HttpClient {
   return {
+    async getText(): Promise<string> {
+      throw new Error('getText not used in this stub')
+    },
     async getJson<T>(): Promise<T> {
       throw new HttpError(code as never, 'upstream down')
     },
@@ -111,6 +117,9 @@ describe('FX through the live path', () => {
   it('requests exactly the pairs the Overview displays', async () => {
     const urls: string[] = []
     const spy: HttpClient = {
+      async getText(): Promise<string> {
+        throw new Error('getText not used in this stub')
+      },
       async getJson<T>(url: string): Promise<T> {
         urls.push(url)
         return (

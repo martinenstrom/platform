@@ -48,8 +48,25 @@ export const SYM_BTC = s('crypto:btc')
 
 /* -------------------------------------------------------------- government bonds */
 
+/**
+ * The full US par-yield ladder, matching the maturities the Treasury actually
+ * publishes. Everything here comes from one payload, one methodology and one
+ * observation date, which is what makes a curve out of it.
+ */
+export const SYM_US1M = s('rate:us1m')
+export const SYM_US2M = s('rate:us2m')
+export const SYM_US3M = s('rate:us3m')
+export const SYM_US4M = s('rate:us4m')
+export const SYM_US6M = s('rate:us6m')
+export const SYM_US1Y = s('rate:us1y')
 export const SYM_US2Y = s('rate:us2y')
+export const SYM_US3Y = s('rate:us3y')
+export const SYM_US5Y = s('rate:us5y')
+export const SYM_US7Y = s('rate:us7y')
 export const SYM_US10Y = s('rate:us10y')
+export const SYM_US20Y = s('rate:us20y')
+export const SYM_US30Y = s('rate:us30y')
+
 export const SYM_DE10Y = s('rate:de10y')
 export const SYM_SE10Y = s('rate:se10y')
 
@@ -263,8 +280,28 @@ export const OVERVIEW_FX_SYMBOLS = [SYM_USDSEK, SYM_EURUSD] as const
 export const OVERVIEW_COMMODITY_SYMBOLS = [SYM_BRENT, SYM_GOLD] as const
 export const OVERVIEW_CRYPTO_SYMBOLS = [SYM_BTC] as const
 
-/** "Räntemarknaden", in display order. */
+/** "Räntemarknaden", in display order. Unchanged by Phase 4B. */
 export const OVERVIEW_YIELD_SYMBOLS = [SYM_US10Y, SYM_DE10Y, SYM_US2Y, SYM_SE10Y] as const
+
+/**
+ * The US par curve, ascending. One issuer, one methodology, one observation
+ * date — the only curve in the product that can honestly be drawn.
+ */
+export const US_PAR_CURVE_SYMBOLS = [
+  SYM_US1M,
+  SYM_US2M,
+  SYM_US3M,
+  SYM_US4M,
+  SYM_US6M,
+  SYM_US1Y,
+  SYM_US2Y,
+  SYM_US3Y,
+  SYM_US5Y,
+  SYM_US7Y,
+  SYM_US10Y,
+  SYM_US20Y,
+  SYM_US30Y,
+] as const
 
 /** "Sektorer (S&P 500)", in display order. */
 export const OVERVIEW_SECTOR_SYMBOLS = [
