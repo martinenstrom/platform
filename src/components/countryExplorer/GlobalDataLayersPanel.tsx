@@ -81,7 +81,11 @@ export function GlobalDataLayersPanel({
     if (!open) return undefined
     function onPointerDown(event: PointerEvent) {
       const container = containerRef.current
-      if (container && event.target instanceof Node && !container.contains(event.target)) {
+      if (
+        container &&
+        event.target instanceof Node &&
+        !container.contains(event.target)
+      ) {
         setOpen(false)
       }
     }
@@ -129,106 +133,109 @@ export function GlobalDataLayersPanel({
             : 'pointer-events-none -translate-x-2 opacity-0',
         )}
       >
-      <div
-        className="hud-frame max-h-[32rem] w-48 overflow-y-auto rounded-lg bg-canvas/65 p-2.5 shadow-pop backdrop-blur-xl"
-        style={{ '--color-hud-line': 'rgb(77 232 245 / 0.22)' } as CSSProperties}
-      >
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <p className="hud-label text-[10px] text-content-subtle">Datalager</p>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Fäll ihop datalager"
-            className="text-content-subtle transition-colors duration-150 hover:text-content"
-          >
-            <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <ul className="flex flex-col gap-1">
-          {STRUCTURAL_TOGGLES.map((toggle) => {
-            const Icon = toggle.icon
-            return (
-              <li key={toggle.key} className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-xs text-content-muted">
-                  <Icon className="h-3.5 w-3.5 text-content-subtle" aria-hidden="true" />
-                  {toggle.label}
-                </span>
-                <ToggleSwitch
-                  label={toggle.label}
-                  labelHidden
-                  checked={layers[toggle.key]}
-                  onChange={(checked) =>
-                    onLayersChange({ ...layers, [toggle.key]: checked })
-                  }
-                />
-              </li>
-            )
-          })}
-        </ul>
-
-        <div className="mt-2.5 border-t border-line pt-2.5">
-          <p className="hud-label mb-1 text-[9px] text-content-subtle">Heatmap</p>
-          <div className="flex flex-col gap-0.5">
+        <div
+          className="hud-frame max-h-[32rem] w-48 overflow-y-auto rounded-lg bg-canvas/65 p-2.5 shadow-pop backdrop-blur-xl"
+          style={{ '--color-hud-line': 'rgb(77 232 245 / 0.22)' } as CSSProperties}
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="hud-label text-[10px] text-content-subtle">Datalager</p>
             <button
               type="button"
-              aria-pressed={activeHeatmap === null}
-              onClick={() => onHeatmapChange(null)}
-              className={cn(
-                'rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-150',
-                activeHeatmap === null
-                  ? 'bg-accent-soft text-accent'
-                  : 'text-content-subtle hover:text-content',
-              )}
+              onClick={() => setOpen(false)}
+              aria-label="Fäll ihop datalager"
+              className="text-content-subtle transition-colors duration-150 hover:text-content"
             >
-              Ingen
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
-            {HEATMAP_LAYERS.map((layer) => {
-              const Icon = layer.icon
-              const isActive = activeHeatmap === layer.id
+          </div>
+
+          <ul className="flex flex-col gap-1">
+            {STRUCTURAL_TOGGLES.map((toggle) => {
+              const Icon = toggle.icon
               return (
-                <button
-                  key={layer.id}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => onHeatmapChange(layer.id)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-150',
-                    isActive
-                      ? 'bg-accent-soft text-accent'
-                      : 'text-content-muted hover:bg-surface hover:text-content',
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  {layer.label}
-                </button>
-              )
-            })}
-            {DISABLED_LAYERS.map((layer) => {
-              const Icon = layer.icon
-              return (
-                <div
-                  key={layer.label}
-                  className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 opacity-50"
-                  title="Kräver en ansluten datakälla — inte konfigurerad än"
-                >
-                  <span className="flex items-center gap-1.5 text-xs text-content-subtle">
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {layer.label}
+                <li key={toggle.key} className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-xs text-content-muted">
+                    <Icon
+                      className="h-3.5 w-3.5 text-content-subtle"
+                      aria-hidden="true"
+                    />
+                    {toggle.label}
                   </span>
                   <ToggleSwitch
-                    label={`${layer.label} (kräver ansluten datakälla, inte tillgänglig)`}
+                    label={toggle.label}
                     labelHidden
-                    checked={false}
-                    onChange={() => {}}
-                    disabled
+                    checked={layers[toggle.key]}
+                    onChange={(checked) =>
+                      onLayersChange({ ...layers, [toggle.key]: checked })
+                    }
                   />
-                </div>
+                </li>
               )
             })}
+          </ul>
+
+          <div className="mt-2.5 border-t border-line pt-2.5">
+            <p className="hud-label mb-1 text-[9px] text-content-subtle">Heatmap</p>
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                aria-pressed={activeHeatmap === null}
+                onClick={() => onHeatmapChange(null)}
+                className={cn(
+                  'rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-150',
+                  activeHeatmap === null
+                    ? 'bg-accent-soft text-accent'
+                    : 'text-content-subtle hover:text-content',
+                )}
+              >
+                Ingen
+              </button>
+              {HEATMAP_LAYERS.map((layer) => {
+                const Icon = layer.icon
+                const isActive = activeHeatmap === layer.id
+                return (
+                  <button
+                    key={layer.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => onHeatmapChange(layer.id)}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs transition-colors duration-150',
+                      isActive
+                        ? 'bg-accent-soft text-accent'
+                        : 'text-content-muted hover:bg-surface hover:text-content',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {layer.label}
+                  </button>
+                )
+              })}
+              {DISABLED_LAYERS.map((layer) => {
+                const Icon = layer.icon
+                return (
+                  <div
+                    key={layer.label}
+                    className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 opacity-50"
+                    title="Kräver en ansluten datakälla — inte konfigurerad än"
+                  >
+                    <span className="flex items-center gap-1.5 text-xs text-content-subtle">
+                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {layer.label}
+                    </span>
+                    <ToggleSwitch
+                      label={`${layer.label} (kräver ansluten datakälla, inte tillgänglig)`}
+                      labelHidden
+                      checked={false}
+                      onChange={() => {}}
+                      disabled
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   )

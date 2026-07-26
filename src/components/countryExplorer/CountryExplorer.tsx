@@ -147,8 +147,8 @@ export function CountryExplorer() {
               Global Markets // Country Explorer
             </h2>
             <p className="mt-2 max-w-md text-xs leading-relaxed text-content-muted">
-              Select a country to analyze its macroeconomy, market conditions,
-              investment climate and current developments.
+              Select a country to analyze its macroeconomy, market conditions, investment
+              climate and current developments.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="hud-label inline-flex items-center gap-1.5 rounded border border-line bg-surface/60 px-2 py-1 text-[8px] text-content-subtle">

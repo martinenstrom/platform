@@ -522,7 +522,7 @@ describe('C1 — the legacy stack is frozen', () => {
    * things structural. Adding one here should require the same deliberation as
    * adding a provider.
    *
-   * `AppHeader` is deliberately absent — it was the first migration.
+   * Absent because they have migrated: `AppHeader`, `routes/watchlist.tsx`.
    */
   const FROZEN_MOCK_CONSUMERS = [
     'components/agents/AgentCard.tsx',
@@ -533,12 +533,17 @@ describe('C1 — the legacy stack is frozen', () => {
     'routes/markets.tsx',
     'routes/portfolio.tsx',
     'routes/reports.tsx',
-    'routes/watchlist.tsx',
     'services/avanzaMcp/serverFns.ts',
     'services/investmentLetter/agentRoster.ts',
     'services/investmentLetter/mockFixtures.ts',
     'services/marketDataService.ts',
   ]
+
+  it('shrinks as routes migrate, and is the migration metric', () => {
+    // 13 at the freeze, one per migration thereafter. This number going down
+    // is the only measure of C1 progress that cannot be argued with.
+    expect(FROZEN_MOCK_CONSUMERS).toHaveLength(12)
+  })
 
   it('gains no new consumer of the mock data', () => {
     // Uses the PARSED import list, not a source scan: `codeOnly` strips string

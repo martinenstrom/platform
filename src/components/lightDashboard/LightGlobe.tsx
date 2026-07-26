@@ -233,8 +233,7 @@ function pickNightTextureUrl(): string {
     }
 
     // Low-memory / low-core desktops: stay on 4K where reported.
-    const deviceMemory = (navigator as Navigator & { deviceMemory?: number })
-      .deviceMemory
+    const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
     if (typeof deviceMemory === 'number' && deviceMemory > 0 && deviceMemory < 4) {
       return NIGHT_TEXTURE_4K_URL
     }
@@ -700,7 +699,12 @@ export function LightGlobe({ reducedMotion }: LightGlobeProps) {
     renderer.toneMapping = ACESFilmicToneMapping
 
     const composer = globe.postProcessingComposer()
-    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.34, 0.18, 0.75)
+    const bloom = new UnrealBloomPass(
+      new Vector2(size.width, size.height),
+      0.34,
+      0.18,
+      0.75,
+    )
     // Keep the transparent canvas: rewrite the blur shader to carry glow
     // luminance as alpha, and finish with an OutputPass (faithful alpha + the
     // renderer's ACES tone mapping) instead of the pass's opaque screen blit.

@@ -25,11 +25,7 @@ export function AgentStatusDot({
   const meta = AGENT_STATUS_META[status]
   return (
     <span
-      className={cn(
-        'type-badge inline-flex items-center gap-2',
-        meta.text,
-        className,
-      )}
+      className={cn('type-badge inline-flex items-center gap-2', meta.text, className)}
     >
       <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
         {status === 'running' && (

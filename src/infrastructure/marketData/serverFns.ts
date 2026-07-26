@@ -17,6 +17,10 @@ import {
   type CentralBanksSnapshot,
 } from '~/application/policy/getCentralBanksSnapshot'
 import { searchInstruments } from '~/application/marketData/searchInstruments'
+import {
+  getWatchlist,
+  type WatchlistSnapshot,
+} from '~/application/marketData/getWatchlist'
 import type { Envelope, InstrumentSearchResults } from '~/domain/market'
 import {
   getOverviewSnapshot,
@@ -313,6 +317,22 @@ export async function getContainer(): Promise<Container> {
   })
   return cached
 }
+
+/**
+ * The Bevakning route's data, server-side.
+ *
+ * Route-scoped rather than a slice of the Overview payload: the two pages
+ * share the `equity-se` resolution and therefore a cache entry, but not a
+ * response shape.
+ */
+export const getWatchlistFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<WatchlistSnapshot> => {
+    const container = await getContainer()
+    const { createWatchlistDataSource } = await import('./watchlistDataSource')
+    const correlationId = container.newCorrelationId()
+    return getWatchlist(createWatchlistDataSource(container, correlationId))
+  },
+)
 
 /**
  * Instrument search, server-side.

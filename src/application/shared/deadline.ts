@@ -89,10 +89,21 @@ export function withDeadline<T>(
 /**
  * Default page budget.
  *
- * Chosen against what a server-rendered page can afford rather than against
- * any provider's latency: past roughly three seconds the request is a bad
- * experience however well-justified the wait. Individual providers declare
- * `expectedLatencyMs` in the hundreds, so a healthy snapshot never approaches
- * this — it exists for the degraded case.
+ * MEASURED, not chosen. The first value here was 3s, picked against what a
+ * server-rendered page ought to afford — and the Watchlist migration showed it
+ * failing every cold request:
+ *
+ *   cold (uvx spawn + 7 MCP round trips, concurrency 4)   3271 ms
+ *   warm (cache hit)                                         1 ms
+ *
+ * A 3s budget therefore timed out the very first load after any restart and
+ * succeeded on every one after, which is the worst possible profile: it breaks
+ * exactly when someone looks at the page for the first time.
+ *
+ * 6s clears the measured cold path with roughly 1.8x headroom. It is not a
+ * target — a healthy warm request is three orders of magnitude inside it — and
+ * it should come DOWN once the real fix lands: the cold cost is dominated by
+ * spawning a Python child process, so pre-warming the MCP connection at
+ * startup would put this back under 3s honestly rather than by relabelling.
  */
-export const DEFAULT_SNAPSHOT_BUDGET_MS = 3_000
+export const DEFAULT_SNAPSHOT_BUDGET_MS = 6_000
