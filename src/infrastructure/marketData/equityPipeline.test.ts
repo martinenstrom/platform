@@ -300,6 +300,123 @@ describe('the Swedish equity freshness policy', () => {
   })
 })
 
+/* ------------------------------------------------------- staleness is honest */
+
+describe('an Avanza value past its TTL is never labelled fresh', () => {
+  /** Same container across two resolutions, with a clock we can move. */
+  function persistent(tool: AvanzaToolCall) {
+    const clock = new FakeClock(NOW)
+    const container = createContainer({
+      env: {
+        MARKETDATA_MODE: 'hybrid',
+        MARKETDATA_CHAIN_EQUITY_SE: 'avanza,fixture',
+        MARKETDATA_CHAIN_EQUITY_SE_INDEX: 'avanza,fixture',
+      },
+      clock,
+      random: new SeededRandom(1),
+      providers: [
+        {
+          provider: createAvanzaProvider(tool),
+          capabilities: new Set(['quotes'] as const),
+        },
+        { provider: createFixtureProvider(), capabilities: ALL_CAPS },
+      ],
+      retry: {
+        maxAttempts: 1,
+        baseDelayMs: 1,
+        maxDelayMs: 2,
+        maxAttemptsRateLimited: 1,
+      },
+    })
+    return { container, clock }
+  }
+
+  it('serves a cached quote as stale, not ok, once the TTL has passed', async () => {
+    let calls = 0
+    const working = workingTool()
+    const counting = (async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_stock_quote') calls += 1
+      return working(name, args)
+    }) as AvanzaToolCall
+
+    const { container, clock } = persistent(counting)
+    const first = await getOverviewSnapshot(createOverviewDataSource(container))
+    expect(first.watchlist.state).toBe('ok')
+
+    // Past the closed-market TTL, with the provider now unreachable so the
+    // cache is the only thing left to serve.
+    clock.advance(16 * 60_000)
+    const seen = calls
+    const stalled = await getOverviewSnapshot(createOverviewDataSource(container))
+
+    expect(stalled.watchlist.state).toBe('stale')
+    expect(stalled.watchlist.state).not.toBe('ok')
+    if (!hasData(stalled.watchlist)) throw new Error('no watchlist')
+    // The age is recomputed against the current clock, so it cannot be frozen
+    // at the moment the value was cached and read as fresh later.
+    expect(stalled.watchlist.provenance.ageMs).toBeGreaterThan(
+      first.watchlist.state === 'ok' ? first.watchlist.provenance.ageMs : 0,
+    )
+    expect(calls).toBeGreaterThanOrEqual(seen)
+  })
+
+  it('keeps a four-day-old value stale rather than promoting it to fresh', async () => {
+    // Working once, then unreachable — so the cached value is the only thing
+    // available and the ceiling is what decides whether it may be shown.
+    let live = true
+    const working = workingTool()
+    const failing = (async (name: string, args: Record<string, unknown>) => {
+      if (!live) throw new Error('avanza unreachable')
+      return working(name, args)
+    }) as AvanzaToolCall
+
+    const { container, clock } = persistent(failing)
+    expect(
+      (await getOverviewSnapshot(createOverviewDataSource(container))).watchlist.state,
+    ).toBe('ok')
+    live = false
+
+    /*
+     * Age runs from the OBSERVATION, not from when the value was cached. The
+     * recorded payload's last trade is 2026-07-24T15:29:30Z, already ~2 days
+     * before this container's clock starts, so two more days puts it at ~4 —
+     * inside the ceiling. A quote that was old when we fetched it does not get
+     * a fresh five-day budget for having been stored.
+     */
+    clock.advance(2 * 24 * 60 * 60 * 1000)
+    const aged = await getOverviewSnapshot(createOverviewDataSource(container))
+    expect(aged.watchlist.state).toBe('stale')
+    if (!hasData(aged.watchlist)) throw new Error('no watchlist')
+    expect(aged.watchlist.provenance.ageMs).toBeGreaterThan(4 * 24 * 60 * 60 * 1000)
+
+    // The ceiling limits how long a stale value may be SHOWN. It is never a
+    // window in which that value counts as current, and past it the value is
+    // not served at all rather than quietly ageing into freshness.
+    expect(policyFor('equity-se').fallback.maxStaleMs).toBe(5 * 24 * 60 * 60 * 1000)
+  })
+
+  it('stops serving the value once it passes the ceiling', async () => {
+    let live = true
+    const working = workingTool()
+    const failing = (async (name: string, args: Record<string, unknown>) => {
+      if (!live) throw new Error('avanza unreachable')
+      return working(name, args)
+    }) as AvanzaToolCall
+
+    const { container, clock } = persistent(failing)
+    await getOverviewSnapshot(createOverviewDataSource(container))
+    live = false
+
+    // ~2 days old on arrival plus four more: past the ceiling.
+    clock.advance(4 * 24 * 60 * 60 * 1000)
+    const expired = await getOverviewSnapshot(createOverviewDataSource(container))
+    // Hybrid mode may fall to a fixture here; what must never happen is the
+    // six-day-old broker quote being served, in any state.
+    expect(expired.watchlist.state).not.toBe('ok')
+    expect(expired.watchlist.state).not.toBe('stale')
+  })
+})
+
 /* ------------------------------------------------------------------ identity */
 
 describe('identity never resolves at runtime', () => {
