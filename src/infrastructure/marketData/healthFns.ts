@@ -15,6 +15,11 @@
  * The token is a NARROWLY SCOPED TEMPORARY MEASURE, not an authorization
  * model. The moment this application has real authentication, these endpoints
  * should move behind it.
+ *
+ * Both functions use POST rather than GET **because of the token**: a GET
+ * server function serializes its payload into the URL, which would put an
+ * operator credential into access logs, proxy caches and error reports — the
+ * same rule that keeps provider API keys out of query strings.
  */
 
 import { createServerFn } from '@tanstack/react-start'
@@ -65,7 +70,7 @@ export function isHealthAuthorized(input: AuthorizationInput): boolean {
  * Never cached: a cached health response is a stale answer to a question only
  * asked because something might be wrong.
  */
-export const getMarketDataHealthFn = createServerFn({ method: 'GET' })
+export const getMarketDataHealthFn = createServerFn({ method: 'POST' })
   .validator((token: string | undefined) => token)
   .handler(async ({ data: presentedToken }): Promise<HealthResponse> => {
     const { getContainer } = await import('./serverFns')
@@ -89,7 +94,7 @@ export const getMarketDataHealthFn = createServerFn({ method: 'GET' })
  * function; a host that wants a real `/metrics` route can wrap it and set
  * `Content-Type: text/plain; version=0.0.4`.
  */
-export const getMarketDataMetricsFn = createServerFn({ method: 'GET' })
+export const getMarketDataMetricsFn = createServerFn({ method: 'POST' })
   .validator((token: string | undefined) => token)
   .handler(async ({ data: presentedToken }): Promise<string> => {
     const [{ getContainer }, { renderPrometheus }] = await Promise.all([

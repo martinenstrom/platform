@@ -97,7 +97,18 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   // An in-memory recorder by default, so the platform is observable without
   // any external dependency. Per-instance and reset on restart -- see
   // `metrics/registry.ts` for the limitations this implies.
-  const metricsRegistry = overrides.metrics ? undefined : createMetricsRegistry()
+  const metricsRegistry = overrides.metrics
+    ? undefined
+    : createMetricsRegistry({
+        onCapacityReached: (limit) =>
+          // Deferred below until `logger` exists; see `wireCapacityWarning`.
+          capacityWarnings.push(
+            `Metrics series cap of ${limit} reached: metric collection is now ` +
+              `incomplete. Investigate label cardinality before trusting ` +
+              `dashboards built on these series.`,
+          ),
+      })
+  const capacityWarnings: string[] = []
   const metrics: Metrics = overrides.metrics ?? metricsRegistry!
   const config =
     overrides.config ?? loadMarketDataConfig(overrides.env ?? (process.env as never))
@@ -160,6 +171,12 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   }
   const sharingWarning = checkCacheSharing(config, cache.isShared)
   if (sharingWarning) logger.warn(sharingWarning)
+  // Drains anything the registry recorded before the logger existed, and keeps
+  // draining as the process runs.
+  const drainCapacityWarnings = () => {
+    while (capacityWarnings.length > 0) logger.warn(capacityWarnings.shift()!)
+  }
+  drainCapacityWarnings()
 
   // Quota safety and credentials are FATAL in live mode rather than merely
   // warned about: starting a deployment that will silently overrun a
@@ -176,6 +193,7 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   }
 
   async function health(): Promise<MarketDataHealth> {
+    drainCapacityWarnings()
     const providerIds = new Set<string>([
       ...breakers.knownProviders(),
       ...Object.values(config.chains).flat(),

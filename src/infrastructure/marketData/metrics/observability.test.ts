@@ -67,8 +67,9 @@ describe('metric label cardinality', () => {
     registry.increment(METRIC.cacheHit, {
       provider: 'https://evil.test/leak',
     })
-    // Not merely sanitized — the write is refused, so no series is created.
-    expect(registry.snapshot()).toEqual([])
+    // Not merely sanitized — the write is refused, so the intended series is
+    // never created. The only series present is the rejection counter itself.
+    expect(registry.snapshot().map((s) => s.name)).toEqual([METRIC.metricsRejected])
     expect(registry.droppedWrites().invalidLabel).toBe(1)
     expect(registry.rejections()[0]?.why).toMatch(/URL/)
   })
@@ -78,8 +79,21 @@ describe('metric label cardinality', () => {
     const bad = { category: '2026-07-26T00:00:00Z' } as never
     registry.gauge(METRIC.budgetUsed, 1, bad)
     registry.observe(METRIC.providerLatency, 1, bad)
-    expect(registry.snapshot()).toEqual([])
+    expect(registry.snapshot().map((s) => s.name)).toEqual([METRIC.metricsRejected])
     expect(registry.droppedWrites().invalidLabel).toBe(2)
+  })
+
+  it('reports a visible diagnostic when the series cap is reached', () => {
+    const warnings: number[] = []
+    const registry = createMetricsRegistry({
+      onCapacityReached: (limit) => warnings.push(limit),
+    })
+    for (let i = 0; i < MAX_SERIES + 10; i++) {
+      registry.increment(METRIC.providerRequest, { provider: `p${i}` })
+    }
+    // Once, not once per dropped write: a counter alone is not a diagnostic,
+    // and a flood of identical warnings is not one either.
+    expect(warnings).toEqual([MAX_SERIES])
   })
 
   it('bounds the number of retained series', () => {
@@ -101,6 +115,12 @@ describe('metric label cardinality', () => {
     // exists to prevent.
     expect(registry.rejections().length).toBeLessThanOrEqual(100)
     expect(registry.droppedWrites().invalidLabel).toBe(500)
+    // The rejection counter is label-free, so 500 distinct bad values still
+    // produce exactly ONE series. It cannot recurse or grow.
+    const series = registry.snapshot()
+    expect(series).toHaveLength(1)
+    expect(series[0]?.name).toBe(METRIC.metricsRejected)
+    expect(series[0] && 'value' in series[0] && series[0].value).toBe(500)
   })
 })
 
@@ -148,7 +168,7 @@ describe('metrics recorder semantics', () => {
   it('rejects a negative observation — that is a clock problem, not a slow call', () => {
     const registry = createMetricsRegistry()
     registry.observe(METRIC.providerLatency, -5)
-    expect(registry.snapshot()).toEqual([])
+    expect(registry.snapshot().map((s) => s.name)).toEqual([METRIC.metricsRejected])
     expect(registry.droppedWrites().invalidValue).toBe(1)
   })
 

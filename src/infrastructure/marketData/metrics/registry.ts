@@ -24,12 +24,15 @@
 
 import {
   LATENCY_BUCKETS_MS,
+  METRIC,
   validateLabel,
   type LabelRejection,
   type MetricLabels,
   type MetricName,
   type Metrics,
 } from '~/application/marketData/metrics'
+
+const METRIC_REJECTED = METRIC.metricsRejected
 
 export type SeriesKind = 'counter' | 'gauge' | 'histogram'
 
@@ -87,12 +90,45 @@ function labelKey(name: string, labels: Record<string, string>): string {
   return `${name}{${pairs}}`
 }
 
-export function createMetricsRegistry(): MetricsRegistry {
+export interface MetricsRegistryOptions {
+  /**
+   * Called ONCE when the series cap is first reached.
+   *
+   * A counter alone is not an operational diagnostic — nobody reads a counter
+   * they do not know to look for. Hitting the cap means metrics are now
+   * silently incomplete, which is exactly the thing an operator must be told
+   * rather than left to infer.
+   */
+  onCapacityReached?: (limit: number) => void
+}
+
+export function createMetricsRegistry(
+  options: MetricsRegistryOptions = {},
+): MetricsRegistry {
   const series = new Map<string, Series>()
   const rejected: LabelRejection[] = []
   let droppedInvalidLabel = 0
   let droppedCapacity = 0
   let droppedInvalidValue = 0
+
+  /**
+   * Records a dropped write as a metric.
+   *
+   * Deliberately label-free: one fixed series that cannot grow, and whose own
+   * write can never be rejected — so it cannot recurse into itself. The cause
+   * breakdown lives in `droppedWrites()` and health, not in labels.
+   */
+  function countRejection(): void {
+    const key = labelKey(METRIC_REJECTED, {})
+    const entry = series.get(key)
+    if (entry && entry.kind === 'counter') {
+      entry.value += 1
+      return
+    }
+    // Bypasses the capacity check on purpose: the signal that metrics are
+    // incomplete must not be the first casualty of metrics being incomplete.
+    series.set(key, { kind: 'counter', name: METRIC_REJECTED, labels: {}, value: 1 })
+  }
 
   /** Returns validated labels, or null when the write must be dropped. */
   function clean(labels: MetricLabels | undefined): Record<string, string> | null {
@@ -106,6 +142,7 @@ export function createMetricsRegistry(): MetricsRegistry {
         // very memory problem the validation exists to prevent.
         if (rejected.length < 100) rejected.push(rejection)
         droppedInvalidLabel += 1
+        countRejection()
         return null
       }
       out[key] = String(value)
@@ -118,6 +155,7 @@ export function createMetricsRegistry(): MetricsRegistry {
     if (existing) return existing as T
     if (series.size >= MAX_SERIES) {
       droppedCapacity += 1
+      if (droppedCapacity === 1) options.onCapacityReached?.(MAX_SERIES)
       return null
     }
     const created = create()
@@ -131,6 +169,7 @@ export function createMetricsRegistry(): MetricsRegistry {
       // and silently applying it would corrupt every rate derived from it.
       if (!Number.isFinite(by) || by < 0) {
         droppedInvalidValue += 1
+        countRejection()
         return
       }
       const clean_ = clean(labels)
@@ -149,6 +188,7 @@ export function createMetricsRegistry(): MetricsRegistry {
     gauge(name: MetricName, value: number, labels?: MetricLabels) {
       if (!Number.isFinite(value)) {
         droppedInvalidValue += 1
+        countRejection()
         return
       }
       const clean_ = clean(labels)
@@ -167,6 +207,7 @@ export function createMetricsRegistry(): MetricsRegistry {
       // A negative latency is not a slow request, it is a clock problem.
       if (!Number.isFinite(value) || value < 0) {
         droppedInvalidValue += 1
+        countRejection()
         return
       }
       const clean_ = clean(labels)
