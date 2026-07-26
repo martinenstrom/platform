@@ -44,6 +44,8 @@ import {
   SYM_USDSEK,
   SYM_VOLV_B,
   type CanonicalSymbol,
+  type Maturity,
+  type YieldMethodology,
 } from '~/domain/market'
 
 export interface FixtureQuote {
@@ -88,7 +90,12 @@ export const FIXTURE_CRYPTO_QUOTES: FixtureQuote[] = [
 export interface FixtureYield {
   symbol: CanonicalSymbol
   countryCode: string
-  tenorMonths: number
+  currency: string
+  maturity: Maturity
+  /** Placeholder id; each Phase 4B adapter supplies the source's own. */
+  seriesId: string
+  /** The methodology the real source will use, so the shape is accurate. */
+  methodology: YieldMethodology
   yieldPercent: number
   /** Day change in basis points. */
   changeBasisPoints: number
@@ -99,28 +106,40 @@ export const FIXTURE_YIELDS: FixtureYield[] = [
   {
     symbol: SYM_US10Y,
     countryCode: 'US',
-    tenorMonths: 120,
+    currency: 'USD',
+    maturity: '10Y',
+    seriesId: 'BC_10YEAR',
+    methodology: 'par-yield',
     yieldPercent: 4.32,
     changeBasisPoints: 0,
   },
   {
     symbol: SYM_DE10Y,
     countryCode: 'DE',
-    tenorMonths: 120,
+    currency: 'EUR',
+    maturity: '10Y',
+    seriesId: 'BBSIS-R10XX',
+    methodology: 'zero-coupon-fitted',
     yieldPercent: 2.48,
     changeBasisPoints: -0.04,
   },
   {
     symbol: SYM_US2Y,
     countryCode: 'US',
-    tenorMonths: 24,
+    currency: 'USD',
+    maturity: '2Y',
+    seriesId: 'BC_2YEAR',
+    methodology: 'par-yield',
     yieldPercent: 3.91,
     changeBasisPoints: 0.01,
   },
   {
     symbol: SYM_SE10Y,
     countryCode: 'SE',
-    tenorMonths: 120,
+    currency: 'SEK',
+    maturity: '10Y',
+    seriesId: 'SEGVB10YC',
+    methodology: 'benchmark-bond-yield',
     yieldPercent: 2.34,
     changeBasisPoints: 0.02,
   },

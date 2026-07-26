@@ -2003,3 +2003,100 @@ No SDK added. The mapping is 1:1 and documented in `metrics/prometheus.ts`:
 `increment → Counter.add`, `observe → Histogram.record`,
 `gauge → ObservableGauge`, labels → attributes verbatim. Future integrations
 are adapters over this port, not changes to the pipeline.
+
+---
+
+---
+
+# Part VII — Phase 4A: yield domain and provider trust
+
+Domain foundation only. No adapter, no wiring, no policy change, no UI. The
+recorded Treasury, Riksbank and Bundesbank payloads exist on disk but are
+deliberately **not** committed until Phase 4B consumes them.
+
+## 44. Provider trust
+
+Trust attaches to **both** the access route and the originator, because they
+differ in practice and in both directions:
+
+| Provider            | Route trust    | Originator                         | Originator trust  |
+| ------------------- | -------------- | ---------------------------------- | ----------------- |
+| US Treasury _(4B)_  | `issuer`       | itself                             | —                 |
+| Bundesbank _(4B)_   | `central-bank` | itself                             | —                 |
+| **Riksbank** _(4B)_ | `central-bank` | **Refinitiv**                      | `licensed-vendor` |
+| **Frankfurter**     | `aggregator`   | **European Central Bank**          | `central-bank`    |
+| CoinGecko           | `aggregator`   | exchanges (no single one nameable) | —                 |
+| Fixture             | `synthetic`    | —                                  | —                 |
+
+A single field would have called Riksbank's Refinitiv series "central-bank
+data" and Frankfurter's ECB rates "aggregator data". Both wrong, in opposite
+directions.
+
+`effectiveTrust(route, originator)` returns the **weaker** of the two: a chain
+is only as trustworthy as its weakest link, so a central bank republishing a
+vendor series yields vendor-grade provenance, and an aggregator republishing
+the ECB does not thereby become a central bank. A test asserts the result is
+never stronger than the route, across all 64 combinations.
+
+`issuer` was added to the proposed taxonomy: for a _yield_, the entity that
+issued the bond is the strongest provenance available, and it happens to be the
+best US source.
+
+Metadata only — nothing reads it for a decision. `ProviderCapabilityMetadata`
+requires it, so a new provider cannot be registered without declaring one.
+
+## 45. Canonical maturity, staged
+
+`Maturity` (`1M`…`30Y`) and `MATURITY_MONTHS` are defined, and `buildYield`
+derives `tenorMonths` from a maturity when given. It is **optional** in 4A for
+one honest reason: the legacy PRNG curve uses tenors like 48 and 168 months
+that have no canonical maturity, and forcing it would have changed the golden
+snapshot — which is Phase 4B's sanctioned change, not 4A's. Supplying both a
+maturity and a contradicting tenor is refused rather than silently resolved.
+
+## 46. Yield methodology
+
+`par-yield`, `constant-maturity`, `zero-coupon-fitted`,
+`benchmark-bond-yield`, `specific-bond-quote`, `spot-rate` — **not**
+interchangeable. `methodologiesAreComparable` permits exactly one pairing:
+`par-yield` with `constant-maturity`, because a FRED DGS series _is_ the
+Treasury par curve interpolated to a fixed tenor. Nothing else pairs.
+
+`buildYieldCurve` now refuses a curve that mixes methodologies, mixes
+observation dates, mixes issuers, or is empty; and it carries the single
+`methodology` and `observationDate` its points share. Missing maturities are
+absent, never interpolated.
+
+`observationDate` is stored separately from `provenance.receivedAt`, which is
+what makes a revision recognisable: same observation date, later receipt,
+different value.
+
+## 47. `official-daily`
+
+A new `Quality`: an official statistic published once per business day.
+`eod` implies a market close and `delayed` implies a real-time feed running
+behind; a Treasury par yield is neither, having no intraday existence at all.
+
+## 48. Decision: no `MarketObservation` supertype
+
+Assessed and **declined**. The models are converging on _metadata_, not on the
+observation body.
+
+The evidence is in the phase history: Phases 2 and 3 added `changePeriod`,
+`changeSource`, `sourcePrecision` and `requestedPrecision` to `MarketQuote`
+alone, while `GovernmentYield` now needs `methodology`, `seriesId`, `maturity`
+and `observationDate` that a quote must never have. Four fields landed on one
+model when both needed them; four more landed on the other that the first must
+not have.
+
+A generic supertype would force `value: number`, discarding the unit. `Price`
+and `YieldPercent` being _distinct branded types_ is the mechanism that stops a
+yield rendering as a price — the same protection as basis-points-versus-percent
+— and a common supertype hands it back.
+
+**Recommended instead, for a future phase:** extract an `ObservationMetadata`
+holding provenance, change period, change source and the two precision fields,
+embedded by each model, with bodies staying type-specific. `NewsItem` and
+`MarketSentiment` remain outside it entirely: one is content, one is derived,
+and forcing them into an observation hierarchy would be modelling for symmetry
+rather than for meaning.

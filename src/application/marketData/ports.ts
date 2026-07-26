@@ -18,6 +18,7 @@ import type {
   MarketSentiment,
   MarketSeries,
   NewsItem,
+  ProviderTrust,
   SeriesInterval,
   YieldCurve,
 } from '~/domain/market'
@@ -155,6 +156,15 @@ export interface PortByCapability {
  * request, or sizing a timeout per provider instead of globally.
  */
 export interface ProviderCapabilityMetadata {
+  /**
+   * What kind of party this provider is.
+   *
+   * Metadata only — nothing reads it for a decision yet. It exists so that
+   * provenance survives long enough for a future provider-quality policy to be
+   * written without touching the domain models again. A test asserts every
+   * registration declares one, so it cannot quietly drift out of date.
+   */
+  trust: ProviderTrust
   /** Typical successful round trip, for timeout and ordering decisions. */
   expectedLatencyMs: number
   /** How often the upstream itself changes; polling faster gains nothing. */
@@ -171,6 +181,7 @@ export interface ProviderCapabilityMetadata {
 
 /** Sensible defaults so a provider declares only what differs. */
 export const DEFAULT_PROVIDER_METADATA: ProviderCapabilityMetadata = {
+  trust: 'aggregator',
   expectedLatencyMs: 500,
   updateFrequency: 'minutely',
   delayMinutes: null,

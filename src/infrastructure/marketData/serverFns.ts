@@ -76,6 +76,9 @@ export async function getContainer(): Promise<Container> {
           ),
           capabilities: new Set(['crypto'] as const),
           metadata: {
+            // A cross-exchange aggregate: the exchanges originate the prices,
+            // CoinGecko combines them.
+            trust: 'aggregator' as const,
             expectedLatencyMs: 350,
             updateFrequency: 'minutely' as const,
             // Aggregated with a short cache, not a venue feed running behind.
@@ -92,6 +95,10 @@ export async function getContainer(): Promise<Container> {
           ),
           capabilities: new Set(['fx'] as const),
           metadata: {
+            // Frankfurter is an open republisher; the ECB originates the
+            // rates. `originatorTrust` on the source metadata records that the
+            // numbers themselves are central-bank grade.
+            trust: 'aggregator' as const,
             expectedLatencyMs: 400,
             // One publication per TARGET business day; nothing is gained by
             // asking more often.
@@ -114,6 +121,9 @@ export async function getContainer(): Promise<Container> {
       {
         provider: fixture,
         metadata: {
+          // Invented data. The weakest classification there is, and the
+          // reason fixtures are barred from production.
+          trust: 'synthetic' as const,
           // A local fixture: instant, never delayed, no attribution owed.
           expectedLatencyMs: 0,
           updateFrequency: 'static',

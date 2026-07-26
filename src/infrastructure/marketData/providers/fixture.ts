@@ -25,6 +25,7 @@ import {
   buildYield,
   buildYieldCurve,
   instrumentRef,
+  isoCurrency,
   labelForScore,
   SENTIMENT_BASELINE,
   type CanonicalSymbol,
@@ -74,6 +75,7 @@ import { syntheticSeries } from './fixture/syntheticSeries'
 export const FIXTURE_SOURCE: DataSourceMetadata = {
   providerId: 'fixture',
   providerName: 'Exempeldata',
+  trust: 'synthetic',
 }
 
 const MINUTE_MS = 60_000
@@ -261,7 +263,13 @@ function yieldsFor(
     return buildYield({
       symbol: fixture.symbol,
       countryCode: fixture.countryCode,
-      tenorMonths: fixture.tenorMonths,
+      currency: isoCurrency(fixture.currency),
+      maturity: fixture.maturity,
+      seriesId: fixture.seriesId,
+      // The methodology each real Phase 4B source will supply, so the fixture
+      // is shape-accurate. `quality` stays 'fixture' — this is not real data.
+      methodology: fixture.methodology,
+      observationDate: ctx.clock.now().toISOString().slice(0, 10),
       yieldPercent: fixture.yieldPercent,
       previousYieldPercent: fixture.yieldPercent - fixture.changeBasisPoints / 100,
       provenance: fixtureProvenance(ctx),
@@ -281,13 +289,21 @@ function yieldCurveFor(countryCode: string, ctx: FetchContext): YieldCurve {
     0.02,
   )
   const provenance = fixtureProvenance(ctx)
+  const observationDate = ctx.clock.now().toISOString().slice(0, 10)
   return buildYieldCurve({
     countryCode,
     points: values.map((v, i) =>
       buildYield({
         symbol: FIXTURE_YIELDS[0]!.symbol,
         countryCode,
-        // Synthetic tenor ladder; not a real maturity structure.
+        currency: isoCurrency('USD'),
+        seriesId: 'fixture-curve',
+        // One methodology and one date across every point, so the curve
+        // passes the integrity checks even while its values are synthetic.
+        methodology: 'par-yield',
+        observationDate,
+        // Synthetic tenor ladder with no canonical maturity — the reason
+        // `maturity` is still optional. Retired in Phase 4B.
         tenorMonths: (i + 1) * 12,
         yieldPercent: v,
         provenance,

@@ -47,6 +47,12 @@ export const FRANKFURTER_SOURCE: DataSourceMetadata = {
   attributionUrl: 'https://frankfurter.dev',
   licenseNote:
     'European Central Bank reference rates, published each TARGET business day',
+  // Frankfurter is the route; the ECB produces the numbers. Naming
+  // Frankfurter as the source would understate the provenance exactly as
+  // badly as naming a redistributor overstates it elsewhere.
+  originator: 'European Central Bank',
+  trust: 'aggregator',
+  originatorTrust: 'central-bank',
 }
 
 const BASE_URL = 'https://api.frankfurter.dev/v1'

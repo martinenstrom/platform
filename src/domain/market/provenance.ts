@@ -58,16 +58,90 @@ export type Quality =
    * observation, so `isDelayed` stays false for it.
    */
   | 'eod'
+  /**
+   * An official statistic published once per business day.
+   *
+   * Distinct from 'eod', which implies a market close, and from 'delayed',
+   * which implies a real-time feed running behind. A Treasury par yield or a
+   * Bundesbank curve point is neither: it is a published figure with an
+   * observation date and no intraday existence at all.
+   */
+  | 'official-daily'
   /** Computed in-house from other real values. Production-eligible. */
   | 'derived'
   /** Invented. Never production-eligible — see FallbackPolicy. */
   | 'fixture'
+
+/**
+ * How much a source's provenance is worth, by what the party actually is.
+ *
+ * Applies to BOTH the access route and the originator, because they can
+ * differ and frequently do: the Riksbank (a central bank) republishes
+ * Refinitiv yield series, and Frankfurter (an open aggregator) republishes ECB
+ * reference rates. Trusting the route alone would flatter one and libel the
+ * other.
+ *
+ * The effective trust of an observation is the WEAKER of the two — see
+ * `effectiveTrust`.
+ */
+export type ProviderTrust =
+  /** Publishes data about instruments it issues itself. The strongest case. */
+  | 'issuer'
+  | 'central-bank'
+  | 'official-statistics'
+  | 'exchange'
+  | 'licensed-vendor'
+  | 'aggregator'
+  /** Computed in-house from other observations. */
+  | 'derived'
+  /** Invented. Fixtures only. */
+  | 'synthetic'
+
+/** 1 = primary source, 5 = not real data. Lower is stronger. */
+export const TRUST_TIER: Record<ProviderTrust, 1 | 2 | 3 | 4 | 5> = {
+  issuer: 1,
+  'central-bank': 1,
+  'official-statistics': 1,
+  exchange: 1,
+  'licensed-vendor': 2,
+  aggregator: 3,
+  derived: 4,
+  synthetic: 5,
+}
+
+/**
+ * A chain is only as trustworthy as its weakest link: a central bank
+ * republishing a vendor series yields vendor-grade provenance, not
+ * central-bank-grade.
+ */
+export function effectiveTrust(
+  providerTrust: ProviderTrust,
+  originatorTrust?: ProviderTrust,
+): ProviderTrust {
+  if (!originatorTrust) return providerTrust
+  return TRUST_TIER[originatorTrust] > TRUST_TIER[providerTrust]
+    ? originatorTrust
+    : providerTrust
+}
 
 export interface DataSourceMetadata {
   /** Stable id, also used as the provider's registry key. */
   providerId: string
   /** Human-readable name, for attribution surfaces. */
   providerName: string
+  /**
+   * Who actually produced the numbers, when that differs from the route we
+   * used to obtain them.
+   *
+   * The Riksbank's government-bond series are sourced from Refinitiv; naming
+   * the Riksbank as the source would be the same error as calling a charting
+   * vendor the origin of an exchange's prices.
+   */
+  originator?: string
+  /** Trust of the access route. */
+  trust?: ProviderTrust
+  /** Trust of the originator, when it differs from the route. */
+  originatorTrust?: ProviderTrust
   /** Some free tiers require visible attribution as a licence condition. */
   attributionUrl?: string
   licenseNote?: string

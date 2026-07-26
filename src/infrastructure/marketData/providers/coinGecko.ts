@@ -43,6 +43,9 @@ export const COINGECKO_SOURCE: DataSourceMetadata = {
   providerName: 'CoinGecko (aggregated market data)',
   attributionUrl: 'https://www.coingecko.com',
   licenseNote: 'Cross-exchange aggregate; not exchange-grade market data',
+  // The exchanges originate the prices; CoinGecko combines them. No single
+  // originator can be named, so only the route's trust is asserted.
+  trust: 'aggregator',
 }
 
 const BASE_URL = 'https://api.coingecko.com/api/v3'

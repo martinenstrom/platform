@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { FakeClock } from '~/domain/shared/clock'
 import { canonicalSymbol } from './instruments'
+import { isoCurrency } from './primitives'
 import { buildNewsItem, sortByRecency } from './news'
 import { buildQuote, buildSeries, rebaseToPercent } from './observations'
 import {
@@ -219,7 +220,11 @@ describe('yields', () => {
     const y = buildYield({
       symbol: SYM_US10Y,
       countryCode: 'US',
-      tenorMonths: 120,
+      currency: isoCurrency('USD'),
+      maturity: '10Y',
+      seriesId: 'TEST',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
       yieldPercent: 4.32,
       previousYieldPercent: 4.28,
       provenance: provenance({ quality: 'eod' }),
@@ -228,30 +233,60 @@ describe('yields', () => {
     expect(y.changeBasisPoints).toBeCloseTo(4, 6)
   })
 
-  it('rejects a nonsensical tenor', () => {
+  it('rejects a maturity that contradicts an explicit tenor', () => {
+    // Two answers to one question is worse than none, so the disagreement is
+    // refused rather than silently resolved in favour of either.
     expect(() =>
       buildYield({
         symbol: SYM_US10Y,
         countryCode: 'US',
-        tenorMonths: 0,
+        currency: isoCurrency('USD'),
+        maturity: '10Y',
+        tenorMonths: 24,
+        seriesId: 'TEST',
+        methodology: 'par-yield',
+        observationDate: '2026-07-24',
         yieldPercent: 4,
         provenance: provenance(),
       }),
-    ).toThrow(/positive integer/)
+    ).toThrow(/is 120 months, not 24/)
+  })
+
+  it('requires either a maturity or a tenor', () => {
+    expect(() =>
+      buildYield({
+        symbol: SYM_US10Y,
+        countryCode: 'US',
+        currency: isoCurrency('USD'),
+        seriesId: 'TEST',
+        methodology: 'par-yield',
+        observationDate: '2026-07-24',
+        yieldPercent: 4,
+        provenance: provenance(),
+      }),
+    ).toThrow(/supply a maturity or a tenorMonths/)
   })
 
   it('refuses to mix issuers in one curve', () => {
     const us = buildYield({
       symbol: SYM_US2Y,
       countryCode: 'US',
-      tenorMonths: 24,
+      currency: isoCurrency('USD'),
+      maturity: '2Y',
+      seriesId: 'TEST',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
       yieldPercent: 3.91,
       provenance: provenance(),
     })
     const de = buildYield({
       symbol: SYM_US10Y,
       countryCode: 'DE',
-      tenorMonths: 120,
+      currency: isoCurrency('USD'),
+      maturity: '10Y',
+      seriesId: 'TEST',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
       yieldPercent: 2.48,
       provenance: provenance(),
     })
@@ -264,14 +299,22 @@ describe('yields', () => {
     const short = buildYield({
       symbol: SYM_US2Y,
       countryCode: 'US',
-      tenorMonths: 24,
+      currency: isoCurrency('USD'),
+      maturity: '2Y',
+      seriesId: 'TEST',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
       yieldPercent: 3.91,
       provenance: provenance(),
     })
     const long = buildYield({
       symbol: SYM_US10Y,
       countryCode: 'US',
-      tenorMonths: 120,
+      currency: isoCurrency('USD'),
+      maturity: '10Y',
+      seriesId: 'TEST',
+      methodology: 'par-yield',
+      observationDate: '2026-07-24',
       yieldPercent: 4.32,
       provenance: provenance(),
     })

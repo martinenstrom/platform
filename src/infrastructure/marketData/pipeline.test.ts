@@ -298,7 +298,13 @@ describe('category isolation', () => {
       watchlist: async () => ok([]),
       yields: async () => ok([]),
       yieldCurve: async () =>
-        ok({ countryCode: 'US', points: [], provenance: provenance('live') }),
+        ok({
+          countryCode: 'US',
+          methodology: 'par-yield' as const,
+          observationDate: '2026-07-24',
+          points: [],
+          provenance: provenance('live'),
+        }),
       news: async () => ok([]),
       sentiment: async () =>
         ok({
