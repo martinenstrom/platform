@@ -270,6 +270,7 @@ describe('a new department is data, not code', () => {
 
 const baseCase: InvestmentCase = {
   id: 'case-1',
+  version: 1,
   subject: { kind: 'instrument', ref: 'eq:xsto:volv-b', displayName: 'Volvo B' },
   question: 'Is the current valuation supported by the earnings trajectory?',
   stage: 'intake',
@@ -290,6 +291,8 @@ describe('cases move through the firm', () => {
     const moved = transitionCase(baseCase, 'research', mover)
     expect(moved.stage).toBe('research')
     expect(moved.transitions).toHaveLength(1)
+    // Every movement advances the aggregate version, for concurrency control.
+    expect(moved.version).toBe(baseCase.version + 1)
   })
 
   it('does not mutate the case it was given', () => {
@@ -870,17 +873,10 @@ describe('run records and the activity feed', () => {
     prompt: { id: 'macro', version: '3', contentHash: 'ph' },
     model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'mh' },
     evidenceSetId: 'set-1',
-    status: 'completed',
+    state: 'completed',
     startedAt: '2026-07-27T09:00:00.000Z',
     completedAt: '2026-07-27T09:02:00.000Z',
-    events: [
-      {
-        runId: 'run-1',
-        at: '2026-07-27T09:00:00.000Z',
-        status: 'running',
-        activity: 'Reading FOMC minutes',
-      },
-    ],
+    events: [{ runId: 'run-1', at: '2026-07-27T09:00:00.000Z', state: 'running' }],
     claims: [],
   })
 
@@ -899,8 +895,8 @@ describe('run records and the activity feed', () => {
 
   it('refuses a failed run with no reason', () => {
     expect(() =>
-      buildRunRecord({ ...run, status: 'failed', failureReason: undefined }),
-    ).toThrow(/failed without a reason/)
+      buildRunRecord({ ...run, state: 'failed', failureReason: undefined }),
+    ).toThrow(/is failed without a reason/)
   })
 
   it('builds the activity feed only from recorded state changes', () => {
@@ -910,6 +906,7 @@ describe('run records and the activity feed', () => {
         {
           at: '2026-07-27T09:05:00.000Z',
           byDepartmentId: 'verification',
+          caseId: 'case-1',
           from: 'aggregation',
           to: 'review',
         },
@@ -917,8 +914,10 @@ describe('run records and the activity feed', () => {
     )
     expect(activity).toHaveLength(2)
     // Newest first, and every line traceable to a run event or a transition.
-    expect(activity[0]?.source).toBe('case')
-    expect(activity[1]?.description).toBe('Reading FOMC minutes')
+    expect(activity[0]?.subject).toBe('case')
+    // Structured only — the domain stores states, never prose.
+    expect(activity[1]).toMatchObject({ subject: 'run', toState: 'running' })
+    expect(JSON.stringify(activity)).not.toMatch(/studying|reading/i)
   })
 
   it('shows nothing when nothing has happened', () => {

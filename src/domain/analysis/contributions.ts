@@ -51,34 +51,83 @@ export interface ModelRef {
 
 /* --------------------------------------------------------------- run record */
 
-export type RunStatus =
+/**
+ * The run state machine.
+ *
+ * Deliberately richer than "running / done / failed", because the intermediate
+ * states are the ones the headquarters floor needs: a department waiting on a
+ * dependency looks identical to an idle one unless the difference is recorded.
+ *
+ * These describe EXECUTION only. Whether the resulting work is verified,
+ * challenged, approved, selected or published are separate dimensions carried
+ * by the review records — a technically completed contribution is not an
+ * approved one, and folding them into one status field would make it
+ * impossible to say "finished, and rejected".
+ */
+export type RunState =
   | 'queued'
+  /** Cannot start: a declared dependency has not completed. */
+  | 'waiting-for-dependencies'
+  /** Dependencies satisfied, awaiting a slot. */
+  | 'ready'
   | 'running'
   | 'completed'
   | 'failed'
-  | 'cancelled'
-  /** Stopped because it would exceed its cost or token budget. */
-  | 'budget-exceeded'
   | 'timed-out'
+  | 'cancelled'
+  /** The thesis revision it was working against was superseded mid-flight. */
+  | 'superseded'
+  /** An upstream dependency failed, so this can never run. Not a failure. */
+  | 'blocked'
+
+const RUN_TRANSITIONS: Readonly<Record<RunState, readonly RunState[]>> = Object.freeze({
+  queued: ['waiting-for-dependencies', 'ready', 'cancelled', 'blocked'],
+  'waiting-for-dependencies': ['ready', 'blocked', 'cancelled', 'superseded'],
+  ready: ['running', 'cancelled', 'blocked', 'superseded'],
+  running: ['completed', 'failed', 'timed-out', 'cancelled', 'superseded'],
+  completed: ['superseded'],
+  failed: [],
+  'timed-out': [],
+  cancelled: [],
+  superseded: [],
+  blocked: ['ready'],
+})
+
+export function canTransitionRun(from: RunState, to: RunState): boolean {
+  return RUN_TRANSITIONS[from].includes(to)
+}
+
+/** States after which no further work happens. */
+export const TERMINAL_RUN_STATES: readonly RunState[] = [
+  'completed',
+  'failed',
+  'timed-out',
+  'cancelled',
+  'superseded',
+] as const
+
+export function isRunTerminal(state: RunState): boolean {
+  return TERMINAL_RUN_STATES.includes(state)
+}
 
 /**
- * A recorded change of run status.
+ * A recorded change of run state.
  *
- * The other half of the live activity feed. Together with `CaseTransition`
- * these are the ONLY permitted sources of visible organizational activity —
- * the headquarters may show "Fact Checker verifying earnings numbers, 09:07"
- * exactly when a run entered that state at 09:07, and never otherwise. The
- * floor looks alive because it is, not because a timer is inventing events.
+ * Together with case and thesis transitions, the ONLY permitted source of
+ * visible organizational activity. Carries no prose: the floor's wording is
+ * generated in the presentation layer from these structured facts, so nothing
+ * can write "Macro Team is studying the Fed" without a run having entered a
+ * state to support it.
  */
 export interface RunEvent {
   runId: RunId
   at: string
-  status: RunStatus
-  /** Short, human-readable: what the department is doing right now. */
-  activity?: string
+  state: RunState
+  /** Required when moving to a stalling state. */
+  reason?: string
 }
 
-/** Cost accounting. Defined in Phase A, populated in Phase B. */
+/** Cost accounting. Defined in Phase A, populated when a live provider exists. */
 export interface RunCost {
   inputTokens: number
   outputTokens: number
@@ -104,7 +153,9 @@ export interface AgentRunRecord {
   /** What it reasoned over. Content-addressed, so replay is exact. */
   evidenceSetId: string
 
-  status: RunStatus
+  state: RunState
+  /** The thesis revision this contributes to, when the work is thesis-scoped. */
+  revisionId?: string
   startedAt: string
   completedAt?: string
   /** Ordered, oldest first. Feeds the activity projection. */
@@ -112,8 +163,17 @@ export interface AgentRunRecord {
 
   claims: readonly AgentClaim[]
   cost?: RunCost
-  /** Present when `status` is `failed`. */
+  /** Present when the run failed, timed out, was blocked or cancelled. */
   failureReason?: string
+  /**
+   * True when the result arrived after the revision it targeted was
+   * superseded.
+   *
+   * Retained against the OLD revision rather than silently reattached to the
+   * new one: the work reasoned over different assumptions, and moving it would
+   * attribute conclusions to a thesis that never saw them.
+   */
+  obsolete?: boolean
 }
 
 /**
@@ -147,10 +207,11 @@ export function runCacheKey(run: {
 }
 
 export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
-  if (record.status === 'failed' && !record.failureReason) {
-    throw new Error(`Run "${record.id}" failed without a reason`)
+  const needsReason: readonly RunState[] = ['failed', 'timed-out', 'blocked', 'cancelled']
+  if (needsReason.includes(record.state) && !record.failureReason) {
+    throw new Error(`Run "${record.id}" is ${record.state} without a reason`)
   }
-  if (record.status === 'completed' && !record.completedAt) {
+  if (record.state === 'completed' && !record.completedAt) {
     throw new Error(`Run "${record.id}" is completed but has no completion time`)
   }
   return Object.freeze({
@@ -162,46 +223,60 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
 
 /* ------------------------------------------------------------ activity feed */
 
-/** One line on the headquarters activity feed. */
+/**
+ * A structured activity fact.
+ *
+ * No prose. The presentation layer turns this into a sentence; storing the
+ * sentence would let anything write activity with no work behind it.
+ */
 export interface ActivityItem {
   at: string
   departmentId: DepartmentId
-  description: string
-  source: 'run' | 'case'
+  subject: 'run' | 'case'
+  fromState: string | null
+  toState: string
+  caseId: CaseId
+  runId?: RunId
 }
 
 /**
- * Projects the activity feed from recorded state changes.
+ * Projects activity from recorded state changes.
  *
- * The signature is the guarantee: it takes run events and case transitions and
- * nothing else. There is no parameter through which invented activity could
- * enter, which is how "the organization must feel alive" and "never fabricate
- * activity" are satisfied at the same time.
+ * The signature is the guarantee: run events and case transitions in, activity
+ * out. There is no parameter through which invented activity could enter,
+ * which is how "the organization must feel alive" and "never fabricate
+ * activity" hold at the same time.
  */
 export function projectActivity(
   runs: readonly AgentRunRecord[],
   caseTransitions: ReadonlyArray<{
     at: string
     byDepartmentId: DepartmentId
+    caseId: CaseId
     from: string
     to: string
   }>,
   limit = 20,
 ): ActivityItem[] {
   const fromRuns: ActivityItem[] = runs.flatMap((run) =>
-    run.events.map((event) => ({
+    run.events.map((event, index) => ({
       at: event.at,
       departmentId: run.departmentId,
-      description: event.activity ?? `run ${event.status}`,
-      source: 'run' as const,
+      subject: 'run' as const,
+      fromState: run.events[index - 1]?.state ?? null,
+      toState: event.state,
+      caseId: run.caseId,
+      runId: run.id,
     })),
   )
 
   const fromCases: ActivityItem[] = caseTransitions.map((transition) => ({
     at: transition.at,
     departmentId: transition.byDepartmentId,
-    description: `case moved ${transition.from} → ${transition.to}`,
-    source: 'case' as const,
+    subject: 'case' as const,
+    fromState: transition.from,
+    toState: transition.to,
+    caseId: transition.caseId,
   }))
 
   return [...fromRuns, ...fromCases]

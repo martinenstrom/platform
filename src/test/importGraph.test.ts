@@ -630,11 +630,11 @@ describe('AI Phase A guards — an organization, and no runtime', () => {
     expect(offenders).toEqual([])
   })
 
-  it('ships no analysis runtime in Phase A', () => {
-    // Contracts only: no orchestrator, no scheduler, no infrastructure adapter.
-    const runtime = FILES.filter((f) => f.path.startsWith('infrastructure/analysis'))
-    expect(runtime.map((f) => f.path)).toEqual([])
-  })
+  /*
+   * Phase A forbade `infrastructure/analysis` entirely. Phase B lifts that
+   * deliberately — the runtime lives there — and every other boundary stays.
+   * See the Phase B guards below.
+   */
 
   it('keeps the Agents UI untouched by Phase A', () => {
     const offenders = FILES.filter(
@@ -662,6 +662,98 @@ describe('AI Phase A guards — an organization, and no runtime', () => {
      * section is the digital headquarters of Financial OS, and it must not be
      * demoted to a settings page, a modal or a subsection of Reports.
      */
+    const navigation = readFileSync(join(SRC, 'lib/navigation.ts'), 'utf8')
+    expect(navigation).toMatch(/to:\s*'\/agents'/)
+    expect(navigation).toMatch(/label:\s*'Agenter'/)
+  })
+})
+
+describe('AI Phase B guards — the runtime respects its layers', () => {
+  it('keeps domain/analysis free of application and infrastructure', () => {
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file) || !file.path.startsWith('domain/analysis/')) continue
+      for (const specifier of file.imports) {
+        if (
+          specifier.startsWith('~/application') ||
+          specifier.startsWith('~/infrastructure')
+        ) {
+          offenders.push(`${file.path} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps application/analysis off infrastructure', () => {
+    // It depends on domain contracts and its own ports. Infrastructure
+    // implements those ports, never the other way round.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file) || !file.path.startsWith('application/analysis/')) continue
+      for (const specifier of file.imports) {
+        if (specifier.startsWith('~/infrastructure')) {
+          offenders.push(`${file.path} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps components and routes off the analysis runtime', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        (f.path.startsWith('components/') || f.path.startsWith('routes/')) &&
+        f.imports.some(
+          (s) =>
+            s.startsWith('~/infrastructure/analysis') ||
+            s.startsWith('~/application/analysis'),
+        ),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('still contains no LLM client', () => {
+    // Phase B builds the runtime. The model arrives in Phase C, and not before.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      for (const specifier of file.imports) {
+        if (
+          /^(@anthropic-ai|openai|@openai|langchain|@langchain|ai)(\/|$)/.test(specifier)
+        ) {
+          offenders.push(`${file.path} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('stores no prose activity in the domain', () => {
+    /*
+     * The integrity mechanism behind the living-organization vision. Activity
+     * text is generated in the presentation layer from structured events; a
+     * domain field holding a sentence would let anything write "Macro Team is
+     * studying the Fed" with no work behind it.
+     */
+    const contributions = codeOnly(
+      readFileSync(join(SRC, 'domain/analysis/contributions.ts'), 'utf8'),
+    )
+    expect(contributions).not.toMatch(/activity\s*[?]?:\s*string/)
+    const events = codeOnly(readFileSync(join(SRC, 'domain/analysis/events.ts'), 'utf8'))
+    expect(events).not.toMatch(/description\s*[?]?:\s*string/)
+  })
+
+  it('leaves the legacy investmentLetter prototype untouched by the runtime', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        f.path.startsWith('services/investmentLetter/') &&
+        f.imports.some((s) => s.includes('/analysis')),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps Agenter a first-class navigation destination', () => {
     const navigation = readFileSync(join(SRC, 'lib/navigation.ts'), 'utf8')
     expect(navigation).toMatch(/to:\s*'\/agents'/)
     expect(navigation).toMatch(/label:\s*'Agenter'/)

@@ -120,6 +120,16 @@ export interface CaseTransition {
 
 export interface InvestmentCase {
   id: CaseId
+  /**
+   * Monotonic aggregate version, for optimistic concurrency.
+   *
+   * Departments finish concurrently even inside one process, so a command
+   * computed against version 12 must not silently overwrite work committed as
+   * version 13. The repository compares this on write and rejects a stale one;
+   * the caller re-reads and retries. Deliberately not a global lock, which
+   * would serialise the whole organization to protect one case.
+   */
+  version: number
   subject: CaseSubject
   /** Why the firm is looking at this — a mandate, not a prompt. */
   question: string
@@ -173,6 +183,7 @@ export function transitionCase(
   return Object.freeze({
     ...investmentCase,
     stage: to,
+    version: investmentCase.version + 1,
     transitions: Object.freeze([...investmentCase.transitions, transition]),
     ...(isTerminal(to) ? { closedAt: by.at } : {}),
   })

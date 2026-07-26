@@ -1,0 +1,680 @@
+/**
+ * The Phase B runtime.
+ *
+ * No model, no network. The recorded and stub providers go through exactly the
+ * same orchestration, isolation, deadline and persistence code a live provider
+ * will, which is the only reason these tests say anything about the real path.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  buildTransitionEvent,
+  transitionCase,
+  type InvestmentCase,
+  type TransitionEvent,
+} from '~/domain/analysis'
+import {
+  ConcurrencyConflictError,
+  type AnalysisRepositories,
+} from '~/application/analysis/repositories'
+import {
+  blockedEntries,
+  readyEntries,
+  validatePlaybook,
+  type CasePlaybook,
+} from '~/application/analysis/playbooks'
+import {
+  runPlaybook,
+  type OrchestrationContext,
+} from '~/application/analysis/orchestrator'
+import { resultKey } from '~/application/analysis/resultStore'
+import { createInMemoryRepositories } from './inMemoryRepositories'
+import {
+  createInMemoryResultStore,
+  createRecordedContributionProvider,
+  createStubContributionProvider,
+  type RecordedContribution,
+} from './recordedContributions'
+
+/* ------------------------------------------------------------------ fixtures */
+
+const NOW = new Date('2026-07-27T09:00:00.000Z')
+
+const investmentCase = (over: Partial<InvestmentCase> = {}): InvestmentCase => ({
+  id: 'case-1',
+  version: 1,
+  subject: { kind: 'equity', ref: 'eq:xsto:volv-b', displayName: 'Volvo B' },
+  question: 'Is the valuation supported by the earnings trajectory?',
+  stage: 'intake',
+  openedAt: NOW.toISOString(),
+  ownerEmployeeId: 'research-head',
+  participatingDepartmentIds: ['macro', 'equity-research'],
+  transitions: [],
+  ...over,
+})
+
+const playbook: CasePlaybook = {
+  id: 'single-stock-deep-dive',
+  version: '1.0.0',
+  caseKind: 'equity',
+  name: 'Single-stock deep dive',
+  entries: [
+    {
+      key: 'macro',
+      departmentId: 'macro',
+      brief: 'Policy backdrop',
+      dependsOn: [],
+      required: true,
+      priority: 5,
+    },
+    {
+      key: 'news',
+      departmentId: 'news',
+      brief: 'Material headlines',
+      dependsOn: [],
+      required: false,
+      priority: 4,
+    },
+    {
+      key: 'equity',
+      departmentId: 'equity-research',
+      brief: 'Fundamentals',
+      dependsOn: ['macro'],
+      required: true,
+      priority: 3,
+    },
+    {
+      key: 'quant',
+      departmentId: 'quant',
+      brief: 'Statistical validation',
+      dependsOn: ['macro'],
+      required: true,
+      priority: 3,
+    },
+    {
+      key: 'risk',
+      departmentId: 'risk',
+      brief: 'Downside',
+      dependsOn: ['equity', 'quant'],
+      required: true,
+      priority: 2,
+    },
+  ],
+}
+
+const validationContext = {
+  knownDepartmentIds: ['macro', 'news', 'equity-research', 'quant', 'risk'],
+  handlesByDepartment: {},
+}
+
+const context = (over: Partial<OrchestrationContext> = {}): OrchestrationContext => ({
+  caseId: 'case-1',
+  evidenceSetId: 'set-1',
+  assignmentIdFor: (key) => `a-${key}`,
+  employeeIdFor: (department) => `${department}-analyst`,
+  now: () => NOW,
+  revisionIsCurrent: () => true,
+  ...over,
+})
+
+const options = { stageDeadlineMs: 1000, maxConcurrency: 4 }
+
+/* ------------------------------------------------------------------ playbook */
+
+describe('playbook validation', () => {
+  it('accepts a well-formed playbook', () => {
+    expect(() => validatePlaybook(playbook, validationContext)).not.toThrow()
+  })
+
+  it('rejects a dependency cycle', () => {
+    const cyclic: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'a',
+          departmentId: 'macro',
+          brief: '',
+          dependsOn: ['b'],
+          required: true,
+          priority: 1,
+        },
+        {
+          key: 'b',
+          departmentId: 'quant',
+          brief: '',
+          dependsOn: ['a'],
+          required: true,
+          priority: 1,
+        },
+      ],
+    }
+    expect(() => validatePlaybook(cyclic, validationContext)).toThrow(/dependency cycle/)
+  })
+
+  it('rejects self-dependency', () => {
+    const selfDep: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'a',
+          departmentId: 'macro',
+          brief: '',
+          dependsOn: ['a'],
+          required: true,
+          priority: 1,
+        },
+      ],
+    }
+    expect(() => validatePlaybook(selfDep, validationContext)).toThrow(
+      /depends on itself/,
+    )
+  })
+
+  it('rejects an unknown department', () => {
+    const unknown: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'a',
+          departmentId: 'astrology',
+          brief: '',
+          dependsOn: [],
+          required: true,
+          priority: 1,
+        },
+      ],
+    }
+    expect(() => validatePlaybook(unknown, validationContext)).toThrow(
+      /unknown department/,
+    )
+  })
+
+  it('rejects duplicate entry keys', () => {
+    const duplicate: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'a',
+          departmentId: 'macro',
+          brief: '',
+          dependsOn: [],
+          required: true,
+          priority: 1,
+        },
+        {
+          key: 'a',
+          departmentId: 'quant',
+          brief: '',
+          dependsOn: [],
+          required: true,
+          priority: 1,
+        },
+      ],
+    }
+    expect(() => validatePlaybook(duplicate, validationContext)).toThrow(
+      /duplicate entry keys/,
+    )
+  })
+
+  it('rejects a required entry depending on an optional one', () => {
+    // The optional entry may never complete, which would leave the required
+    // one — and the case — permanently blocked with no way forward.
+    const fragile: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'opt',
+          departmentId: 'news',
+          brief: '',
+          dependsOn: [],
+          required: false,
+          priority: 1,
+        },
+        {
+          key: 'req',
+          departmentId: 'macro',
+          brief: '',
+          dependsOn: ['opt'],
+          required: true,
+          priority: 1,
+        },
+      ],
+    }
+    expect(() => validatePlaybook(fragile, validationContext)).toThrow(
+      /may never complete/,
+    )
+  })
+
+  it('enforces a department mandate when a discipline is named', () => {
+    const outside: CasePlaybook = {
+      ...playbook,
+      entries: [
+        {
+          key: 'a',
+          departmentId: 'macro',
+          brief: '',
+          dependsOn: [],
+          required: true,
+          priority: 1,
+          disciplineTag: 'valuation',
+        },
+      ],
+    }
+    expect(() =>
+      validatePlaybook(outside, {
+        knownDepartmentIds: ['macro'],
+        handlesByDepartment: { macro: ['macro', 'rates'] },
+      }),
+    ).toThrow(/does not handle/)
+  })
+
+  it('schedules only entries whose dependencies completed', () => {
+    expect(
+      readyEntries(playbook, [])
+        .map((e) => e.key)
+        .sort(),
+    ).toEqual(['macro', 'news'])
+    expect(
+      readyEntries(playbook, ['macro', 'news'])
+        .map((e) => e.key)
+        .sort(),
+    ).toEqual(['equity', 'quant'])
+  })
+
+  it('reports downstream work as blocked, not ready, after a failure', () => {
+    const blocked = blockedEntries(playbook, ['macro'])
+      .map((e) => e.key)
+      .sort()
+    // equity and quant depend on macro; risk depends on both.
+    expect(blocked).toEqual(['equity', 'quant', 'risk'])
+  })
+})
+
+/* ------------------------------------------------------------ orchestration */
+
+describe('orchestration', () => {
+  it('runs the whole graph with a stub provider', async () => {
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider(),
+      context(),
+      options,
+    )
+    expect([...result.completedKeys].sort()).toEqual([
+      'equity',
+      'macro',
+      'news',
+      'quant',
+      'risk',
+    ])
+    expect(result.missingRequired).toEqual([])
+  })
+
+  it('runs independent departments in the same wave', async () => {
+    let inFlight = 0
+    let peak = 0
+    const provider = {
+      id: 'counting',
+      async contribute() {
+        inFlight += 1
+        peak = Math.max(peak, inFlight)
+        await Promise.resolve()
+        inFlight -= 1
+        return {
+          claims: [],
+          prompt: { id: 'p', version: '1', contentHash: 'h' },
+          model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'mh' },
+          agentContractVersion: '1',
+          outputSchemaVersion: '1',
+          usage: null,
+          observedStates: ['running', 'completed'] as const,
+        }
+      },
+    }
+    await runPlaybook(playbook, provider, context(), options)
+    // macro and news have no dependencies and must not be serialised.
+    expect(peak).toBeGreaterThan(1)
+  })
+
+  it('passes only declared dependency outputs downstream', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const provider = {
+      id: 'spy',
+      async contribute(request: {
+        inputs: Record<string, unknown>
+        departmentId: string
+      }) {
+        if (request.departmentId === 'equity-research') seen.push(request.inputs)
+        return {
+          claims: [],
+          prompt: { id: 'p', version: '1', contentHash: 'h' },
+          model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'mh' },
+          agentContractVersion: '1',
+          outputSchemaVersion: '1',
+          usage: null,
+          observedStates: ['completed'] as const,
+        }
+      },
+    }
+    await runPlaybook(playbook, provider as never, context(), options)
+    // Equity declared only `macro`. It must not receive `news`.
+    expect(Object.keys(seen[0] ?? {})).toEqual(['macro'])
+  })
+
+  it('blocks downstream work without erasing unrelated completed work', async () => {
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider({ failFor: ['macro'] }),
+      context(),
+      options,
+    )
+    // News is independent of macro and still completed.
+    expect(result.completedKeys).toContain('news')
+    expect(result.failedKeys).toContain('macro')
+    // Downstream is blocked, not failed — it never ran.
+    expect([...result.blockedKeys].sort()).toEqual(['equity', 'quant', 'risk'])
+    const blocked = result.outcomes.find((o) => o.entryKey === 'equity')
+    expect(blocked?.state).toBe('blocked')
+    expect(blocked?.failureReason).toMatch(/upstream failure/)
+  })
+
+  it('reports a failed required contribution as missing', async () => {
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider({ failFor: ['macro'] }),
+      context(),
+      options,
+    )
+    expect(result.missingRequired).toContain('macro')
+  })
+
+  it('does not block the case when an optional contribution fails', async () => {
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider({ failFor: ['news'] }),
+      context(),
+      options,
+    )
+    // News is optional. Everything else still completed, and the case is not
+    // missing anything required.
+    expect(result.missingRequired).toEqual([])
+    expect(result.completedKeys).toContain('risk')
+    // But the failure is visible — optional is not the same as irrelevant.
+    expect(result.failedKeys).toContain('news')
+  })
+
+  it('times a hung contribution out rather than waiting', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = runPlaybook(
+        playbook,
+        createStubContributionProvider({ hangFor: ['macro'] }),
+        context(),
+        { stageDeadlineMs: 500, maxConcurrency: 4 },
+      )
+      await vi.advanceTimersByTimeAsync(600)
+      const result = await pending
+      const macro = result.outcomes.find((o) => o.entryKey === 'macro')
+      expect(macro?.state).toBe('timed-out')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('marks a late result obsolete instead of attaching it to the new revision', async () => {
+    // The work reasoned over assumptions the newer revision does not share.
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider(),
+      context({ revisionId: 'rev-1', revisionIsCurrent: () => false }),
+      options,
+    )
+    const macro = result.outcomes.find((o) => o.entryKey === 'macro')
+    expect(macro?.state).toBe('superseded')
+    expect(macro?.obsolete).toBe(true)
+    expect(result.completedKeys).not.toContain('macro')
+  })
+})
+
+/* ------------------------------------------------------ recorded replay */
+
+describe('recorded contributions', () => {
+  const recording: RecordedContribution = {
+    departmentId: 'macro',
+    evidenceSetId: 'set-1',
+    agentContractVersion: '1.0.0',
+    outputSchemaVersion: '1.0.0',
+    prompt: { id: 'macro', version: '3', contentHash: 'ph' },
+    model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'mh' },
+    claims: [],
+    observedStates: ['running', 'completed'],
+    usage: null,
+  }
+
+  it('replays deterministically', async () => {
+    const provider = createRecordedContributionProvider([recording])
+    const request = {
+      caseId: 'case-1',
+      assignmentId: 'a1',
+      departmentId: 'macro',
+      employeeId: 'macro-analyst',
+      brief: 'x',
+      evidenceSetId: 'set-1',
+      inputs: {},
+      budget: { tokens: null, costMinorUnits: null, currency: null, deadlineMs: null },
+      signal: new AbortController().signal,
+    }
+    const first = await provider.contribute(request)
+    const second = await provider.contribute(request)
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first))
+  })
+
+  it('refuses a recording made against different evidence', async () => {
+    // Replaying it would attribute claims to evidence they never saw.
+    const provider = createRecordedContributionProvider([recording])
+    await expect(
+      provider.contribute({
+        caseId: 'case-1',
+        assignmentId: 'a1',
+        departmentId: 'macro',
+        employeeId: 'macro-analyst',
+        brief: 'x',
+        evidenceSetId: 'set-DIFFERENT',
+        inputs: {},
+        budget: { tokens: null, costMinorUnits: null, currency: null, deadlineMs: null },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(/never saw/)
+  })
+})
+
+/* ------------------------------------------------------------ result store */
+
+describe('the result store is exact-match only', () => {
+  const inputs = {
+    evidenceSetId: 'set-1',
+    promptId: 'macro',
+    promptVersion: '3',
+    promptContentHash: 'ph',
+    modelId: 'm',
+    modelParametersHash: 'mh',
+    agentContractVersion: '1',
+    outputSchemaVersion: '1',
+    canonicalizationVersion: '1',
+    agentImplementationVersion: '1',
+    departmentId: 'macro',
+  }
+
+  it('is stable for identical inputs', () => {
+    expect(resultKey(inputs)).toBe(resultKey({ ...inputs }))
+  })
+
+  it.each([
+    'evidenceSetId',
+    'promptVersion',
+    'modelParametersHash',
+    'agentContractVersion',
+    'outputSchemaVersion',
+    'canonicalizationVersion',
+    'agentImplementationVersion',
+  ] as const)('changes when %s changes', (field) => {
+    expect(resultKey({ ...inputs, [field]: 'different' })).not.toBe(resultKey(inputs))
+  })
+
+  it('distinguishes a playbook version where one applies', () => {
+    expect(resultKey({ ...inputs, playbookVersion: '2.0.0' })).not.toBe(resultKey(inputs))
+  })
+
+  it('writes once and never overwrites', async () => {
+    const store = createInMemoryResultStore()
+    const key = resultKey(inputs)
+    await store.put({ key, claims: [], storedAt: 'T1', inputs })
+    const second = await store.put({ key, claims: [], storedAt: 'T2', inputs })
+    // A differing result under the same key means something is wrong;
+    // overwriting would hide it.
+    expect(second.storedAt).toBe('T1')
+  })
+
+  it('returns nothing for a key it has not seen', async () => {
+    const store = createInMemoryResultStore()
+    expect(await store.get('unknown')).toBeNull()
+  })
+})
+
+/* ------------------------------------------------- persistence & concurrency */
+
+describe('repositories', () => {
+  let repos: AnalysisRepositories
+  beforeEach(() => {
+    repos = createInMemoryRepositories()
+  })
+
+  it('creates a case idempotently', async () => {
+    const first = await repos.cases.create(investmentCase())
+    const second = await repos.cases.create(investmentCase({ question: 'different' }))
+    // A replayed create returns what is stored rather than duplicating or
+    // clobbering it.
+    expect(second.question).toBe(first.question)
+  })
+
+  it('rejects a stale write', async () => {
+    await repos.cases.create(investmentCase())
+    const moved = transitionCase(investmentCase(), 'research', {
+      employeeId: 'e',
+      departmentId: 'macro',
+      at: NOW.toISOString(),
+    })
+    await repos.cases.save(moved, 1)
+
+    // A second department computed its change against version 1 too.
+    const stale = transitionCase(investmentCase(), 'research', {
+      employeeId: 'other',
+      departmentId: 'quant',
+      at: NOW.toISOString(),
+    })
+    await expect(repos.cases.save(stale, 1)).rejects.toBeInstanceOf(
+      ConcurrencyConflictError,
+    )
+  })
+
+  it('loses no update when the loser re-reads and retries', async () => {
+    await repos.cases.create(investmentCase())
+    const first = transitionCase(investmentCase(), 'research', {
+      employeeId: 'e',
+      departmentId: 'macro',
+      at: NOW.toISOString(),
+    })
+    await repos.cases.save(first, 1)
+
+    const current = await repos.cases.get('case-1')
+    const retried = transitionCase(current!, 'aggregation', {
+      employeeId: 'other',
+      departmentId: 'quant',
+      at: NOW.toISOString(),
+    })
+    const saved = await repos.cases.save(retried, current!.version)
+
+    expect(saved.stage).toBe('aggregation')
+    expect(saved.version).toBe(3)
+  })
+
+  it('appends events idempotently', async () => {
+    const event: TransitionEvent = buildTransitionEvent({
+      eventId: 'e1',
+      subject: 'case',
+      caseId: 'case-1',
+      fromState: 'intake',
+      toState: 'research',
+      occurredAt: NOW.toISOString(),
+      correlationId: 'c1',
+      aggregateVersion: 2,
+    })
+    await repos.events.append(event)
+    await repos.events.append(event)
+    expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+  })
+
+  it('offers no way to rewrite history', () => {
+    // The port's shape is the guarantee: append and read, nothing else. A
+    // correction is a new appended event, never an edit to an old one.
+    const port = repos.events as unknown as Record<string, unknown>
+    for (const mutator of ['update', 'delete', 'remove', 'replace', 'clear']) {
+      expect(port[mutator]).toBeUndefined()
+    }
+    expect(typeof repos.events.append).toBe('function')
+  })
+
+  it('records one decision per case', async () => {
+    const decision = {
+      caseId: 'case-1',
+      aggregateVersion: 5,
+      decidedAt: 'T1',
+      decidedByEmployeeId: 'cio',
+      selectedRevisionId: 'rev-1',
+      notSelectedRevisionIds: [],
+      rejectedRevisionIds: [],
+      evidenceSetId: 'set-1',
+      governance: {
+        verification: 'verified' as const,
+        unresolvedChallengeCount: 0,
+        compliance: 'approved' as const,
+        risk: 'accepted' as const,
+      },
+      rationale: 'x',
+      unresolvedDissent: [],
+      reconsiderationTriggers: [],
+    }
+    await repos.decisions.save(decision)
+    const replay = await repos.decisions.save({ ...decision, rationale: 'changed' })
+    // A decision that has been communicated is not silently rewritten.
+    expect(replay.rationale).toBe('x')
+  })
+
+  it('treats an evidence set as immutable', async () => {
+    const set = {
+      id: 'set-1',
+      items: [],
+      coTemporality: { kind: 'empty' as const },
+      disagreements: [],
+      assembledAt: 'T',
+      correlationId: 'c',
+    }
+    await repos.evidence.save(set)
+    const again = await repos.evidence.save({ ...set, assembledAt: 'LATER' })
+    expect(again.assembledAt).toBe('T')
+  })
+})
+
+/* --------------------------------------------------------- no LLM required */
+
+describe('the runtime needs no model and no network', () => {
+  it('runs a whole playbook offline', async () => {
+    const result = await runPlaybook(
+      playbook,
+      createStubContributionProvider(),
+      context(),
+      options,
+    )
+    expect(result.outcomes).toHaveLength(5)
+  })
+})

@@ -1,27 +1,39 @@
 /**
- * Investment theses, per-thesis governance, and the CIO decision.
+ * Theses, revisions, the orthogonal blocker model, and the CIO decision.
  *
- * The workflow these contracts exist for: a case asks a question, departments
- * propose competing answers, governance examines each one separately, and the
- * CIO chooses between them with the losing arguments still on the table.
+ * The two groups that matter most: revision lineage, which is what makes the
+ * history auditable; and the separation of lifecycle from blockers, which is
+ * what stops a thesis reaching the CIO on a clean lifecycle while a material
+ * objection is still open.
  */
 
 import { describe, expect, it } from 'vitest'
 import {
+  acceptsContributions,
   buildAssignment,
   buildDecision,
   buildThesis,
+  canTransitionThesis,
+  currentRevision,
+  evaluateThesisEligibility,
   evaluateThesisGates,
   hasCompetingTheses,
+  reviseThesis,
+  thesisIsSealed,
+  thesisLineage,
   type Assignment,
+  type Blocker,
   type CaseDecision,
+  type DecisionContext,
   type InvestmentThesis,
   type VerificationReview,
 } from './index'
 
 const thesis = (over: Partial<InvestmentThesis> = {}): InvestmentThesis =>
   buildThesis({
-    id: 'th-buy',
+    thesisId: 'th-buy',
+    revisionId: 'rev-1',
+    revisionNumber: 1,
     caseId: 'case-1',
     statement: 'Novo Nordisk is undervalued on 2027 earnings power.',
     position: 'buy',
@@ -30,66 +42,253 @@ const thesis = (over: Partial<InvestmentThesis> = {}): InvestmentThesis =>
     proposedAt: '2026-07-27T09:00:00.000Z',
     supportingClaimIds: ['claim-1'],
     opposingClaimIds: [],
-    status: 'proposed',
+    citedByClaimIds: [],
+    lifecycle: 'proposed',
     invalidationCriteria: 'GLP-1 pricing falls more than 20 % in the US.',
     horizon: '12-24M',
     ...over,
   })
 
+/* ------------------------------------------------------------------ basics */
+
 describe('a case holds competing theses, not one conclusion', () => {
   it('requires a thesis to say how it could be wrong', () => {
-    // A thesis that cannot be falsified is a preference.
     expect(() => thesis({ invalidationCriteria: '  ' })).toThrow(/cannot be wrong/)
   })
 
-  it('cannot clear governance with nothing supporting it', () => {
-    expect(() => thesis({ status: 'cleared', supportingClaimIds: [] })).toThrow(
+  it('cannot be verified with nothing supporting it', () => {
+    expect(() => thesis({ lifecycle: 'verified', supportingClaimIds: [] })).toThrow(
       /no supporting claims/,
     )
   })
 
   it('keeps opposing claims attached to the thesis they oppose', () => {
-    // A thesis listing only its supporting evidence is a pitch, not a case.
     expect(thesis({ opposingClaimIds: ['claim-9'] }).opposingClaimIds).toEqual([
       'claim-9',
     ])
   })
 
-  it('recognises genuinely competing positions', () => {
-    expect(
-      hasCompetingTheses([thesis(), thesis({ id: 'th-sell', position: 'sell' })]),
-    ).toBe(true)
-    expect(hasCompetingTheses([thesis()])).toBe(false)
+  it('recognises competing positions across lineages', () => {
+    const sell = thesis({ thesisId: 'th-sell', revisionId: 'rev-s1', position: 'sell' })
+    expect(hasCompetingTheses([thesis(), sell])).toBe(true)
   })
 
-  it('stops counting a rejected thesis as competition', () => {
-    const sell = thesis({ id: 'th-sell', position: 'sell', status: 'rejected' })
-    expect(hasCompetingTheses([thesis(), sell])).toBe(false)
-  })
-
-  it('lets the Devil’s Advocate propose one rather than only object', () => {
-    // Proposing a competing thesis is a different act from challenging a
-    // claim, and the model has room for both.
-    const counter = thesis({
-      id: 'th-da',
-      position: 'sell',
-      proposedByDepartmentId: 'devils-advocate',
-      proposedByEmployeeId: 'da-head',
-      statement: 'Consensus is extrapolating a peak-cycle margin.',
-      invalidationCriteria: 'Gross margin holds above 84 % for two more quarters.',
+  it('does not mistake two revisions of one thesis for disagreement', () => {
+    const second = thesis({
+      revisionId: 'rev-2',
+      revisionNumber: 2,
+      supersedesRevisionId: 'rev-1',
+      revisionReason: 'new filing',
     })
-    expect(counter.proposedByDepartmentId).toBe('devils-advocate')
+    expect(hasCompetingTheses([thesis({ lifecycle: 'superseded' }), second])).toBe(false)
   })
 
   it('supports a non-directional position for a macro case', () => {
     // Buy/hold/sell is the equity vocabulary, not the model's.
-    const macro = thesis({
-      id: 'th-ecb',
-      position: 'ecb-cuts-before-q2',
-      statement: 'The ECB cuts before Q2.',
-      invalidationCriteria: 'Core inflation re-accelerates above 3 %.',
+    expect(thesis({ position: 'ecb-cuts-before-q2' }).position).toBe('ecb-cuts-before-q2')
+  })
+})
+
+/* --------------------------------------------------------------- revisions */
+
+describe('revision lineage', () => {
+  const first = thesis({ lifecycle: 'awaiting-verification' })
+
+  it('mints the next revision and supersedes the current one', () => {
+    const { superseded, revision } = reviseThesis(
+      first,
+      { statement: 'Undervalued, but only on the 2028 ramp.' },
+      { revisionId: 'rev-2', reason: 'Q2 filing contradicted the margin path', at: 'T2' },
+    )
+    expect(superseded.lifecycle).toBe('superseded')
+    expect(revision.revisionNumber).toBe(2)
+    expect(revision.supersedesRevisionId).toBe('rev-1')
+    expect(revision.thesisId).toBe(first.thesisId)
+  })
+
+  it('resets the new revision to unreviewed and uncited', () => {
+    // It is a different argument. Nobody has reviewed it and nothing cites it.
+    const { revision } = reviseThesis(
+      thesis({ lifecycle: 'verified', citedByClaimIds: ['claim-7'] }),
+      {},
+      { revisionId: 'rev-2', reason: 'new evidence', at: 'T2' },
+    )
+    expect(revision.lifecycle).toBe('under-analysis')
+    expect(revision.citedByClaimIds).toEqual([])
+  })
+
+  it('refuses to revise a historical revision', () => {
+    expect(() =>
+      reviseThesis(
+        thesis({ lifecycle: 'superseded' }),
+        {},
+        {
+          revisionId: 'rev-3',
+          reason: 'x',
+          at: 'T3',
+        },
+      ),
+    ).toThrow(/already superseded/)
+  })
+
+  it('requires a reason', () => {
+    expect(() =>
+      reviseThesis(first, {}, { revisionId: 'rev-2', reason: '  ', at: 'T2' }),
+    ).toThrow(/requires a reason/)
+  })
+
+  it('refuses a revision that does not say what it supersedes', () => {
+    expect(() =>
+      thesis({ revisionId: 'rev-2', revisionNumber: 2, revisionReason: 'x' }),
+    ).toThrow(/does not say what it supersedes/)
+  })
+
+  it('refuses a first revision that supersedes something', () => {
+    expect(() => thesis({ supersedesRevisionId: 'rev-0' })).toThrow(/cannot supersede/)
+  })
+
+  it('orders a valid lineage', () => {
+    const r1 = thesis({ lifecycle: 'superseded' })
+    const r2 = thesis({
+      revisionId: 'rev-2',
+      revisionNumber: 2,
+      supersedesRevisionId: 'rev-1',
+      revisionReason: 'x',
     })
-    expect(macro.position).toBe('ecb-cuts-before-q2')
+    expect(thesisLineage([r2, r1], 'th-buy').map((r) => r.revisionNumber)).toEqual([1, 2])
+  })
+
+  it('rejects a lineage with a gap', () => {
+    const r3 = thesis({
+      revisionId: 'rev-3',
+      revisionNumber: 3,
+      supersedesRevisionId: 'rev-2',
+      revisionReason: 'x',
+    })
+    expect(() => thesisLineage([thesis(), r3], 'th-buy')).toThrow(/gap at revision 2/)
+  })
+
+  it('rejects a broken supersedes chain', () => {
+    const r2 = thesis({
+      revisionId: 'rev-2',
+      revisionNumber: 2,
+      supersedesRevisionId: 'rev-elsewhere',
+      revisionReason: 'x',
+    })
+    expect(() => thesisLineage([thesis(), r2], 'th-buy')).toThrow(/supersedes/)
+  })
+
+  it('finds the live revision', () => {
+    const r1 = thesis({ lifecycle: 'superseded' })
+    const r2 = thesis({
+      revisionId: 'rev-2',
+      revisionNumber: 2,
+      supersedesRevisionId: 'rev-1',
+      revisionReason: 'x',
+    })
+    expect(currentRevision([r1, r2], 'th-buy')?.revisionId).toBe('rev-2')
+  })
+})
+
+describe('sealing', () => {
+  it('leaves a revision editable while it is still on the desk', () => {
+    expect(thesisIsSealed(thesis({ lifecycle: 'under-analysis' }))).toBe(false)
+  })
+
+  it('seals it once it leaves the desk', () => {
+    expect(thesisIsSealed(thesis({ lifecycle: 'awaiting-verification' }))).toBe(true)
+  })
+
+  it('seals it once anything cites it', () => {
+    // Editing a revision a claim points at would silently change what was cited.
+    expect(
+      thesisIsSealed(thesis({ lifecycle: 'under-analysis', citedByClaimIds: ['c1'] })),
+    ).toBe(true)
+  })
+
+  it('stops accepting contributions once it leaves analysis', () => {
+    expect(acceptsContributions(thesis({ lifecycle: 'under-analysis' }))).toBe(true)
+    expect(acceptsContributions(thesis({ lifecycle: 'superseded' }))).toBe(false)
+    expect(acceptsContributions(thesis({ lifecycle: 'verified' }))).toBe(false)
+  })
+})
+
+/* ---------------------------------------------------- lifecycle vs blockers */
+
+describe('lifecycle and governance are orthogonal', () => {
+  const challenge: Blocker = {
+    kind: 'unresolved-challenge',
+    detail: 'The margin assumption ignores competitive entry.',
+    owningDepartmentId: 'devils-advocate',
+    severity: 'blocks-decision',
+  }
+
+  it('has no `challenged` lifecycle state', () => {
+    // A challenge is a condition, not a workflow position. As a state it would
+    // overwrite whichever position the thesis was actually in.
+    expect(canTransitionThesis('under-analysis', 'awaiting-verification')).toBe(true)
+    // @ts-expect-error `challenged` is not a lifecycle state
+    expect(canTransitionThesis('under-analysis', 'challenged')).toBe(false)
+  })
+
+  it('keeps a verified thesis from the CIO while a challenge is open', () => {
+    // The rule the whole separation exists for.
+    const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
+      lifecycle: 'verified',
+      blockers: [challenge],
+      missingRequiredContributions: [],
+    })
+    expect(eligibility.lifecycle).toBe('verified')
+    expect(eligibility.eligibleForDecision).toBe(false)
+    expect(eligibility.blockedBy).toHaveLength(1)
+  })
+
+  it('lets a verified, unblocked thesis reach the CIO', () => {
+    const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
+      lifecycle: 'verified',
+      blockers: [],
+      missingRequiredContributions: [],
+    })
+    expect(eligibility.eligibleForDecision).toBe(true)
+  })
+
+  it('records a thesis as challenged AND under analysis at once', () => {
+    const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
+      lifecycle: 'under-analysis',
+      blockers: [challenge],
+      missingRequiredContributions: [],
+    })
+    // Both facts survive, which a single enum could not express.
+    expect(eligibility.lifecycle).toBe('under-analysis')
+    expect(eligibility.canProgress).toBe(true)
+    expect(eligibility.blockedBy[0]?.kind).toBe('unresolved-challenge')
+  })
+
+  it('turns a missing required contribution into a blocker', () => {
+    const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
+      lifecycle: 'verified',
+      blockers: [],
+      missingRequiredContributions: ['risk'],
+    })
+    expect(eligibility.eligibleForDecision).toBe(false)
+    expect(eligibility.blockedBy[0]?.kind).toBe('missing-required-contribution')
+  })
+
+  it('separates blocking a decision from blocking publication', () => {
+    const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
+      lifecycle: 'verified',
+      blockers: [
+        {
+          kind: 'compliance-block',
+          detail: 'disclaimer missing',
+          severity: 'blocks-publication',
+        },
+      ],
+      missingRequiredContributions: [],
+    })
+    // A compliance wording issue does not stop the CIO forming a view.
+    expect(eligibility.eligibleForDecision).toBe(true)
+    expect(eligibility.eligibleForPublication).toBe(false)
   })
 })
 
@@ -109,8 +308,6 @@ describe('governance runs per thesis', () => {
   })
 
   it('clears one thesis while blocking another', () => {
-    // Why the gate had to become per-thesis: one verdict would either hide the
-    // blocked argument or suppress the sound one.
     const results = evaluateThesisGates(['th-buy', 'th-sell'], {
       verification: [
         verification('th-buy', 'verified'),
@@ -134,77 +331,139 @@ describe('governance runs per thesis', () => {
     })
     expect(results.find((r) => r.thesisId === 'th-sell')?.passed).toBe(false)
   })
-
-  it('reports a verdict for every thesis, not just the contested ones', () => {
-    const results = evaluateThesisGates(['a', 'b', 'c'], {})
-    expect(results.map((r) => r.thesisId)).toEqual(['a', 'b', 'c'])
-    expect(results.every((r) => !r.passed)).toBe(true)
-  })
 })
 
-describe('the CIO decision', () => {
-  const cleared = thesis({ status: 'cleared' })
+/* ---------------------------------------------------------------- decision */
 
-  const decision = (over: Partial<CaseDecision> = {}): CaseDecision =>
+describe('the CIO decision', () => {
+  const eligible: DecisionContext = {
+    eligibility: [
+      {
+        revisionId: 'rev-1',
+        lifecycle: 'verified',
+        eligibleForDecision: true,
+        blockedBy: [],
+      },
+    ],
+  }
+
+  const decision = (
+    over: Partial<CaseDecision> = {},
+    context: DecisionContext = eligible,
+  ): CaseDecision =>
     buildDecision(
       {
         caseId: 'case-1',
+        aggregateVersion: 7,
         decidedAt: '2026-07-27T16:00:00.000Z',
         decidedByEmployeeId: 'cio',
-        selectedThesisId: 'th-buy',
-        notSelectedThesisIds: ['th-sell'],
+        selectedRevisionId: 'rev-1',
+        notSelectedRevisionIds: ['rev-s1'],
+        rejectedRevisionIds: [],
+        evidenceSetId: 'set-1',
+        governance: {
+          verification: 'verified',
+          unresolvedChallengeCount: 0,
+          compliance: 'approved',
+          risk: 'accepted',
+        },
         rationale: 'Risk-adjusted upside is adequate at this weight.',
-        acknowledgedDissent: ['Risk flagged concentration in healthcare.'],
+        unresolvedDissent: ['Risk flagged concentration in healthcare.'],
+        reconsiderationTriggers: ['US pricing legislation advances'],
         ...over,
       },
-      [cleared],
+      context,
     )
 
-  it('records what was chosen and what was not', () => {
+  it('references the exact revision, not just the thesis', () => {
+    expect(decision().selectedRevisionId).toBe('rev-1')
+  })
+
+  it('records what was not chosen and the dissent decided against', () => {
     const result = decision()
-    expect(result.selectedThesisId).toBe('th-buy')
-    expect(result.notSelectedThesisIds).toEqual(['th-sell'])
+    expect(result.notSelectedRevisionIds).toEqual(['rev-s1'])
+    expect(result.unresolvedDissent).toHaveLength(1)
   })
 
-  it('keeps the dissent the CIO decided against', () => {
-    // An institution that forgets which arguments it rejected cannot learn
-    // when they turn out to have been right.
-    expect(decision().acknowledgedDissent).toHaveLength(1)
+  it('records what would reopen the case', () => {
+    expect(decision().reconsiderationTriggers).toEqual([
+      'US pricing legislation advances',
+    ])
   })
 
-  it('refuses to select a thesis that never cleared governance', () => {
+  it('pins the aggregate version it was decided against', () => {
+    expect(decision().aggregateVersion).toBe(7)
+  })
+
+  it('refuses a superseded revision', () => {
     expect(() =>
-      buildDecision(
+      decision(
+        {},
         {
-          caseId: 'case-1',
-          decidedAt: '2026-07-27T16:00:00.000Z',
-          decidedByEmployeeId: 'cio',
-          selectedThesisId: 'th-buy',
-          notSelectedThesisIds: [],
-          rationale: 'Looks fine.',
-          acknowledgedDissent: [],
+          eligibility: [
+            {
+              revisionId: 'rev-1',
+              lifecycle: 'superseded',
+              eligibleForDecision: false,
+              blockedBy: [],
+            },
+          ],
         },
-        [thesis({ status: 'challenged' })],
       ),
-    ).toThrow(/has not cleared governance/)
+    ).toThrow(/was superseded/)
   })
 
-  it('allows the CIO to take no position', () => {
-    expect(decision({ selectedThesisId: null }).selectedThesisId).toBeNull()
+  it('refuses an unverified revision', () => {
+    expect(() =>
+      decision(
+        {},
+        {
+          eligibility: [
+            {
+              revisionId: 'rev-1',
+              lifecycle: 'under-analysis',
+              eligibleForDecision: false,
+              blockedBy: [],
+            },
+          ],
+        },
+      ),
+    ).toThrow(/not eligible for decision/)
+  })
+
+  it('refuses a revision with an unresolved blocker, naming it', () => {
+    expect(() =>
+      decision(
+        {},
+        {
+          eligibility: [
+            {
+              revisionId: 'rev-1',
+              lifecycle: 'verified',
+              eligibleForDecision: false,
+              blockedBy: [{ kind: 'unresolved-challenge', detail: 'x' }],
+            },
+          ],
+        },
+      ),
+    ).toThrow(/unresolved-challenge/)
+  })
+
+  it('refuses a decision with no evidence reference', () => {
+    expect(() => decision({ evidenceSetId: '' })).toThrow(/cites no evidence set/)
   })
 
   it('requires a rationale', () => {
     expect(() => decision({ rationale: '   ' })).toThrow(/no rationale/)
   })
+
+  it('allows the CIO to take no position', () => {
+    expect(decision({ selectedRevisionId: null }).selectedRevisionId).toBeNull()
+  })
 })
 
 describe('departments never work for themselves', () => {
   it('binds every assignment to a case', () => {
-    /*
-     * Structural, not conventional: `caseId` is required on both `Assignment`
-     * and `AgentRunRecord`, so a department cannot record work that belongs to
-     * nothing. Cases are the centre of the organization.
-     */
     const assignment: Assignment = buildAssignment({
       id: 'a1',
       caseId: 'case-1',

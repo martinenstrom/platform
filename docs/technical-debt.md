@@ -341,6 +341,51 @@ notifications, persistent memory with provenance, and MCP **server** exposure
 
 ---
 
+## TD-19 · Durable storage for the analysis runtime
+
+**Incurred:** AI Phase B. **Severity:** critical. **Blocks:** AI Phase C, and
+any real agent-generated analysis.
+
+Phase B ships repository **ports** with a single **in-memory** adapter. It is
+process-local: a restart loses every case, thesis revision, evidence set,
+assignment, run, review, challenge, decision and transition event.
+
+That is acceptable for a deterministic runtime prototype with no live agents.
+It is not acceptable for real analysis, user-owned work or production.
+
+**This is a hard gate before Phase C.** Durable storage must exist for at
+least: InvestmentCases, thesis revisions, EvidenceSets, Assignments,
+AgentRunRecords, reviews and challenges, CaseDecisions, activity transitions,
+and immutable agent results.
+
+It does **not** depend on authentication. A system-level durable repository can
+exist before users do; authentication later adds ownership, access, tenancy and
+permissions on top. The storage technology is its own planning gate.
+
+The ports were shaped with a durable adapter in mind — optimistic concurrency
+on `save`, idempotent creates, append-only events, write-once results — so the
+swap should be an adapter, not a redesign.
+
+---
+
+## TD-20 · Runtime capabilities deferred within Phase B
+
+**Incurred:** AI Phase B. **Severity:** medium. **Blocks:** nothing yet.
+
+Built as contracts and left unimplemented, deliberately:
+
+| Item                          | State                                                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Cost and token budgets        | contracts defined; `null` means **not measured**, never unlimited                                                                  |
+| Live budget enforcement       | a live runtime must refuse to start work without authorization                                                                     |
+| Case service / command bus    | orchestration and repositories exist; the command layer that ties them together, with idempotency keys, lands with Phase C's needs |
+| Headquarters snapshot         | the read model is specified; assembling it is deferred until the Agents route migration needs it                                   |
+| Manager review and escalation | contracts exist in `review.ts`; no workflow drives them yet                                                                        |
+| Evidence builders             | `application/analysis/evidenceRefs` maps domain objects to refs; the case-level assembler is Phase C                               |
+| Legacy roster mapping         | documented mapping from the eleven prototype agents to departments and playbook entries is still to be written                     |
+
+---
+
 ## TD-12 · Deferred architecture cleanups
 
 **Severity:** low to medium. **Blocks:** nothing.
