@@ -276,6 +276,71 @@ is wanted, it should be designed on its own terms.
 
 ---
 
+## TD-16 · Agents route migration
+
+**Incurred:** AI Phase A. **Severity:** medium. **Depends on:** AI Phase B.
+
+Deferred deliberately so the route migrates **once**, onto the real contracts,
+rather than getting a fixture-backed model now that Phase A/B would replace.
+The route stays on `data/mockData` until then and remains on the freeze list.
+
+Phase A proved the contracts can carry every field the future page needs —
+identity, role, department, manager, reporting line, assignment, run status,
+timestamps, evidence-set ref, prompt and model version, claim count,
+confidence, verification / Devil's Advocate / compliance status, escalation,
+latest approved report and blocking reason.
+
+**Permanent product requirement, now pinned by a fitness rule:** `Agenter`
+stays a first-class sidebar destination at `/agents`. It is the digital
+headquarters of Financial OS — one shared organization, expand-in-place, never
+a modal, a settings page or a subsection of Reports.
+
+---
+
+## TD-17 · Agents page interim honesty
+
+**Incurred:** pre-Phase-0, surfaced during AI Phase A. **Severity:** medium.
+
+Two things, both waiting for the Agents migration rather than an interim
+redesign (an explicit decision — migrate once, not twice):
+
+1. **The page implies live work.** "Dina agenter, vad de gör just nu" over
+   fixtures with `status: 'running'`, `progress: 64` and `lastRunAt`
+   timestamps. Nothing marks it as a prototype, which the interim rule
+   requires.
+2. **The same destination has two names.** `lib/navigation.ts` says `Agenter`;
+   the Overview's own nav column (`LightCommandCenter.tsx`) labels `/agents`
+   as `Analys`. A one-line fix in a locked file, scheduled rather than taken.
+
+---
+
+## TD-18 · AI Phases B and C
+
+**Incurred:** AI Phase A. **Severity:** high for the product.
+
+Phase A shipped contracts and nothing that runs. Still to come:
+
+**Phase B — evidence read model and runtime.** EvidenceSet builders,
+domain-to-evidence mapping, dependency-graph orchestration, stage isolation and
+deadlines, partial-run semantics, deterministic run records, immutable
+content-addressed result storage keyed by `runCacheKey`, cost and token
+budgets, cancellation, retry, recorded-output testing, mechanical citation
+verification.
+
+**Phase C — the first real agent.** Macro first, because its evidence already
+exists at institutional quality: government yields, curves, central-bank policy
+state and FX. One agent end to end — versioned prompt, pinned model, structured
+claims, citations, confidence propagation, compliance validation, cost and
+latency tracking, content-addressed caching, a recorded golden run and
+deterministic replay. Not eleven agents at once.
+
+Also deferred: LLM-provider integration, model-cost controls, agent
+persistence, real run history, manager orchestration, report approval flows,
+notifications, persistent memory with provenance, and MCP **server** exposure
+(gated on authentication, TD-8).
+
+---
+
 ## TD-12 · Deferred architecture cleanups
 
 **Severity:** low to medium. **Blocks:** nothing.

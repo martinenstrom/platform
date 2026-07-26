@@ -1,0 +1,157 @@
+/**
+ * Work queues and assignments.
+ *
+ * A department owns a queue. An assignment is a piece of a case given to a
+ * department, and it is what makes "who is working on what, and who is waiting
+ * for whom" answerable directly rather than inferred from run history.
+ *
+ * `waiting-on` is the field that earns its place here. Real analysis stalls
+ * because one desk needs something from another — equity research waiting on a
+ * macro view, the fact checker waiting on a source. Without it, a blocked
+ * assignment looks identical to a slow one, and the headquarters cannot show
+ * who is holding whom up.
+ */
+
+import type { CaseId } from './cases'
+import type { DepartmentId, EmployeeId } from './organization'
+
+export type AssignmentId = string
+
+export type AssignmentStatus =
+  | 'queued'
+  /** Picked up and being worked. */
+  | 'active'
+  /** Cannot proceed until another assignment or a piece of evidence lands. */
+  | 'waiting'
+  /** Work submitted, awaiting review by a governance department or a manager. */
+  | 'submitted'
+  /** Reviewed and sent back with required corrections. */
+  | 'returned'
+  | 'completed'
+  | 'cancelled'
+
+/** Open statuses occupy a queue; the rest do not. */
+export const OPEN_ASSIGNMENT_STATUSES: readonly AssignmentStatus[] = [
+  'queued',
+  'active',
+  'waiting',
+  'submitted',
+  'returned',
+] as const
+
+export interface Assignment {
+  id: AssignmentId
+  caseId: CaseId
+  /** The department that owes the work. */
+  departmentId: DepartmentId
+  /** Set once someone picks it up. */
+  assigneeEmployeeId?: EmployeeId
+  /** What this department is being asked for, in its own discipline's terms. */
+  brief: string
+  status: AssignmentStatus
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+  /**
+   * What this assignment is waiting for. Required when `status` is `waiting`.
+   *
+   * Either another assignment (a department waiting on a department) or a
+   * described gap (waiting on evidence that does not exist yet).
+   */
+  waitingOn?:
+    | { kind: 'assignment'; assignmentId: AssignmentId }
+    | { kind: 'evidence'; description: string }
+  /** Why it came back. Required when `status` is `returned`. */
+  returnedReason?: string
+  /** Higher runs first within a department's queue. */
+  priority: number
+}
+
+export function buildAssignment(assignment: Assignment): Assignment {
+  if (assignment.status === 'waiting' && !assignment.waitingOn) {
+    throw new Error(
+      `Assignment "${assignment.id}" is waiting but does not say on what — ` +
+        `an unexplained wait is indistinguishable from a stall`,
+    )
+  }
+  if (assignment.status === 'returned' && !assignment.returnedReason) {
+    throw new Error(`Assignment "${assignment.id}" was returned without a reason`)
+  }
+  return Object.freeze({ ...assignment })
+}
+
+export function isOpen(assignment: Assignment): boolean {
+  return OPEN_ASSIGNMENT_STATUSES.includes(assignment.status)
+}
+
+/**
+ * A department's queue.
+ *
+ * A projection over assignments rather than a stored list, so a department's
+ * workload cannot drift out of step with the assignments that constitute it.
+ */
+export interface WorkQueue {
+  departmentId: DepartmentId
+  assignments: readonly Assignment[]
+}
+
+export function workQueueFor(
+  departmentId: DepartmentId,
+  assignments: readonly Assignment[],
+): WorkQueue {
+  const mine = assignments
+    .filter((a) => a.departmentId === departmentId && isOpen(a))
+    .sort((a, b) => b.priority - a.priority || a.createdAt.localeCompare(b.createdAt))
+  return { departmentId, assignments: Object.freeze(mine) }
+}
+
+/** Headline numbers for a department tile on the headquarters floor. */
+export interface DepartmentWorkload {
+  departmentId: DepartmentId
+  queued: number
+  active: number
+  waiting: number
+  submitted: number
+  returned: number
+}
+
+export function workloadFor(queue: WorkQueue): DepartmentWorkload {
+  const count = (status: AssignmentStatus) =>
+    queue.assignments.filter((a) => a.status === status).length
+  return {
+    departmentId: queue.departmentId,
+    queued: count('queued'),
+    active: count('active'),
+    waiting: count('waiting'),
+    submitted: count('submitted'),
+    returned: count('returned'),
+  }
+}
+
+/**
+ * Who is waiting on whom, across the whole firm.
+ *
+ * Answers the headquarters question "who is waiting for input" without the UI
+ * traversing assignments itself.
+ */
+export function waitingChains(
+  assignments: readonly Assignment[],
+): Array<{ waiter: Assignment; blockedBy: Assignment | null; description: string }> {
+  const byId = new Map(assignments.map((a) => [a.id, a]))
+  return assignments
+    .filter((a) => a.status === 'waiting' && a.waitingOn)
+    .map((waiter) => {
+      const on = waiter.waitingOn!
+      if (on.kind === 'assignment') {
+        const blockedBy = byId.get(on.assignmentId) ?? null
+        return {
+          waiter,
+          blockedBy,
+          description: blockedBy
+            ? `waiting on ${blockedBy.departmentId}`
+            : `waiting on a missing assignment`,
+        }
+      }
+      return { waiter, blockedBy: null, description: on.description }
+    })
+}

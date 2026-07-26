@@ -581,3 +581,89 @@ describe('C1 — the legacy stack is frozen', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('AI Phase A guards — an organization, and no runtime', () => {
+  it('keeps domain/analysis independent of the market and policy domains', () => {
+    // Three bounded contexts. `domain/analysis` describes a firm and knows
+    // nothing about instruments or policy rates; the typed bridges live in
+    // `application/analysis`, which is allowed to know all three.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      if (!file.path.startsWith('domain/analysis/')) continue
+      for (const specifier of file.imports) {
+        if (
+          specifier.startsWith('~/domain/market') ||
+          specifier.startsWith('~/domain/policy')
+        ) {
+          offenders.push(`${file.path} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the market and policy domains unaware of analysis', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        (f.path.startsWith('domain/market/') || f.path.startsWith('domain/policy/')) &&
+        f.imports.some((s) => s.startsWith('~/domain/analysis')),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('contains no LLM client anywhere', () => {
+    // Phase A defines contracts. The moment a model client appears, the
+    // determinism, cost and caching decisions have been made implicitly.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      for (const specifier of file.imports) {
+        if (
+          /^(@anthropic-ai|openai|@openai|langchain|@langchain|ai)(\/|$)/.test(specifier)
+        ) {
+          offenders.push(`${file.path} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('ships no analysis runtime in Phase A', () => {
+    // Contracts only: no orchestrator, no scheduler, no infrastructure adapter.
+    const runtime = FILES.filter((f) => f.path.startsWith('infrastructure/analysis'))
+    expect(runtime.map((f) => f.path)).toEqual([])
+  })
+
+  it('keeps the Agents UI untouched by Phase A', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        (f.path.startsWith('components/') || f.path.startsWith('routes/')) &&
+        f.imports.some((s) => s.startsWith('~/domain/analysis')),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('leaves the legacy investmentLetter prototype running and unmodified', () => {
+    // It is a product specification and a prototype. It is replaced by the
+    // Agents migration, not by Phase A.
+    const legacy = FILES.filter((f) => f.path.startsWith('services/investmentLetter/'))
+    expect(legacy.length).toBeGreaterThan(0)
+    const offenders = legacy.filter((f) =>
+      f.imports.some((s) => s.startsWith('~/domain/analysis')),
+    )
+    expect(offenders.map((f) => f.path)).toEqual([])
+  })
+
+  it('keeps Agenter a first-class navigation destination', () => {
+    /*
+     * A permanent product requirement, not a styling detail: the Agents
+     * section is the digital headquarters of Financial OS, and it must not be
+     * demoted to a settings page, a modal or a subsection of Reports.
+     */
+    const navigation = readFileSync(join(SRC, 'lib/navigation.ts'), 'utf8')
+    expect(navigation).toMatch(/to:\s*'\/agents'/)
+    expect(navigation).toMatch(/label:\s*'Agenter'/)
+  })
+})

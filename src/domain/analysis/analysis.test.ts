@@ -1,0 +1,928 @@
+/**
+ * Analysis domain contracts (AI Phase A).
+ *
+ * Two groups matter most. The extensibility tests prove a new department is
+ * data rather than code — the requirement that decides whether ESG Research,
+ * Credit Research or Private Equity can be added without redesigning anything.
+ * The rest prove that the illegal states are actually illegal.
+ */
+
+import { describe, expect, it } from 'vitest'
+import {
+  buildAssignment,
+  buildChallenge,
+  buildClaim,
+  buildEvidenceSet,
+  buildRole,
+  buildRunRecord,
+  canTransition,
+  citeFrom,
+  composeConfidence,
+  departmentsHandling,
+  evaluateGate,
+  governanceDepartments,
+  isPublishable,
+  isRevisionOf,
+  observationRef,
+  projectActivity,
+  reportingLine,
+  resolveCitation,
+  runCacheKey,
+  transitionCase,
+  validateOrganization,
+  workQueueFor,
+  workloadFor,
+  waitingChains,
+  type AgentClaim,
+  type Assignment,
+  type Department,
+  type EvidenceSignals,
+  type InvestmentCase,
+  type Organization,
+  type VerificationReview,
+} from './index'
+
+/* ------------------------------------------------------------- test fixtures */
+
+const responsibilities = [{ id: 'r1', summary: 'Analyse', interpretive: false }]
+
+const specialistRole = buildRole({
+  id: 'role-specialist',
+  title: 'Specialist',
+  function: 'specialist',
+  responsibilities,
+  canBlockPublication: false,
+})
+const managerRole = buildRole({
+  id: 'role-manager',
+  title: 'Manager',
+  function: 'manager',
+  responsibilities,
+  canBlockPublication: false,
+})
+const governanceRole = buildRole({
+  id: 'role-governance',
+  title: 'Fact Checker',
+  function: 'governance',
+  responsibilities,
+  canBlockPublication: true,
+})
+const executiveRole = buildRole({
+  id: 'role-cio',
+  title: 'Chief Investment Officer',
+  function: 'executive',
+  responsibilities,
+  canBlockPublication: false,
+})
+
+function firm(extraDepartments: Department[] = []): Organization {
+  return {
+    id: 'org',
+    name: 'Financial OS',
+    chiefEmployeeId: 'cio',
+    roles: [specialistRole, managerRole, governanceRole, executiveRole],
+    departments: [
+      {
+        id: 'macro',
+        name: 'Global Macro',
+        managerEmployeeId: 'macro-head',
+        handles: ['macro', 'rates'],
+        isGovernance: false,
+      },
+      {
+        id: 'verification',
+        name: 'Fact Checker',
+        managerEmployeeId: 'fact-head',
+        handles: ['verification'],
+        isGovernance: true,
+      },
+      {
+        id: 'executive',
+        name: 'Executive',
+        managerEmployeeId: 'cio',
+        handles: [],
+        isGovernance: false,
+      },
+      ...extraDepartments,
+    ],
+    teams: [],
+    employees: [
+      {
+        id: 'cio',
+        displayName: 'CIO',
+        roleId: 'role-cio',
+        departmentId: 'executive',
+        seniority: 'chief',
+      },
+      {
+        id: 'macro-head',
+        displayName: 'Head of Macro',
+        roleId: 'role-manager',
+        departmentId: 'macro',
+        reportsTo: 'cio',
+        seniority: 'head',
+      },
+      {
+        id: 'macro-analyst',
+        displayName: 'Macro Analyst',
+        roleId: 'role-specialist',
+        departmentId: 'macro',
+        reportsTo: 'macro-head',
+        seniority: 'senior',
+      },
+      {
+        id: 'fact-head',
+        displayName: 'Head of Verification',
+        roleId: 'role-governance',
+        departmentId: 'verification',
+        reportsTo: 'cio',
+        seniority: 'head',
+      },
+      ...extraDepartments.flatMap((d) => [
+        {
+          id: `${d.id}-head`,
+          displayName: `Head of ${d.name}`,
+          roleId: 'role-manager',
+          departmentId: d.id,
+          reportsTo: 'cio',
+          seniority: 'head' as const,
+        },
+      ]),
+    ],
+  }
+}
+
+/* -------------------------------------------------------------- organization */
+
+describe('the organization is a firm, not a list of agents', () => {
+  it('validates a well-formed structure', () => {
+    expect(() => validateOrganization(firm())).not.toThrow()
+  })
+
+  it('walks a reporting line up to the chief', () => {
+    expect(reportingLine(firm(), 'macro-analyst')).toEqual([
+      'macro-analyst',
+      'macro-head',
+      'cio',
+    ])
+  })
+
+  it('refuses a chief who reports to someone', () => {
+    const broken = firm()
+    const employees = broken.employees.map((e) =>
+      e.id === 'cio' ? { ...e, reportsTo: 'macro-head' } : e,
+    )
+    expect(() => validateOrganization({ ...broken, employees })).toThrow(
+      /must not report/,
+    )
+  })
+
+  it('refuses a department managed from outside itself', () => {
+    const broken = firm()
+    const departments = broken.departments.map((d) =>
+      d.id === 'macro' ? { ...d, managerEmployeeId: 'fact-head' } : d,
+    )
+    expect(() => validateOrganization({ ...broken, departments })).toThrow(
+      /another department/,
+    )
+  })
+
+  it('detects a reporting cycle instead of looping forever', () => {
+    const broken = firm()
+    const employees = broken.employees.map((e) =>
+      e.id === 'macro-head' ? { ...e, reportsTo: 'macro-analyst' } : e,
+    )
+    expect(() => reportingLine({ ...broken, employees }, 'macro-analyst')).toThrow(
+      /cycle/,
+    )
+  })
+
+  it('lets only governance roles block publication', () => {
+    expect(() => buildRole({ ...specialistRole, canBlockPublication: true })).toThrow(
+      /cannot block/,
+    )
+  })
+
+  it('requires a governance role to actually be able to block', () => {
+    // A control function that cannot stop anything is advisory, not control.
+    expect(() => buildRole({ ...governanceRole, canBlockPublication: false })).toThrow(
+      /must be able to block/,
+    )
+  })
+
+  it('lists governance departments as first-class', () => {
+    expect(governanceDepartments(firm()).map((d) => d.id)).toEqual(['verification'])
+  })
+})
+
+describe('a new department is data, not code', () => {
+  /**
+   * The requirement this whole module was shaped around. ESG Research is a
+   * department the codebase has never heard of; adding it must need no type
+   * change, no enum entry and no new branch.
+   */
+  const esg: Department = {
+    id: 'esg-research',
+    name: 'ESG Research',
+    managerEmployeeId: 'esg-research-head',
+    handles: ['esg', 'sustainability', 'climate-risk'],
+    isGovernance: false,
+  }
+
+  it('accepts a department the codebase has never heard of', () => {
+    const organization = firm([esg])
+    expect(() => validateOrganization(organization)).not.toThrow()
+    expect(organization.departments.map((d) => d.id)).toContain('esg-research')
+  })
+
+  it('routes work to it by discipline, with no enum to extend', () => {
+    expect(departmentsHandling(firm([esg]), 'climate-risk').map((d) => d.id)).toEqual([
+      'esg-research',
+    ])
+  })
+
+  it('accepts every asset-class department named in the roadmap at once', () => {
+    const departments: Department[] = [
+      'credit-research',
+      'fixed-income',
+      'commodities',
+      'fx',
+      'emerging-markets',
+      'options',
+      'private-equity',
+      'venture-capital',
+      'alternative-investments',
+    ].map((id) => ({
+      id,
+      name: id,
+      managerEmployeeId: `${id}-head`,
+      handles: [id],
+      isGovernance: false,
+    }))
+
+    const organization = firm(departments)
+    expect(() => validateOrganization(organization)).not.toThrow()
+    expect(organization.departments).toHaveLength(12)
+  })
+})
+
+/* --------------------------------------------------------------------- cases */
+
+const baseCase: InvestmentCase = {
+  id: 'case-1',
+  subject: { kind: 'instrument', ref: 'eq:xsto:volv-b', displayName: 'Volvo B' },
+  question: 'Is the current valuation supported by the earnings trajectory?',
+  stage: 'intake',
+  openedAt: '2026-07-27T08:00:00.000Z',
+  ownerEmployeeId: 'macro-head',
+  participatingDepartmentIds: ['macro'],
+  transitions: [],
+}
+
+const mover = {
+  employeeId: 'macro-head',
+  departmentId: 'macro',
+  at: '2026-07-27T09:00:00.000Z',
+}
+
+describe('cases move through the firm', () => {
+  it('follows the lifecycle', () => {
+    const moved = transitionCase(baseCase, 'research', mover)
+    expect(moved.stage).toBe('research')
+    expect(moved.transitions).toHaveLength(1)
+  })
+
+  it('does not mutate the case it was given', () => {
+    transitionCase(baseCase, 'research', mover)
+    // History is evidence; an aggregate whose past can be rewritten in place
+    // cannot be audited.
+    expect(baseCase.stage).toBe('intake')
+    expect(baseCase.transitions).toHaveLength(0)
+  })
+
+  it('refuses a move the lifecycle does not allow', () => {
+    expect(() => transitionCase(baseCase, 'published', mover)).toThrow(/cannot move/)
+  })
+
+  it('lets nothing reach the CIO except through review', () => {
+    // The structural guarantee behind "nothing reaches the CIO unverified".
+    expect(canTransition('review', 'decision')).toBe(true)
+    expect(canTransition('research', 'decision')).toBe(false)
+    expect(canTransition('aggregation', 'decision')).toBe(false)
+    expect(canTransition('intake', 'decision')).toBe(false)
+  })
+
+  it('publishes only from a decision', () => {
+    expect(canTransition('decision', 'published')).toBe(true)
+    expect(canTransition('review', 'published')).toBe(false)
+  })
+
+  it('requires a reason to block or return work', () => {
+    const inResearch = transitionCase(baseCase, 'research', mover)
+    expect(() => transitionCase(inResearch, 'blocked', mover)).toThrow(
+      /requires a reason/,
+    )
+  })
+
+  it('reports why a case is stalled', () => {
+    const inResearch = transitionCase(baseCase, 'research', mover)
+    const blocked = transitionCase(inResearch, 'blocked', {
+      ...mover,
+      reason: 'awaiting Q2 filing',
+    })
+    expect(blocked.stage).toBe('blocked')
+    expect(blocked.transitions[blocked.transitions.length - 1]?.reason).toBe(
+      'awaiting Q2 filing',
+    )
+  })
+})
+
+/* ---------------------------------------------------------------------- work */
+
+describe('work queues', () => {
+  const assignment = (over: Partial<Assignment> = {}): Assignment =>
+    buildAssignment({
+      id: 'a1',
+      caseId: 'case-1',
+      departmentId: 'macro',
+      brief: 'Assess the policy backdrop',
+      status: 'queued',
+      createdAt: '2026-07-27T08:00:00.000Z',
+      priority: 1,
+      ...over,
+    })
+
+  it('orders a queue by priority then age', () => {
+    const queue = workQueueFor('macro', [
+      assignment({ id: 'low', priority: 1 }),
+      assignment({ id: 'high', priority: 9 }),
+    ])
+    expect(queue.assignments.map((a) => a.id)).toEqual(['high', 'low'])
+  })
+
+  it('excludes closed work from the queue', () => {
+    const queue = workQueueFor('macro', [
+      assignment({ id: 'done', status: 'completed' }),
+      assignment({ id: 'open' }),
+    ])
+    expect(queue.assignments.map((a) => a.id)).toEqual(['open'])
+  })
+
+  it('summarises a department workload', () => {
+    const queue = workQueueFor('macro', [
+      assignment({ id: 'a', status: 'active' }),
+      assignment({ id: 'b', status: 'queued' }),
+      assignment({
+        id: 'c',
+        status: 'waiting',
+        waitingOn: { kind: 'evidence', description: 'Q2 filing' },
+      }),
+    ])
+    expect(workloadFor(queue)).toMatchObject({ active: 1, queued: 1, waiting: 1 })
+  })
+
+  it('refuses a wait with no stated cause', () => {
+    // An unexplained wait is indistinguishable from a stall.
+    expect(() => assignment({ status: 'waiting' })).toThrow(/waiting but does not say/)
+  })
+
+  it('refuses a return with no reason', () => {
+    expect(() => assignment({ status: 'returned' })).toThrow(/without a reason/)
+  })
+
+  it('reports who is waiting on whom', () => {
+    const blocking = assignment({ id: 'macro-work', departmentId: 'macro' })
+    const waiter = assignment({
+      id: 'equity-work',
+      departmentId: 'equity',
+      status: 'waiting',
+      waitingOn: { kind: 'assignment', assignmentId: 'macro-work' },
+    })
+    const chains = waitingChains([blocking, waiter])
+    expect(chains).toHaveLength(1)
+    expect(chains[0]?.blockedBy?.id).toBe('macro-work')
+  })
+})
+
+/* ------------------------------------------------------------------ identity */
+
+describe('observation identity', () => {
+  const key = {
+    subjectKind: 'instrument' as const,
+    subject: 'rate:us10y',
+    kind: 'yield' as const,
+    observedAt: '2026-07-24T00:00:00.000Z',
+    sourceId: 'treasury',
+    seriesId: 'BC_10YEAR',
+    methodology: 'par-yield',
+  }
+
+  it('is stable across re-retrieval', () => {
+    const first = observationRef(key, { yieldPercent: 4.69 })
+    const second = observationRef(key, { yieldPercent: 4.69 })
+    expect(second.id).toBe(first.id)
+    expect(second.contentHash).toBe(first.contentHash)
+  })
+
+  it('ignores field order when hashing content', () => {
+    const a = observationRef(key, { yieldPercent: 4.69, change: -2 })
+    const b = observationRef(key, { change: -2, yieldPercent: 4.69 })
+    // Without canonical ordering, a provider emitting fields differently would
+    // register as a revision on every fetch.
+    expect(b.contentHash).toBe(a.contentHash)
+  })
+
+  it('detects a revision: same identity, different content', () => {
+    const original = observationRef(key, { yieldPercent: 4.69 })
+    const revised = observationRef(key, { yieldPercent: 4.71 })
+    expect(revised.id).toBe(original.id)
+    expect(isRevisionOf(revised, original)).toBe(true)
+  })
+
+  it('treats a different methodology as a different observation', () => {
+    // A par yield and a fitted zero rate for the same bond on the same day are
+    // two things, not one thing revised.
+    const par = observationRef(key, { yieldPercent: 4.69 })
+    const fitted = observationRef(
+      { ...key, methodology: 'zero-coupon-fitted' },
+      { yieldPercent: 4.69 },
+    )
+    expect(fitted.id).not.toBe(par.id)
+    expect(isRevisionOf(fitted, par)).toBe(false)
+  })
+
+  it('produces a wide hash, because a collision means citing the wrong thing', () => {
+    expect(observationRef(key, { v: 1 }).id).toHaveLength(32)
+  })
+})
+
+/* ------------------------------------------------------------------ evidence */
+
+describe('the evidence set', () => {
+  const refA = observationRef(
+    {
+      subjectKind: 'instrument',
+      subject: 'rate:us10y',
+      kind: 'yield',
+      observedAt: '2026-07-24T00:00:00.000Z',
+      sourceId: 'treasury',
+    },
+    { yieldPercent: 4.69 },
+  )
+  const refB = observationRef(
+    {
+      subjectKind: 'central-bank',
+      subject: 'ecb',
+      kind: 'policy-state',
+      observedAt: '2026-07-26T00:00:00.000Z',
+      sourceId: 'ecb',
+    },
+    { level: 2.25 },
+  )
+  const provenance = { source: { providerId: 'x' } } as never
+
+  const setOf = (refs: (typeof refA)[]) =>
+    buildEvidenceSet({
+      items: refs.map((ref) => ({ ref, value: {}, provenance })),
+      assembledAt: '2026-07-27T08:00:00.000Z',
+      correlationId: 'corr-1',
+    })
+
+  it('hashes identically regardless of assembly order', () => {
+    expect(setOf([refA, refB]).id).toBe(setOf([refB, refA]).id)
+  })
+
+  it('states the spread when observations are not co-temporal', () => {
+    const set = setOf([refA, refB])
+    expect(set.coTemporality.kind).toBe('mixed')
+    if (set.coTemporality.kind !== 'mixed') throw new Error('unreachable')
+    // Two days apart — an agent comparing them must be told.
+    expect(set.coTemporality.spreadMs).toBe(2 * 86_400_000)
+  })
+
+  it('reports co-temporality when everything shares a moment', () => {
+    expect(setOf([refA]).coTemporality.kind).toBe('co-temporal')
+  })
+
+  it('retains disagreement rather than resolving it', () => {
+    const sameThingKey = {
+      subjectKind: 'instrument' as const,
+      subject: 'rate:de10y',
+      kind: 'yield' as const,
+      observedAt: '2026-07-24T00:00:00.000Z',
+    }
+    const bundesbank = observationRef(
+      { ...sameThingKey, sourceId: 'bundesbank' },
+      { yieldPercent: 3.24 },
+    )
+    const vendor = observationRef(
+      { ...sameThingKey, sourceId: 'riksbank' },
+      { yieldPercent: 3.31 },
+    )
+    const set = setOf([bundesbank, vendor])
+
+    // Never averaged into 3.275. Both survive, and the conflict is named.
+    expect(set.disagreements).toHaveLength(1)
+    // Copied before sorting: the set freezes its arrays, which is the point.
+    expect([...(set.disagreements[0]?.sourceIds ?? [])].sort()).toEqual([
+      'bundesbank',
+      'riksbank',
+    ])
+    expect(set.items).toHaveLength(2)
+  })
+
+  it('records agreement between two sources as no disagreement', () => {
+    const shared = {
+      subjectKind: 'instrument' as const,
+      subject: 'rate:de10y',
+      kind: 'yield' as const,
+      observedAt: '2026-07-24T00:00:00.000Z',
+    }
+    const set = setOf([
+      observationRef({ ...shared, sourceId: 'a' }, { yieldPercent: 3.24 }),
+      observationRef({ ...shared, sourceId: 'b' }, { yieldPercent: 3.24 }),
+    ])
+    expect(set.disagreements).toHaveLength(0)
+  })
+})
+
+describe('citations resolve against the set they were made in', () => {
+  const ref = observationRef(
+    {
+      subjectKind: 'instrument',
+      subject: 'rate:us10y',
+      kind: 'yield',
+      observedAt: '2026-07-24T00:00:00.000Z',
+      sourceId: 'treasury',
+    },
+    { yieldPercent: 4.69 },
+  )
+  const set = buildEvidenceSet({
+    items: [{ ref, value: {}, provenance: {} as never }],
+    assembledAt: '2026-07-27T08:00:00.000Z',
+    correlationId: 'c',
+  })
+
+  it('resolves a good citation', () => {
+    expect(resolveCitation(set, citeFrom(set, ref)).status).toBe('resolved')
+  })
+
+  it('refuses to mint a citation for something not in the set', () => {
+    const outsider = observationRef(
+      {
+        subjectKind: 'instrument',
+        subject: 'rate:us2y',
+        kind: 'yield',
+        observedAt: '2026-07-24T00:00:00.000Z',
+        sourceId: 'treasury',
+      },
+      { yieldPercent: 4.33 },
+    )
+    expect(() => citeFrom(set, outsider)).toThrow(/not in evidence set/)
+  })
+
+  it('detects a citation carried across evidence sets', () => {
+    const citation = { ...citeFrom(set, ref), setId: 'some-other-set' }
+    expect(resolveCitation(set, citation)).toMatchObject({
+      status: 'unresolved',
+      reason: 'wrong-set',
+    })
+  })
+
+  it('detects evidence revised after it was cited', () => {
+    const citation = { ...citeFrom(set, ref), contentHash: 'stale-hash' }
+    expect(resolveCitation(set, citation).status).toBe('revised')
+  })
+})
+
+/* -------------------------------------------------------------------- claims */
+
+const claimBase = {
+  id: 'claim-1',
+  statement: 'The US 10Y yield fell 2 basis points.',
+  evidenceRefs: [{ setId: 's', observationId: 'o', contentHash: 'h' }],
+  contradictingEvidenceRefs: [],
+  confidence: { level: 'high' as const, basis: [] },
+  temporalScope: { asOf: '2026-07-24T00:00:00.000Z' },
+  status: 'supported' as const,
+}
+
+describe('claims', () => {
+  it('builds a descriptive claim', () => {
+    expect(() =>
+      buildClaim({ ...claimBase, type: 'observation' } as AgentClaim),
+    ).not.toThrow()
+  })
+
+  it('refuses a supported claim with no evidence', () => {
+    expect(() =>
+      buildClaim({ ...claimBase, type: 'observation', evidenceRefs: [] } as AgentClaim),
+    ).toThrow(/supported with no evidence/)
+  })
+
+  it('refuses a contested claim citing nothing against it', () => {
+    expect(() =>
+      buildClaim({
+        ...claimBase,
+        type: 'observation',
+        status: 'contested',
+      } as AgentClaim),
+    ).toThrow(/contradicts/)
+  })
+
+  it('requires a horizon on a forecast', () => {
+    // A forecast with no horizon cannot be wrong, which means it cannot be right.
+    expect(() => buildClaim({ ...claimBase, type: 'forecast' } as AgentClaim)).toThrow(
+      /needs a horizon/,
+    )
+  })
+
+  it('requires a counterclaim to name what it contests', () => {
+    expect(() =>
+      buildClaim({ ...claimBase, type: 'counterclaim' } as AgentClaim),
+    ).toThrow(/what it contests/)
+  })
+
+  it('will not typecheck a causal claim without attribution', () => {
+    // @ts-expect-error a causal claim requires an attribution
+    const invalid: AgentClaim = { ...claimBase, type: 'causal' }
+    expect(invalid).toBeDefined()
+  })
+
+  it('accepts a causal claim attributed to an official statement', () => {
+    const claim = buildClaim({
+      ...claimBase,
+      type: 'causal',
+      statement: 'The 2Y rose because the FOMC signalled fewer cuts.',
+      attribution: {
+        kind: 'official-statement',
+        evidence: { setId: 's', observationId: 'o', contentHash: 'h' },
+      },
+    })
+    expect(claim.type).toBe('causal')
+  })
+})
+
+/* ---------------------------------------------------------------- confidence */
+
+describe('confidence composition', () => {
+  const signals = (over: Partial<EvidenceSignals> = {}): EvidenceSignals => ({
+    weakestEvidence: 'high',
+    anyFixtureBacked: false,
+    anyMissingProvenance: false,
+    anyStale: false,
+    methodologyMismatch: false,
+    conflictingEvidence: false,
+    evidenceCount: 3,
+    ...over,
+  })
+
+  it('cannot exceed the weakest evidence', () => {
+    const result = composeConfidence(signals({ weakestEvidence: 'low' }), 'observation')
+    expect(result.level).toBe('low')
+    expect(result.cappedBy).toBe('weakest-evidence')
+  })
+
+  it('makes a fixture-backed claim unpublishable', () => {
+    const result = composeConfidence(signals({ anyFixtureBacked: true }), 'observation')
+    expect(result.level).toBe('insufficient')
+    expect(isPublishable(result)).toBe(false)
+  })
+
+  it('makes an unprovenanced claim unpublishable', () => {
+    const result = composeConfidence(
+      signals({ anyMissingProvenance: true }),
+      'observation',
+    )
+    expect(isPublishable(result)).toBe(false)
+  })
+
+  it('invalidates a comparison across mismatched methodologies', () => {
+    const result = composeConfidence(signals({ methodologyMismatch: true }), 'comparison')
+    expect(result.level).toBe('insufficient')
+    expect(result.cappedBy).toBe('methodology-mismatch')
+  })
+
+  it('lowers, rather than invalidates, a non-comparison with mixed methodologies', () => {
+    const result = composeConfidence(signals({ methodologyMismatch: true }), 'trend')
+    expect(result.level).toBe('low')
+  })
+
+  it('reduces confidence for stale evidence', () => {
+    expect(composeConfidence(signals({ anyStale: true }), 'observation').level).toBe(
+      'moderate',
+    )
+  })
+
+  it('lowers confidence on disagreement instead of averaging it away', () => {
+    const result = composeConfidence(
+      signals({ conflictingEvidence: true }),
+      'observation',
+    )
+    expect(result.level).toBe('low')
+    expect(result.cappedBy).toBe('conflicting-evidence')
+  })
+
+  it('returns insufficient with no evidence at all', () => {
+    expect(composeConfidence(signals({ evidenceCount: 0 }), 'observation').level).toBe(
+      'insufficient',
+    )
+  })
+
+  it('never raises confidence — agreement is not independent evidence', () => {
+    // There is no signal that can produce a level above the weakest evidence.
+    const ceiling = composeConfidence(
+      signals({ weakestEvidence: 'moderate' }),
+      'observation',
+    )
+    expect(ceiling.level).toBe('moderate')
+  })
+
+  it('explains itself', () => {
+    const result = composeConfidence(signals({ anyStale: true }), 'observation')
+    expect(result.basis.join(' ')).toMatch(/stale/)
+  })
+})
+
+/* ---------------------------------------------------------------- governance */
+
+describe('the governance gate', () => {
+  const verification = (over: Partial<VerificationReview> = {}): VerificationReview => ({
+    caseId: 'case-1',
+    byEmployeeId: 'fact-head',
+    byDepartmentId: 'verification',
+    at: '2026-07-27T10:00:00.000Z',
+    status: 'verified',
+    findings: [],
+    claimsReviewed: ['claim-1'],
+    ...over,
+  })
+
+  it('blocks when verification has not happened at all', () => {
+    // A missing check must not be a pass, or skipping it is the way through.
+    const result = evaluateGate({})
+    expect(result.passed).toBe(false)
+    expect(result.blockers).toContain('verification has not been performed')
+  })
+
+  it('passes a verified case', () => {
+    expect(evaluateGate({ verification: verification() }).passed).toBe(true)
+  })
+
+  it('blocks on a correction requirement', () => {
+    expect(
+      evaluateGate({ verification: verification({ status: 'correction-required' }) })
+        .passed,
+    ).toBe(false)
+  })
+
+  it('blocks on a single blocking finding even when the status looks benign', () => {
+    const review = verification({
+      status: 'verified-with-qualifications',
+      findings: [
+        {
+          kind: 'basis-point-confusion',
+          claimId: 'claim-1',
+          detail: '0.25 % reported as 25 bp',
+          blocking: true,
+        },
+      ],
+    })
+    expect(evaluateGate({ verification: review }).passed).toBe(false)
+  })
+
+  it('blocks while a challenge is unresolved', () => {
+    const result = evaluateGate({
+      verification: verification(),
+      devilsAdvocate: {
+        caseId: 'case-1',
+        byEmployeeId: 'da',
+        byDepartmentId: 'devils-advocate',
+        at: '2026-07-27T10:05:00.000Z',
+        challenges: [
+          buildChallenge({
+            id: 'ch-1',
+            contests: 'claim-1',
+            kind: 'contradicting-evidence',
+            argument: 'The order book says otherwise.',
+            counterEvidence: [{ setId: 's', observationId: 'o2', contentHash: 'h2' }],
+          }),
+        ],
+        outcomes: {},
+      },
+    })
+    expect(result.passed).toBe(false)
+    expect(result.blockers.join(' ')).toMatch(/unresolved challenge/)
+  })
+
+  it('reports every blocker at once, so one pass fixes them all', () => {
+    const result = evaluateGate({
+      verification: verification({ status: 'unresolved-discrepancy' }),
+      compliance: {
+        caseId: 'case-1',
+        byEmployeeId: 'c',
+        byDepartmentId: 'compliance',
+        at: '2026-07-27T10:10:00.000Z',
+        status: 'rejected',
+        findings: [],
+      },
+    })
+    expect(result.blockers).toHaveLength(2)
+  })
+
+  it('refuses an objection with nothing behind it', () => {
+    expect(() =>
+      buildChallenge({
+        id: 'ch-2',
+        contests: 'claim-1',
+        kind: 'contradicting-evidence',
+        argument: 'I disagree.',
+        counterEvidence: [],
+      }),
+    ).toThrow(/argues from evidence/)
+  })
+
+  it('allows an assumption challenge without counter-evidence', () => {
+    // Naming a fragile assumption is legitimate without a counter-observation.
+    expect(() =>
+      buildChallenge({
+        id: 'ch-3',
+        contests: 'claim-1',
+        kind: 'fragile-assumption',
+        argument: 'The terminal growth rate assumes no competitive entry.',
+        counterEvidence: [],
+      }),
+    ).not.toThrow()
+  })
+})
+
+/* -------------------------------------------------------------- run records */
+
+describe('run records and the activity feed', () => {
+  const run = buildRunRecord({
+    id: 'run-1',
+    caseId: 'case-1',
+    assignmentId: 'a1',
+    departmentId: 'macro',
+    employeeId: 'macro-analyst',
+    agentContractVersion: '1.0.0',
+    outputSchemaVersion: '1.0.0',
+    prompt: { id: 'macro', version: '3', contentHash: 'ph' },
+    model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'mh' },
+    evidenceSetId: 'set-1',
+    status: 'completed',
+    startedAt: '2026-07-27T09:00:00.000Z',
+    completedAt: '2026-07-27T09:02:00.000Z',
+    events: [
+      {
+        runId: 'run-1',
+        at: '2026-07-27T09:00:00.000Z',
+        status: 'running',
+        activity: 'Reading FOMC minutes',
+      },
+    ],
+    claims: [],
+  })
+
+  it('keys a cache on every input that can change the output', () => {
+    const key = runCacheKey(run)
+    expect(key).toContain('set-1')
+    expect(key).toContain('ph')
+    expect(key).toContain('mh')
+    // A different model configuration must not hit the same entry.
+    const other = runCacheKey({
+      ...run,
+      model: { ...run.model, parametersHash: 'different' },
+    })
+    expect(other).not.toBe(key)
+  })
+
+  it('refuses a failed run with no reason', () => {
+    expect(() =>
+      buildRunRecord({ ...run, status: 'failed', failureReason: undefined }),
+    ).toThrow(/failed without a reason/)
+  })
+
+  it('builds the activity feed only from recorded state changes', () => {
+    const activity = projectActivity(
+      [run],
+      [
+        {
+          at: '2026-07-27T09:05:00.000Z',
+          byDepartmentId: 'verification',
+          from: 'aggregation',
+          to: 'review',
+        },
+      ],
+    )
+    expect(activity).toHaveLength(2)
+    // Newest first, and every line traceable to a run event or a transition.
+    expect(activity[0]?.source).toBe('case')
+    expect(activity[1]?.description).toBe('Reading FOMC minutes')
+  })
+
+  it('shows nothing when nothing has happened', () => {
+    // The floor cannot look busy without work having occurred.
+    expect(projectActivity([], [])).toEqual([])
+  })
+})
