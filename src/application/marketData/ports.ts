@@ -22,11 +22,25 @@ import type {
   SeriesInterval,
   YieldCurve,
 } from '~/domain/market'
+import type {
+  EcbPolicyState,
+  FederalReservePolicyState,
+  RiksbankPolicyState,
+} from '~/domain/policy'
 import type { Clock } from '~/domain/shared/clock'
 import type { CorrelationId } from '~/domain/shared/correlation'
 
 export type Capability =
-  'quotes' | 'series' | 'fx' | 'yields' | 'commodities' | 'crypto' | 'news' | 'sentiment'
+  | 'quotes'
+  | 'series'
+  | 'fx'
+  | 'yields'
+  | 'commodities'
+  | 'crypto'
+  | 'news'
+  | 'sentiment'
+  /** Official monetary-policy state. A different domain from `yields`. */
+  | 'policy-rates'
 
 /**
  * Data categories, as configured and cached. Finer-grained than `Capability`
@@ -49,6 +63,14 @@ export type DataCategory =
   | 'sentiment'
   | 'intraday'
   | 'sectors'
+  /*
+   * Monetary policy, one category per institution. Separate from the yield
+   * categories on purpose: a Fed outage must not be able to reach for a
+   * Treasury yield, and the two are not the same measure.
+   */
+  | 'policy-us'
+  | 'policy-ea'
+  | 'policy-se'
 
 /** Injected into every port call. Never `Date.now()` inside an adapter. */
 export interface FetchContext {
@@ -72,6 +94,20 @@ export interface QuoteProvider extends ProviderIdentity {
     symbols: readonly CanonicalSymbol[],
     ctx: FetchContext,
   ): Promise<MarketQuote[]>
+}
+
+/**
+ * A central bank's current policy state.
+ *
+ * Unlike every other port here, this one takes no symbols: an institution has
+ * one policy state, not a list of instruments. Each provider returns its own
+ * concrete state type, so the Fed's target range and the ECB's three key rates
+ * never have to be flattened into a shared shape.
+ */
+export interface PolicyRateProvider extends ProviderIdentity {
+  fetchPolicyState(
+    ctx: FetchContext,
+  ): Promise<FederalReservePolicyState | EcbPolicyState | RiksbankPolicyState>
 }
 
 export interface SeriesProvider extends ProviderIdentity {
@@ -136,6 +172,7 @@ export type AnyProvider =
   | CryptoProvider
   | NewsProvider
   | SentimentProvider
+  | PolicyRateProvider
 
 /** Maps a capability to the port that serves it. */
 export interface PortByCapability {
@@ -147,6 +184,7 @@ export interface PortByCapability {
   crypto: CryptoProvider
   news: NewsProvider
   sentiment: SentimentProvider
+  'policy-rates': PolicyRateProvider
 }
 
 /**

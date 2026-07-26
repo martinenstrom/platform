@@ -50,6 +50,13 @@ const PRICE_FALLBACK: FallbackPolicy = {
   allowProxy: false,
 }
 
+const POLICY_RATE_POLICY: CategoryPolicy = {
+  ttlOpenMs: 6 * HOUR,
+  ttlClosedMs: 6 * HOUR,
+  fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+  staleWhileRevalidate: false,
+}
+
 export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
   Object.freeze({
     /*
@@ -95,6 +102,31 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       fallback: { ...PRICE_FALLBACK, allowProxy: false },
       staleWhileRevalidate: true,
     },
+    /*
+     * Monetary policy. All three institutions share these numbers because they
+     * share a publication model: an official body confirms a standing state on
+     * a defined cadence, and the state itself changes a handful of times a year.
+     *
+     * TTL 6h — there is no market session here, and asking more often re-reads
+     * a value that changes at most eight times a year.
+     *
+     * `maxStaleMs` 5 days covers a Christmas or Easter run of non-publication
+     * days in the two business-day series without erroring.
+     *
+     * SWR off. An official policy state is current or it is not; serving a
+     * known-stale one while refreshing buys nothing when the underlying value
+     * has not moved in months.
+     *
+     * Note what age means here: `provenance.asOf` is the OBSERVATION date, so
+     * `ageMs` measures how long since the source last confirmed the state. It
+     * is never the age of the policy decision — a rate unchanged since October
+     * is not stale data. `regime.effectiveDate` carries that separately, and
+     * nothing in this policy reads it.
+     */
+    'policy-us': POLICY_RATE_POLICY,
+    'policy-ea': POLICY_RATE_POLICY,
+    'policy-se': POLICY_RATE_POLICY,
+
     /** Same venue, same schedule, same reasoning as `equity-index-se`. */
     'equity-se': {
       ttlOpenMs: 60 * SECOND,

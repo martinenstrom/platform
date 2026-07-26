@@ -13,6 +13,10 @@
 
 import { createServerFn } from '@tanstack/react-start'
 import {
+  getCentralBanksSnapshot,
+  type CentralBanksSnapshot,
+} from '~/application/policy/getCentralBanksSnapshot'
+import {
   getOverviewSnapshot,
   type OverviewSnapshot,
 } from '~/application/marketData/getOverviewSnapshot'
@@ -41,6 +45,9 @@ export async function getContainer(): Promise<Container> {
     { createBundesbankProvider },
     { createRiksbankProvider },
     { createAvanzaProvider },
+    { createNewYorkFedProvider },
+    { createEcbProvider },
+    { createRiksbankPolicyProvider },
     { callAvanzaTool },
     { createHttpClient },
     { loadMarketDataConfig },
@@ -53,6 +60,9 @@ export async function getContainer(): Promise<Container> {
     import('./providers/bundesbank'),
     import('./providers/riksbank'),
     import('./providers/avanza'),
+    import('./providers/newYorkFed'),
+    import('./providers/ecb'),
+    import('./providers/riksbankPolicy'),
     // The transport seam. A dynamic import inside this server-only handler is
     // what keeps a child-process spawner out of the client graph entirely.
     import('~/services/avanzaMcp/client'),
@@ -152,6 +162,58 @@ export async function getContainer(): Promise<Container> {
           },
         },
         {
+          provider: createNewYorkFedProvider(
+            createHttpClient({ networkDisabled: false }),
+          ),
+          capabilities: new Set(['policy-rates'] as const),
+          metadata: {
+            // The desk publishes what the FOMC decided; `NY_FED_SOURCE`
+            // records the committee as originator.
+            trust: 'central-bank' as const,
+            expectedLatencyMs: 500,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
+          provider: createEcbProvider(createHttpClient({ networkDisabled: false })),
+          capabilities: new Set(['policy-rates'] as const),
+          metadata: {
+            // Sets and publishes its own rates.
+            trust: 'central-bank' as const,
+            // Three series fetched in parallel.
+            expectedLatencyMs: 900,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
+          provider: createRiksbankPolicyProvider(
+            createHttpClient({ networkDisabled: false }),
+          ),
+          capabilities: new Set(['policy-rates'] as const),
+          metadata: {
+            // Unlike the SWEA yield series on this same API, the policy rate
+            // is the Riksbank's own decision — no vendor originator.
+            trust: 'central-bank' as const,
+            expectedLatencyMs: 600,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
           provider: createAvanzaProvider(callAvanzaTool),
           capabilities: new Set(['quotes'] as const),
           metadata: {
@@ -224,12 +286,29 @@ export async function getContainer(): Promise<Container> {
           'crypto',
           'news',
           'sentiment',
+          'policy-rates',
         ]),
       },
     ],
   })
   return cached
 }
+
+/**
+ * Assembles the central-bank snapshot server-side.
+ *
+ * A SEPARATE server function, not part of the Overview payload. Nothing
+ * renders it in Phase 6A, so bundling it into every page load would ship an
+ * unused payload and couple two things meant to stay separable.
+ */
+export const getCentralBanksSnapshotFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<CentralBanksSnapshot> => {
+    const container = await getContainer()
+    const { createCentralBanksDataSource } = await import('./centralBanksDataSource')
+    const correlationId = container.newCorrelationId()
+    return getCentralBanksSnapshot(createCentralBanksDataSource(container, correlationId))
+  },
+)
 
 /** Assembles the whole Overview server-side. One round trip, one `asOf`. */
 export const getOverviewSnapshotFn = createServerFn({ method: 'GET' }).handler(

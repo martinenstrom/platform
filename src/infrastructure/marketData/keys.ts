@@ -74,3 +74,8 @@ export function yieldCurveKey(countryCode: string): string {
 export function budgetKey(providerId: string, utcDate: string): string {
   return `budget:${providerId}:${utcDate}`
 }
+
+/** Policy state for one institution. One state per bank, so no symbol list. */
+export function policyStateKey(centralBank: string): string {
+  return `${KEY_PREFIX}:policy:${centralBank}`
+}

@@ -302,7 +302,8 @@ describe('P11 — only approved providers are connected', () => {
   it('ships exactly the adapters their phase gates approved', () => {
     // A new adapter appearing here means a live integration landed without
     // its phase gate. Phase 0 approved the fixture; Phase 2 approved
-    // Frankfurter; Phase 5 approved Avanza. httpClient is shared plumbing,
+    // Frankfurter; Phase 5 approved Avanza; Phase 6A approved the New York
+    // Fed, the ECB and the Riksbank policy series. httpClient is shared plumbing,
     // not a data source, and `avanza/map.ts` is a reviewed identity table.
     const adapters = FILES.filter(
       (f) =>
@@ -317,10 +318,13 @@ describe('P11 — only approved providers are connected', () => {
       'infrastructure/marketData/providers/avanza.ts',
       'infrastructure/marketData/providers/bundesbank.ts',
       'infrastructure/marketData/providers/coinGecko.ts',
+      'infrastructure/marketData/providers/ecb.ts',
       'infrastructure/marketData/providers/fixture.ts',
       'infrastructure/marketData/providers/frankfurter.ts',
       'infrastructure/marketData/providers/httpClient.ts',
+      'infrastructure/marketData/providers/newYorkFed.ts',
       'infrastructure/marketData/providers/riksbank.ts',
+      'infrastructure/marketData/providers/riksbankPolicy.ts',
       'infrastructure/marketData/providers/usTreasury.ts',
     ])
   })
@@ -397,10 +401,13 @@ describe('P11 — only approved providers are connected', () => {
       'avanza',
       'bundesbank',
       'coinGecko',
+      'ecb',
       'fixture',
       'frankfurter',
       'httpClient',
+      'newYorkFed',
       'riksbank',
+      'riksbankPolicy',
       'usTreasury',
     ])
   })
@@ -441,5 +448,66 @@ describe('Phase 4B guards', () => {
 
   it('adds no FRED adapter in this phase', () => {
     expect(FILES.filter((f) => /fred/i.test(f.path))).toEqual([])
+  })
+})
+
+describe('Phase 6A guards — the two domains stay apart', () => {
+  it('never lets domain/policy import domain/market, or the reverse', () => {
+    // The central rule of Part IX, mechanically. Government yields are market
+    // pricing and policy rates are official decisions; if either module could
+    // reach into the other, "do not confuse them" would be a convention
+    // instead of a property. Both may use `domain/shared`, which is why the
+    // provenance and primitive types live there.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+      if (file.path.startsWith('domain/policy/') && /~\/domain\/market/.test(source)) {
+        offenders.push(`${file.path} imports domain/market`)
+      }
+      if (file.path.startsWith('domain/market/') && /~\/domain\/policy/.test(source)) {
+        offenders.push(`${file.path} imports domain/policy`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps a policy rate out of the government-yield model', () => {
+    // A yield and a policy rate are both a number of percent. Only the brands
+    // stop one being stored where the other belongs.
+    const source = codeOnly(readFileSync(join(SRC, 'domain/market/rates.ts'), 'utf8'))
+    expect(source).not.toMatch(/PolicyRatePercent|CentralBank/)
+  })
+
+  it('populates no central-bank decision from a rate series', () => {
+    // Phase 6A defines the decision contract and deliberately fills nothing:
+    // a step in a daily series says a level changed, not when a committee
+    // announced it or what it said.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      if (!file.path.startsWith('infrastructure/')) continue
+      if (
+        /CentralBankDecision|CentralBankMeeting/.test(
+          codeOnly(readFileSync(join(SRC, file.path), 'utf8')),
+        )
+      ) {
+        offenders.push(file.path)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('adds no central-bank rendering', () => {
+    // No UI in Phase 6A. Nothing under components/ or routes/ may know these
+    // types exist.
+    const offenders = FILES.filter(
+      (f) =>
+        (f.path.startsWith('components/') || f.path.startsWith('routes/')) &&
+        /~\/domain\/policy|CentralBanksSnapshot/.test(
+          codeOnly(readFileSync(join(SRC, f.path), 'utf8')),
+        ),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
   })
 })

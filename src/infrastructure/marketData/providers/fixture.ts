@@ -16,6 +16,8 @@
  *     user.
  */
 
+import { basisPoints } from '~/domain/shared/primitives'
+import { singleRate, type RiksbankPolicyState } from '~/domain/policy'
 import {
   buildDerivedSentiment,
   buildNewsItem,
@@ -51,6 +53,7 @@ import type {
   SentimentProvider,
   SeriesProvider,
   YieldProvider,
+  PolicyRateProvider,
 } from '~/application/marketData/ports'
 import {
   FIXTURE_COMMODITY_QUOTES,
@@ -353,6 +356,43 @@ function sentimentFor(ctx: FetchContext): MarketSentiment {
   return { ...sentiment, label: labelForScore(sentiment.score) }
 }
 
+/* ------------------------------------------------------------------ policy */
+
+/**
+ * A stand-in central-bank state.
+ *
+ * The shape matters more than the numbers: it carries a real carry-forward
+ * gap between the observation date and the effective date, so a consumer
+ * reading fixtures still has to handle the case the live sources actually
+ * present. Barred from production like every other fixture.
+ */
+function policyStateFor(ctx: FetchContext): RiksbankPolicyState {
+  const now = ctx.clock.now()
+  const observationDate = now.toISOString().slice(0, 10)
+  return {
+    centralBank: 'riksbank',
+    jurisdiction: 'Sweden',
+    currency: isoCurrency('SEK'),
+    rateType: 'policy-rate',
+    seriesId: 'FIXTURE',
+    regime: {
+      level: singleRate(1.75),
+      observationDate,
+      // Deliberately not today: a fixture that changed every day would hide
+      // exactly the bug this domain exists to prevent.
+      effectiveDate: '2025-10-01',
+      previousLevel: singleRate(2),
+      change: { kind: 'single', basisPoints: basisPoints(-25) },
+      effectiveDateBounded: false,
+      effectiveDateOutsideLookback: false,
+      isCarryForward: true,
+      stateChangedOnObservation: false,
+    },
+    publication: 'cadence-unknown',
+    provenance: fixtureProvenance(ctx),
+  }
+}
+
 /* ---------------------------------------------------------------- provider */
 
 export interface FixtureProvider
@@ -364,7 +404,8 @@ export interface FixtureProvider
     CommodityProvider,
     CryptoProvider,
     NewsProvider,
-    SentimentProvider {
+    SentimentProvider,
+    PolicyRateProvider {
   /** Sparkline for one Overview tile. Not part of any port — Phase 0 helper. */
   fetchSparkline(symbol: CanonicalSymbol, ctx: FetchContext): Promise<MarketSeries>
   fetchWatchlistSeries(symbol: CanonicalSymbol, ctx: FetchContext): Promise<MarketSeries>
@@ -390,6 +431,9 @@ export function createFixtureProvider(): FixtureProvider {
     },
     async fetchYields(symbols, ctx) {
       return yieldsFor(symbols, ctx)
+    },
+    async fetchPolicyState(ctx) {
+      return policyStateFor(ctx)
     },
     async fetchYieldCurve(countryCode, ctx) {
       return yieldCurveFor(countryCode, ctx)
