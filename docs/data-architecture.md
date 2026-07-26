@@ -2521,3 +2521,117 @@ bank work is **Phase 6A — Central Bank Policy Data**, to be scheduled after
 Phase 5 if that ordering still holds. Its prerequisites are the `domain/policy`
 module, the `PolicyRatePercent` brand, the three category entries, and a
 decision on the calendar caveat in §61.
+
+---
+
+---
+
+# Part X — Portfolio: three modes (future module)
+
+**Status: documentation only.** Nothing here is implemented. Recorded now
+because the portfolio page is the last legacy route to migrate, and what it
+should _become_ is a product decision that must be settled before the
+engineering one.
+
+## 64. The constraint that decides everything
+
+`avanza-mcp` wraps Avanza's **public, unauthenticated** market-data API. No
+login, no account access, no positions. There is therefore **no source that
+could make the current portfolio page real**, and no amount of architecture
+changes that.
+
+So the honest framing is not "migrate portfolio to live data". It is: decide
+which of three products the page is, and build that.
+
+## 65. Mode 1 — Demo portfolio
+
+Deterministic, fixture-backed holdings. What exists today.
+
+- `trust: 'synthetic'`, `quality: 'fixture'` on every value
+- identified as demo or model data in the UI, not merely in a footnote
+- suitable for development, product demonstration, screenshots and tests
+- **may never be presented as a connected account**
+
+The page already carries `Exempeldata` in its description and the application's
+own meta description says all data in this version is example data. That is a
+real disclosure and it is why this is not currently a product-integrity defect.
+What it lacks is _structural_ enforcement: the disclosure is prose a future
+edit can delete, not a property of the data.
+
+Mode 1's engineering work is therefore small and worth doing regardless of
+which mode follows: give the page a `domain/portfolio` model whose values carry
+provenance, so "this is synthetic" travels with the numbers rather than sitting
+beside them.
+
+## 66. Mode 2 — Manually managed portfolio
+
+The user enters or imports their own holdings.
+
+- **user-owned data**, which is a new category for this system entirely: every
+  domain so far is public market data with no owner
+- no claim of broker synchronization, ever
+- market values computed from real quotes where the instrument is covered —
+  which is exactly what the Phase 5 catalog and the Avanza adapter already do
+- an explicit "as of" per position, since a manual entry ages differently from
+  a quote
+
+Architecturally this is the first time the system needs **persistence it owns**
+rather than a cache it can discard. That is a genuine step change: a cache may
+be lost without consequence, user data may not. It brings storage, backup,
+export and deletion obligations with it.
+
+It also introduces the first instrument-coverage gap that a user can create.
+Someone will enter a holding this product has no quote for, and the honest
+answer — a position with a cost basis, no market value, and a visible reason —
+must be designed rather than discovered.
+
+## 67. Mode 3 — Connected portfolio
+
+An authenticated broker, custodian or bank integration.
+
+This is a materially different product with obligations the current system has
+none of:
+
+- explicit, revocable user consent per connection
+- secure credential and token handling — refresh, rotation, revocation, and
+  storage that is not `process.env`
+- account and position provenance: which institution, which account, when
+- synchronization timestamps distinct from market-data timestamps, because a
+  position can be stale while its price is fresh
+- reconciliation: what happens when the broker and our view disagree, which is
+  a _discrepancy_ in exactly the sense §53 describes and must not be resolved
+  by averaging or by silently preferring one side
+- error handling for partial syncs, expired consent and revoked access
+
+The provenance model already extends to this cleanly — an account balance has a
+source, an as-of and a trust level like any other observation. What does not
+exist is authentication, authorization, secret management or an audit trail.
+**This mode must not be attempted before the application has real
+authentication**, and that is a prerequisite, not a detail.
+
+## 68. The rule that holds across all three
+
+**No fixture-backed portfolio data may be presented as a live connected account
+in production.**
+
+Structurally, not by convention. The mechanism already exists: `allowFixture:
+'non-production'` is what stops a fixture quote reaching live mode, and the
+same policy should govern portfolio values once they are envelopes.
+
+If distinguishing the modes needs a small visual change — a badge, a label, a
+different treatment for demo values — that is a **sanctioned product-integrity
+change**, proposed and approved on its own terms. It is not a candidate for
+being quietly skipped to keep the visual lock intact. The lock exists to
+prevent unrequested redesign, not to prevent the product from telling the truth
+about its own data.
+
+## 69. Sequencing
+
+Portfolio is **last** in the C1 migration order, after watchlist, markets,
+agents and reports. That ordering is deliberate: the other four teach the
+migration pattern on data this system already has, while portfolio is the one
+that needs a product decision first.
+
+Mode 1 is the only mode in scope for the C1 migration itself. Modes 2 and 3
+are separate phases with their own gates, and Mode 3 depends on authentication
+that does not exist yet.
