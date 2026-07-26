@@ -271,31 +271,16 @@ const NAV_ITEMS = [
 ] as const
 
 /**
- * Left sidebar: the Financial-District photograph full-bleed, with the logo,
- * navigation and active state sitting on top of it. The image keeps its OWN
- * tones — no filters, blur or artistic gradients — under only a light ~12%
- * veil for legibility, with a soft darkening behind the nav band so the labels
- * hold, and the right edge seaming into the main surface. Swap the photo by
- * replacing the file at `WALL_STREET_PHOTO_URL` (a dark portrait crop reads
- * best); adjust `bg-[position]` afterwards to frame the flag/lit edges.
+ * Left navigation column — logo, nav items, active state and profile. It is a
+ * transparent layer that sits on top of the hero photograph, which is rendered
+ * behind it at the page root (see the hero block in the component's return) so
+ * the image can extend past the nav and dissolve into the dashboard.
  */
 function Sidebar() {
   return (
-    <aside className="relative isolate hidden w-[306px] shrink-0 overflow-hidden md:flex">
-      {/* Full-bleed photograph — the image's own grade, untouched. */}
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
-      />
-      {/* Minimal readability veil (~12%). */}
-      <div className="absolute inset-0 bg-black/[0.12]" />
-      {/* Soft darkening behind the nav band only — just enough to hold the labels. */}
-      <div className="absolute inset-y-0 left-0 w-[160px] bg-gradient-to-r from-[rgba(3,7,14,0.62)] to-transparent" />
-      {/* Seam into the main surface. */}
-      <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#020711] to-transparent" />
-
-      {/* UI on top. */}
-      <div className="relative z-10 flex w-[112px] flex-col items-center py-5">
+    <aside className="relative z-10 hidden w-[306px] shrink-0 md:flex">
+      {/* Nav sits on top of the hero image, which is rendered behind at the page root. */}
+      <div className="flex w-[112px] flex-col items-center py-5">
         <Link
           to="/"
           aria-label="Översikt"
@@ -555,9 +540,29 @@ export function LightCommandCenter() {
           'radial-gradient(circle at 60% 30%, rgba(14,88,126,0.18) 0%, rgba(4,19,32,0.10) 34%, rgba(2,7,17,0) 64%), linear-gradient(180deg, #020711 0%, #03101A 100%)',
       }}
     >
+      {/* Hero background: the Financial-District photograph anchored left at full
+          height, extended toward the content and dissolved into the dashboard
+          over a long, progressively darker gradient — one continuous cinematic
+          scene behind the UI rather than a narrow sidebar strip. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-0 z-0 w-[46vw] max-w-[760px] overflow-hidden"
+      >
+        <div
+          className="absolute inset-0 bg-[length:auto_100%] bg-[position:-46px_center] bg-no-repeat"
+          style={{ backgroundImage: `url(${WALL_STREET_PHOTO_URL})` }}
+        />
+        <div className="absolute inset-0 bg-black/[0.12]" />
+        {/* Darker behind the nav band so the labels stay effortless to read. */}
+        <div className="absolute inset-y-0 left-0 w-[160px] bg-gradient-to-r from-[rgba(3,7,14,0.62)] to-transparent" />
+        {/* Long, gentle dissolve into the dashboard — starts later and eases in so
+            the transition is almost imperceptible. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent from-[47%] via-[rgba(4,10,18,0.55)] via-[70%] to-[#020711]" />
+      </div>
+
       <Sidebar />
 
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
           <Header />
 
