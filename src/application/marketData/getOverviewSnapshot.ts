@@ -11,6 +11,7 @@
  * category degrades its own panel and nothing else.
  */
 
+import { isolate } from '~/application/shared/isolate'
 import {
   hasData,
   OVERVIEW_COMMODITY_SYMBOLS,
@@ -133,35 +134,6 @@ const ALL_SYMBOLS: CanonicalSymbol[] = [
   ...OVERVIEW_SECTOR_SYMBOLS,
   ...OVERVIEW_WATCHLIST_SYMBOLS,
 ]
-
-/**
- * Isolates one category.
- *
- * `resolve()` is designed never to throw, but "designed never to" is not a
- * guarantee: a bug in an adapter, a normalizer or the pipeline itself would
- * otherwise reject `Promise.all` and take the entire page down with it. One
- * failing category must degrade one panel.
- */
-async function isolate<T>(
-  label: string,
-  run: () => Promise<Envelope<T>>,
-): Promise<Envelope<T>> {
-  try {
-    return await run()
-  } catch (error) {
-    return {
-      state: 'error',
-      error: {
-        code: 'unknown',
-        message: `Category "${label}" failed unexpectedly: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        providerId: null,
-        retryable: true,
-      },
-    }
-  }
-}
 
 export async function getOverviewSnapshot(
   source: OverviewDataSource,

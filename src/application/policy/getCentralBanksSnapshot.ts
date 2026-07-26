@@ -11,6 +11,7 @@
  * institutions, and "the ECB is unavailable" is not a statement about the Fed.
  */
 
+import { isolate } from '~/application/shared/isolate'
 import type { Envelope } from '~/domain/shared/provenance'
 import type {
   EcbPolicyState,
@@ -41,33 +42,6 @@ export interface CentralBanksDataSource {
   federalReserve(): Promise<Envelope<FederalReservePolicyState>>
   ecb(): Promise<Envelope<EcbPolicyState>>
   riksbank(): Promise<Envelope<RiksbankPolicyState>>
-}
-
-/**
- * Turns a rejected resolution into an error envelope.
- *
- * A thrown adapter must not take the other two institutions with it, and it
- * must not take the page down either.
- */
-async function isolate<T>(
-  name: string,
-  resolve: () => Promise<Envelope<T>>,
-): Promise<Envelope<T>> {
-  try {
-    return await resolve()
-  } catch (error) {
-    return {
-      state: 'error',
-      error: {
-        code: 'unknown',
-        message: `${name} failed to resolve: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        providerId: null,
-        retryable: true,
-      },
-    }
-  }
 }
 
 export async function getCentralBanksSnapshot(

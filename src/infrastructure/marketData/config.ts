@@ -478,7 +478,26 @@ export function checkQuotaSafety(
       `Provider budgets for ${metered.join(', ')} are counted PER INSTANCE ` +
       `(cache store is not shared). ${config.instanceCount} instance(s) configured.`
 
-    if (config.production && !instanceCountWasExplicit) {
+    /*
+     * Two separate live-mode failures, and the second one used to be a warning.
+     *
+     * Declaring MARKETDATA_INSTANCE_COUNT > 1 is not a mitigation — it is the
+     * operator stating that N processes each hold their own budget counter. A
+     * 250/day quota then permits 250 x N calls, and the failure arrives as a
+     * provider ban rather than an error message. Treating the declaration as
+     * an escape hatch had it exactly backwards: the clearer the operator is
+     * about the multi-instance deployment, the more certain the overrun.
+     *
+     * An unset count in live mode is the same hazard with less information.
+     */
+    if (config.production && config.instanceCount > 1) {
+      errors.push(
+        `${detail} Declaring more than one instance without a shared cache store ` +
+          `guarantees the per-day budget is multiplied by the instance count. ` +
+          `Provide a shared CacheStore, reduce MARKETDATA_INSTANCE_COUNT to 1, ` +
+          `or remove the metered provider from its chain.`,
+      )
+    } else if (config.production && !instanceCountWasExplicit) {
       errors.push(
         `${detail} In live mode this risks exceeding the provider's global quota. ` +
           `Set MARKETDATA_INSTANCE_COUNT to the maximum possible concurrent instance ` +

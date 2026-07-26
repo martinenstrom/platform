@@ -25,6 +25,7 @@ import type {
   ProviderRegistration,
 } from '~/application/marketData/ports'
 import { loadMarketDataConfig } from './config'
+import { createContainer } from './container'
 import { MemoryCacheStore } from './cache/store'
 import { TieredCache } from './cache/tiered'
 import { SingleFlight } from './cache/singleFlight'
@@ -340,5 +341,55 @@ describe('multi-instance guard', () => {
       MARKETDATA_INSTANCE_COUNT: '1000',
     })
     expect(many.limits.coingecko?.requestsPerDay).toBe(1)
+  })
+})
+
+describe('multi-instance budgets fail closed (H1)', () => {
+  const liveEnv = {
+    MARKETDATA_MODE: 'live',
+    MARKETDATA_CHAIN_CRYPTO: 'coingecko,fixture',
+    COINGECKO_API_KEY: 'test-key',
+  }
+
+  it('refuses to start with several instances and no shared store', () => {
+    // The case that used to be a warning. Declaring the instance count is the
+    // operator confirming budgets are counted N times, not mitigating it.
+    expect(() =>
+      createContainer({ env: { ...liveEnv, MARKETDATA_INSTANCE_COUNT: '3' } }),
+    ).toThrow(/multiplied by the instance count/i)
+  })
+
+  it('refuses to start when the instance count is simply unstated', () => {
+    expect(() => createContainer({ env: liveEnv })).toThrow(
+      /Unsafe market-data configuration/i,
+    )
+  })
+
+  it('allows a single live instance', () => {
+    expect(() =>
+      createContainer({ env: { ...liveEnv, MARKETDATA_INSTANCE_COUNT: '1' } }),
+    ).not.toThrow()
+  })
+
+  it('leaves non-production deployments alone', () => {
+    // Hybrid is a developer's machine. The guard exists for real quotas.
+    expect(() =>
+      createContainer({
+        env: {
+          MARKETDATA_MODE: 'hybrid',
+          MARKETDATA_CHAIN_CRYPTO: 'coingecko,fixture',
+          MARKETDATA_INSTANCE_COUNT: '3',
+        },
+      }),
+    ).not.toThrow()
+  })
+
+  it('does not fire when no metered provider is in a chain', () => {
+    // Every Phase 4B and 6A source is keyless and uncapped; nothing to protect.
+    expect(() =>
+      createContainer({
+        env: { MARKETDATA_MODE: 'live', MARKETDATA_INSTANCE_COUNT: '5' },
+      }),
+    ).not.toThrow()
   })
 })

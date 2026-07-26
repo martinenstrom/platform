@@ -179,6 +179,46 @@ export function changeBetween(
 
 /* -------------------------------------------------------- regime detection */
 
+/**
+ * How much the inferred `effectiveDate` is worth.
+ *
+ * Three values, and the omission is deliberate: there is **no `estimated`**.
+ * We either saw the transition, saw it across a gap, or did not see it. An
+ * `estimated` slot would be an empty chair that someone eventually fills by
+ * interpolating from meeting cadence or past behaviour, which is exactly the
+ * inference this whole model exists to prevent.
+ */
+export type EffectiveDateConfidence =
+  /** The transition is visible with no missing observations around it. */
+  | 'confirmed'
+  /**
+   * Visible, but observations are missing immediately before it. The date is
+   * an upper bound; `effectiveDateEarliestPossible` gives the lower one.
+   */
+  | 'bounded'
+  /** No transition inside the history we hold. `effectiveDate` is `null`. */
+  | 'unknown'
+
+/**
+ * What the latest observation is, relative to the level it carries.
+ *
+ * Replaces a pair of booleans that could express a state meaning nothing. It
+ * answers "is this news?" and nothing else — deliberately NOT a reason for the
+ * level being unchanged. A repeated observation tells us the source
+ * republished; it does not tell us why the committee held, and we do not
+ * observe that. The explanation a consumer needs is this field, plus
+ * `PublicationStatus`, plus `effectiveDate`:
+ *
+ *   "unchanged since 2025-10-01, last confirmed 2026-07-24"
+ */
+export type ObservationRelation =
+  /** The latest observation is the first one at this level. This is news. */
+  | 'transition'
+  /** The source republished a level it had already reported. */
+  | 'repeated-confirmation'
+  /** Only one observation exists; there is nothing to compare it against. */
+  | 'single-observation'
+
 export interface LevelObservation {
   /** ISO date, `YYYY-MM-DD`, as the source published it. */
   date: string
@@ -198,20 +238,24 @@ export interface PolicyRegime {
    * as though it were a policy action.
    */
   effectiveDate: string | null
+  /**
+   * How far `effectiveDate` can be trusted. Always meaningful, including when
+   * the date is `null`, so a consumer never has to combine flags to find out.
+   */
+  effectiveDateConfidence: EffectiveDateConfidence
+  /**
+   * Earliest date the transition could have occurred, when the boundary has a
+   * gap. Turns "we are not sure" into a range: the change happened after this
+   * observation and by `effectiveDate`.
+   *
+   * `null` whenever confidence is not `bounded`, because there is no range to
+   * state — either the date is exact or there is no date at all.
+   */
+  effectiveDateEarliestPossible: string | null
   previousLevel: PolicyLevel | null
   change: PolicyLevelChange | null
-  /**
-   * Observations are missing immediately before `effectiveDate`, so the
-   * transition may have happened earlier than the date we can see. The date is
-   * an upper bound, not a fact.
-   */
-  effectiveDateBounded: boolean
-  /** No transition was found; the regime began before the history we hold. */
-  effectiveDateOutsideLookback: boolean
-  /** The latest observation merely repeats a standing level. */
-  isCarryForward: boolean
-  /** The latest observation is itself the first one at this level. */
-  stateChangedOnObservation: boolean
+  /** How the latest observation relates to the level it reports. */
+  observationRelation: ObservationRelation
 }
 
 const DAY_MS = 86_400_000
@@ -256,16 +300,29 @@ export function detectRegime(
   const bounded =
     previous !== null && daysBetween(previous.date, regimeStart.date) > maxExpectedGapDays
 
+  const confidence: EffectiveDateConfidence = !foundTransition
+    ? 'unknown'
+    : bounded
+      ? 'bounded'
+      : 'confirmed'
+
+  const relation: ObservationRelation =
+    sorted.length === 1
+      ? 'single-observation'
+      : latest.date === regimeStart.date
+        ? 'transition'
+        : 'repeated-confirmation'
+
   return {
     level,
     observationDate: latest.date,
     effectiveDate: foundTransition ? regimeStart.date : null,
+    effectiveDateConfidence: confidence,
+    // Only a bounded date has a range to report.
+    effectiveDateEarliestPossible: confidence === 'bounded' ? previous!.date : null,
     previousLevel: previous?.level ?? null,
     // No previous level means no change to report. Never a fabricated zero.
     change: previous ? changeBetween(previous.level, level) : null,
-    effectiveDateBounded: bounded,
-    effectiveDateOutsideLookback: !foundTransition,
-    isCarryForward: latest.date !== regimeStart.date,
-    stateChangedOnObservation: foundTransition && latest.date === regimeStart.date,
+    observationRelation: relation,
   }
 }

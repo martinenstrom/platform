@@ -94,7 +94,7 @@ describe('New York Fed', () => {
     )
     expect(state.regime.observationDate).toBe('2026-01-15')
     expect(state.regime.effectiveDate).toBe('2025-12-11')
-    expect(state.regime.isCarryForward).toBe(true)
+    expect(state.regime.observationRelation).toBe('repeated-confirmation')
     expect(state.regime.change).toEqual({
       kind: 'target-range',
       lowerBasisPoints: -25,
@@ -176,8 +176,8 @@ describe('ECB', () => {
     expect(state.regime.observationDate).toBe('2026-07-26')
     expect(new Date('2026-07-26T00:00:00Z').getUTCDay()).toBe(0)
     expect(state.regime.effectiveDate).toBe('2026-06-17')
-    expect(state.regime.isCarryForward).toBe(true)
-    expect(state.regime.stateChangedOnObservation).toBe(false)
+    expect(state.regime.observationRelation).toBe('repeated-confirmation')
+    expect(state.regime.observationRelation).not.toBe('transition')
   })
 
   it('reports a delta for each of the three rates', async () => {
@@ -274,7 +274,7 @@ describe('Riksbank policy rate', () => {
     )
     expect(state.regime.observationDate).toBe('2026-07-24')
     expect(state.regime.effectiveDate).toBe('2025-10-01')
-    expect(state.regime.isCarryForward).toBe(true)
+    expect(state.regime.observationRelation).toBe('repeated-confirmation')
     expect(state.regime.change).toEqual({ kind: 'single', basisPoints: -25 })
   })
 
@@ -333,9 +333,9 @@ describe('across all three institutions', () => {
     ])
     for (const state of states) {
       expect(state.regime.effectiveDate).not.toBe(state.regime.observationDate)
-      expect(state.regime.isCarryForward).toBe(true)
+      expect(state.regime.observationRelation).toBe('repeated-confirmation')
       // A carried-forward observation is not a policy action.
-      expect(state.regime.stateChangedOnObservation).toBe(false)
+      expect(state.regime.observationRelation).not.toBe('transition')
       expect(state.provenance.quality).toBe('official-daily')
     }
   })

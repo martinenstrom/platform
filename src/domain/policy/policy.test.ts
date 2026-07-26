@@ -143,8 +143,8 @@ describe('regime detection', () => {
     expect(regime.observationDate).toBe('2026-07-26')
     // The two must never be conflated: 39 days apart.
     expect(regime.observationDate).not.toBe(regime.effectiveDate)
-    expect(regime.isCarryForward).toBe(true)
-    expect(regime.stateChangedOnObservation).toBe(false)
+    expect(regime.observationRelation).toBe('repeated-confirmation')
+    expect(regime.observationRelation).not.toBe('transition')
     expect(regime.change).toEqual({
       kind: 'key-rates',
       depositFacilityBasisPoints: 25,
@@ -160,14 +160,14 @@ describe('regime detection', () => {
     expect(regime.effectiveDate).toBeNull()
     expect(regime.previousLevel).toBeNull()
     expect(regime.change).toBeNull()
-    expect(regime.effectiveDateOutsideLookback).toBe(true)
-    expect(regime.stateChangedOnObservation).toBe(false)
+    expect(regime.effectiveDateConfidence).toBe('unknown')
+    expect(regime.observationRelation).not.toBe('transition')
   })
 
   it('leaves the effective date null when the regime predates the window', () => {
     const regime = detectRegime(daily('2026-01-01', 200, singleRate(1.75)), 1)
     expect(regime.effectiveDate).toBeNull()
-    expect(regime.effectiveDateOutsideLookback).toBe(true)
+    expect(regime.effectiveDateConfidence).toBe('unknown')
     // The window edge is NOT reported as the start of the regime.
     expect(regime.effectiveDate).not.toBe('2026-01-01')
   })
@@ -179,8 +179,8 @@ describe('regime detection', () => {
     ]
     const regime = detectRegime(series, 1)
     expect(regime.effectiveDate).toBe('2026-07-06')
-    expect(regime.stateChangedOnObservation).toBe(true)
-    expect(regime.isCarryForward).toBe(false)
+    expect(regime.observationRelation).toBe('transition')
+    expect(regime.observationRelation).not.toBe('repeated-confirmation')
   })
 
   it('bounds the effective date when observations are missing at the boundary', () => {
@@ -194,7 +194,7 @@ describe('regime detection', () => {
     ]
     const regime = detectRegime(series, 1)
     expect(regime.effectiveDate).toBe('2026-07-13')
-    expect(regime.effectiveDateBounded).toBe(true)
+    expect(regime.effectiveDateConfidence).toBe('bounded')
   })
 
   it('does not bound a transition across an expected gap', () => {
@@ -203,7 +203,7 @@ describe('regime detection', () => {
       { date: '2026-07-10', level: singleRate(2.0) },
       { date: '2026-07-13', level: singleRate(1.75) },
     ]
-    expect(detectRegime(series, 3).effectiveDateBounded).toBe(false)
+    expect(detectRegime(series, 3).effectiveDateConfidence).toBe('confirmed')
   })
 
   it('detects a Fed move on one bound only', () => {
@@ -227,6 +227,63 @@ describe('regime detection', () => {
       { date: '2026-07-14', level: singleRate(1.75) },
     ]
     expect(detectRegime(series, 10).effectiveDate).toBe('2026-07-13')
+  })
+
+  it('gives a bounded date a lower bound as well as an upper one', () => {
+    const series = [
+      { date: '2026-07-06', level: singleRate(2.0) },
+      { date: '2026-07-13', level: singleRate(1.75) },
+    ]
+    const regime = detectRegime(series, 1)
+    expect(regime.effectiveDateConfidence).toBe('bounded')
+    // Not "we are not sure" but "after the 6th and by the 13th".
+    expect(regime.effectiveDateEarliestPossible).toBe('2026-07-06')
+    expect(regime.effectiveDate).toBe('2026-07-13')
+  })
+
+  it('offers no range when the date is exact or absent', () => {
+    const confirmed = detectRegime(
+      [
+        { date: '2026-07-06', level: singleRate(2.0) },
+        { date: '2026-07-07', level: singleRate(1.75) },
+      ],
+      1,
+    )
+    expect(confirmed.effectiveDateConfidence).toBe('confirmed')
+    expect(confirmed.effectiveDateEarliestPossible).toBeNull()
+
+    const unknown = detectRegime(daily('2026-07-01', 10, singleRate(1.75)), 1)
+    expect(unknown.effectiveDateConfidence).toBe('unknown')
+    expect(unknown.effectiveDateEarliestPossible).toBeNull()
+  })
+
+  it('names the single-observation case instead of leaving it unsaid', () => {
+    // The state a pair of booleans could not express: one observation, so
+    // there is nothing to compare and no claim to make either way.
+    const regime = detectRegime([{ date: '2026-07-06', level: singleRate(1.75) }], 1)
+    expect(regime.observationRelation).toBe('single-observation')
+    expect(regime.effectiveDateConfidence).toBe('unknown')
+    expect(regime.change).toBeNull()
+  })
+
+  it('has no representable state that means nothing', () => {
+    // Every combination the type allows is reachable and named.
+    const relations = new Set(
+      [
+        detectRegime([{ date: '2026-07-06', level: singleRate(1.75) }], 1),
+        detectRegime(
+          [
+            { date: '2026-07-06', level: singleRate(2) },
+            { date: '2026-07-07', level: singleRate(1.75) },
+          ],
+          1,
+        ),
+        detectRegime(daily('2026-07-01', 5, singleRate(1.75)), 1),
+      ].map((r) => r.observationRelation),
+    )
+    expect(relations).toEqual(
+      new Set(['single-observation', 'transition', 'repeated-confirmation']),
+    )
   })
 
   it('refuses an empty series rather than inventing a level', () => {

@@ -159,7 +159,7 @@ describe('all three institutions resolve', () => {
       if (!hasData(envelope)) throw new Error('missing state')
       const { regime } = envelope.data
       expect(regime.effectiveDate).not.toBe(regime.observationDate)
-      expect(regime.isCarryForward).toBe(true)
+      expect(regime.observationRelation).toBe('repeated-confirmation')
     }
   })
 
