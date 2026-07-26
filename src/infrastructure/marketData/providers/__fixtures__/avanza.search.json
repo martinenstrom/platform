@@ -1,0 +1,72 @@
+{
+  "atlasCopco": {
+    "hits": [
+      {
+        "type": "STOCK",
+        "title": "Atlas Copco B (ATCO B)",
+        "orderBookId": "5235",
+        "flagCode": "SE",
+        "marketPlaceName": "StockholmsbÃ¶rsen",
+        "price": {
+          "currency": "SEK",
+          "last": "180,10"
+        }
+      },
+      {
+        "type": "STOCK",
+        "title": "Atlas Copco A (ATCO A)",
+        "orderBookId": "5234",
+        "flagCode": "SE",
+        "marketPlaceName": "StockholmsbÃ¶rsen",
+        "price": {
+          "currency": "SEK",
+          "last": "203,90"
+        }
+      },
+      {
+        "type": "CERTIFICATE",
+        "title": "BULL ATLAS COPCO X8 BNP3 (BULL ATLAS X8 BNP3)",
+        "orderBookId": "1756748",
+        "flagCode": "SE",
+        "marketPlaceName": "Nordic MTF",
+        "price": {
+          "currency": "SEK",
+          "last": "0,61"
+        }
+      },
+      {
+        "type": "CERTIFICATE",
+        "title": "BEAR ATLAS COPCO X5 BNP3 (BEAR ATLAS X5 BNP3)",
+        "orderBookId": "1723419",
+        "flagCode": "SE",
+        "marketPlaceName": "Nordic MTF",
+        "price": {
+          "currency": "SEK",
+          "last": "2,61"
+        }
+      },
+      {
+        "type": "CERTIFICATE",
+        "title": "BULL ATLAS COPCO X5 BNP4 (BULL ATLAS X5 BNP4)",
+        "orderBookId": "2031293",
+        "flagCode": "SE",
+        "marketPlaceName": "Nordic MTF",
+        "price": {
+          "currency": "SEK",
+          "last": "151,45"
+        }
+      },
+      {
+        "type": "CERTIFICATE",
+        "title": "BEAR ATLAS COPCO X3 BNP2 (BEAR ATLAS X3 BNP2)",
+        "orderBookId": "1744015",
+        "flagCode": "SE",
+        "marketPlaceName": "Nordic MTF",
+        "price": {
+          "currency": "SEK",
+          "last": "22,02"
+        }
+      }
+    ]
+  }
+}

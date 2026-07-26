@@ -14,6 +14,7 @@
 import type {
   CanonicalSymbol,
   GovernmentYield,
+  InstrumentSearchResult,
   MarketQuote,
   MarketSentiment,
   MarketSeries,
@@ -42,6 +43,8 @@ export type Capability =
   | 'sentiment'
   /** Official monetary-policy state. A different domain from `yields`. */
   | 'policy-rates'
+  /** User-facing instrument discovery. Never identity resolution. */
+  | 'search'
 
 /**
  * Data categories, as configured and cached. Finer-grained than `Capability`
@@ -72,6 +75,8 @@ export type DataCategory =
   | 'policy-us'
   | 'policy-ea'
   | 'policy-se'
+  /** Instrument search, currently Swedish coverage only. */
+  | 'search-se'
 
 /** Injected into every port call. Never `Date.now()` inside an adapter. */
 export interface FetchContext {
@@ -119,6 +124,22 @@ export interface PolicyRateProvider extends ProviderIdentity {
     centralBank: CentralBankId,
     ctx: FetchContext,
   ): Promise<FederalReservePolicyState | EcbPolicyState | RiksbankPolicyState>
+}
+
+/**
+ * Instrument discovery.
+ *
+ * The ONE place a fuzzy provider search is legitimate: the user is reading the
+ * results and choosing. It must never be used to bind a canonical symbol —
+ * `InstrumentSearchResult` carries a provider ref rather than a
+ * `CanonicalSymbol` precisely so that cannot happen by assignment.
+ */
+export interface InstrumentSearchProvider extends ProviderIdentity {
+  searchInstruments(
+    query: string,
+    limit: number,
+    ctx: FetchContext,
+  ): Promise<InstrumentSearchResult[]>
 }
 
 export interface SeriesProvider extends ProviderIdentity {
@@ -184,6 +205,7 @@ export type AnyProvider =
   | NewsProvider
   | SentimentProvider
   | PolicyRateProvider
+  | InstrumentSearchProvider
 
 /** Maps a capability to the port that serves it. */
 export interface PortByCapability {
@@ -196,6 +218,7 @@ export interface PortByCapability {
   news: NewsProvider
   sentiment: SentimentProvider
   'policy-rates': PolicyRateProvider
+  search: InstrumentSearchProvider
 }
 
 /**

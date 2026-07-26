@@ -123,6 +123,31 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
      * is not stale data. `regime.effectiveDate` carries that separately, and
      * nothing in this policy reads it.
      */
+    /*
+     * Instrument search. Keyed by the query string, so this is the first
+     * category whose cache cardinality is driven by user input rather than a
+     * fixed symbol set — the reason MemoryCacheStore is now LRU-bounded.
+     *
+     * Short TTL: a search result is a list of instruments, which barely
+     * changes, but the prices attached to it do. Two minutes absorbs the
+     * keystroke bursts a debounced search box produces without serving a
+     * meaningfully old list.
+     *
+     * No fixture fallback in production and no stale service: an empty result
+     * with an error state is honest, while a stale list for a DIFFERENT query
+     * would be actively wrong.
+     */
+    'search-se': {
+      ttlOpenMs: 2 * MINUTE,
+      ttlClosedMs: 2 * MINUTE,
+      fallback: {
+        allowStale: false,
+        maxStaleMs: 0,
+        allowFixture: 'non-production',
+        allowProxy: false,
+      },
+      staleWhileRevalidate: false,
+    },
     'policy-us': POLICY_RATE_POLICY,
     'policy-ea': POLICY_RATE_POLICY,
     'policy-se': POLICY_RATE_POLICY,

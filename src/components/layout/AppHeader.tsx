@@ -1,18 +1,20 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Menu, RefreshCw, Search, Sparkles } from 'lucide-react'
 import { cn } from '~/lib/cn'
-import { marketStatus } from '~/data/mockData'
-import { marketDataService } from '~/services/marketDataService'
 import { Button, IconButton } from '~/components/ui/Button'
-import type { Instrument } from '~/types'
+import { searchInstrumentsFn } from '~/infrastructure/marketData/serverFns'
+import { hasData, type InstrumentSearchResult } from '~/domain/market'
+import { MARKET_CENTERS, getMarketStatus } from '~/data/countryExplorer/marketCenters'
 
-const INSTRUMENT_TYPE_LABEL: Record<Instrument['type'], string> = {
+const INSTRUMENT_TYPE_LABEL: Record<InstrumentSearchResult['kind'], string> = {
   stock: 'Aktie',
   fund: 'Fond',
   etf: 'ETF',
   index: 'Index',
-  currency: 'Valuta',
-  crypto: 'Krypto',
+  certificate: 'Certifikat',
+  warrant: 'Warrant',
+  future: 'Termin',
+  unknown: 'Instrument',
 }
 
 export function AppHeader({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
@@ -38,8 +40,25 @@ export function AppHeader({ onOpenMobileNav }: { onOpenMobileNav: () => void }) 
   )
 }
 
+/**
+ * Best-effort session indicator.
+ *
+ * Derived from the clock against Stockholm's published hours. It replaced a
+ * hardcoded `isOpen: true`, which claimed the exchange was open at 3am on a
+ * Sunday — on every page of the product.
+ *
+ * Deliberately NOT authoritative: there is no Swedish holiday calendar here,
+ * so Midsummer reads as a normal weekday. It is a display aid and nothing
+ * reads it for a decision — a quote's own `session`, which comes from Avanza,
+ * is the fact. Wiring this to that source needs a session capability and is
+ * tracked with the rest of the C1 migration.
+ */
 function MarketStatusIndicator() {
-  const { isOpen, label, detail } = marketStatus
+  const center = MARKET_CENTERS.find((c) => c.id === 'stockholm')
+  const status = center ? getMarketStatus(center, new Date()) : 'CLOSED'
+  const isOpen = status === 'OPEN'
+  const label = isOpen ? 'Stockholmsbörsen öppen' : 'Stockholmsbörsen stängd'
+  const detail = center ? `Handel ${center.openLocal}–${center.closeLocal} CET` : ''
   return (
     <span
       className="hud-label hidden items-center gap-2 text-[11px] text-content-muted md:inline-flex"
@@ -63,7 +82,7 @@ function InstrumentSearch() {
   const listId = useId()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [results, setResults] = useState<Instrument[]>([])
+  const [results, setResults] = useState<InstrumentSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState(false)
 
@@ -82,13 +101,19 @@ function InstrumentSearch() {
     setIsSearching(true)
     setSearchError(false)
     const timeout = setTimeout(() => {
-      marketDataService
-        .searchInstruments(trimmed)
-        .then((instruments) => {
-          if (!cancelled) {
-            setResults(instruments)
-            setIsSearching(false)
+      searchInstrumentsFn({ data: trimmed })
+        .then((envelope) => {
+          if (cancelled) return
+          setIsSearching(false)
+          if (!hasData(envelope)) {
+            // An error envelope is a FAILED search, not an empty one. The
+            // legacy path returned a bare list and could not tell them apart,
+            // so a provider outage looked identical to "no matches".
+            setResults([])
+            setSearchError(true)
+            return
           }
+          setResults(envelope.data.results)
         })
         .catch((error: unknown) => {
           console.error('Instrumentsökningen misslyckades:', error)
@@ -186,25 +211,25 @@ function InstrumentSearch() {
             </li>
           ) : (
             results.map((instrument) => (
-              <li key={instrument.id} role="option" aria-selected={false}>
+              <li key={instrument.providerRef} role="option" aria-selected={false}>
                 <button
                   type="button"
                   onClick={() => {
-                    setQuery(instrument.name)
+                    setQuery(instrument.displayName)
                     setOpen(false)
                   }}
                   className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-3"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm text-content">
-                      {instrument.name}
+                      {instrument.displayName}
                     </span>
                     <span className="block text-xs text-content-subtle">
                       {instrument.ticker}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-content-subtle">
-                    {INSTRUMENT_TYPE_LABEL[instrument.type]}
+                    {INSTRUMENT_TYPE_LABEL[instrument.kind]}
                   </span>
                 </button>
               </li>

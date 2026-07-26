@@ -16,6 +16,8 @@ import {
   getCentralBanksSnapshot,
   type CentralBanksSnapshot,
 } from '~/application/policy/getCentralBanksSnapshot'
+import { searchInstruments } from '~/application/marketData/searchInstruments'
+import type { Envelope, InstrumentSearchResults } from '~/domain/market'
 import {
   getOverviewSnapshot,
   type OverviewSnapshot,
@@ -45,6 +47,7 @@ export async function getContainer(): Promise<Container> {
     { createBundesbankProvider },
     { createRiksbankProvider },
     { createAvanzaProvider },
+    { createAvanzaSearchProvider },
     { createNewYorkFedProvider },
     { createEcbProvider },
     { createRiksbankPolicyProvider },
@@ -60,6 +63,7 @@ export async function getContainer(): Promise<Container> {
     import('./providers/bundesbank'),
     import('./providers/riksbank'),
     import('./providers/avanza'),
+    import('./providers/avanza/search'),
     import('./providers/newYorkFed'),
     import('./providers/ecb'),
     import('./providers/riksbankPolicy'),
@@ -214,6 +218,21 @@ export async function getContainer(): Promise<Container> {
           },
         },
         {
+          provider: createAvanzaSearchProvider(callAvanzaTool),
+          capabilities: new Set(['search'] as const),
+          metadata: {
+            trust: 'broker' as const,
+            expectedLatencyMs: 900,
+            // A catalog lookup, not a market observation.
+            updateFrequency: 'realtime' as const,
+            delayMinutes: null,
+            supportsHistory: false,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
           provider: createAvanzaProvider(callAvanzaTool),
           capabilities: new Set(['quotes'] as const),
           metadata: {
@@ -287,12 +306,32 @@ export async function getContainer(): Promise<Container> {
           'news',
           'sentiment',
           'policy-rates',
+          'search',
         ]),
       },
     ],
   })
   return cached
 }
+
+/**
+ * Instrument search, server-side.
+ *
+ * The browser never talks to Avanza. This replaced the legacy
+ * `searchAvanzaInstrumentsFn`, whose result was a bare list with no provenance
+ * and no way to distinguish "no matches" from "the search failed" — the header
+ * showed an empty dropdown for both.
+ */
+export const searchInstrumentsFn = createServerFn({ method: 'GET' })
+  .validator((query: string) => query)
+  .handler(async ({ data }): Promise<Envelope<InstrumentSearchResults>> => {
+    const container = await getContainer()
+    const { createSearchDataSource } = await import('./searchDataSource')
+    return searchInstruments(
+      createSearchDataSource(container, container.newCorrelationId()),
+      data,
+    )
+  })
 
 /**
  * Assembles the central-bank snapshot server-side.

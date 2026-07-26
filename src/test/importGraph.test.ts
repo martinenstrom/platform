@@ -511,3 +511,68 @@ describe('Phase 6A guards — the two domains stay apart', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('C1 — the legacy stack is frozen', () => {
+  /**
+   * Everything importing the pre-Phase-0 mock data today.
+   *
+   * This list may SHRINK as routes migrate. It must never grow: a new entry
+   * means a feature was built on invented data with no provenance, no
+   * staleness and no source, in a codebase that spent six phases making those
+   * things structural. Adding one here should require the same deliberation as
+   * adding a provider.
+   *
+   * `AppHeader` is deliberately absent — it was the first migration.
+   */
+  const FROZEN_MOCK_CONSUMERS = [
+    'components/agents/AgentCard.tsx',
+    'components/countryExplorer/FloatingMarketChips.tsx',
+    'data/countryExplorer/mockNow.ts',
+    'data/countryExplorer/trendSeries.ts',
+    'routes/agents.tsx',
+    'routes/markets.tsx',
+    'routes/portfolio.tsx',
+    'routes/reports.tsx',
+    'routes/watchlist.tsx',
+    'services/avanzaMcp/serverFns.ts',
+    'services/investmentLetter/agentRoster.ts',
+    'services/investmentLetter/mockFixtures.ts',
+    'services/marketDataService.ts',
+  ]
+
+  it('gains no new consumer of the mock data', () => {
+    // Uses the PARSED import list, not a source scan: `codeOnly` strips string
+    // literals, and a module specifier is a string literal — a source scan for
+    // an import path can never match anything.
+    const consumers = FILES.filter((f) =>
+      f.imports.some((specifier) => specifier.startsWith('~/data/mockData')),
+    )
+      .map((f) => f.path)
+      .sort()
+
+    const added = consumers.filter((path) => !FROZEN_MOCK_CONSUMERS.includes(path))
+    expect(added).toEqual([])
+  })
+
+  it('keeps the legacy service out of the new architecture entirely', () => {
+    // The old stack may keep working; it may not leak inward. Nothing under
+    // domain/, application/ or infrastructure/ may reach for it.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (isTest(file)) continue
+      if (
+        !file.path.startsWith('domain/') &&
+        !file.path.startsWith('application/') &&
+        !file.path.startsWith('infrastructure/')
+      ) {
+        continue
+      }
+      const banned = (specifier: string) =>
+        specifier.startsWith('~/data/mockData') ||
+        specifier.startsWith('~/services/marketDataService') ||
+        specifier.startsWith('~/types')
+      if (file.imports.some(banned)) offenders.push(file.path)
+    }
+    expect(offenders).toEqual([])
+  })
+})

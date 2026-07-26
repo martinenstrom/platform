@@ -352,7 +352,14 @@ export function createProjectorPlatform(globeRadius: number): HologramSceneLayer
   ].map(({ radius, count, speed }) => {
     const sub = new Group()
     sub.rotation.x = -Math.PI / 2
-    const geometry = new RingGeometry(radius - 0.9, radius + 0.9, 10, 1, 0, (TWO_PI / count) * 0.55)
+    const geometry = new RingGeometry(
+      radius - 0.9,
+      radius + 0.9,
+      10,
+      1,
+      0,
+      (TWO_PI / count) * 0.55,
+    )
     const material = glowMaterial(0.48)
     disposables.push(geometry, material)
     for (let i = 0; i < count; i++) {
@@ -418,7 +425,11 @@ export function createProjectorPlatform(globeRadius: number): HologramSceneLayer
     { radius: globeRadius * 1.28, speed: -0.18, phase: 4.9 },
   ].map((dot) => {
     const mesh = new Mesh(orbitDotGeometry, orbitDotMaterial)
-    mesh.position.set(Math.cos(dot.phase) * dot.radius, 1.2, Math.sin(dot.phase) * dot.radius)
+    mesh.position.set(
+      Math.cos(dot.phase) * dot.radius,
+      1.2,
+      Math.sin(dot.phase) * dot.radius,
+    )
     group.add(mesh)
     return { ...dot, mesh }
   })
@@ -619,8 +630,7 @@ export function createProjectionBeam(globeRadius: number): HologramSceneLayer {
 
   const writeMotes = () => {
     motes.forEach((mote, i) => {
-      const radiusAt =
-        globeRadius * (0.1 + (0.52 - 0.1) * mote.h) * mote.radiusFrac
+      const radiusAt = globeRadius * (0.1 + (0.52 - 0.1) * mote.h) * mote.radiusFrac
       positions[i * 3] = Math.cos(mote.angle) * radiusAt
       positions[i * 3 + 1] = 2 + mote.h * beamHeight
       positions[i * 3 + 2] = Math.sin(mote.angle) * radiusAt

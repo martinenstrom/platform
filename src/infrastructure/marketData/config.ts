@@ -118,6 +118,7 @@ const DEFAULT_CHAINS: Record<DataCategory, string[]> = {
   'curve-us': ['treasury', 'fixture'],
   // Monetary policy. One official source each, and no cross-institution
   // fallback: the ECB cannot stand in for the Fed, and neither can a yield.
+  'search-se': ['avanza-search', 'fixture'],
   'policy-us': ['nyfed', 'fixture'],
   'policy-ea': ['ecb', 'fixture'],
   'policy-se': ['riksbank-policy', 'fixture'],
@@ -153,6 +154,7 @@ const KEYLESS_PROVIDERS = [
   'ecb',
   'riksbank-policy',
   'avanza',
+  'avanza-search',
   'derived',
   'fixture',
 ] as const
@@ -166,6 +168,7 @@ const CATEGORY_ENV: Record<DataCategory, string> = {
   'yields-de': 'MARKETDATA_CHAIN_YIELDS_DE',
   'yields-se': 'MARKETDATA_CHAIN_YIELDS_SE',
   'curve-us': 'MARKETDATA_CHAIN_CURVE_US',
+  'search-se': 'MARKETDATA_CHAIN_SEARCH_SE',
   'policy-us': 'MARKETDATA_CHAIN_POLICY_US',
   'policy-ea': 'MARKETDATA_CHAIN_POLICY_EA',
   'policy-se': 'MARKETDATA_CHAIN_POLICY_SE',

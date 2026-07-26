@@ -18,6 +18,11 @@
 
 import { basisPoints } from '~/domain/shared/primitives'
 import {
+  INSTRUMENTS,
+  type InstrumentRef,
+  type InstrumentSearchResult,
+} from '~/domain/market'
+import {
   keyRates,
   singleRate,
   targetRange,
@@ -62,6 +67,7 @@ import type {
   SeriesProvider,
   YieldProvider,
   PolicyRateProvider,
+  InstrumentSearchProvider,
 } from '~/application/marketData/ports'
 import {
   FIXTURE_COMMODITY_QUOTES,
@@ -364,6 +370,37 @@ function sentimentFor(ctx: FetchContext): MarketSentiment {
   return { ...sentiment, label: labelForScore(sentiment.score) }
 }
 
+/* ------------------------------------------------------------------ search */
+
+/**
+ * Offline search over the reviewed catalog.
+ *
+ * Substring matching on name and ticker — deliberately dumber than a provider's
+ * relevance ranking, because a fixture that ranked cleverly would hide how
+ * different the real thing behaves. Every hit is `isTracked`, since the catalog
+ * is by definition what we track.
+ */
+function searchCatalog(query: string, limit: number): InstrumentSearchResult[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return []
+  const refs: InstrumentRef[] = Object.values(INSTRUMENTS)
+  return refs
+    .filter((ref) => ref.displayName.toLowerCase().includes(needle))
+    .slice(0, limit)
+    .map((ref) => ({
+      providerRef: `fixture:${ref.symbol}`,
+      displayName: ref.displayName,
+      ticker: 'ticker' in ref ? ((ref.ticker as string | undefined) ?? null) : null,
+      kind: 'unknown' as const,
+      venue:
+        'exchangeMic' in ref ? ((ref.exchangeMic as string | undefined) ?? null) : null,
+      countryCode:
+        'countryCode' in ref ? ((ref.countryCode as string | undefined) ?? null) : null,
+      currency: ref.currency ?? null,
+      isTracked: true,
+    }))
+}
+
 /* ------------------------------------------------------------------ policy */
 
 /**
@@ -468,7 +505,8 @@ export interface FixtureProvider
     CryptoProvider,
     NewsProvider,
     SentimentProvider,
-    PolicyRateProvider {
+    PolicyRateProvider,
+    InstrumentSearchProvider {
   /** Sparkline for one Overview tile. Not part of any port — Phase 0 helper. */
   fetchSparkline(symbol: CanonicalSymbol, ctx: FetchContext): Promise<MarketSeries>
   fetchWatchlistSeries(symbol: CanonicalSymbol, ctx: FetchContext): Promise<MarketSeries>
@@ -494,6 +532,9 @@ export function createFixtureProvider(): FixtureProvider {
     },
     async fetchYields(symbols, ctx) {
       return yieldsFor(symbols, ctx)
+    },
+    async searchInstruments(query, limit) {
+      return searchCatalog(query, limit)
     },
     async fetchPolicyState(centralBank, ctx) {
       return policyStateFor(centralBank, ctx)

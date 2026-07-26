@@ -79,3 +79,12 @@ export function budgetKey(providerId: string, utcDate: string): string {
 export function policyStateKey(centralBank: string): string {
   return `${KEY_PREFIX}:policy:${centralBank}`
 }
+
+/**
+ * Instrument search. The query IS part of the key, which is what makes this
+ * the first category with user-driven cache cardinality — see the LRU bound
+ * on `MemoryCacheStore`. Lower-cased so trivial case differences share a slot.
+ */
+export function searchKey(query: string, limit: number): string {
+  return `${KEY_PREFIX}:search:${query.toLowerCase()}:${limit}`
+}
