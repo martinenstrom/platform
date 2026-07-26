@@ -1326,15 +1326,186 @@ because the nine S&P sector sub-indices and VIX each need identity.
 | 0j   | same, `:955`                                           | "Data uppdaterad" reads `snapshot.asOf`. Same format, same position, same styling — **D5**                                                                                                                                             |
 | 0k   | `LightCommandCenter.test.tsx`                          | T1 golden render + T18 determinism                                                                                                                                                                                                     |
 
-#### Phase 0 entry gates (all required before any Phase 0 code)
+#### Phase 0 entry gates
 
-| Gate | Evidence                                                                                                                                                 |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1   | Golden Overview baseline captured **and committed** against current `main`                                                                               |
-| G2   | The `Data uppdaterad` correction confirmed as the sole intended visible exception, asserted by its own named test rather than absorbed into the snapshot |
-| G3   | Exact list of mock builders and imports to be removed, enumerated and agreed (steps 0h–0i below)                                                         |
-| G4   | Fixture-backed `OverviewSnapshot` demonstrated to reproduce current values **deterministically** — same output across runs and machines (T18)            |
-| G5   | Written confirmation that no visual style, layout, component geometry or locked system (hero background, chart system, globe) is touched                 |
+| Gate   | Requirement                                                         | Status                                    |
+| ------ | ------------------------------------------------------------------- | ----------------------------------------- |
+| **G0** | Clean commit boundaries: hero drift, Phase A, and baseline separate | ✅ 3 commits, see below                   |
+| **G1** | Deterministic golden Overview baseline captured and committed       | ✅ `c8338b5`, 3 983 lines, stable ×4 runs |
+| **G2** | Exact Phase 0 removal inventory with old → new field mapping        | ✅ below                                  |
+| **G3** | Fixture snapshot contract confirmed                                 | ✅ below                                  |
+| **G4** | Proxy-disclosure decision recorded (no visual change in Phase 0)    | ✅ below                                  |
+| **G5** | Written confirmation nothing visual, geometric or locked is touched | ✅ below                                  |
+
+##### G0 — commit boundaries
+
+| Commit    | Scope                    | Files                                                                                         |
+| --------- | ------------------------ | --------------------------------------------------------------------------------------------- |
+| `93372cd` | Hero environmental drift | `LightCommandCenter.tsx` (+5/−1), `styles/app.css` (+31)                                      |
+| `aadba21` | Architecture Phase A     | 24 new source files + `docs/data-architecture.md`; **zero existing files modified**           |
+| `c8338b5` | Golden baseline (G1)     | `LightCommandCenter.golden.test.tsx`, `__snapshots__/LightCommandCenter.golden.test.tsx.snap` |
+
+##### G1 — golden baseline
+
+Committed at `c8338b5`. Covers DOM structure, every value and label, ordering,
+class names, inline styles, sparkline SVG geometry, recharts series geometry
+and news timestamps. Determinism is pinned three ways (TZ before import, frozen
+system time, fixed-size `ResizeObserver` so recharts actually renders); verified
+byte-identical across four consecutive runs. `LightGlobe` is stubbed — locked,
+out of scope, and unrenderable in jsdom.
+
+`Data uppdaterad` is asserted in its own named test, outside the snapshot, so
+the one approved intentional change is the only assertion that moves.
+
+**Finding — a second delta needs sign-off.** Capturing the baseline exposed a
+pre-existing formatting inconsistency:
+
+| Rendered value                                      | Separator         | Source                             |
+| --------------------------------------------------- | ----------------- | ---------------------------------- |
+| `2 612,48` `5 843,12` `20 418,65`                   | **NBSP** (U+00A0) | via `formatNumber` — correct sv-SE |
+| `19 840` `40 850` `8 363,95` `2 385,40` `71 386,25` | **ASCII space**   | hand-written mock literals         |
+| `4.32%`                                             | **dot decimal**   | `GLOBAL_MARKET_OVERVIEW` string    |
+
+Phase 0 makes every value numeric until presentation, so all of them format
+through one path and converge on the `formatNumber` output: five values change
+ASCII space → NBSP (visually identical, different bytes), and `4.32%` becomes
+`4,32%` (a visible glyph change, period → comma).
+
+This is unavoidable without keeping pre-formatted strings in the fixture, which
+would defeat "numeric until presentation" and enshrine a formatting bug — the
+ASCII-space and dot-decimal values are the anomaly, not the NBSP ones.
+**Recommendation: accept as a second enumerated exception.** The list above is
+exhaustive; no other value changes.
+
+##### G2 — Phase 0 removal inventory
+
+Every deletion from `LightCommandCenter.tsx`, and where each value comes from
+afterwards. Line numbers are as of `c8338b5`.
+
+**Imports to remove (all `~/data/**` reachability):**
+
+| Line  | Import                                                | Why it goes                      |
+| ----- | ----------------------------------------------------- | -------------------------------- |
+| 46    | `COUNTRY_MOCK_NOW`, `getGlobalNewsFeed`               | frozen clock (D3) + news source  |
+| 47    | `GERMANY_DATA`                                        | DAX as localized strings (D2)    |
+| 48    | `JAPAN_DATA`                                          | Nikkei as localized strings (D2) |
+| 49–52 | `GLOBAL_MARKET_OVERVIEW`, `GLOBAL_RISK_SENTIMENT`     | US 10Y + sentiment gauge         |
+| 57    | `marketIndices`, `watchlist`                          | index quotes + watchlist tiles   |
+| 60    | `formatNumber`, `formatPercent`, `formatRelativeTime` | move to `viewModels.ts`          |
+
+Retained: `MARKET_CENTERS` / `getMarketStatus` (line 53–56) — a pure function of
+the real clock over published session hours, not mock data. Retained:
+`countryExplorerService` (58) — the country modal is out of scope.
+
+**Builders and constants to delete:**
+
+| Line    | Symbol                | Replaced by                                                  |
+| ------- | --------------------- | ------------------------------------------------------------ |
+| 109–125 | `seededSeries`        | real/fixture series — **removes PRNG financial data**        |
+| 127–136 | `indexQuote`          | `snapshot.indices` keyed by `CanonicalSymbol`                |
+| 138–141 | `parseSignedPercent`  | nothing — values arrive numeric (D2)                         |
+| 143–178 | `buildMarketCards`    | `snapshot.indices` + `snapshot.intraday` sparklines          |
+| 181–195 | `buildCurrentMarkets` | `snapshot.fx` + `snapshot.commodities` + `snapshot.crypto`   |
+| 198–211 | `buildRates`          | `snapshot.yields`                                            |
+| 214–224 | `SECTORS`             | `snapshot.sectors`                                           |
+| 239–254 | `buildIntraday`       | `snapshot.intraday`                                          |
+| 257     | `RATE_CURVE`          | `snapshot.yieldCurve` — **removes PRNG yield noise (D6/D9)** |
+
+**`seededSeries` call sites:** line 149 (market-card sparklines), line 245
+(intraday series), line 257 (`RATE_CURVE`). All three go; the function is then
+unreferenced and deleted.
+
+**Frozen-clock usages:** line 347 (`new Date(COUNTRY_MOCK_NOW)` as the Header
+fallback) and line 889 (`formatRelativeTime(item.publishedAt, COUNTRY_MOCK_NOW)`).
+Both are replaced by `snapshot.asOf` / the item's real `publishedAt` measured
+against the injected clock. `MOCK_NOW` is not imported here but is reachable
+transitively through `marketIndices`; removing the import at 57 severs it.
+
+**String parsing / formatting round-trips:** `parseSignedPercent` (138) applied
+at lines 160 and 172 to `'+0.32%'` / `'+0.24%'`; `dax.primaryIndexValue`
+(`'19 840'`) and `nikkei.primaryIndexValue` (`'40 850'`) passed through as
+display strings; `us10?.value` (`'4.32%'`) and `us10?.change` (`'+0,00 bp'`)
+likewise. All become numbers in the domain and are formatted once in
+`viewModels.ts`.
+
+**bitcoin/btc mismatch:** line 183, `indexQuote('bitcoin')` against
+`mockData.ts:78` where the id is `'btc'`. Always `null`, so line 192–193's
+literal `71 386,25` is what renders. Fixed by construction — the canonical
+symbol is `crypto:btc` and there is exactly one of it.
+
+**Fake timestamp path:** line 961, `new Intl.DateTimeFormat(...).format(new Date())`
+inside the ticker rail. Becomes `snapshot.asOf`.
+
+**Old source → new field map (nothing dropped):**
+
+| Panel               | Old source                                             | New field                                |
+| ------------------- | ------------------------------------------------------ | ---------------------------------------- |
+| Marknadsöversikt ×6 | `marketIndices`, `GERMANY_DATA`, `JAPAN_DATA`, literal | `snapshot.indices`                       |
+| — tile sparklines   | `seededSeries(seed,16,±0.16)`                          | `snapshot.intraday` per symbol           |
+| Aktuella marknader  | `marketIndices` + 4 literals                           | `snapshot.fx`, `.commodities`, `.crypto` |
+| Räntemarknaden ×4   | `GLOBAL_MARKET_OVERVIEW` + 3 literals                  | `snapshot.yields`                        |
+| — curve sparkline   | `RATE_CURVE` (PRNG)                                    | `snapshot.yieldCurve`                    |
+| Sektorer ×9         | `SECTORS`                                              | `snapshot.sectors`                       |
+| Sentiment           | `GLOBAL_RISK_SENTIMENT`                                | `snapshot.sentiment`                     |
+| Senaste nytt ×4     | `getGlobalNewsFeed(4)`                                 | `snapshot.news`                          |
+| Utveckling idag ×4  | `buildIntraday(range)` (PRNG)                          | `snapshot.intraday`                      |
+| Bevakning ×6        | `watchlist.slice(0,6)`                                 | `snapshot.watchlist`                     |
+| Ticker rail         | derived from cards + currentMarkets                    | derived from the same envelopes          |
+| Header status/clock | `MARKET_CENTERS` + real clock                          | **unchanged**                            |
+| Data uppdaterad     | `new Date()` at render                                 | `snapshot.asOf` (approved change)        |
+
+##### G3 — fixture snapshot contract
+
+Confirmed:
+
+- **Deterministic.** `FixtureProvider` takes its time from the injected
+  `Clock` (`FetchContext.clock`); it contains no `Date.now()`, no
+  `Math.random()`, and no unseeded generator. Fixture timestamps are expressed
+  as offsets from `clock.now()`, so they age correctly and never read as 2025.
+  Enforced by T18 and by the T3 fitness rule that only `SystemClock` may call
+  `Date.now()`.
+- **Reproduces current values.** Every fixture value is transcribed from the
+  existing mock module it replaces, as a number. The golden snapshot is the
+  check.
+- **Category-level provenance.** Each `Envelope` in `OverviewSnapshot` carries
+  its own `Provenance` with `quality: 'fixture'`, even though the UI displays
+  only `snapshot.asOf` (the oldest across categories, per D10).
+- **Numeric until presentation.** Domain models expose `Price`, `Percent`,
+  `BasisPoints`, `YieldPercent`; `presentation/marketData/viewModels.ts` is the
+  only module that produces a display string, composing the existing
+  `lib/format.ts`.
+- **No provider types in components.** Enforced by T4, which already fails on a
+  planted violation.
+
+##### G4 — proxy disclosure (recorded now, implemented later)
+
+Recorded per your instruction; **no visual change in Phase 0**.
+
+If international-index ETF proxies are approved under D1, the UI **must
+visibly disclose** the substitution. `proxyNote` living only in provenance is
+insufficient if the presentation never surfaces it — an undisclosed proxy is
+the same failure as an undisclosed fixture.
+
+Mechanically ready today: `buildProvenance` already throws when `isProxy` is
+set without a `proxyNote`, and `policy.ts` keeps `allowProxy: false` for
+`equity-index-intl` until D1 is resolved. What is missing is a rendering
+obligation, which needs a visual affordance and therefore explicit approval.
+
+Before Phase 6 I will provide a minimal disclosure proposal respecting the
+locked design system — options being a compact labelled indicator, a tooltip or
+info affordance reusing the existing `DataSourceBadge`, or explicit instrument
+naming in the tile label. A test will then assert that a proxied envelope
+cannot render without its disclosure. **This is a future sanctioned visual
+exception, not part of Phase 0.**
+
+##### G5 — confirmation of scope
+
+Phase 0 changes the data path only. No change to: styles, Tailwind classes,
+layout, component geometry, JSX structure, the hero background and its
+environmental drift, the chart system, the globe, or the network layer. The
+only edits to `LightCommandCenter.tsx` are deleting the data builders, changing
+what the component reads, and the one approved `Data uppdaterad` value. The
+golden snapshot is the enforcement, not the promise.
 
 #### Phase 0 exit criteria (approved 2026-07-26)
 
