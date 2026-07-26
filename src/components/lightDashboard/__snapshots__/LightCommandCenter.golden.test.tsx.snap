@@ -1,0 +1,3983 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overview identically to the committed baseline 1`] = `
+<div>
+  <div
+    class="relative flex min-h-screen font-sans text-[#f2f6fa] antialiased"
+    style="background: radial-gradient(circle at 60% 30%, rgba(14, 88, 126, 0.18) 0%, rgba(4, 19, 32, 0.1) 34%, rgba(2, 7, 17, 0) 64%), linear-gradient(180deg, rgb(2, 7, 17) 0%, rgb(3, 16, 26) 100%);"
+  >
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-y-0 left-0 z-0 w-[46vw] max-w-[760px] overflow-hidden"
+    >
+      <div
+        class="hero-photo-drift absolute -inset-y-[8px] right-0 left-0 bg-[length:auto_100%] bg-[position:-46px_center] bg-no-repeat"
+        style="background-image: url("/data/wall-street.jpg");"
+      />
+      <div
+        class="absolute inset-0 bg-black/[0.12]"
+      />
+      <div
+        class="absolute inset-y-0 left-0 w-[160px] bg-gradient-to-r from-[rgba(3,7,14,0.62)] to-transparent"
+      />
+      <div
+        class="absolute inset-0 bg-gradient-to-r from-transparent from-[47%] via-[rgba(4,10,18,0.55)] via-[70%] to-[#020711]"
+      />
+    </div>
+    <aside
+      class="relative z-10 hidden w-[306px] shrink-0 md:flex"
+    >
+      <div
+        class="flex w-[112px] flex-col items-center py-5"
+      >
+        <a
+          aria-current="page"
+          aria-label="Översikt"
+          class="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(240,151,66,0.35)] bg-[rgba(111,66,29,0.55)] text-[15px] font-bold text-[#ffb366] shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-sm active"
+          data-status="active"
+          href="/"
+        >
+          HX
+        </a>
+        <nav
+          class="mt-8 flex flex-1 flex-col gap-1.5"
+        >
+          <a
+            aria-current="page"
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.55)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.14)] backdrop-blur-sm active"
+            data-status="active"
+            href="/"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-layout-grid h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect
+                height="7"
+                rx="1"
+                width="7"
+                x="3"
+                y="3"
+              />
+              <rect
+                height="7"
+                rx="1"
+                width="7"
+                x="14"
+                y="3"
+              />
+              <rect
+                height="7"
+                rx="1"
+                width="7"
+                x="14"
+                y="14"
+              />
+              <rect
+                height="7"
+                rx="1"
+                width="7"
+                x="3"
+                y="14"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Översikt
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/markets"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-trending-up h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M16 7h6v6"
+              />
+              <path
+                d="m22 7-8.5 8.5-5-5L2 17"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Marknader
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/watchlist"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-star h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Bevakning
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/portfolio"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-briefcase h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"
+              />
+              <rect
+                height="14"
+                rx="2"
+                width="20"
+                x="2"
+                y="6"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Portfölj
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/agents"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-chart-column h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M3 3v16a2 2 0 0 0 2 2h16"
+              />
+              <path
+                d="M18 17V9"
+              />
+              <path
+                d="M13 17V5"
+              />
+              <path
+                d="M8 17v-3"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Analys
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/reports"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-newspaper h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M15 18h-5"
+              />
+              <path
+                d="M18 14h-8"
+              />
+              <path
+                d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"
+              />
+              <rect
+                height="4"
+                rx="1"
+                width="8"
+                x="10"
+                y="6"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Nyheter
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/reports"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-file-text h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+              />
+              <path
+                d="M14 2v5a1 1 0 0 0 1 1h5"
+              />
+              <path
+                d="M10 9H8"
+              />
+              <path
+                d="M16 13H8"
+              />
+              <path
+                d="M16 17H8"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Rapporter
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/settings"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-bell-ring h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10.268 21a2 2 0 0 0 3.464 0"
+              />
+              <path
+                d="M22 8c0-2.3-.8-4.3-2-6"
+              />
+              <path
+                d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"
+              />
+              <path
+                d="M4 2C2.8 3.7 2 5.7 2 8"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Aviseringar
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/settings"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-settings h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
+              />
+              <circle
+                cx="12"
+                cy="12"
+                r="3"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Inställningar
+            </span>
+          </a>
+        </nav>
+        <div
+          class="mt-4 flex flex-col items-center gap-1"
+        >
+          <span
+            class="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.35)] bg-[rgba(9,24,37,0.75)] text-[12px] font-semibold text-[#dbe4ee] backdrop-blur-sm"
+          >
+            AS
+          </span>
+          <span
+            class="text-center text-[8px] leading-tight text-[#c4d0dd] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+          >
+            Anders
+            <br />
+            Private Banking
+          </span>
+        </div>
+      </div>
+    </aside>
+    <main
+      class="relative z-10 min-w-0 flex-1 overflow-y-auto"
+    >
+      <div
+        class="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16"
+      >
+        <header
+          class="flex flex-wrap items-start justify-between gap-6"
+        >
+          <div>
+            <h1
+              class="text-[31px] font-semibold tracking-tight text-[#f4f7fb]"
+            >
+              God eftermiddag
+              , Anders
+            </h1>
+            <p
+              class="mt-1 text-sm text-[#9aa7b7]"
+            >
+              Här är din globala marknadsöversikt för idag, 
+              26 juli 2026
+              .
+            </p>
+          </div>
+          <div
+            class="flex items-center gap-3"
+          >
+            <span
+              class="flex items-center gap-2 rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] px-3.5 py-2 text-[11px] font-medium tracking-[0.12em] text-[#9aa7b7] uppercase"
+            >
+              <span
+                aria-hidden="true"
+                class="h-2 w-2 rounded-full bg-negative"
+              />
+              Marknader stängda
+            </span>
+            <span
+              class="rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] px-3.5 py-1.5 text-right"
+            >
+              <span
+                class="block text-[15px] font-semibold text-[#f4f7fb] tabular-nums"
+              >
+                14:32:10
+              </span>
+              <span
+                class="block text-[10px] text-[#697787]"
+              >
+                Stockholm
+              </span>
+            </span>
+            <button
+              aria-label="Sök"
+              class="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-search h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="m21 21-4.34-4.34"
+                />
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="8"
+                />
+              </svg>
+            </button>
+            <button
+              aria-label="Notiser"
+              class="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-bell h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M10.268 21a2 2 0 0 0 3.464 0"
+                />
+                <path
+                  d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"
+                />
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div
+          class="grid grid-cols-1 gap-6 xl:grid-cols-12"
+        >
+          <section
+            class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5 xl:col-span-5"
+          >
+            <div
+              class="mb-4 flex items-center justify-between gap-3"
+            >
+              <h2
+                class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+              >
+                Marknadsöversikt
+              </h2>
+            </div>
+            <div
+              class="grid grid-cols-2 gap-3 md:grid-cols-3"
+            >
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  OMXS30
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  2 612,48
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,74 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_0_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_0_)"
+                      points="0,30 0.0,21.9 7.5,26.6 14.9,24.8 22.4,29.0 29.9,22.3 37.3,20.1 44.8,17.8 52.3,20.6 59.7,21.8 67.2,18.4 74.7,20.7 82.1,24.8 89.6,18.9 97.1,16.7 104.5,9.5 112.0,1.0 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,21.9 7.5,26.6 14.9,24.8 22.4,29.0 29.9,22.3 37.3,20.1 44.8,17.8 52.3,20.6 59.7,21.8 67.2,18.4 74.7,20.7 82.1,24.8 89.6,18.9 97.1,16.7 104.5,9.5 112.0,1.0"
+                      stroke="#2ecc84"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  S&P 500
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  5 843,12
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,41 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_1_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_1_)"
+                      points="0,30 0.0,29.0 7.5,24.5 14.9,25.8 22.4,22.8 29.9,25.5 37.3,22.9 44.8,18.9 52.3,17.7 59.7,11.9 67.2,13.0 74.7,8.5 82.1,4.3 89.6,1.0 97.1,4.4 104.5,3.1 112.0,3.5 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,29.0 7.5,24.5 14.9,25.8 22.4,22.8 29.9,25.5 37.3,22.9 44.8,18.9 52.3,17.7 59.7,11.9 67.2,13.0 74.7,8.5 82.1,4.3 89.6,1.0 97.1,4.4 104.5,3.1 112.0,3.5"
+                      stroke="#2ecc84"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  DAX
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  19 840
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,32 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_2_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_2_)"
+                      points="0,30 0.0,25.5 7.5,29.0 14.9,20.9 22.4,16.4 29.9,14.1 37.3,13.2 44.8,11.6 52.3,12.9 59.7,10.2 67.2,5.3 74.7,6.3 82.1,8.6 89.6,3.3 97.1,1.0 104.5,2.8 112.0,2.5 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,25.5 7.5,29.0 14.9,20.9 22.4,16.4 29.9,14.1 37.3,13.2 44.8,11.6 52.3,12.9 59.7,10.2 67.2,5.3 74.7,6.3 82.1,8.6 89.6,3.3 97.1,1.0 104.5,2.8 112.0,2.5"
+                      stroke="#2ecc84"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  FTSE 100
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  8 363,95
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,28 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_3_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_3_)"
+                      points="0,30 0.0,29.0 7.5,27.3 14.9,24.9 22.4,22.6 29.9,18.1 37.3,16.3 44.8,18.6 52.3,16.9 59.7,14.5 67.2,13.5 74.7,12.3 82.1,7.7 89.6,7.0 97.1,4.1 104.5,1.0 112.0,2.6 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,29.0 7.5,27.3 14.9,24.9 22.4,22.6 29.9,18.1 37.3,16.3 44.8,18.6 52.3,16.9 59.7,14.5 67.2,13.5 74.7,12.3 82.1,7.7 89.6,7.0 97.1,4.1 104.5,1.0 112.0,2.6"
+                      stroke="#2ecc84"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  Nikkei 225
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  40 850
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,55 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_4_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2ecc84"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_4_)"
+                      points="0,30 0.0,2.8 7.5,2.4 14.9,7.3 22.4,12.7 29.9,18.3 37.3,24.4 44.8,29.0 52.3,28.7 59.7,24.7 67.2,15.0 74.7,9.2 82.1,1.4 89.6,2.3 97.1,5.5 104.5,1.5 112.0,1.0 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,2.8 7.5,2.4 14.9,7.3 22.4,12.7 29.9,18.3 37.3,24.4 44.8,29.0 52.3,28.7 59.7,24.7 67.2,15.0 74.7,9.2 82.1,1.4 89.6,2.3 97.1,5.5 104.5,1.5 112.0,1.0"
+                      stroke="#2ecc84"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div
+                class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+              >
+                <p
+                  class="text-[12px] font-medium text-[#7f97ad]"
+                >
+                  Nasdaq 100
+                </p>
+                <p
+                  class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  20 418,65
+                </p>
+                <span
+                  class="font-medium tabular-nums text-[13px]"
+                  style="color: var(--color-negative);"
+                >
+                  −0,28 %
+                </span>
+                <div
+                  class="mt-2"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="overflow-visible"
+                    focusable="false"
+                    height="30"
+                    viewBox="0 0 112 30"
+                    width="112"
+                  >
+                    <defs>
+                      <lineargradient
+                        id="spark-fill-_r_5_"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#f2555a"
+                          stop-opacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#f2555a"
+                          stop-opacity="0.02"
+                        />
+                      </lineargradient>
+                    </defs>
+                    <polygon
+                      fill="url(#spark-fill-_r_5_)"
+                      points="0,30 0.0,1.0 7.5,4.7 14.9,5.7 22.4,9.6 29.9,14.1 37.3,13.3 44.8,16.2 52.3,17.1 59.7,20.3 67.2,20.1 74.7,19.0 82.1,21.8 89.6,25.1 97.1,28.8 104.5,29.0 112.0,28.4 112,30"
+                    />
+                    <polyline
+                      fill="none"
+                      points="0.0,1.0 7.5,4.7 14.9,5.7 22.4,9.6 29.9,14.1 37.3,13.3 44.8,16.2 52.3,17.1 59.7,20.3 67.2,20.1 74.7,19.0 82.1,21.8 89.6,25.1 97.1,28.8 104.5,29.0 112.0,28.4"
+                      stroke="#f2555a"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <a
+              class="mt-4 inline-block text-[13px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
+              href="/markets"
+            >
+              Visa alla marknader →
+            </a>
+          </section>
+          <div
+            class="relative z-10 min-h-[440px] xl:col-span-4"
+          >
+            <div
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-0 z-0"
+              style="background: radial-gradient(circle at 50% 42%, rgba(30, 72, 120, 0.3), rgba(12, 30, 54, 0.12) 44%, transparent 68%);"
+            />
+            <div
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+            >
+              <div
+                class="relative h-16 w-[62%]"
+              >
+                <div
+                  class="absolute left-1/2 -translate-x-1/2 rounded-[50%] border"
+                  style="bottom: 0px; width: 100%; height: 34px; border-color: rgba(255, 168, 84, 0.4); box-shadow: 0 0 10px rgba(255,150,60,0.22);"
+                />
+                <div
+                  class="absolute left-1/2 -translate-x-1/2 rounded-[50%] border"
+                  style="bottom: 5px; width: 80%; height: 27px; border-color: rgba(255, 168, 84, 0.33); box-shadow: 0 0 8px rgba(255,150,60,0.175);"
+                />
+                <div
+                  class="absolute left-1/2 -translate-x-1/2 rounded-[50%] border"
+                  style="bottom: 10px; width: 60%; height: 20px; border-color: rgba(255, 168, 84, 0.26); box-shadow: 0 0 6px rgba(255,150,60,0.13);"
+                />
+                <div
+                  class="absolute left-1/2 -translate-x-1/2 rounded-[50%] border"
+                  style="bottom: 15px; width: 40%; height: 13px; border-color: rgba(255, 168, 84, 0.19); box-shadow: 0 0 4px rgba(255,150,60,0.08499999999999999);"
+                />
+                <div
+                  class="absolute bottom-1 left-1/2 h-2 w-10 -translate-x-1/2 rounded-[50%]"
+                  style="background: radial-gradient(rgba(255, 214, 150, 0.95), rgba(255, 150, 60, 0.4) 45%, transparent 72%);"
+                />
+              </div>
+            </div>
+            <p
+              class="pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px] text-[#5a6a7c]"
+            >
+              Dra för att rotera · klicka på ett land för analys
+            </p>
+          </div>
+          <div
+            class="flex flex-col gap-6 xl:col-span-3"
+          >
+            <section
+              class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5"
+            >
+              <div
+                class="mb-4 flex items-center justify-between gap-3"
+              >
+                <h2
+                  class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+                >
+                  Aktuella marknader
+                </h2>
+              </div>
+              <ul
+                class="flex flex-col"
+              >
+                <li
+                  class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+                >
+                  <span
+                    class="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="text-base leading-none"
+                    >
+                      🇺🇸
+                    </span>
+                    <span
+                      class="truncate"
+                    >
+                      USD/SEK
+                    </span>
+                  </span>
+                  <span
+                    class="flex shrink-0 items-center gap-3"
+                  >
+                    <span
+                      class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                    >
+                      10,4127
+                    </span>
+                    <span
+                      class="font-medium tabular-nums w-14 text-right text-[12px]"
+                      style="color: var(--color-positive);"
+                    >
+                      +0,19 %
+                    </span>
+                  </span>
+                </li>
+                <li
+                  class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+                >
+                  <span
+                    class="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="text-base leading-none"
+                    >
+                      🇪🇺
+                    </span>
+                    <span
+                      class="truncate"
+                    >
+                      EUR/USD
+                    </span>
+                  </span>
+                  <span
+                    class="flex shrink-0 items-center gap-3"
+                  >
+                    <span
+                      class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                    >
+                      1,0812
+                    </span>
+                    <span
+                      class="font-medium tabular-nums w-14 text-right text-[12px]"
+                      style="color: var(--color-negative);"
+                    >
+                      −0,15 %
+                    </span>
+                  </span>
+                </li>
+                <li
+                  class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+                >
+                  <span
+                    class="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="text-base leading-none"
+                    >
+                      🛢️
+                    </span>
+                    <span
+                      class="truncate"
+                    >
+                      Brent Olja
+                    </span>
+                  </span>
+                  <span
+                    class="flex shrink-0 items-center gap-3"
+                  >
+                    <span
+                      class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                    >
+                      65,72
+                    </span>
+                    <span
+                      class="font-medium tabular-nums w-14 text-right text-[12px]"
+                      style="color: var(--color-positive);"
+                    >
+                      +0,38 %
+                    </span>
+                  </span>
+                </li>
+                <li
+                  class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+                >
+                  <span
+                    class="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="text-base leading-none"
+                    >
+                      🥇
+                    </span>
+                    <span
+                      class="truncate"
+                    >
+                      Guld (USD/oz)
+                    </span>
+                  </span>
+                  <span
+                    class="flex shrink-0 items-center gap-3"
+                  >
+                    <span
+                      class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                    >
+                      2 385,40
+                    </span>
+                    <span
+                      class="font-medium tabular-nums w-14 text-right text-[12px]"
+                      style="color: var(--color-positive);"
+                    >
+                      +0,27 %
+                    </span>
+                  </span>
+                </li>
+                <li
+                  class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+                >
+                  <span
+                    class="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="text-base leading-none"
+                    >
+                      ₿
+                    </span>
+                    <span
+                      class="truncate"
+                    >
+                      Bitcoin (USD)
+                    </span>
+                  </span>
+                  <span
+                    class="flex shrink-0 items-center gap-3"
+                  >
+                    <span
+                      class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                    >
+                      71 386,25
+                    </span>
+                    <span
+                      class="font-medium tabular-nums w-14 text-right text-[12px]"
+                      style="color: var(--color-positive);"
+                    >
+                      +1,18 %
+                    </span>
+                  </span>
+                </li>
+              </ul>
+            </section>
+            <section
+              class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5"
+            >
+              <div
+                class="mb-4 flex items-center justify-between gap-3"
+              >
+                <h2
+                  class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+                >
+                  Sentiment
+                </h2>
+                <span
+                  class="text-[13px] font-semibold"
+                  style="color: var(--color-positive);"
+                >
+                  Risk-on
+                </span>
+              </div>
+              <div
+                class="relative flex h-2 gap-1"
+              >
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(224, 72, 63);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(239, 106, 58);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(245, 173, 58);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(231, 212, 60);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(169, 216, 74);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(95, 206, 106);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(51, 192, 106);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="h-full flex-1 rounded-full"
+                  style="background: rgb(39, 216, 121);"
+                />
+                <span
+                  aria-hidden="true"
+                  class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#0b1220] bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)]"
+                  style="left: 72%;"
+                />
+              </div>
+            </section>
+          </div>
+        </div>
+        <div
+          class="grid grid-cols-1 gap-6 xl:grid-cols-12"
+        >
+          <section
+            class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5 xl:col-span-5"
+          >
+            <div
+              class="mb-4 flex items-center justify-between gap-3"
+            >
+              <h2
+                class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+              >
+                Utveckling idag
+              </h2>
+              <div
+                aria-label="Tidsintervall"
+                class="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5"
+                role="group"
+              >
+                <button
+                  aria-pressed="true"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 bg-[rgba(72,167,232,0.18)] text-[#73c8ff]"
+                  type="button"
+                >
+                  1D
+                </button>
+                <button
+                  aria-pressed="false"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 text-[#6b7d90] hover:text-[#c9d6e2]"
+                  type="button"
+                >
+                  1V
+                </button>
+                <button
+                  aria-pressed="false"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 text-[#6b7d90] hover:text-[#c9d6e2]"
+                  type="button"
+                >
+                  1M
+                </button>
+                <button
+                  aria-pressed="false"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 text-[#6b7d90] hover:text-[#c9d6e2]"
+                  type="button"
+                >
+                  3M
+                </button>
+                <button
+                  aria-pressed="false"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 text-[#6b7d90] hover:text-[#c9d6e2]"
+                  type="button"
+                >
+                  1Å
+                </button>
+                <button
+                  aria-pressed="false"
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 text-[#6b7d90] hover:text-[#c9d6e2]"
+                  type="button"
+                >
+                  YTD
+                </button>
+              </div>
+            </div>
+            <div
+              class="h-52"
+            >
+              <div
+                class="recharts-responsive-container"
+                style="width: 100%; height: 100%; min-width: 0px;"
+              >
+                <div
+                  style="width: 0px; height: 0px; overflow: visible;"
+                >
+                  <div
+                    class="recharts-wrapper"
+                    height="400"
+                    style="position: relative; cursor: default; width: 800px; height: 400px;"
+                    width="800"
+                  >
+                    <div
+                      class="recharts-tooltip-wrapper"
+                      style="visibility: hidden; pointer-events: none; position: absolute; top: 0px; left: 0px;"
+                      tabindex="-1"
+                      xmlns="http://www.w3.org/1999/xhtml"
+                    />
+                    <svg
+                      class="recharts-surface"
+                      height="400"
+                      role="application"
+                      style="width: 100%; height: 100%; display: block;"
+                      tabindex="0"
+                      viewBox="0 0 800 400"
+                      width="800"
+                    >
+                      <title />
+                      <desc />
+                      <g
+                        class="recharts-zIndex-layer_-100"
+                        tabindex="-1"
+                      >
+                        <g
+                          class="recharts-cartesian-grid"
+                        >
+                          <g
+                            class="recharts-cartesian-grid-horizontal"
+                          >
+                            <line
+                              fill="none"
+                              height="366"
+                              stroke="rgba(70,130,163,0.12)"
+                              width="754"
+                              x="42"
+                              x1="42"
+                              x2="796"
+                              y="4"
+                              y1="370"
+                              y2="370"
+                            />
+                            <line
+                              fill="none"
+                              height="366"
+                              stroke="rgba(70,130,163,0.12)"
+                              width="754"
+                              x="42"
+                              x1="42"
+                              x2="796"
+                              y="4"
+                              y1="278.5"
+                              y2="278.5"
+                            />
+                            <line
+                              fill="none"
+                              height="366"
+                              stroke="rgba(70,130,163,0.12)"
+                              width="754"
+                              x="42"
+                              x1="42"
+                              x2="796"
+                              y="4"
+                              y1="187"
+                              y2="187"
+                            />
+                            <line
+                              fill="none"
+                              height="366"
+                              stroke="rgba(70,130,163,0.12)"
+                              width="754"
+                              x="42"
+                              x1="42"
+                              x2="796"
+                              y="4"
+                              y1="95.49999999999996"
+                              y2="95.49999999999996"
+                            />
+                            <line
+                              fill="none"
+                              height="366"
+                              stroke="rgba(70,130,163,0.12)"
+                              width="754"
+                              x="42"
+                              x1="42"
+                              x2="796"
+                              y="4"
+                              y1="4"
+                              y2="4"
+                            />
+                          </g>
+                        </g>
+                      </g>
+                      <g
+                        class="recharts-zIndex-layer_-50"
+                        tabindex="-1"
+                      />
+                      <defs>
+                        <clippath
+                          id="recharts1-clip"
+                        >
+                          <rect
+                            height="366"
+                            width="754"
+                            x="42"
+                            y="4"
+                          />
+                        </clippath>
+                      </defs>
+                      <g
+                        class="recharts-zIndex-layer_100"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_200"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_300"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_400"
+                        tabindex="-1"
+                      >
+                        <g
+                          class="recharts-layer recharts-line"
+                        >
+                          <g
+                            class="recharts-layer recharts-shape"
+                          >
+                            <path
+                              class="recharts-curve recharts-line-curve"
+                              d="M42,289.9375C49.854166666666664,295.27500000000003,57.708333333333336,300.6125,65.5625,303.6625C73.41666666666667,306.71250000000003,81.27083333333333,305.95000000000005,89.125,308.2375C96.97916666666667,310.525,104.83333333333333,317.3875,112.6875,317.3875C120.54166666666667,317.3875,128.39583333333334,317.3875,136.25,317.3875C144.10416666666666,317.3875,151.95833333333334,320.81874999999997,159.8125,321.9625C167.66666666666666,323.10625,175.52083333333334,322.725,183.375,324.25C191.22916666666666,325.775,199.08333333333334,328.825,206.9375,331.1125C214.79166666666666,333.40000000000003,222.64583333333334,333.40000000000003,230.5,337.975C238.35416666666666,342.55,246.20833333333334,358.5625,254.0625,358.5625C261.9166666666667,358.5625,269.7708333333333,347.125,277.625,347.125C285.4791666666667,347.125,293.3333333333333,367.7125,301.1875,367.7125C309.0416666666667,367.7125,316.8958333333333,362.75625,324.75,358.5625C332.6041666666667,354.36875,340.4583333333333,349.79375,348.3125,342.55C356.1666666666667,335.30625000000003,364.0208333333333,318.15000000000003,371.875,315.1C379.7291666666667,312.05,387.5833333333333,313.575,395.4375,310.525C403.2916666666667,307.47499999999997,411.1458333333333,296.8,419,296.8C426.8541666666667,296.8,434.7083333333333,315.1,442.5625,315.1C450.4166666666667,315.1,458.2708333333333,297.5625,466.125,289.9375C473.9791666666667,282.3125,481.8333333333333,275.83125000000007,489.6875,269.3500000000001C497.5416666666667,262.8687500000001,505.3958333333333,251.05000000000004,513.25,251.05000000000004C521.1041666666666,251.05000000000004,528.9583333333334,260.2,536.8125,260.2C544.6666666666666,260.2,552.5208333333334,251.05000000000004,560.375,251.05000000000004C568.2291666666666,251.05000000000004,576.0833333333334,263.25,583.9375,267.0625C591.7916666666666,270.875,599.6458333333334,269.73125,607.5,273.925C615.3541666666666,278.11875000000003,623.2083333333334,286.50625,631.0625,292.225C638.9166666666666,297.94375,646.7708333333334,308.2375,654.625,308.2375C662.4791666666666,308.2375,670.3333333333334,299.0874999999999,678.1875,299.0874999999999C686.0416666666666,299.0874999999999,693.8958333333334,306.71250000000003,701.75,308.2375C709.6041666666666,309.7625,717.4583333333334,309,725.3125,310.525C733.1666666666666,312.04999999999995,741.0208333333334,321.2,748.875,324.25C756.7291666666666,327.3,764.5833333333334,328.825,772.4375,328.825C780.2916666666666,328.825,788.1458333333334,324.25,796,319.675"
+                              fill="none"
+                              height="366"
+                              id="recharts-line-_r_d_"
+                              stroke="#4361e6"
+                              stroke-dasharray="0px 0px"
+                              stroke-width="1.6"
+                              width="754"
+                            />
+                          </g>
+                        </g>
+                        <g
+                          class="recharts-layer recharts-line"
+                        >
+                          <g
+                            class="recharts-layer recharts-shape"
+                          >
+                            <path
+                              class="recharts-curve recharts-line-curve"
+                              d="M42,269.3500000000001C49.854166666666664,268.96875000000006,57.708333333333336,268.58750000000003,65.5625,267.0625C73.41666666666667,265.53749999999997,81.27083333333333,249.90625,89.125,244.1875C96.97916666666667,238.46875,104.83333333333333,232.75,112.6875,232.75C120.54166666666667,232.75,128.39583333333334,244.1875,136.25,244.1875C144.10416666666666,244.1875,151.95833333333334,237.32499999999996,159.8125,237.32499999999996C167.66666666666666,237.32499999999996,175.52083333333334,244.1875,183.375,244.1875C191.22916666666666,244.1875,199.08333333333334,238.46875,206.9375,232.75C214.79166666666666,227.03125,222.64583333333334,211.4,230.5,209.875C238.35416666666666,208.35,246.20833333333334,207.5875,254.0625,207.5875C261.9166666666667,207.5875,269.7708333333333,216.73750000000004,277.625,216.73750000000004C285.4791666666667,216.73750000000004,293.3333333333333,198.43749999999997,301.1875,191.57499999999996C309.0416666666667,184.71249999999995,316.8958333333333,175.5625,324.75,175.5625C332.6041666666667,175.5625,340.4583333333333,177.46874999999997,348.3125,180.13749999999996C356.1666666666667,182.80624999999995,364.0208333333333,191.57499999999996,371.875,191.57499999999996C379.7291666666667,191.57499999999996,387.5833333333333,190.04999999999998,395.4375,187C403.2916666666667,183.95000000000002,411.1458333333333,177.46875,419,173.275C426.8541666666667,169.08125,434.7083333333333,161.8375,442.5625,161.8375C450.4166666666667,161.8375,458.2708333333333,182.42500000000004,466.125,182.42500000000004C473.9791666666667,182.42500000000004,481.8333333333333,181.66250000000002,489.6875,180.13749999999996C497.5416666666667,178.6124999999999,505.3958333333333,157.26249999999996,513.25,157.26249999999996C521.1041666666666,157.26249999999996,528.9583333333334,175.5625,536.8125,175.5625C544.6666666666666,175.5625,552.5208333333334,166.4125,560.375,166.4125C568.2291666666666,166.4125,576.0833333333334,182.42499999999998,583.9375,187C591.7916666666666,191.57500000000002,599.6458333333334,190.05000000000004,607.5,193.86250000000004C615.3541666666666,197.67500000000004,623.2083333333334,205.3,631.0625,209.875C638.9166666666666,214.45,646.7708333333334,221.3125,654.625,221.3125C662.4791666666666,221.3125,670.3333333333334,207.20624999999995,678.1875,203.01249999999996C686.0416666666666,198.81874999999997,693.8958333333334,196.15,701.75,196.15C709.6041666666666,196.15,717.4583333333334,211.40000000000003,725.3125,216.73750000000004C733.1666666666666,222.07500000000005,741.0208333333334,228.17500000000004,748.875,228.17500000000004C756.7291666666666,228.17500000000004,764.5833333333334,210.63750000000005,772.4375,207.5875C780.2916666666666,204.53749999999997,788.1458333333334,203.77499999999998,796,203.01249999999996"
+                              fill="none"
+                              height="366"
+                              id="recharts-line-_r_e_"
+                              stroke="#ec4899"
+                              stroke-dasharray="0px 0px"
+                              stroke-width="1.6"
+                              width="754"
+                            />
+                          </g>
+                        </g>
+                        <g
+                          class="recharts-layer recharts-line"
+                        >
+                          <g
+                            class="recharts-layer recharts-shape"
+                          >
+                            <path
+                              class="recharts-curve recharts-line-curve"
+                              d="M42,276.2125C49.854166666666664,268.015625,57.708333333333336,259.81875,65.5625,253.3375C73.41666666666667,246.85625,81.27083333333333,243.04374999999996,89.125,237.32499999999996C96.97916666666667,231.60624999999996,104.83333333333333,219.025,112.6875,219.025C120.54166666666667,219.025,128.39583333333334,233.13124999999997,136.25,237.32499999999996C144.10416666666666,241.51874999999995,151.95833333333334,244.1875,159.8125,244.1875C167.66666666666666,244.1875,175.52083333333334,239.61250000000004,183.375,239.61250000000004C191.22916666666666,239.61250000000004,199.08333333333334,244.1875,206.9375,244.1875C214.79166666666666,244.1875,222.64583333333334,237.32499999999996,230.5,237.32499999999996C238.35416666666666,237.32499999999996,246.20833333333334,253.3375,254.0625,253.3375C261.9166666666667,253.3375,269.7708333333333,244.1875,277.625,244.1875C285.4791666666667,244.1875,293.3333333333333,244.1875,301.1875,244.1875C309.0416666666667,244.1875,316.8958333333333,245.71249999999998,324.75,248.76249999999996C332.6041666666667,251.81249999999994,340.4583333333333,264.775,348.3125,264.775C356.1666666666667,264.775,364.0208333333333,254.86249999999998,371.875,253.3375C379.7291666666667,251.81250000000003,387.5833333333333,251.05000000000004,395.4375,251.05000000000004C403.2916666666667,251.05000000000004,411.1458333333333,252.57500000000002,419,255.625C426.8541666666667,258.67499999999995,434.7083333333333,266.68125,442.5625,271.6375C450.4166666666667,276.59375,458.2708333333333,281.16875,466.125,285.3625C473.9791666666667,289.55625000000003,481.8333333333333,294.13125,489.6875,296.8C497.5416666666667,299.46875,505.3958333333333,301.375,513.25,301.375C521.1041666666666,301.375,528.9583333333334,278.5,536.8125,278.5C544.6666666666666,278.5,552.5208333333334,294.5125,560.375,294.5125C568.2291666666666,294.5125,576.0833333333334,271.6375,583.9375,271.6375C591.7916666666666,271.6375,599.6458333333334,271.6375,607.5,271.6375C615.3541666666666,271.6375,623.2083333333334,257.9125000000001,631.0625,257.9125000000001C638.9166666666666,257.9125000000001,646.7708333333334,261.34375,654.625,264.775C662.4791666666666,268.20624999999995,670.3333333333334,274.30625,678.1875,278.5C686.0416666666666,282.69375,693.8958333333334,284.98125,701.75,289.9375C709.6041666666666,294.89375,717.4583333333334,308.2375,725.3125,308.2375C733.1666666666666,308.2375,741.0208333333334,296.8,748.875,292.225C756.7291666666666,287.65000000000003,764.5833333333334,280.7875,772.4375,280.7875C780.2916666666666,280.7875,788.1458333333334,280.7875,796,280.7875"
+                              fill="none"
+                              height="366"
+                              id="recharts-line-_r_f_"
+                              stroke="#1596ae"
+                              stroke-dasharray="0px 0px"
+                              stroke-width="1.6"
+                              width="754"
+                            />
+                          </g>
+                        </g>
+                        <g
+                          class="recharts-layer recharts-line"
+                        >
+                          <g
+                            class="recharts-layer recharts-shape"
+                          >
+                            <path
+                              class="recharts-curve recharts-line-curve"
+                              d="M42,280.7875C49.854166666666664,281.740625,57.708333333333336,282.69375,65.5625,285.3625C73.41666666666667,288.03125,81.27083333333333,296.8,89.125,296.8C96.97916666666667,296.8,104.83333333333333,269.3500000000001,112.6875,269.3500000000001C120.54166666666667,269.3500000000001,128.39583333333334,280.7875,136.25,280.7875C144.10416666666666,280.7875,151.95833333333334,273.925,159.8125,273.925C167.66666666666666,273.925,175.52083333333334,273.925,183.375,273.925C191.22916666666666,273.925,199.08333333333334,249.90625,206.9375,241.89999999999998C214.79166666666666,233.89374999999995,222.64583333333334,230.08124999999995,230.5,225.88749999999996C238.35416666666666,221.69374999999997,246.20833333333334,221.31250000000003,254.0625,216.73750000000004C261.9166666666667,212.16250000000005,269.7708333333333,198.4375,277.625,198.4375C285.4791666666667,198.4375,293.3333333333333,216.73750000000004,301.1875,216.73750000000004C309.0416666666667,216.73750000000004,316.8958333333333,212.16250000000002,324.75,209.875C332.6041666666667,207.58749999999998,340.4583333333333,206.82499999999996,348.3125,203.01249999999996C356.1666666666667,199.19999999999996,364.0208333333333,187,371.875,187C379.7291666666667,187,387.5833333333333,198.4375,395.4375,198.4375C403.2916666666667,198.4375,411.1458333333333,198.4375,419,198.4375C426.8541666666667,198.4375,434.7083333333333,212.54375000000005,442.5625,216.73750000000004C450.4166666666667,220.93125000000003,458.2708333333333,223.60000000000002,466.125,223.60000000000002C473.9791666666667,223.60000000000002,481.8333333333333,207.20625,489.6875,200.72500000000002C497.5416666666667,194.24375000000003,505.3958333333333,184.7125,513.25,184.7125C521.1041666666666,184.7125,528.9583333333334,184.7125,536.8125,184.7125C544.6666666666666,184.7125,552.5208333333334,165.65,560.375,164.125C568.2291666666666,162.6,576.0833333333334,161.8375,583.9375,161.8375C591.7916666666666,161.8375,599.6458333333334,182.42500000000004,607.5,182.42500000000004C615.3541666666666,182.42500000000004,623.2083333333334,153.45,631.0625,150.4C638.9166666666666,147.35000000000002,646.7708333333334,145.82500000000002,654.625,145.82500000000002C662.4791666666666,145.82500000000002,670.3333333333334,148.11250000000004,678.1875,148.11250000000004C686.0416666666666,148.11250000000004,693.8958333333334,145.06250000000003,701.75,138.9625C709.6041666666666,132.86249999999998,717.4583333333334,118.37499999999999,725.3125,109.22499999999998C733.1666666666666,100.07499999999997,741.0208333333334,91.68749999999999,748.875,84.0625C756.7291666666666,76.43750000000001,764.5833333333334,63.47500000000004,772.4375,63.47500000000004C780.2916666666666,63.47500000000004,788.1458333333334,72.62500000000003,796,81.77500000000002"
+                              fill="none"
+                              height="366"
+                              id="recharts-line-_r_g_"
+                              stroke="#e06a24"
+                              stroke-dasharray="0px 0px"
+                              stroke-width="1.6"
+                              width="754"
+                            />
+                          </g>
+                        </g>
+                      </g>
+                      <g
+                        class="recharts-zIndex-layer_500"
+                        tabindex="-1"
+                      >
+                        <g
+                          class="recharts-layer recharts-cartesian-axis recharts-xAxis xAxis"
+                        >
+                          <g
+                            class="recharts-cartesian-axis-ticks recharts-xAxis-ticks"
+                          >
+                            <g
+                              class="recharts-cartesian-axis-tick-lines recharts-xAxis-tick-lines"
+                            >
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                            </g>
+                          </g>
+                        </g>
+                        <g
+                          class="recharts-layer recharts-cartesian-axis recharts-yAxis yAxis"
+                        >
+                          <g
+                            class="recharts-cartesian-axis-ticks recharts-yAxis-ticks"
+                          >
+                            <g
+                              class="recharts-cartesian-axis-tick-lines recharts-yAxis-tick-lines"
+                            >
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                              <g
+                                class="recharts-layer recharts-cartesian-axis-tick"
+                              />
+                            </g>
+                          </g>
+                        </g>
+                      </g>
+                      <g
+                        class="recharts-zIndex-layer_600"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_1000"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_1100"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_1200"
+                        tabindex="-1"
+                      />
+                      <g
+                        class="recharts-zIndex-layer_2000"
+                        tabindex="-1"
+                      >
+                        <g
+                          class="recharts-cartesian-axis-tick-labels recharts-xAxis-tick-labels"
+                        >
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="42"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="42"
+                              >
+                                09:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="65.5625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="65.5625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="89.125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="89.125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="112.6875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="112.6875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="136.25"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="136.25"
+                              >
+                                10:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="159.8125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="159.8125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="183.375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="183.375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="206.9375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="206.9375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="230.5"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="230.5"
+                              >
+                                11:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="254.0625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="254.0625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="277.625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="277.625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="301.1875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="301.1875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="324.75"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="324.75"
+                              >
+                                12:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="348.3125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="348.3125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="371.875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="371.875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="395.4375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="395.4375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="419"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="419"
+                              >
+                                13:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="442.5625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="442.5625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="466.125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="466.125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="489.6875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="489.6875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="513.25"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="513.25"
+                              >
+                                14:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="536.8125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="536.8125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="560.375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="560.375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="583.9375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="583.9375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="607.5"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="607.5"
+                              >
+                                15:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="631.0625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="631.0625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="654.625"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="654.625"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="678.1875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="678.1875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="701.75"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="701.75"
+                              >
+                                16:00
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="725.3125"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="725.3125"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="748.875"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="748.875"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="772.4375"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="772.4375"
+                              />
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="30"
+                              orientation="bottom"
+                              stroke="none"
+                              text-anchor="middle"
+                              width="754"
+                              x="796"
+                              y="378"
+                            >
+                              <tspan
+                                dy="0.71em"
+                                x="796"
+                              >
+                                17:00
+                              </tspan>
+                            </text>
+                          </g>
+                        </g>
+                        <g
+                          class="recharts-cartesian-axis-tick-labels recharts-yAxis-tick-labels"
+                        >
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="366"
+                              orientation="left"
+                              stroke="none"
+                              text-anchor="end"
+                              width="60"
+                              x="34"
+                              y="370"
+                            >
+                              <tspan
+                                dy="0.355em"
+                                x="34"
+                              >
+                                -0.4%
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="366"
+                              orientation="left"
+                              stroke="none"
+                              text-anchor="end"
+                              width="60"
+                              x="34"
+                              y="278.5"
+                            >
+                              <tspan
+                                dy="0.355em"
+                                x="34"
+                              >
+                                0.0%
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="366"
+                              orientation="left"
+                              stroke="none"
+                              text-anchor="end"
+                              width="60"
+                              x="34"
+                              y="187"
+                            >
+                              <tspan
+                                dy="0.355em"
+                                x="34"
+                              >
+                                0.4%
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="366"
+                              orientation="left"
+                              stroke="none"
+                              text-anchor="end"
+                              width="60"
+                              x="34"
+                              y="95.49999999999996"
+                            >
+                              <tspan
+                                dy="0.355em"
+                                x="34"
+                              >
+                                0.8%
+                              </tspan>
+                            </text>
+                          </g>
+                          <g
+                            class="recharts-layer recharts-cartesian-axis-tick-label"
+                          >
+                            <text
+                              class="recharts-text recharts-cartesian-axis-tick-value"
+                              fill="#5a6a7c"
+                              font-size="11"
+                              height="366"
+                              orientation="left"
+                              stroke="none"
+                              text-anchor="end"
+                              width="60"
+                              x="34"
+                              y="4"
+                            >
+                              <tspan
+                                dy="0.355em"
+                                x="34"
+                              >
+                                1.2%
+                              </tspan>
+                            </text>
+                          </g>
+                        </g>
+                      </g>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-[rgba(70,130,163,0.12)] pt-3"
+            >
+              <span
+                class="flex items-center gap-2 text-[12px]"
+              >
+                <span
+                  aria-hidden="true"
+                  class="h-2 w-2 rounded-full"
+                  style="background: rgb(67, 97, 230);"
+                />
+                <span
+                  class="text-[#9aa7b7]"
+                >
+                  OMXS30
+                </span>
+                <span
+                  class="font-medium tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,74 %
+                </span>
+              </span>
+              <span
+                class="flex items-center gap-2 text-[12px]"
+              >
+                <span
+                  aria-hidden="true"
+                  class="h-2 w-2 rounded-full"
+                  style="background: rgb(236, 72, 153);"
+                />
+                <span
+                  class="text-[#9aa7b7]"
+                >
+                  S&P 500
+                </span>
+                <span
+                  class="font-medium tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,41 %
+                </span>
+              </span>
+              <span
+                class="flex items-center gap-2 text-[12px]"
+              >
+                <span
+                  aria-hidden="true"
+                  class="h-2 w-2 rounded-full"
+                  style="background: rgb(21, 150, 174);"
+                />
+                <span
+                  class="text-[#9aa7b7]"
+                >
+                  DAX
+                </span>
+                <span
+                  class="font-medium tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,32 %
+                </span>
+              </span>
+              <span
+                class="flex items-center gap-2 text-[12px]"
+              >
+                <span
+                  aria-hidden="true"
+                  class="h-2 w-2 rounded-full"
+                  style="background: rgb(224, 106, 36);"
+                />
+                <span
+                  class="text-[#9aa7b7]"
+                >
+                  Nikkei 225
+                </span>
+                <span
+                  class="font-medium tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,55 %
+                </span>
+              </span>
+            </div>
+          </section>
+          <section
+            class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5 xl:col-span-3"
+          >
+            <div
+              class="mb-4 flex items-center justify-between gap-3"
+            >
+              <h2
+                class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+              >
+                Räntemarknaden
+              </h2>
+            </div>
+            <ul
+              class="flex flex-col"
+            >
+              <li
+                class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <span
+                  class="text-sm text-[#9aa7b7]"
+                >
+                  10Y U.S. Yield
+                </span>
+                <span
+                  class="flex shrink-0 items-center gap-3"
+                >
+                  <span
+                    class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                  >
+                    4.32%
+                  </span>
+                  <span
+                    class="w-16 text-right text-[12px] font-medium tabular-nums"
+                    style="color: var(--color-positive);"
+                  >
+                    +0.00 pp
+                  </span>
+                </span>
+              </li>
+              <li
+                class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <span
+                  class="text-sm text-[#9aa7b7]"
+                >
+                  10Y Germany Yield
+                </span>
+                <span
+                  class="flex shrink-0 items-center gap-3"
+                >
+                  <span
+                    class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                  >
+                    2,48%
+                  </span>
+                  <span
+                    class="w-16 text-right text-[12px] font-medium tabular-nums"
+                    style="color: var(--color-negative);"
+                  >
+                    −0,04 bp
+                  </span>
+                </span>
+              </li>
+              <li
+                class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <span
+                  class="text-sm text-[#9aa7b7]"
+                >
+                  2Y U.S. Yield
+                </span>
+                <span
+                  class="flex shrink-0 items-center gap-3"
+                >
+                  <span
+                    class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                  >
+                    3,91%
+                  </span>
+                  <span
+                    class="w-16 text-right text-[12px] font-medium tabular-nums"
+                    style="color: var(--color-positive);"
+                  >
+                    +0,01 bp
+                  </span>
+                </span>
+              </li>
+              <li
+                class="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <span
+                  class="text-sm text-[#9aa7b7]"
+                >
+                  Sweden 10Y Yield
+                </span>
+                <span
+                  class="flex shrink-0 items-center gap-3"
+                >
+                  <span
+                    class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                  >
+                    2,34%
+                  </span>
+                  <span
+                    class="w-16 text-right text-[12px] font-medium tabular-nums"
+                    style="color: var(--color-positive);"
+                  >
+                    +0,02 bp
+                  </span>
+                </span>
+              </li>
+            </ul>
+            <div
+              class="mt-3 h-10"
+            >
+              <svg
+                aria-hidden="true"
+                class="overflow-visible"
+                focusable="false"
+                height="40"
+                viewBox="0 0 260 40"
+                width="260"
+              >
+                <polyline
+                  fill="none"
+                  points="0.0,39.0 20.0,29.1 40.0,11.8 60.0,1.0 80.0,19.8 100.0,31.9 120.0,27.9 140.0,30.4 160.0,34.2 180.0,32.5 200.0,19.2 220.0,12.8 240.0,1.9 260.0,5.4"
+                  stroke="#2ecc84"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                />
+              </svg>
+            </div>
+          </section>
+          <section
+            class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5 xl:col-span-2"
+          >
+            <div
+              class="mb-4 flex items-center justify-between gap-3"
+            >
+              <h2
+                class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+              >
+                Sektorer (S&P 500)
+              </h2>
+            </div>
+            <ul
+              class="flex flex-col gap-2"
+            >
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-cpu h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 20v2"
+                  />
+                  <path
+                    d="M12 2v2"
+                  />
+                  <path
+                    d="M17 20v2"
+                  />
+                  <path
+                    d="M17 2v2"
+                  />
+                  <path
+                    d="M2 12h2"
+                  />
+                  <path
+                    d="M2 17h2"
+                  />
+                  <path
+                    d="M2 7h2"
+                  />
+                  <path
+                    d="M20 12h2"
+                  />
+                  <path
+                    d="M20 17h2"
+                  />
+                  <path
+                    d="M20 7h2"
+                  />
+                  <path
+                    d="M7 20v2"
+                  />
+                  <path
+                    d="M7 2v2"
+                  />
+                  <rect
+                    height="16"
+                    rx="2"
+                    width="16"
+                    x="4"
+                    y="4"
+                  />
+                  <rect
+                    height="8"
+                    rx="1"
+                    width="8"
+                    x="8"
+                    y="8"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Teknologi
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 90%; background: var(--color-positive);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,81 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-radio h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M16.247 7.761a6 6 0 0 1 0 8.478"
+                  />
+                  <path
+                    d="M19.075 4.933a10 10 0 0 1 0 14.134"
+                  />
+                  <path
+                    d="M4.925 19.067a10 10 0 0 1 0-14.134"
+                  />
+                  <path
+                    d="M7.753 16.239a6 6 0 0 1 0-8.478"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="2"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Kommunikation
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 75.55555555555556%; background: var(--color-positive);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,68 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-factory h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 16h.01"
+                  />
+                  <path
+                    d="M16 16h.01"
+                  />
+                  <path
+                    d="M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"
+                  />
+                  <path
+                    d="M8 16h.01"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Industri
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 46.666666666666664%; background: var(--color-positive);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,42 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-landmark h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M10 18v-7"
+                  />
+                  <path
+                    d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z"
+                  />
+                  <path
+                    d="M14 18v-7"
+                  />
+                  <path
+                    d="M18 18v-7"
+                  />
+                  <path
+                    d="M3 22h18"
+                  />
+                  <path
+                    d="M6 18v-7"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Finans
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 30%; background: var(--color-positive);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,27 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-shopping-bag h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M16 10a4 4 0 0 1-8 0"
+                  />
+                  <path
+                    d="M3.103 6.034h17.794"
+                  />
+                  <path
+                    d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Sällanköp
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 16.666666666666664%; background: var(--color-positive);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-positive);"
+                >
+                  +0,15 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-activity h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Hälsovård
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 12.222222222222221%; background: var(--color-negative);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-negative);"
+                >
+                  −0,11 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-building2 lucide-building-2 h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M10 12h4"
+                  />
+                  <path
+                    d="M10 8h4"
+                  />
+                  <path
+                    d="M14 21v-3a2 2 0 0 0-4 0v3"
+                  />
+                  <path
+                    d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"
+                  />
+                  <path
+                    d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Fastigheter
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 20%; background: var(--color-negative);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-negative);"
+                >
+                  −0,18 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-flame h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Energi
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 40%; background: var(--color-negative);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-negative);"
+                >
+                  −0,36 %
+                </span>
+              </li>
+              <li
+                class="flex items-center gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-package h-3 w-3 shrink-0 text-[#6b7d90]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"
+                  />
+                  <path
+                    d="M12 22V12"
+                  />
+                  <polyline
+                    points="3.29 7 12 12 20.71 7"
+                  />
+                  <path
+                    d="m7.5 4.27 9 5.15"
+                  />
+                </svg>
+                <span
+                  class="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]"
+                >
+                  Dagligvaror
+                </span>
+                <span
+                  class="h-1.5 flex-1 overflow-hidden rounded-full bg-[rgba(70,130,163,0.14)]"
+                >
+                  <span
+                    class="block h-full rounded-full"
+                    style="width: 52.222222222222214%; background: var(--color-negative);"
+                  />
+                </span>
+                <span
+                  class="w-12 text-right text-[11px] font-medium whitespace-nowrap tabular-nums"
+                  style="color: var(--color-negative);"
+                >
+                  −0,47 %
+                </span>
+              </li>
+            </ul>
+          </section>
+          <section
+            class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5 xl:col-span-2"
+          >
+            <div
+              class="mb-4 flex items-center justify-between gap-3"
+            >
+              <h2
+                class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+              >
+                Senaste nytt
+              </h2>
+              <a
+                class="text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
+                href="/reports"
+              >
+                Visa fler →
+              </a>
+            </div>
+            <ul
+              class="flex flex-col"
+            >
+              <li
+                class="flex gap-2.5 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-file-text mt-0.5 h-3.5 w-3.5 shrink-0 text-[#48a7e8]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+                  />
+                  <path
+                    d="M14 2v5a1 1 0 0 0 1 1h5"
+                  />
+                  <path
+                    d="M10 9H8"
+                  />
+                  <path
+                    d="M16 13H8"
+                  />
+                  <path
+                    d="M16 17H8"
+                  />
+                </svg>
+                <div
+                  class="min-w-0"
+                >
+                  <p
+                    class="line-clamp-2 text-[13px] leading-snug font-medium text-[#dbe4ee]"
+                  >
+                    Riksbanken signalerar möjlig räntesänkning
+                  </p>
+                  <p
+                    class="mt-1 text-[11px] text-[#697787]"
+                  >
+                    Riksbanken
+                     ·
+                     
+                    för 42 minuter sedan
+                  </p>
+                </div>
+              </li>
+              <li
+                class="flex gap-2.5 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-file-text mt-0.5 h-3.5 w-3.5 shrink-0 text-[#48a7e8]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+                  />
+                  <path
+                    d="M14 2v5a1 1 0 0 0 1 1h5"
+                  />
+                  <path
+                    d="M10 9H8"
+                  />
+                  <path
+                    d="M16 13H8"
+                  />
+                  <path
+                    d="M16 17H8"
+                  />
+                </svg>
+                <div
+                  class="min-w-0"
+                >
+                  <p
+                    class="line-clamp-2 text-[13px] leading-snug font-medium text-[#dbe4ee]"
+                  >
+                    Federal Reserve sänker styrräntan med 0.25 procentenheter
+                  </p>
+                  <p
+                    class="mt-1 text-[11px] text-[#697787]"
+                  >
+                    Federal Reserve
+                     ·
+                     
+                    för 55 minuter sedan
+                  </p>
+                </div>
+              </li>
+              <li
+                class="flex gap-2.5 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-file-text mt-0.5 h-3.5 w-3.5 shrink-0 text-[#48a7e8]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+                  />
+                  <path
+                    d="M14 2v5a1 1 0 0 0 1 1h5"
+                  />
+                  <path
+                    d="M10 9H8"
+                  />
+                  <path
+                    d="M16 13H8"
+                  />
+                  <path
+                    d="M16 17H8"
+                  />
+                </svg>
+                <div
+                  class="min-w-0"
+                >
+                  <p
+                    class="line-clamp-2 text-[13px] leading-snug font-medium text-[#dbe4ee]"
+                  >
+                    Bank of Japan höjer styrräntan till 0.75%
+                  </p>
+                  <p
+                    class="mt-1 text-[11px] text-[#697787]"
+                  >
+                    Bank of Japan
+                     ·
+                     
+                    för 1 timme sedan
+                  </p>
+                </div>
+              </li>
+              <li
+                class="flex gap-2.5 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-file-text mt-0.5 h-3.5 w-3.5 shrink-0 text-[#48a7e8]"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+                  />
+                  <path
+                    d="M14 2v5a1 1 0 0 0 1 1h5"
+                  />
+                  <path
+                    d="M10 9H8"
+                  />
+                  <path
+                    d="M16 13H8"
+                  />
+                  <path
+                    d="M16 17H8"
+                  />
+                </svg>
+                <div
+                  class="min-w-0"
+                >
+                  <p
+                    class="line-clamp-2 text-[13px] leading-snug font-medium text-[#dbe4ee]"
+                  >
+                    Tysk industri-PMI når högsta nivån på två år
+                  </p>
+                  <p
+                    class="mt-1 text-[11px] text-[#697787]"
+                  >
+                    S&P Global/HCOB
+                     ·
+                     
+                    för 1 timme sedan
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </section>
+        </div>
+        <section
+          class="rounded-[14px] border border-[rgba(70,130,163,0.20)] bg-[rgba(4,14,23,0.88)] shadow-[0_22px_60px_rgba(0,0,0,0.42)] p-5"
+        >
+          <div
+            class="mb-4 flex items-center justify-between gap-3"
+          >
+            <h2
+              class="text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]"
+            >
+              Bevakning
+            </h2>
+            <a
+              class="flex items-center gap-1.5 text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
+              href="/watchlist"
+            >
+              Lägg till bevakning 
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-plus h-3.5 w-3.5"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M5 12h14"
+                />
+                <path
+                  d="M12 5v14"
+                />
+              </svg>
+            </a>
+          </div>
+          <div
+            class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6"
+          >
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  Investor B
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  289,40
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,21.0 13.7,16.2 27.4,18.6 41.1,9.1 54.9,11.5 68.6,4.3 82.3,6.7 96.0,1.0"
+                    stroke="#2ecc84"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-positive);"
+                >
+                  +1,12 %
+                </span>
+              </div>
+            </div>
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  Volvo B
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  274,85
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,5.8 13.7,10.6 27.4,1.0 41.1,15.5 54.9,20.3 68.6,15.5 82.3,20.3 96.0,21.0"
+                    stroke="#f2555a"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-negative);"
+                >
+                  −0,63 %
+                </span>
+              </div>
+            </div>
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  Evolution
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  812,20
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,21.0 13.7,17.0 27.4,12.4 41.1,15.7 54.9,8.4 68.6,5.1 82.3,3.1 96.0,1.0"
+                    stroke="#2ecc84"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-positive);"
+                >
+                  +2,48 %
+                </span>
+              </div>
+            </div>
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  Avanza Bank
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  268,90
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,21.0 13.7,14.3 27.4,17.7 41.1,7.7 54.9,11.0 68.6,1.0 82.3,5.0 96.0,1.7"
+                    stroke="#2ecc84"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,34 %
+                </span>
+              </div>
+            </div>
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  Atlas Copco A
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  178,15
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,2.3 13.7,5.6 27.4,1.0 41.1,10.2 54.9,15.4 68.6,18.0 82.3,16.1 96.0,21.0"
+                    stroke="#f2555a"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-negative);"
+                >
+                  −1,24 %
+                </span>
+              </div>
+            </div>
+            <div
+              class="rounded-[10px] border border-[rgba(54,119,155,0.22)] bg-[rgba(6,18,29,0.55)] transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)] p-3.5"
+            >
+              <div
+                class="flex items-baseline justify-between gap-2"
+              >
+                <p
+                  class="truncate text-[13px] font-semibold text-[#dbe4ee]"
+                >
+                  SEB A
+                </p>
+                <span
+                  class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
+                >
+                  158,60
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-end justify-between gap-2"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="overflow-visible"
+                  focusable="false"
+                  height="22"
+                  viewBox="0 0 96 22"
+                  width="96"
+                >
+                  <polyline
+                    fill="none"
+                    points="0.0,21.0 13.7,15.4 27.4,16.6 41.1,9.9 54.9,7.7 68.6,4.3 82.3,3.2 96.0,1.0"
+                    stroke="#2ecc84"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <span
+                  class="font-medium tabular-nums text-[12px]"
+                  style="color: var(--color-positive);"
+                >
+                  +0,88 %
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div
+        class="sticky bottom-0 z-20 flex items-center gap-6 overflow-x-auto border-t border-[rgba(70,130,163,0.2)] bg-[rgba(2,7,17,0.94)] px-8 py-2 backdrop-blur-sm"
+      >
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            OMXS30
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            2 612,48
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,74 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            S&P 500
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            5 843,12
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,41 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            DAX
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            19 840
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,32 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            FTSE 100
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            8 363,95
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,28 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            Nikkei 225
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            40 850
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,55 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-negative);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            Nasdaq 100
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            20 418,65
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-negative);"
+          >
+            −0,28 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            USD/SEK
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            10,4127
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,19 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-negative);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            EUR/USD
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            1,0812
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-negative);"
+          >
+            −0,15 %
+          </span>
+        </span>
+        <span
+          class="flex shrink-0 items-center gap-2 text-[12px]"
+        >
+          <span
+            aria-hidden="true"
+            class="h-1.5 w-1.5 rounded-full"
+            style="background: var(--color-positive);"
+          />
+          <span
+            class="font-medium text-[#c9d6e2]"
+          >
+            Brent Olja
+          </span>
+          <span
+            class="text-[#9aa7b7] tabular-nums"
+          >
+            65,72
+          </span>
+          <span
+            class="font-medium tabular-nums"
+            style="color: var(--color-positive);"
+          >
+            +0,38 %
+          </span>
+        </span>
+        <span
+          class="ml-auto shrink-0 text-[11px] text-[#5a6a7c]"
+        >
+          Data uppdaterad
+           
+          14:32
+        </span>
+      </div>
+    </main>
+  </div>
+</div>
+`;
