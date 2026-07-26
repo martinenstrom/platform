@@ -158,5 +158,9 @@ export function basisPointsToPercent(value: BasisPoints): Percent {
 export function changePercent(current: number, previous: number | null): Percent | null {
   if (previous === null || previous === 0) return null
   if (!Number.isFinite(current) || !Number.isFinite(previous)) return null
-  return percent(((current - previous) / previous) * 100)
+  const raw = ((current - previous) / previous) * 100
+  // Rounded to six decimals: anything beyond that is float noise from the
+  // division, not data. Without this a change of exactly 0.81 % comes back as
+  // 0.8100000000000023 and leaks into every downstream computation.
+  return percent(Math.round(raw * 1e6) / 1e6)
 }

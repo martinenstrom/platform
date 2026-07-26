@@ -163,9 +163,20 @@ export const INSTRUMENTS: Readonly<Record<CanonicalSymbol, InstrumentRef>> =
           index(SYM_OMXS30, 'OMXS30', { countryCode: 'SE', exchangeMic: 'XSTO' }),
           index(SYM_SP500, 'S&P 500', { countryCode: 'US', exchangeMic: 'XNYS' }),
           index(SYM_NASDAQ100, 'Nasdaq 100', { countryCode: 'US', exchangeMic: 'XNAS' }),
-          index(SYM_DAX, 'DAX', { countryCode: 'DE', exchangeMic: 'XETR' }),
+          // DAX and Nikkei are quoted without decimals on this screen; precision
+          // is instrument reference data, revisit when real levels land (Phase 6).
+          {
+            ...index(SYM_DAX, 'DAX', { countryCode: 'DE', exchangeMic: 'XETR' }),
+            precision: 0,
+          },
           index(SYM_FTSE100, 'FTSE 100', { countryCode: 'GB', exchangeMic: 'XLON' }),
-          index(SYM_NIKKEI225, 'Nikkei 225', { countryCode: 'JP', exchangeMic: 'XTKS' }),
+          {
+            ...index(SYM_NIKKEI225, 'Nikkei 225', {
+              countryCode: 'JP',
+              exchangeMic: 'XTKS',
+            }),
+            precision: 0,
+          },
           index(SYM_VIX, 'VIX', { countryCode: 'US' }),
 
           fx(SYM_USDSEK, 'USD/SEK', USD, SEK),
@@ -197,8 +208,7 @@ export const INSTRUMENTS: Readonly<Record<CanonicalSymbol, InstrumentRef>> =
             displayName: 'Bitcoin',
             currency: USD,
             unit: { kind: 'currency', currency: USD },
-            // BTC in USD is quoted whole; decimals would be visual noise.
-            precision: 0,
+            precision: 2,
             assetId: 'bitcoin',
             quoteCurrency: USD,
           },
@@ -206,7 +216,7 @@ export const INSTRUMENTS: Readonly<Record<CanonicalSymbol, InstrumentRef>> =
           bond(SYM_US2Y, '2Y U.S. Yield', 'US', 24),
           bond(SYM_US10Y, '10Y U.S. Yield', 'US', 120),
           bond(SYM_DE10Y, '10Y Germany Yield', 'DE', 120),
-          bond(SYM_SE10Y, '10Y Sweden Yield', 'SE', 120),
+          bond(SYM_SE10Y, 'Sweden 10Y Yield', 'SE', 120),
 
           sector(SYM_SECTOR_TECH, 'Information Technology'),
           sector(SYM_SECTOR_COMMS, 'Communication Services'),

@@ -68,6 +68,22 @@ export function buildQuote(args: {
 
 export type SeriesInterval = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1mo'
 
+/**
+ * Lookback window for a comparison series. Locale-neutral: the Overview's
+ * Swedish button labels ('1D', '1V', '1M', '3M', '1Å', 'YTD') are a
+ * presentation concern and map onto these in the view model.
+ */
+export type SeriesRange = '1d' | '1w' | '1m' | '3m' | '1y' | 'ytd'
+
+export const SERIES_RANGES: readonly SeriesRange[] = [
+  '1d',
+  '1w',
+  '1m',
+  '3m',
+  '1y',
+  'ytd',
+] as const
+
 export interface SeriesPoint {
   /** ISO 8601 with offset. Absolute instants, never bare clock labels. */
   t: string

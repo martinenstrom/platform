@@ -654,7 +654,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                 <p
                   class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
                 >
-                  19 840
+                  19 840
                 </p>
                 <span
                   class="font-medium tabular-nums text-[13px]"
@@ -719,7 +719,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                 <p
                   class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
                 >
-                  8 363,95
+                  8 363,95
                 </p>
                 <span
                   class="font-medium tabular-nums text-[13px]"
@@ -784,7 +784,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                 <p
                   class="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums"
                 >
-                  40 850
+                  40 850
                 </p>
                 <span
                   class="font-medium tabular-nums text-[13px]"
@@ -1098,7 +1098,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     <span
                       class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
                     >
-                      2 385,40
+                      2 385,40
                     </span>
                     <span
                       class="font-medium tabular-nums w-14 text-right text-[12px]"
@@ -1132,7 +1132,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     <span
                       class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
                     >
-                      71 386,25
+                      71 386,25
                     </span>
                     <span
                       class="font-medium tabular-nums w-14 text-right text-[12px]"
@@ -2609,13 +2609,13 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                   <span
                     class="text-sm font-semibold text-[#f4f7fb] tabular-nums"
                   >
-                    4.32%
+                    4,32%
                   </span>
                   <span
                     class="w-16 text-right text-[12px] font-medium tabular-nums"
                     style="color: var(--color-positive);"
                   >
-                    +0.00 pp
+                    +0,00 bp
                   </span>
                 </span>
               </li>
@@ -3268,8 +3268,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     class="mt-1 text-[11px] text-[#697787]"
                   >
                     Riksbanken
-                     ·
-                     
+                     · 
                     för 42 minuter sedan
                   </p>
                 </div>
@@ -3318,8 +3317,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     class="mt-1 text-[11px] text-[#697787]"
                   >
                     Federal Reserve
-                     ·
-                     
+                     · 
                     för 55 minuter sedan
                   </p>
                 </div>
@@ -3368,8 +3366,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     class="mt-1 text-[11px] text-[#697787]"
                   >
                     Bank of Japan
-                     ·
-                     
+                     · 
                     för 1 timme sedan
                   </p>
                 </div>
@@ -3418,8 +3415,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
                     class="mt-1 text-[11px] text-[#697787]"
                   >
                     S&P Global/HCOB
-                     ·
-                     
+                     · 
                     för 1 timme sedan
                   </p>
                 </div>
@@ -3810,7 +3806,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
           <span
             class="text-[#9aa7b7] tabular-nums"
           >
-            19 840
+            19 840
           </span>
           <span
             class="font-medium tabular-nums"
@@ -3835,7 +3831,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
           <span
             class="text-[#9aa7b7] tabular-nums"
           >
-            8 363,95
+            8 363,95
           </span>
           <span
             class="font-medium tabular-nums"
@@ -3860,7 +3856,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
           <span
             class="text-[#9aa7b7] tabular-nums"
           >
-            40 850
+            40 850
           </span>
           <span
             class="font-medium tabular-nums"
@@ -3972,8 +3968,7 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
         <span
           class="ml-auto shrink-0 text-[11px] text-[#5a6a7c]"
         >
-          Data uppdaterad
-           
+          Data uppdaterad 
           14:32
         </span>
       </div>

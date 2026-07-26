@@ -152,9 +152,16 @@ describe('T4 — dependency direction', () => {
     ).toEqual([])
   })
 
-  it('presentation never imports infrastructure', () => {
-    // The UI must not be able to name a concrete provider, a HTTP client, or
+  it('presentation never imports infrastructure except its published boundary', () => {
+    // The UI must not be able to name a concrete provider, an HTTP client, or
     // anything that could carry an API key into the browser bundle.
+    //
+    // The single exception is `serverFns.ts`. That module IS the layer's
+    // published boundary: its whole purpose is to be the one client-reachable
+    // surface, and a `createServerFn` reference compiles to a network call
+    // rather than to the handler body. Importing it is importing a port, not
+    // an implementation — which is why a route loader may, and nothing else
+    // in the layer may.
     const presentation = FILES.filter(
       (f) =>
         (inLayer(f, 'components/') ||
@@ -166,27 +173,66 @@ describe('T4 — dependency direction', () => {
     expect(
       violations(presentation, (specifier) => {
         const layerPath = toLayerPath(specifier)
-        return layerPath !== null && layerPath.startsWith('infrastructure/')
+        if (layerPath === null) return false
+        if (!layerPath.startsWith('infrastructure/')) return false
+        return !layerPath.endsWith('/serverFns')
       }),
     ).toEqual([])
   })
 
-  it('nothing outside an adapter imports a concrete provider module', () => {
-    const outsideProviders = FILES.filter(
-      (f) => !f.path.startsWith('infrastructure/marketData/providers/'),
+  it('routes reach infrastructure only through a server function', () => {
+    // Guards the exception above: the boundary must stay a server-function
+    // module, so a future edit cannot quietly widen it into a direct import.
+    const routes = FILES.filter((f) => inLayer(f, 'routes/') && !isTest(f))
+    const infraImports = routes.flatMap((f) =>
+      f.imports
+        .map(toLayerPath)
+        .filter(
+          (path): path is string => path !== null && path.startsWith('infrastructure/'),
+        ),
+    )
+    expect(infraImports.every((path) => path.endsWith('/serverFns'))).toBe(true)
+  })
+
+  it('nothing outside the composition root imports a concrete provider', () => {
+    // Wiring a provider is the composition root's job and nobody else's. Tests
+    // are exempt: assembling a real container with a stub or fixture provider
+    // is exactly how the wiring is meant to be exercised.
+    const COMPOSITION_ROOTS = [
+      'infrastructure/marketData/container.ts',
+      'infrastructure/marketData/serverFns.ts',
+    ]
+    const callers = FILES.filter(
+      (f) =>
+        !f.path.startsWith('infrastructure/marketData/providers/') &&
+        !COMPOSITION_ROOTS.includes(f.path) &&
+        !isTest(f),
     )
     expect(
-      violations(outsideProviders, (specifier) => {
+      violations(callers, (specifier) => {
         const layerPath = toLayerPath(specifier)
         if (layerPath === null) return false
-        // The composition root is the single sanctioned exception; it exists
-        // precisely to be the one place providers are named.
         return (
           layerPath.startsWith('infrastructure/marketData/providers/') &&
           !specifier.endsWith('/providers')
         )
-      }).filter((v) => !v.startsWith('infrastructure/marketData/container.ts')),
+      }),
     ).toEqual([])
+  })
+
+  it('the Overview component imports no data module', () => {
+    // Phase 0 exit criterion X1, as an executable rule rather than a promise.
+    const overview = FILES.find(
+      (f) => f.path === 'components/lightDashboard/LightCommandCenter.tsx',
+    )
+    expect(overview).toBeDefined()
+    const dataImports = overview!.imports
+      .map(toLayerPath)
+      .filter((path): path is string => path !== null && path.startsWith('data/'))
+    // `data/countryExplorer/marketCenters` is the one permitted import: it is a
+    // pure function of the clock over published exchange hours, not mock data.
+    // Relocating it into the domain is tracked as a follow-up.
+    expect(dataImports).toEqual(['data/countryExplorer/marketCenters'])
   })
 
   it('domain does not import application or infrastructure', () => {

@@ -52,6 +52,11 @@ import {
   vi,
 } from 'vitest'
 import { LightCommandCenter } from './LightCommandCenter'
+import { getOverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
+import { createContainer } from '~/infrastructure/marketData/container'
+import { createOverviewDataSource } from '~/infrastructure/marketData/overviewDataSource'
+import { createFixtureProvider } from '~/infrastructure/marketData/providers/fixture'
+import { FakeClock } from '~/domain/shared/clock'
 
 // The globe is locked, out of scope, and unrenderable in jsdom.
 vi.mock('./LightGlobe', () => ({
@@ -120,12 +125,41 @@ afterEach(() => {
  * the snapshot records the hrefs and data attributes the app actually emits.
  * The stub routes exist only so every `Link` target resolves.
  */
-async function renderOverview() {
+/**
+ * Builds the snapshot exactly as the server function does: fixture provider,
+ * real registry, real resolution path. The test exercises the production wiring
+ * rather than a hand-made stand-in.
+ */
+async function buildFixtureSnapshot(dataClock: Date = FROZEN_NOW) {
+  const container = createContainer({
+    env: {},
+    clock: new FakeClock(dataClock),
+    providers: [
+      {
+        provider: createFixtureProvider(),
+        capabilities: new Set([
+          'quotes',
+          'series',
+          'fx',
+          'yields',
+          'commodities',
+          'crypto',
+          'news',
+          'sentiment',
+        ]),
+      },
+    ],
+  })
+  return getOverviewSnapshot(createOverviewDataSource(container))
+}
+
+async function renderOverview(dataClock?: Date) {
+  const snapshot = await buildFixtureSnapshot(dataClock)
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: LightCommandCenter,
+    component: () => <LightCommandCenter snapshot={snapshot} />,
   })
   const stubRoutes = [
     '/markets',
@@ -155,16 +189,22 @@ describe('Overview — golden baseline (Phase 0 gate G1)', () => {
   })
 
   /**
-   * Pulled out of the snapshot deliberately. Phase 0 changes this ONE value
-   * from render time to the snapshot's true `asOf`; keeping it separate makes
-   * that the only assertion that has to change, and makes any other drift a
-   * snapshot failure rather than a silent edit.
+   * Kept out of the snapshot deliberately: this is the one approved
+   * intentional change in Phase 0, so it is the only assertion that moved.
    */
-  it('shows "Data uppdaterad" from render time (pre-Phase-0 behaviour, D5)', async () => {
+  it('shows "Data uppdaterad" from the data asOf, not render time (D5/D10)', async () => {
     await renderOverview()
-    const label = screen.getByText(/Data uppdaterad/)
-    // 14:32 local — i.e. `new Date()` at render, not any data timestamp.
-    expect(label.textContent).toBe('Data uppdaterad 14:32')
+    expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 14:32')
+  })
+
+  /**
+   * The proof that D5 is genuinely fixed rather than coincidentally equal.
+   * The data clock is set 87 minutes behind the render clock; the label must
+   * follow the data. Before Phase 0 it read the render clock regardless.
+   */
+  it('follows the data clock when it differs from the render clock', async () => {
+    await renderOverview(new Date('2026-07-26T13:05:00+02:00'))
+    expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 13:05')
   })
 
   it('renders every panel, market tile, rate, sector and news label', async () => {
@@ -203,52 +243,62 @@ describe('Overview — golden baseline (Phase 0 gate G1)', () => {
     }
   })
 
-  it('renders the pre-migration values that Phase 0 must reproduce', async () => {
+  it('reproduces the pre-migration values through the application service', async () => {
     const { container } = await renderOverview()
     // Spot-checks across four different mock sources, so a regression in any
     // one of them fails by name rather than as an anonymous snapshot blob.
     const text = container.textContent ?? ''
     const present = (value: string) => expect(text).toContain(value)
-    present('2' + NBSP + '612,48') // mockData marketIndices, via formatNumber
-    present('19 840') // GERMANY_DATA localized string, re-parsed (D2)
-    present('8 363,95') // inline literal in buildMarketCards
-    present('71 386,25') // bitcoin/btc fallback literal (D1)
-    present('4.32%') // GLOBAL_MARKET_OVERVIEW mock string
-    present('2,48%') // inline literal in buildRates
+    present('2' + NBSP + '612,48') // was mockData marketIndices
+    present('19' + NBSP + '840') // was a localized string, now numeric (D2)
+    present('8' + NBSP + '363,95') // was an inline literal
+    present('71' + NBSP + '386,25') // BTC via one canonical symbol (D1)
+    present('4,32%') // was the '4.32%' mock string
+    present('2,48%') // was an inline literal
   })
 
   /**
-   * Records the formatting inconsistency this baseline exposed, so the Phase 0
-   * delta is a documented expectation rather than a surprise in a diff.
+   * The complete, exhaustive list of what Phase 0 changed on screen.
    *
-   * Values that flow through `formatNumber` get a NON-BREAKING SPACE group
-   * separator (correct for sv-SE). Values that are hand-written string
-   * literals in the mock layer get an ASCII space, and one yield string uses a
-   * DOT decimal separator. All three render near-identically but are different
-   * characters.
+   * Before the migration this screen formatted numbers three different ways:
+   * values passed through `formatNumber` used a non-breaking space to group
+   * digits, hand-written mock literals used an ASCII space, and one yield
+   * string used a dot decimal separator with a "pp" unit. Making every value
+   * numeric until the presentation boundary converges all of them onto one
+   * formatter.
    *
-   * Phase 0 makes every value numeric until the presentation boundary, so they
-   * will all format through one path and converge on the `formatNumber`
-   * output. This test pins the pre-migration state; the Phase 0 counterpart
-   * pins the converged state. Neither is silent about the difference.
+   * If any assertion here fails, the delta list has grown and needs approval.
    */
-  it('documents the pre-migration formatting inconsistency (Phase 0 delta)', async () => {
+  it('converged all formatting onto one path (the approved Phase 0 delta)', async () => {
     const { container } = await renderOverview()
     const text = container.textContent ?? ''
 
-    // Formatted through formatNumber → NBSP group separator.
+    // Already NBSP before the migration - unchanged.
     expect(text).toContain('2' + NBSP + '612,48') // OMXS30
     expect(text).toContain('5' + NBSP + '843,12') // S&P 500
     expect(text).toContain('20' + NBSP + '418,65') // Nasdaq 100
 
-    // Hand-written literals → ASCII space. These converge to NBSP in Phase 0.
-    expect(text).toContain('19 840') // DAX
-    expect(text).toContain('40 850') // Nikkei 225
-    expect(text).toContain('8 363,95') // FTSE 100
-    expect(text).toContain('2 385,40') // Gold
-    expect(text).toContain('71 386,25') // Bitcoin
+    // Were ASCII-space literals; now NBSP. Visually identical.
+    expect(text).toContain('19' + NBSP + '840') // DAX
+    expect(text).toContain('40' + NBSP + '850') // Nikkei 225
+    expect(text).toContain('8' + NBSP + '363,95') // FTSE 100
+    expect(text).toContain('2' + NBSP + '385,40') // Gold
+    expect(text).toContain('71' + NBSP + '386,25') // Bitcoin
 
-    // Mock string → DOT decimal. Converges to a comma in Phase 0.
-    expect(text).toContain('4.32%') // 10Y U.S. Yield
+    // Was '4.32%' with a dot; now a comma, matching every other figure.
+    expect(text).toContain('4,32%')
+    expect(text).not.toContain('4.32%')
+
+    // Was '+0.00 pp'; now basis points like the rest of the column.
+    expect(text).toContain('+0,00 bp')
+    expect(text).not.toContain('+0.00 pp')
+  })
+
+  it('no longer renders any ASCII-space grouped number', async () => {
+    const { container } = await renderOverview()
+    // One formatter means one separator. A digit-space-digit sequence would
+    // mean a hand-written literal had crept back in.
+    const digitSpaceDigit = new RegExp('[0-9] [0-9]')
+    expect(digitSpaceDigit.test(container.textContent ?? '')).toBe(false)
   })
 })

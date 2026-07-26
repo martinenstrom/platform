@@ -43,25 +43,27 @@ import { CountryExplorerSkeleton } from '~/components/countryExplorer/CountryExp
 const LightGlobe = lazy(() =>
   import('./LightGlobe').then((module) => ({ default: module.LightGlobe })),
 )
-import { COUNTRY_MOCK_NOW, getGlobalNewsFeed } from '~/data/countryExplorer'
-import { GERMANY_DATA } from '~/data/countryExplorer/germany'
-import { JAPAN_DATA } from '~/data/countryExplorer/japan'
-import {
-  GLOBAL_MARKET_OVERVIEW,
-  GLOBAL_RISK_SENTIMENT,
-} from '~/data/countryExplorer/globalMarketOverview'
-import {
-  getMarketStatus,
-  MARKET_CENTERS,
-} from '~/data/countryExplorer/marketCenters'
-import { marketIndices, watchlist } from '~/data/mockData'
+import { getMarketStatus, MARKET_CENTERS } from '~/data/countryExplorer/marketCenters'
 import { countryExplorerService } from '~/services/countryExplorerService'
 import { cn } from '~/lib/cn'
-import { formatNumber, formatPercent, formatRelativeTime } from '~/lib/format'
-import type {
-  CountryMacroData,
-  CountryRegistryEntry,
-} from '~/types/countryExplorer'
+import { formatPercent } from '~/lib/format'
+import {
+  dataOr,
+  formatDataFreshness,
+  toYieldCurveValues,
+  toYieldViewModel,
+  RANGE_LABELS,
+  toIntradayRows,
+  toMarketRowViewModel,
+  toNewsViewModel,
+  toQuoteViewModel,
+  toSectorViewModel,
+  toSparklineValues,
+  toWatchlistViewModel,
+} from '~/presentation/marketData/viewModels'
+import { hasData, SERIES_RANGES, type SeriesRange } from '~/domain/market'
+import type { OverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
+import type { CountryMacroData, CountryRegistryEntry } from '~/types/countryExplorer'
 
 /**
  * Financial-District night photograph used as the sidebar background — a dark,
@@ -80,8 +82,7 @@ const CARD_INNER =
 // promise navigation. Just an extremely subtle same-hue border response so the
 // surface still feels alive under the cursor. (Navigation lives in each
 // section's explicit "Visa alla / Lägg till" link.)
-const CARD_HOVER =
-  'transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)]'
+const CARD_HOVER = 'transition-colors duration-200 hover:border-[rgba(54,119,155,0.36)]'
 const LABEL = 'text-[11px] font-medium tracking-[0.2em] uppercase text-[#6f88a0]'
 // Semantic up/down colours are the app-wide tokens, not local literals, so a
 // gain reads the same green here as on every dark page and chart.
@@ -91,170 +92,45 @@ const NEGATIVE = 'var(--color-negative)'
 /* ------------------------------------------------------------------ data — */
 
 /**
- * All figures below reuse the app's existing mock datasets wherever they
- * exist (indices, DAX/Nikkei country data, VIX/10Y overview, news, watch-
- * list, sentiment). Entries with no dataset yet (FTSE, EUR/USD, commodities,
- * extra yields, sector day-moves, intraday curves) are local deterministic
- * mock values — same convention as the rest of the mock layer.
+ * This screen no longer builds, generates or parses any data. Every value
+ * arrives as an `OverviewSnapshot` from the application layer and is turned
+ * into display strings by `~/presentation/marketData/viewModels`.
+ *
+ * What used to live here: nine local builders, a mulberry32 generator that
+ * fabricated every sparkline and the whole intraday chart, string parsing of
+ * localized figures, and direct imports of five mock modules.
  */
 
-interface DisplayQuote {
-  id: string
-  label: string
-  value: string
-  changePercent: number
-  icon?: string
+/** Sector glyphs. Decoration keyed by canonical symbol, not data. */
+const SECTOR_ICONS: Record<string, typeof Cpu> = {
+  'sector:technology': Cpu,
+  'sector:communication': Radio,
+  'sector:industrials': Factory,
+  'sector:financials': Landmark,
+  'sector:discretionary': ShoppingBag,
+  'sector:healthcare': Activity,
+  'sector:realestate': Building2,
+  'sector:energy': Flame,
+  'sector:staples': Package,
 }
 
-function seededSeries(seed: number, points: number, drift: number): number[] {
-  let a = seed
-  const next = () => {
-    a |= 0
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-  const out: number[] = []
-  let level = 0
-  for (let i = 0; i < points; i++) {
-    level += (next() - 0.5 + drift) * 0.22
-    out.push(level)
-  }
-  return out
-}
-
-function indexQuote(id: string): DisplayQuote | null {
-  const q = marketIndices.find((quote) => quote.id === id)
-  if (!q) return null
-  return {
-    id,
-    label: q.name,
-    value: formatNumber(q.value, q.precision),
-    changePercent: q.changePercent,
-  }
-}
-
-function parseSignedPercent(text: string): number {
-  const normalized = text.replace('−', '-').replace('%', '').replace(',', '.').trim()
-  return Number.parseFloat(normalized) || 0
-}
-
-function buildMarketCards(): Array<DisplayQuote & { spark: number[] }> {
-  const cards: Array<DisplayQuote & { spark: number[] }> = []
-  const push = (quote: DisplayQuote | null, seed: number) => {
-    if (quote)
-      cards.push({
-        ...quote,
-        spark: seededSeries(seed, 16, quote.changePercent >= 0 ? 0.16 : -0.16),
-      })
-  }
-  push(indexQuote('omxs30'), 3)
-  push(indexQuote('sp500'), 5)
-  const dax = GERMANY_DATA.markets!
-  push(
-    {
-      id: 'dax',
-      label: dax.primaryIndexName,
-      value: dax.primaryIndexValue,
-      changePercent: parseSignedPercent(dax.indexChangeToday),
-    },
-    7,
-  )
-  // FTSE 100 has no country dataset yet — local mock quote.
-  push({ id: 'ftse', label: 'FTSE 100', value: '8 363,95', changePercent: 0.28 }, 11)
-  const nikkei = JAPAN_DATA.markets!
-  push(
-    {
-      id: 'nikkei',
-      label: nikkei.primaryIndexName,
-      value: nikkei.primaryIndexValue,
-      changePercent: parseSignedPercent(nikkei.indexChangeToday),
-    },
-    13,
-  )
-  push(indexQuote('nasdaq'), 17)
-  return cards
-}
-
-/** Right-panel quotes: real where datasets exist, local mock for FX/commodities/crypto. */
-function buildCurrentMarkets(): DisplayQuote[] {
-  const usdsek = indexQuote('usdsek')
-  const bitcoin = indexQuote('bitcoin')
-  return [
-    usdsek
-      ? { ...usdsek, icon: '🇺🇸' }
-      : { id: 'usdsek', label: 'USD/SEK', value: '10,4127', changePercent: 0.19, icon: '🇺🇸' },
-    { id: 'eurusd', label: 'EUR/USD', value: '1,0812', changePercent: -0.15, icon: '🇪🇺' },
-    { id: 'brent', label: 'Brent Olja', value: '65,72', changePercent: 0.38, icon: '🛢️' },
-    { id: 'gold', label: 'Guld (USD/oz)', value: '2 385,40', changePercent: 0.27, icon: '🥇' },
-    bitcoin
-      ? { ...bitcoin, label: 'Bitcoin (USD)', icon: '₿' }
-      : { id: 'bitcoin', label: 'Bitcoin (USD)', value: '71 386,25', changePercent: 1.18, icon: '₿' },
-  ]
-}
-
-/** 10Y U.S. from the real overview dataset; the rest are local mock yields. */
-function buildRates(): Array<{ label: string; value: string; change: string; negative: boolean }> {
-  const us10 = GLOBAL_MARKET_OVERVIEW.find((i) => i.id === '10y-us-yield')
-  return [
-    {
-      label: '10Y U.S. Yield',
-      value: us10?.value ?? '4,32%',
-      change: us10?.change ?? '+0,00 bp',
-      negative: us10?.tone === 'negative',
-    },
-    { label: '10Y Germany Yield', value: '2,48%', change: '−0,04 bp', negative: true },
-    { label: '2Y U.S. Yield', value: '3,91%', change: '+0,01 bp', negative: false },
-    { label: 'Sweden 10Y Yield', value: '2,34%', change: '+0,02 bp', negative: false },
-  ]
-}
-
-/** Sector day-moves — local mock, S&P sector taxonomy. */
-const SECTORS: Array<{ label: string; change: number; icon: typeof Cpu }> = [
-  { label: 'Teknologi', change: 0.81, icon: Cpu },
-  { label: 'Kommunikation', change: 0.68, icon: Radio },
-  { label: 'Industri', change: 0.42, icon: Factory },
-  { label: 'Finans', change: 0.27, icon: Landmark },
-  { label: 'Sällanköp', change: 0.15, icon: ShoppingBag },
-  { label: 'Hälsovård', change: -0.11, icon: Activity },
-  { label: 'Fastigheter', change: -0.18, icon: Building2 },
-  { label: 'Energi', change: -0.36, icon: Flame },
-  { label: 'Dagligvaror', change: -0.47, icon: Package },
+const INTRADAY_SERIES_COLORS = [
+  CATEGORICAL[0],
+  CATEGORICAL[1],
+  CATEGORICAL[2],
+  CATEGORICAL[3],
 ]
 
-const INTRADAY_RANGES = ['1D', '1V', '1M', '3M', '1Å', 'YTD'] as const
-type IntradayRange = (typeof INTRADAY_RANGES)[number]
-
-// Series colours come from the shared, CVD-validated CATEGORICAL palette — no
-// ad-hoc per-screen colours, and OMXS30 is no longer green (which collided with
-// the semantic positive/up green).
-const INTRADAY_SERIES = [
-  { id: 'omxs30', label: 'OMXS30', color: CATEGORICAL[0] },
-  { id: 'sp500', label: 'S&P 500', color: CATEGORICAL[1] },
-  { id: 'dax', label: 'DAX', color: CATEGORICAL[2] },
-  { id: 'nikkei', label: 'Nikkei 225', color: CATEGORICAL[3] },
-]
-
-function buildIntraday(range: IntradayRange) {
-  const rangeSeed = INTRADAY_RANGES.indexOf(range) * 97 + 29
-  const hours = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
-  const points = hours.length * 4 - 3
-  const series = INTRADAY_SERIES.map((s, index) => ({
-    ...s,
-    values: seededSeries(rangeSeed + index * 13, points, 0.08 + index * 0.01),
+/** Legend/series order for "Utveckling idag", matched to the snapshot order. */
+function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
+  const byRange = dataOr(snapshot.intraday, {} as Record<SeriesRange, never[]>)
+  const series = byRange[range] ?? []
+  return series.map((entry, index) => ({
+    id: entry.symbol,
+    label: snapshot.instruments[entry.symbol]?.displayName ?? entry.symbol,
+    color: INTRADAY_SERIES_COLORS[index % INTRADAY_SERIES_COLORS.length] as string,
   }))
-  return Array.from({ length: points }, (_, i) => {
-    const row: Record<string, number | string> = {
-      time: i % 4 === 0 ? (hours[i / 4] ?? '') : '',
-    }
-    for (const s of series) row[s.id] = Number((s.values[i] ?? 0).toFixed(2))
-    return row
-  })
 }
-
-/** Small dotted yield-curve preview under the rates panel. */
-const RATE_CURVE = seededSeries(61, 14, 0.02)
 
 /* ------------------------------------------------------------- sections — */
 
@@ -342,9 +218,11 @@ function useClock(): Date | null {
   return now
 }
 
-function Header() {
+function Header({ asOf }: { asOf: string }) {
   const now = useClock()
-  const ref = now ?? new Date(COUNTRY_MOCK_NOW)
+  // Before mount the snapshot's own timestamp stands in, so the greeting and
+  // date come from real data rather than a frozen mock clock (defect D3).
+  const ref = now ?? new Date(asOf)
   const hour = ref.getHours()
   const greeting = hour < 10 ? 'God morgon' : hour < 18 ? 'God eftermiddag' : 'God kväll'
   const dateText = new Intl.DateTimeFormat('sv-SE', {
@@ -428,16 +306,26 @@ interface IntradayTooltipEntry {
   value?: number
 }
 
+/** Two-decimal series value for the tooltip, matching the chart's own scale. */
+function formatSeriesValue(value: number): string {
+  return new Intl.NumberFormat('sv-SE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 /** Routes the intraday chart's hover through the shared ChartTooltip, on the
  *  Overview's own dark ground — one tooltip component, theme-aware surface. */
 function IntradayTooltip({
   active,
   payload,
   label,
+  series,
 }: {
   active?: boolean
   payload?: IntradayTooltipEntry[]
   label?: string
+  series: Array<{ id: string; label: string; color: string }>
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -445,11 +333,11 @@ function IntradayTooltip({
       surface="overview"
       title={String(label ?? '')}
       rows={payload.map((entry) => {
-        const series = INTRADAY_SERIES.find((s) => s.id === entry.dataKey)
+        const match = series.find((s) => s.id === entry.dataKey)
         return {
-          label: series?.label ?? String(entry.dataKey),
-          value: `${formatNumber(entry.value ?? 0, 2)} %`,
-          color: series?.color,
+          label: match?.label ?? String(entry.dataKey),
+          value: `${formatSeriesValue(entry.value ?? 0)} %`,
+          color: match?.color,
         }
       })}
     />
@@ -480,13 +368,13 @@ function SectionCard({
 
 /* ----------------------------------------------------------------- page — */
 
-export function LightCommandCenter() {
+export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot }) {
   const [mounted, setMounted] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [entry, setEntry] = useState<CountryRegistryEntry | null>(null)
   const [analysis, setAnalysis] = useState<CountryMacroData | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
-  const [range, setRange] = useState<IntradayRange>('1D')
+  const [range, setRange] = useState<SeriesRange>('1d')
 
   useEffect(() => {
     setMounted(true)
@@ -518,17 +406,50 @@ export function LightCommandCenter() {
     }
   }
 
-  const marketCards = buildMarketCards()
-  const currentMarkets = buildCurrentMarkets()
-  const rates = buildRates()
-  const news = getGlobalNewsFeed(4)
-  const intraday = buildIntraday(range)
-  const sentimentPosition = GLOBAL_RISK_SENTIMENT.position
+  // Every figure below is read from the snapshot and formatted by the
+  // presentation layer. Nothing on this screen computes, parses or invents a
+  // financial value any more.
+  const sparklines = dataOr(snapshot.indexSparklines, {})
+  const marketCards = dataOr(snapshot.indices, []).map((quote) => ({
+    ...toQuoteViewModel(quote),
+    spark: toSparklineValues(sparklines[quote.symbol]),
+  }))
+  const currentMarkets = [
+    ...dataOr(snapshot.fx, []),
+    ...dataOr(snapshot.commodities, []),
+    ...dataOr(snapshot.crypto, []),
+  ].map(toMarketRowViewModel)
+  const rates = dataOr(snapshot.yields, []).map(toYieldViewModel)
+  const rateCurve = toYieldCurveValues(
+    hasData(snapshot.yieldCurve) ? snapshot.yieldCurve.data : undefined,
+  )
+  const sectors = dataOr(snapshot.sectors, []).map(toSectorViewModel)
+  const watchlistSparks = dataOr(snapshot.watchlistSparklines, {})
+  const watchlistItems = dataOr(snapshot.watchlist, []).map((quote) =>
+    toWatchlistViewModel(quote, watchlistSparks[quote.symbol]),
+  )
+  // Relative news ages are measured against the snapshot's own generation
+  // time, not a live clock: the labels stay stable between renders and the
+  // page does not silently re-time itself every second.
+  const newsNow = new Date(snapshot.generatedAt)
+  const news = dataOr(snapshot.news, []).map((item) => toNewsViewModel(item, newsNow))
+  const intradaySeries = intradaySeriesMeta(snapshot, range)
+  const intraday = toIntradayRows(dataOr(snapshot.intraday, {} as never)[range] ?? [])
+  const sentimentPosition = hasData(snapshot.sentiment)
+    ? snapshot.sentiment.data.score
+    : 50
+  const sentimentLabel = hasData(snapshot.sentiment)
+    ? snapshot.sentiment.data.label
+    : 'neutral'
 
   const tickerItems = [
-    ...marketCards.map((c) => ({ label: c.label, value: c.value, change: c.changePercent })),
+    ...marketCards.map((c) => ({
+      label: c.label,
+      value: c.value,
+      change: c.changePercent,
+    })),
     ...currentMarkets
-      .filter((c) => ['usdsek', 'eurusd', 'brent'].includes(c.id))
+      .filter((c) => ['fx:usdsek', 'fx:eurusd', 'cmd:brent'].includes(c.id))
       .map((c) => ({ label: c.label, value: c.value, change: c.changePercent })),
   ]
 
@@ -567,7 +488,7 @@ export function LightCommandCenter() {
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
-          <Header />
+          <Header asOf={snapshot.asOf} />
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             {/* Market overview cards. */}
@@ -613,7 +534,10 @@ export function LightCommandCenter() {
               />
               {mounted && (
                 <Suspense fallback={null}>
-                  <LightGlobe onSelectCountry={selectCountry} reducedMotion={reducedMotion} />
+                  <LightGlobe
+                    onSelectCountry={selectCountry}
+                    reducedMotion={reducedMotion}
+                  />
                 </Suspense>
               )}
               {/* Holographic projection platform beneath the globe. */}
@@ -668,7 +592,10 @@ export function LightCommandCenter() {
                         <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                           {row.value}
                         </span>
-                        <ChangeText value={row.changePercent} className="w-14 text-right text-[12px]" />
+                        <ChangeText
+                          value={row.changePercent}
+                          className="w-14 text-right text-[12px]"
+                        />
                       </span>
                     </li>
                   ))}
@@ -679,9 +606,9 @@ export function LightCommandCenter() {
                 title="Sentiment"
                 action={
                   <span className="text-[13px] font-semibold" style={{ color: POSITIVE }}>
-                    {GLOBAL_RISK_SENTIMENT.sentiment === 'risk-on'
+                    {sentimentLabel === 'risk-on'
                       ? 'Risk-on'
-                      : GLOBAL_RISK_SENTIMENT.sentiment === 'risk-off'
+                      : sentimentLabel === 'risk-off'
                         ? 'Risk-off'
                         : 'Neutral'}
                   </span>
@@ -689,8 +616,14 @@ export function LightCommandCenter() {
               >
                 <div className="relative flex h-2 gap-1">
                   {[
-                    '#e0483f', '#ef6a3a', '#f5ad3a', '#e7d43c', '#a9d84a',
-                    '#5fce6a', '#33c06a', '#27d879',
+                    '#e0483f',
+                    '#ef6a3a',
+                    '#f5ad3a',
+                    '#e7d43c',
+                    '#a9d84a',
+                    '#5fce6a',
+                    '#33c06a',
+                    '#27d879',
                   ].map((color) => (
                     <span
                       key={color}
@@ -720,7 +653,7 @@ export function LightCommandCenter() {
                   aria-label="Tidsintervall"
                   className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5"
                 >
-                  {INTRADAY_RANGES.map((r) => (
+                  {SERIES_RANGES.map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -733,7 +666,7 @@ export function LightCommandCenter() {
                           : 'text-[#6b7d90] hover:text-[#c9d6e2]',
                       )}
                     >
-                      {r}
+                      {RANGE_LABELS[r]}
                     </button>
                   ))}
                 </div>
@@ -741,7 +674,10 @@ export function LightCommandCenter() {
             >
               <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={intraday} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+                  <LineChart
+                    data={intraday}
+                    margin={{ top: 4, right: 4, bottom: 0, left: -18 }}
+                  >
                     <CartesianGrid stroke="rgba(70,130,163,0.12)" vertical={false} />
                     <XAxis
                       dataKey="time"
@@ -758,10 +694,10 @@ export function LightCommandCenter() {
                     />
                     <Tooltip
                       cursor={{ stroke: 'rgba(114,164,255,0.4)' }}
-                      content={<IntradayTooltip />}
+                      content={<IntradayTooltip series={intradaySeries} />}
                       isAnimationActive={false}
                     />
-                    {INTRADAY_SERIES.map((s) => (
+                    {intradaySeries.map((s) => (
                       <Line
                         key={s.id}
                         type="monotone"
@@ -779,7 +715,7 @@ export function LightCommandCenter() {
                 </ResponsiveContainer>
               </div>
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-[rgba(70,130,163,0.12)] pt-3">
-                {INTRADAY_SERIES.map((s) => {
+                {intradaySeries.map((s) => {
                   const card = marketCards.find((c) => c.id === s.id)
                   return (
                     <span key={s.id} className="flex items-center gap-2 text-[12px]">
@@ -820,19 +756,22 @@ export function LightCommandCenter() {
                 ))}
               </ul>
               <div className="mt-3 h-10">
-                <Sparkline data={RATE_CURVE} trendUp width={260} height={40} />
+                <Sparkline data={rateCurve} trendUp width={260} height={40} />
               </div>
             </SectionCard>
 
             {/* Sectors. */}
             <SectionCard title="Sektorer (S&P 500)" className="xl:col-span-2">
               <ul className="flex flex-col gap-2">
-                {SECTORS.map((sector) => {
+                {sectors.map((sector) => {
                   const width = Math.min(100, (Math.abs(sector.change) / 0.9) * 100)
-                  const Icon = sector.icon
+                  const Icon = SECTOR_ICONS[sector.id] ?? Cpu
                   return (
                     <li key={sector.label} className="flex items-center gap-2">
-                      <Icon className="h-3 w-3 shrink-0 text-[#6b7d90]" aria-hidden="true" />
+                      <Icon
+                        className="h-3 w-3 shrink-0 text-[#6b7d90]"
+                        aria-hidden="true"
+                      />
                       <span className="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]">
                         {sector.label}
                       </span>
@@ -885,8 +824,7 @@ export function LightCommandCenter() {
                         {item.headline}
                       </p>
                       <p className="mt-1 text-[11px] text-[#697787]">
-                        {item.source} ·{' '}
-                        {formatRelativeTime(item.publishedAt, COUNTRY_MOCK_NOW)}
+                        {item.outlet} · {item.relativeTime}
                       </p>
                     </div>
                   </li>
@@ -908,14 +846,14 @@ export function LightCommandCenter() {
             }
           >
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {watchlist.slice(0, 6).map((item) => (
+              {watchlistItems.map((item) => (
                 <div key={item.id} className={cn(CARD_INNER, CARD_HOVER, 'p-3.5')}>
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="truncate text-[13px] font-semibold text-[#dbe4ee]">
                       {item.name}
                     </p>
                     <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
-                      {formatNumber(item.price, 2)}
+                      {item.price}
                     </span>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-2">
@@ -936,7 +874,10 @@ export function LightCommandCenter() {
         {/* Bottom ticker rail. */}
         <div className="sticky bottom-0 z-20 flex items-center gap-6 overflow-x-auto border-t border-[rgba(70,130,163,0.2)] bg-[rgba(2,7,17,0.94)] px-8 py-2 backdrop-blur-sm">
           {tickerItems.map((item) => (
-            <span key={item.label} className="flex shrink-0 items-center gap-2 text-[12px]">
+            <span
+              key={item.label}
+              className="flex shrink-0 items-center gap-2 text-[12px]"
+            >
               <span
                 aria-hidden="true"
                 className="h-1.5 w-1.5 rounded-full"
@@ -953,13 +894,10 @@ export function LightCommandCenter() {
             </span>
           ))}
           <span className="ml-auto shrink-0 text-[11px] text-[#5a6a7c]">
-            Data uppdaterad{' '}
-            {mounted
-              ? new Intl.DateTimeFormat('sv-SE', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }).format(new Date())
-              : '––:––'}
+            {/* The true data timestamp: the oldest asOf across the snapshot's
+                categories, not render time (defects D5/D10). Same HH:MM format
+                and position; only the value's source changed. */}
+            Data uppdaterad {formatDataFreshness(snapshot.asOf)}
           </span>
         </div>
       </main>
