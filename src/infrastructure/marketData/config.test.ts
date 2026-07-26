@@ -12,6 +12,9 @@ import { createContainer } from './container'
 import { canonicalSymbol } from '~/domain/market'
 
 const BASE: EnvSource = { MARKETDATA_MODE: 'fixture' }
+/** Credential and chain behaviour is only observable where network providers
+ *  are permitted at all — fixture mode strips them by design (D18). */
+const HYBRID: EnvSource = { MARKETDATA_MODE: 'hybrid' }
 
 describe('loadMarketDataConfig', () => {
   it('defaults to fixture mode with no environment at all', () => {
@@ -35,7 +38,7 @@ describe('loadMarketDataConfig', () => {
 
   it('drops a provider whose key is missing, with a warning, instead of throwing', () => {
     const config = loadMarketDataConfig({
-      ...BASE,
+      ...HYBRID,
       MARKETDATA_CHAIN_NEWS: 'marketaux,fixture',
     })
     expect(config.chains.news).toEqual(['fixture'])
@@ -44,7 +47,7 @@ describe('loadMarketDataConfig', () => {
 
   it('keeps a provider once its key is present', () => {
     const config = loadMarketDataConfig({
-      ...BASE,
+      ...HYBRID,
       MARKETDATA_CHAIN_NEWS: 'marketaux,fixture',
       MARKETAUX_API_KEY: 'abc123',
     })
@@ -52,14 +55,14 @@ describe('loadMarketDataConfig', () => {
   })
 
   it('keeps keyless providers without any credential', () => {
-    const config = loadMarketDataConfig(BASE)
+    const config = loadMarketDataConfig(HYBRID)
     expect(config.chains.fx).toEqual(['frankfurter', 'fixture'])
     expect(config.chains.crypto).toEqual(['coingecko', 'fixture'])
   })
 
   it('ignores an unknown provider id with a warning', () => {
     const config = loadMarketDataConfig({
-      ...BASE,
+      ...HYBRID,
       MARKETDATA_CHAIN_FX: 'bloomberg,fixture',
     })
     expect(config.chains.fx).toEqual(['fixture'])

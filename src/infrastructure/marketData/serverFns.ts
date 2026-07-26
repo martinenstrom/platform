@@ -46,12 +46,14 @@ async function getContainer(): Promise<Container> {
 
   /**
    * Network providers are REGISTERED conditionally rather than merely failing
-   * their calls. With `MARKETDATA_DISABLE_NETWORK=true` the adapter is never
-   * wired at all, so there is nothing to accidentally invoke — a stronger
-   * guarantee than a runtime guard alone, and what makes the CI no-network
-   * rule structural.
+   * their calls. In `fixture` mode, or with `MARKETDATA_DISABLE_NETWORK=true`,
+   * no adapter is wired at all — so there is nothing to invoke by accident,
+   * no external request is possible, and no provider budget can be consumed.
+   *
+   * A stronger guarantee than a runtime guard, and what makes "a clean
+   * checkout is fully offline" structural rather than aspirational.
    */
-  const networkProviders = config.disableNetwork
+  const networkProviders = !config.allowNetworkProviders
     ? []
     : [
         {

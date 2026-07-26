@@ -14,6 +14,20 @@
 
 import type { DataCategory } from '~/application/marketData/ports'
 
+/**
+ * Deployment posture. Each mode has one meaning, and all three are testable:
+ *
+ *   fixture  fixture providers only. **No network provider is registered**,
+ *            so no external request can be made and no provider budget can be
+ *            consumed. This is the default, so a clean checkout is fully
+ *            offline.
+ *   hybrid   live providers first, fixture fallback where policy allows.
+ *   live     live providers only; no fixture fallback where policy disallows.
+ *
+ * Before this was explicit, `fixture` only governed whether fixtures were
+ * *permitted* — live providers were still attempted, so a fresh clone would
+ * call an external API on first page load.
+ */
 export type MarketDataMode = 'fixture' | 'hybrid' | 'live'
 
 /**
@@ -36,6 +50,23 @@ export interface MarketDataConfig {
   mode: MarketDataMode
   /** True only in `live`. Drives `allowFixture: 'non-production'`. */
   production: boolean
+  /**
+   * Whether any network provider may be registered at all.
+   *
+   * False in `fixture` mode and whenever `MARKETDATA_DISABLE_NETWORK` is set.
+   * The composition root reads this and simply does not wire network adapters,
+   * which is a stronger guarantee than a runtime guard: there is nothing left
+   * to invoke by accident.
+   */
+  allowNetworkProviders: boolean
+  /**
+   * Maximum number of concurrent instances sharing a provider quota.
+   *
+   * A conservative temporary guard, NOT a correctness guarantee — see the
+   * warnings in `checkQuotaSafety`. Must be set to the maximum possible
+   * concurrent count, not the current one.
+   */
+  instanceCount: number
   cacheDir: string
   persistCache: boolean
   /** Hard-fails any outbound call. Set true in CI and tests. */
@@ -145,6 +176,16 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
 
   const mode = parseMode(env.MARKETDATA_MODE)
   const production = mode === 'live'
+  const disableNetwork = parseBoolean(
+    env.MARKETDATA_DISABLE_NETWORK,
+    false,
+    'MARKETDATA_DISABLE_NETWORK',
+  )
+  // Fixture mode is fully offline: not "fixtures are allowed", but "no
+  // network provider exists".
+  const allowNetworkProviders = mode !== 'fixture' && !disableNetwork
+  const instanceCount =
+    parseInteger(env.MARKETDATA_INSTANCE_COUNT, 'MARKETDATA_INSTANCE_COUNT') ?? 1
 
   const credentials: Record<string, ProviderCredential> = {}
   for (const [providerId, envVar] of Object.entries(PROVIDER_KEY_ENV)) {
@@ -171,6 +212,11 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
         warnings.push(
           `Provider "${providerId}" dropped from ${category}: ${credential.envVar} is not set.`,
         )
+        return false
+      }
+      if (providerId !== 'fixture' && !allowNetworkProviders) {
+        // Not a warning: in fixture mode this is the intended state, and
+        // warning on every category would train people to ignore warnings.
         return false
       }
       return true
@@ -203,6 +249,8 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
   return {
     mode,
     production,
+    allowNetworkProviders,
+    instanceCount,
     timeouts,
     defaultTimeoutMs:
       parseInteger(env.MARKETDATA_TIMEOUT_MS, 'MARKETDATA_TIMEOUT_MS') ?? 5_000,
@@ -212,11 +260,7 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
       false,
       'MARKETDATA_PERSIST_CACHE',
     ),
-    disableNetwork: parseBoolean(
-      env.MARKETDATA_DISABLE_NETWORK,
-      false,
-      'MARKETDATA_DISABLE_NETWORK',
-    ),
+    disableNetwork,
     chains,
     credentials,
     limits,
