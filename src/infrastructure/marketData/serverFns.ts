@@ -25,7 +25,12 @@ let cached: Container | null = null
  * without touching the environment, and memoised so the in-process cache and
  * provider health survive between requests.
  */
-async function getContainer(): Promise<Container> {
+/**
+ * The process-wide container. Exported so the health and metrics endpoints
+ * read the SAME instance the pipeline uses — a separate container would report
+ * on breakers and budgets nobody is using.
+ */
+export async function getContainer(): Promise<Container> {
   if (cached) return cached
   const [
     { createContainer },

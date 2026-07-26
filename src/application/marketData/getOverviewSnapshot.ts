@@ -61,6 +61,15 @@ export interface OverviewSnapshot {
   /** Reference data for every symbol referenced above. */
   instruments: Record<CanonicalSymbol, InstrumentRef>
 
+  /**
+   * The request chain this snapshot belongs to.
+   *
+   * Not rendered. It exists so a reported problem can be traced to exact log
+   * lines, and so future support or tracing surfaces have something to join
+   * on. Deliberately never used as a metric label — it is unbounded, and a
+   * label is a time series.
+   */
+  correlationId: string
   /** Oldest `asOf` across populated categories. Never the newest, never a mean. */
   asOf: string
   generatedAt: string
@@ -74,6 +83,8 @@ export interface OverviewSnapshot {
  * name a provider, a cache or an HTTP client.
  */
 export interface OverviewDataSource {
+  /** The correlation id every category in this snapshot was resolved under. */
+  correlationId(): string
   quotes(symbols: readonly CanonicalSymbol[]): Promise<Envelope<MarketQuote[]>>
   fx(symbols: readonly CanonicalSymbol[]): Promise<Envelope<MarketQuote[]>>
   commodities(symbols: readonly CanonicalSymbol[]): Promise<Envelope<MarketQuote[]>>
@@ -223,6 +234,7 @@ export async function getOverviewSnapshot(
     watchlist,
     watchlistSparklines,
     instruments,
+    correlationId: source.correlationId(),
     asOf: oldestAsOf(categories, now),
     generatedAt: now,
     hasDegradedCategory: categories.some(isDegradedEnvelope),

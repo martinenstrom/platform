@@ -9,6 +9,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { FakeClock } from '~/domain/shared/clock'
+import { SeededRandom } from '~/domain/shared/random'
 import { hasData } from '~/domain/market'
 import { getOverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
 import { loadMarketDataConfig } from './config'
@@ -81,6 +82,9 @@ describe('a clean checkout is fully offline', () => {
       const container = createContainer({
         env: {},
         clock: new FakeClock('2026-07-26T12:00:00.000Z'),
+        // Correlation ids are per-request by design, so determinism here means
+        // pinning the RNG as well as the clock.
+        random: new SeededRandom(1),
         providers: [{ provider: createFixtureProvider(), capabilities: ALL_CAPS }],
       })
       return getOverviewSnapshot(createOverviewDataSource(container))

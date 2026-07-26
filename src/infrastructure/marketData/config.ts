@@ -79,6 +79,24 @@ export interface MarketDataConfig {
   /** Per-provider request deadline; falls back to `defaultTimeoutMs`. */
   timeouts: Record<string, number>
   defaultTimeoutMs: number
+  logLevel: 'debug' | 'info' | 'warn' | 'error'
+  /** Log 1 in N routine successes. 1 logs all, 0 disables successful logs. */
+  logSuccessSampleRate: number
+  /**
+   * Whether the health endpoint may answer at all.
+   *
+   * Defaults to true in fixture mode (local diagnostics) and **false in hybrid
+   * and live**, because the payload reveals provider topology, availability
+   * and quota state. That is internal operational information even though it
+   * contains no credentials.
+   */
+  healthEnabled: boolean
+  /**
+   * Whether an operator token is configured. The VALUE is never stored here —
+   * the endpoint reads it from the environment at call time, so it cannot be
+   * serialized, logged or returned with the config object.
+   */
+  healthTokenPresent: boolean
   /** Non-fatal problems found while reading the environment. */
   warnings: string[]
 }
@@ -163,6 +181,16 @@ function parseInteger(raw: string | undefined, name: string): number | null {
     throw new Error(`${name} must be a positive integer, received "${raw}"`)
   }
   return value
+}
+
+function parseLogLevel(raw: string | undefined): 'debug' | 'info' | 'warn' | 'error' {
+  const value = (raw ?? 'info').trim()
+  if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
+    return value
+  }
+  throw new Error(
+    `MARKETDATA_LOG_LEVEL must be one of debug|info|warn|error, received "${raw ?? ''}"`,
+  )
 }
 
 function parseChain(raw: string | undefined, fallback: string[]): string[] {
@@ -290,9 +318,31 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
     if (parsed !== null) timeouts[providerId] = parsed
   }
 
+  const rawSample = parseInteger(
+    env.MARKETDATA_LOG_SUCCESS_SAMPLE,
+    'MARKETDATA_LOG_SUCCESS_SAMPLE',
+  )
+  // 0 is a meaningful setting ("no successful logs") that parseInteger rejects
+  // as non-positive, so it is read separately rather than loosening that guard.
+  const explicitZero = (env.MARKETDATA_LOG_SUCCESS_SAMPLE ?? '').trim() === '0'
+  const logSuccessSampleRate = explicitZero ? 0 : (rawSample ?? 20)
+
+  const logLevel = parseLogLevel(env.MARKETDATA_LOG_LEVEL)
+  const healthEnabled = parseBoolean(
+    env.MARKETDATA_HEALTH_ENABLED,
+    // Local diagnostics by default; closed by default anywhere that can reach
+    // a real provider.
+    mode === 'fixture',
+    'MARKETDATA_HEALTH_ENABLED',
+  )
+
   return {
     mode,
     production,
+    logLevel,
+    logSuccessSampleRate,
+    healthEnabled,
+    healthTokenPresent: (env.MARKETDATA_HEALTH_TOKEN ?? '').trim().length > 0,
     allowNetworkProviders,
     instanceCount,
     timeouts,

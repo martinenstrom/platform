@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { FakeClock } from '~/domain/shared/clock'
+import { SeededRandom } from '~/domain/shared/random'
 import { getOverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
 import { hasData, type Envelope } from '~/domain/market'
 import { createContainer } from '../container'
@@ -29,6 +30,8 @@ function snapshotAt(iso: string) {
   const container = createContainer({
     env: {},
     clock: new FakeClock(iso),
+    // Pinned so the per-request correlationId is reproducible too.
+    random: new SeededRandom(1),
     providers: [{ provider: createFixtureProvider(), capabilities: CAPABILITIES }],
   })
   return getOverviewSnapshot(createOverviewDataSource(container))

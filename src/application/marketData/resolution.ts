@@ -160,6 +160,9 @@ async function resolveUncoordinated<T>(
   if (cached) {
     if (cached.expiresAtMs > nowMs) {
       deps.metrics.increment(METRIC.cacheHit, labels)
+      // Counted here too, so `resolution` totals every completed resolution
+      // and a hit ratio can be derived against it.
+      deps.metrics.increment(METRIC.resolution, { ...labels, state: 'ok' })
       log('cache-hit', {
         providerId: cached.provenance.source.providerId,
         quality: cached.provenance.quality,
@@ -178,6 +181,7 @@ async function resolveUncoordinated<T>(
       // single-flight key, so repeated loads cannot stack refreshes.
       deps.metrics.increment(METRIC.cacheStaleHit, labels)
       deps.metrics.increment(METRIC.cacheRevalidate, labels)
+      deps.metrics.increment(METRIC.resolution, { ...labels, state: 'stale' })
       void revalidate(deps, request, ttlMs)
       log('stale-served', {
         providerId: provenance.source.providerId,

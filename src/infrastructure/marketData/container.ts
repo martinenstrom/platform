@@ -19,7 +19,7 @@ import {
   type ResolutionCache,
 } from '~/application/marketData/providerRegistry'
 import type { ProviderRegistration } from '~/application/marketData/ports'
-import { noopMetrics, type Metrics } from '~/application/marketData/metrics'
+import { METRIC, type Metrics } from '~/application/marketData/metrics'
 import {
   summarizeHealth,
   type CategoryHealth,
@@ -41,6 +41,7 @@ import { DEFAULT_RETRY, type RetryOptions } from './resilience/retry'
 import { attemptProvider, type AttemptDeps } from './attempt'
 import type { RunAttempt } from '~/application/marketData/resolution'
 import { createLogger } from './logging'
+import { createMetricsRegistry, type MetricsRegistry } from './metrics/registry'
 import {
   checkCacheSharing,
   checkLiveReadiness,
@@ -53,6 +54,12 @@ import type { DataCategory } from '~/application/marketData/ports'
 
 export interface Container {
   config: MarketDataConfig
+  /**
+   * Present when the container owns an in-memory recorder, which is what the
+   * Prometheus exporter and health both read. Absent when metrics were
+   * injected (tests) or disabled.
+   */
+  metricsRegistry?: MetricsRegistry
   registry: ProviderRegistry
   cache: ResolutionCache
   store: CacheStore
@@ -87,18 +94,30 @@ export interface ContainerOverrides {
 export function createContainer(overrides: ContainerOverrides = {}): Container {
   const clock = overrides.clock ?? systemClock
   const random = overrides.random ?? systemRandom
-  const metrics = overrides.metrics ?? noopMetrics
+  // An in-memory recorder by default, so the platform is observable without
+  // any external dependency. Per-instance and reset on restart -- see
+  // `metrics/registry.ts` for the limitations this implies.
+  const metricsRegistry = overrides.metrics ? undefined : createMetricsRegistry()
+  const metrics: Metrics = overrides.metrics ?? metricsRegistry!
   const config =
     overrides.config ?? loadMarketDataConfig(overrides.env ?? (process.env as never))
 
   // No credential values are passed: `config` never holds one, and the
   // logger's allowlist means it could not emit one anyway.
-  const logger = overrides.logger ?? createLogger()
+  const logger =
+    overrides.logger ??
+    createLogger({
+      level: config.logLevel,
+      successSampleRate: config.logSuccessSampleRate,
+    })
 
   const store = overrides.store ?? new MemoryCacheStore(clock)
   const cache = new TieredCache(store, overrides.persistentStore)
   const registry = createProviderRegistry(overrides.providers ?? [])
-  const singleFlight = new SingleFlight()
+  // Join events are the useful reading: "requests this saved".
+  const singleFlight = new SingleFlight(() =>
+    metrics.increment(METRIC.singleFlightShared),
+  )
   const breakers = new CircuitBreakerRegistry(clock, DEFAULT_BREAKER)
   const budget = new DailyBudget(overrides.persistentStore ?? store, clock)
   const retry = overrides.retry ?? DEFAULT_RETRY
@@ -128,7 +147,12 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
     retry,
   }
 
-  const runAttempt: RunAttempt = (args) => attemptProvider(attemptDeps, args)
+  const lastLatencyMs = new Map<string, number>()
+  const runAttempt: RunAttempt = async (args) => {
+    const outcome = await attemptProvider(attemptDeps, args)
+    if (outcome.kind === 'success') lastLatencyMs.set(args.providerId, outcome.latencyMs)
+    return outcome
+  }
 
   for (const warning of config.warnings) logger.warn(warning)
   for (const issue of checkLiveReadiness(config)) {
@@ -163,6 +187,7 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
       const limit = config.limits[providerId]?.requestsPerDay ?? null
       providers.push({
         providerId,
+        lastLatencyMs: lastLatencyMs.get(providerId) ?? null,
         ...breakers.snapshot(providerId),
         budget: await budget.status(providerId, limit),
         rateLimit: {
@@ -194,11 +219,26 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
       }
     })
 
-    return summarizeHealth(providers, categories, clock.now().toISOString())
+    return summarizeHealth(providers, categories, clock.now().toISOString(), {
+      // Says plainly whether the budget figures above are global or local to
+      // this process. Without it, an instance-local count reads as a global
+      // quota position, which is exactly the wrong conclusion to draw.
+      sharedBudget: cache.isShared,
+      ...(metricsRegistry
+        ? {
+            metrics: {
+              scope: 'instance' as const,
+              seriesCount: metricsRegistry.snapshot().length,
+              droppedWrites: metricsRegistry.droppedWrites(),
+            },
+          }
+        : {}),
+    })
   }
 
   return {
     config,
+    ...(metricsRegistry ? { metricsRegistry } : {}),
     registry,
     cache,
     store,

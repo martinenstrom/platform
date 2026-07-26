@@ -20,7 +20,11 @@ import type { Random } from '~/domain/shared/random'
 import type { CorrelationId } from '~/domain/shared/correlation'
 import type { DomainError, ErrorCode } from '~/domain/market'
 import type { FetchContext } from '~/application/marketData/ports'
-import { METRIC, type Metrics } from '~/application/marketData/metrics'
+import {
+  BREAKER_STATE_VALUE,
+  METRIC,
+  type Metrics,
+} from '~/application/marketData/metrics'
 import type { DailyBudget } from './resilience/budget'
 import type { CircuitBreakerRegistry } from './resilience/circuitBreaker'
 import type { TokenBucket } from './resilience/tokenBucket'
@@ -69,6 +73,27 @@ function toDomainError(error: unknown, providerId: string): DomainError {
   }
 }
 
+/**
+ * Publishes the latest known budget state for a provider.
+ *
+ * These gauges are **instance-local unless the cache store is shared**. They
+ * describe what this process has spent, which is not the global quota position
+ * in a multi-instance deployment — `MarketDataHealth.sharedBudget` says which
+ * of the two you are looking at.
+ */
+async function recordBudget(
+  deps: AttemptDeps,
+  providerId: string,
+  limit: number | null,
+): Promise<void> {
+  if (limit === null) return
+  const status = await deps.budget.status(providerId, limit)
+  deps.metrics.gauge(METRIC.budgetUsed, status.used, { provider: providerId })
+  if (status.remaining !== null) {
+    deps.metrics.gauge(METRIC.budgetRemaining, status.remaining, { provider: providerId })
+  }
+}
+
 function skip(providerId: string, reason: SkipReason): AttemptOutcome<never> {
   const message: Record<SkipReason, string> = {
     'circuit-open': `Provider ${providerId} is circuit-open`,
@@ -108,6 +133,11 @@ export async function attemptProvider<T>(
 
   // 1 — breaker. Checked once, before anything is spent.
   const breakerState = deps.breakers.state(providerId)
+  // Emitted on every attempt so the gauge reflects the latest known state
+  // rather than only changing on a transition.
+  deps.metrics.gauge(METRIC.breakerState, BREAKER_STATE_VALUE[breakerState], {
+    provider: providerId,
+  })
   if (breakerState === 'open') {
     deps.metrics.increment(METRIC.providerSkipped, { ...labels, reason: 'circuit-open' })
     return skip(providerId, 'circuit-open')
@@ -134,6 +164,7 @@ export async function attemptProvider<T>(
     // 2 — budget, reserved BEFORE the call so a crash costs a unit rather
     //     than allowing an overdraft. Re-entered on every retry.
     if (!(await deps.budget.reserve(providerId, budgetLimit))) {
+      await recordBudget(deps, providerId, budgetLimit)
       deps.metrics.increment(METRIC.providerSkipped, {
         ...labels,
         reason: 'budget-exhausted',
@@ -142,6 +173,8 @@ export async function attemptProvider<T>(
         ? { kind: 'failed', error: lastError, attempts: attempt - 1 }
         : skip(providerId, 'budget-exhausted')
     }
+
+    await recordBudget(deps, providerId, budgetLimit)
 
     // 3 — rate limit. Non-blocking: an exhausted bucket skips the provider
     //     rather than queueing, because stale-now beats fresh-in-nine-seconds.

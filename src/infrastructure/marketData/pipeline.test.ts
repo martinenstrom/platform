@@ -313,6 +313,7 @@ describe('category isolation', () => {
       watchlistSparklines: async () => ok({}),
       intraday: async () => ok({} as never),
       now: () => clock.now(),
+      correlationId: () => 'test-correlation',
     })
 
     expect(snapshot.indices.state).toBe('error')

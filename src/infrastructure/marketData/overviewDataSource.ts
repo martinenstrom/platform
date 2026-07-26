@@ -117,6 +117,7 @@ export function createOverviewDataSource(
 
   return {
     now: () => container.clock.now(),
+    correlationId: () => correlationId,
 
     quotes: (symbols) =>
       quoteLike('equity-index-intl', 'quotes', symbols, (p: QuoteProvider, s, ctx) =>

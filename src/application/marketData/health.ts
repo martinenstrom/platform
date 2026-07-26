@@ -27,6 +27,8 @@ export interface RateLimitStatus {
 
 export interface ProviderHealth {
   providerId: string
+  /** Latency of the most recent completed call, when one has happened. */
+  lastLatencyMs: number | null
   state: BreakerState
   consecutiveFailures: number
   lastSuccessAt: string | null
@@ -50,6 +52,27 @@ export interface CategoryHealth {
 
 export interface MarketDataHealth {
   /**
+   * Always `'instance'` for now.
+   *
+   * Breaker state and metrics live in process memory, and the budget is only
+   * global when `sharedBudget` is true. Describing this as system-wide health
+   * in a multi-instance deployment would be a claim the data cannot support.
+   */
+  scope: 'instance'
+  /**
+   * Whether provider budgets are counted in a store shared across instances.
+   *
+   * False means the budget figures describe THIS process only, so the global
+   * quota position is unknown from here.
+   */
+  sharedBudget: boolean
+  /** Metrics recorder state, for diagnosing gaps in what was captured. */
+  metrics?: {
+    scope: 'instance'
+    seriesCount: number
+    droppedWrites: { invalidLabel: number; capacity: number; invalidValue: number }
+  }
+  /**
    * `degraded` — at least one category cannot reach a live provider.
    * `critical` — at least one category is `unavailable`: no live provider, no
    *              acceptable stale value, and fixtures forbidden by policy.
@@ -66,6 +89,10 @@ export function summarizeHealth(
   providers: ProviderHealth[],
   categories: CategoryHealth[],
   checkedAt: string,
+  context: {
+    sharedBudget: boolean
+    metrics?: MarketDataHealth['metrics']
+  } = { sharedBudget: false },
 ): MarketDataHealth {
   const unservable = categories
     .filter((entry) => entry.bestAvailable === 'unavailable')
@@ -77,5 +104,14 @@ export function summarizeHealth(
       ? 'degraded'
       : 'healthy'
 
-  return { status, checkedAt, providers, categories, unservableCategories: unservable }
+  return {
+    scope: 'instance',
+    sharedBudget: context.sharedBudget,
+    ...(context.metrics ? { metrics: context.metrics } : {}),
+    status,
+    checkedAt,
+    providers,
+    categories,
+    unservableCategories: unservable,
+  }
 }

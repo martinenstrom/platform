@@ -353,7 +353,12 @@ describe('logging redaction', () => {
 
   it('emits only allowlisted fields', () => {
     const records: Array<Record<string, unknown>> = []
-    const logger = createLogger({ sink: (record) => records.push(record) })
+    // successSampleRate 1 disables sampling; this test is about which FIELDS
+    // are emitted, not about whether the record is sampled.
+    const logger = createLogger({
+      sink: (record) => records.push(record),
+      successSampleRate: 1,
+    })
     logger.resolution({
       correlationId: 'abc',
       category: 'fx',

@@ -1856,3 +1856,150 @@ The 5-day ceiling is a **wall-clock approximation** of "a few missed TARGET
 business days". It is deliberately not a holiday calendar: no TARGET calendar
 is introduced in Phase 2. A publication-calendar-aware freshness model may
 replace it later.
+
+---
+
+---
+
+# Part VI — Phase 3.5: operational readiness
+
+Approved 2026-07-26. Completes the observability contracts Phase 1 declared
+but left unwired. No market data, no provider, no UI, no visual change.
+
+## 34. What Phase 1 left dead
+
+An audit before implementing found the gap was larger than "add an exporter":
+
+| Declared in Phase 1 | State before Phase 3.5                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `Metrics` port      | only `noopMetrics` — every call went nowhere                                                                                          |
+| 15 metric names     | 11 had call sites; `breakerState`, `budgetUsed`, `budgetRemaining`, `singleFlightShared` had **none** — the quota and breaker signals |
+| `MarketDataHealth`  | computed by `container.health()`, which nothing ever called                                                                           |
+| `CorrelationId`     | reached the pipeline and logs, then stopped; no operator could obtain one                                                             |
+| Prometheus / OTel   | no exporter, no mapping, no naming decision                                                                                           |
+
+## 35. Metric naming and the exporter boundary (D24)
+
+Internal names are dotted and OTel-native (`marketdata.provider.latency_ms`).
+Prometheus requires `[a-zA-Z_:][a-zA-Z0-9_:]*`, so translation happens **at the
+exporter**, not in the pipeline — neither vendor's convention becomes the
+internal truth, and adopting an SDK later needs no rename.
+
+Normalization is lossy: `a.b` and `a_b` both become `a_b`. That would silently
+merge two unrelated series on a dashboard, so `findNameCollisions` detects it
+and `renderPrometheus` **throws** rather than emitting corrupt output. A test
+asserts the real catalog is collision-free.
+
+The renderer handles valid names, label-name validation, label-value escaping
+(`\`, `"`, newline), `# HELP` / `# TYPE` once per family, cumulative buckets,
+`+Inf`, `_sum`, `_count`, and deterministic ordering.
+
+## 36. Cardinality is the safety property
+
+A label is a time series, so unbounded label values are the one way this
+subsystem can become the outage it is meant to diagnose.
+
+Label **keys** come from a fixed allowlist: `provider`, `capability`,
+`category`, `outcome`, `state`, `reason`, `attempt`. Label **values** must be
+≤ 48 chars and match `[A-Za-z0-9_.:-]+`, and are additionally rejected when
+they _look_ like unbounded data — a URL, a joined symbol list, a timestamp, a
+correlation id or hash, a cache key. Shape checks run before the character
+check so the rejection reason is actionable.
+
+A rejected label **drops the whole write** and increments a diagnostic counter;
+it is never silently sanitized into a different series. Validation returns
+rather than throws, because a metrics call must never be able to fail a
+market-data request.
+
+`correlationId` is barred from labels permanently. It is a log field, and may
+become a metric **exemplar** only once an exporter that supports exemplars is
+chosen. The text renderer emits none.
+
+## 37. Recorder lifecycle and limits
+
+- **Per instance. Reset on restart. Not suitable for long-term trending.** It
+  answers "what is happening now?" — trending needs scraping into an external
+  store, which is what the renderer enables and this phase stops short of.
+- All state is bounded: series capped at `MAX_SERIES` (2 000), histograms keep
+  bucket counts rather than raw observations, and the rejection list is capped.
+- Counters only increase; negative increments are rejected. Gauges overwrite.
+  Negative observations are rejected — a negative latency is a clock problem.
+- `snapshot()` deep-copies and sorts, so callers cannot mutate internal state
+  and serialization is byte-stable.
+- `resetForTests()` exists for tests only.
+- Increments cannot be lost: a single JavaScript process has no preemption
+  between the read and the write.
+
+## 38. Histogram buckets (D28)
+
+Fixed at `10, 25, 50, 100, 250, 500, 1000, 2500, 5000, +Inf` ms. An observation
+exactly on a boundary lands in that bucket, matching Prometheus `le`
+semantics. These may be tuned from real operational data later; they are
+deliberately not runtime-configurable, because a histogram whose buckets change
+is a histogram whose history cannot be compared.
+
+## 39. The four formerly dead signals
+
+| Signal                             | Semantics                                                                                                                                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `budget.used` / `budget.remaining` | Latest known state, emitted on every reservation so burn is visible before exhaustion. **Instance-local unless the cache store is shared** — `MarketDataHealth.sharedBudget` says which. |
+| `breaker.state`                    | Gauge with a documented mapping: `0` closed, `1` half-open, `2` open. Ordered by severity, so `max()` is meaningful. Emitted every attempt, not only on transitions.                     |
+| `singleflight.shared`              | Counter of **join events** — callers that attached to work already running. Consistently "requests this saved", never "distinct keys shared".                                            |
+
+Each needs a condition fixture-only mode never produces (fixtures are never
+cached, carry no budget, and sequential calls never overlap), so tests drive
+them deliberately rather than inferring from a fixture run.
+
+## 40. Health exposure and authorization (D25)
+
+The payload carries no credentials but does reveal operational topology, so:
+
+| Mode              | Default                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `fixture` / local | open, for development diagnostics                                                                 |
+| `hybrid` / `live` | **disabled** unless `MARKETDATA_HEALTH_ENABLED=true`, and then requires `MARKETDATA_HEALTH_TOKEN` |
+
+The token value is **never stored on the config object** — only its presence.
+The endpoint reads it from the environment at call time, so it cannot be
+serialized, logged or returned by accident. Comparison is length-independent.
+An unauthorized call returns `{ status: 'unavailable' }`, indistinguishable
+between "disabled" and "wrong token" and carrying no provider information: a
+probe must not learn the topology from the shape of a refusal. Nothing is
+cached — a cached health response is a stale answer to a question only asked
+because something might be wrong.
+
+**The token is a narrowly scoped temporary measure, not an authorization
+model.** When this application has real authentication, these endpoints move
+behind it.
+
+## 41. Health scope semantics
+
+`MarketDataHealth` now carries `scope: 'instance'`, `sharedBudget`, and
+optional `metrics` recorder state; `ProviderHealth` carries `lastLatencyMs`.
+In-memory health is never described as global system health: breaker state and
+metrics are process-local, and the budget is global only when `sharedBudget` is
+true.
+
+## 42. Logging (D27)
+
+Allowlist and redaction unchanged. Added: levels
+(`MARKETDATA_LOG_LEVEL`), bounded field lengths, a pluggable sink, and
+**deterministic sampling**.
+
+Always logged in full: failures, skips, stale serves, fixture serves, errors —
+anything an operator would want every instance of. Routine successes are
+sampled 1-in-N (`MARKETDATA_LOG_SUCCESS_SAMPLE`, default 20; `1` logs all, `0`
+disables). The decision is a stable FNV-1a hash of
+`correlationId:outcome:providerId`, never `Math.random()`, so every line
+belonging to one resolution is sampled together and tests are reproducible.
+
+A sink failure never fails a request, and is reported **out-of-band** through
+`onSinkError` — never back through the failing sink, which would recurse into
+the failure it is reporting.
+
+## 43. OpenTelemetry mapping (D29)
+
+No SDK added. The mapping is 1:1 and documented in `metrics/prometheus.ts`:
+`increment → Counter.add`, `observe → Histogram.record`,
+`gauge → ObservableGauge`, labels → attributes verbatim. Future integrations
+are adapters over this port, not changes to the pipeline.
