@@ -2207,3 +2207,317 @@ Two rules it should keep, both learned in earlier phases:
 
 The natural home is a derived field on the envelope, computed at resolution
 time from data already present — no new domain model, and no adapter change.
+
+---
+
+---
+
+# Part IX — Central bank policy rates (future module)
+
+**Status: documentation only.** No domain model, no provider, no wiring, no UI.
+Nothing in Part IX is implemented. The endpoints below were probed live on
+2026-07-26 to establish that the proposal is buildable, not to build it.
+
+## 54. Two domains, not one
+
+The product must carry both perspectives and must never let one stand in for
+the other.
+
+|               | Government yields (Part VIII, built)            | Central bank policy rates (future)      |
+| ------------- | ----------------------------------------------- | --------------------------------------- |
+| Represents    | how the bond market prices growth and inflation | what the monetary authority has decided |
+| Set by        | continuous market trading                       | a committee, at scheduled meetings      |
+| Changes       | every business day                              | a handful of times per year, in steps   |
+| Answers       | curve shape, term structure, borrowing costs    | policy stance, guidance, next decision  |
+| Domain module | `domain/market/rates.ts`                        | future `domain/policy/`                 |
+
+**The yield panel is unchanged and stays unchanged.** It continues to show US
+Treasury par yields, the Bundesbank fitted zero rate and the Swedish benchmark
+bond yield, with the methodology distinctions of §49 intact. Specifically
+forbidden, now and later:
+
+- the ECB deposit rate presented as, or substituted for, the German 10Y Bund
+- a Federal Reserve rate presented as, or substituted for, a Treasury yield
+- the Riksbank policy rate presented as, or substituted for, `SEGVB10YC`
+- any fallback chain that crosses between the two domains
+
+The product value is precisely in the gap between them. A user should be able
+to see that the Fed held while the 2Y sold off, that the ECB cut while the Bund
+steepened, or that Swedish market yields are pricing faster easing than the
+Riksbank is signalling. Collapsing both into one "rates" object destroys the
+only thing that makes those observations possible.
+
+## 55. Proposed domain contract, evaluated
+
+The proposed `CentralBankPolicyRate` is close, and three changes are worth
+making before it is implemented.
+
+**(a) The Fed's rate is a range, so make the shape a union, not optional
+fields.** A flat interface with `currentRatePercent` plus optional
+`lowerBoundPercent` / `upperBoundPercent` admits two illegal states: a
+target-range bank with no bounds, and a single-rate bank with them. Worse, it
+forces a scalar for the Fed — and the only available scalars are a midpoint
+nobody publishes (3.625%) or a silently chosen bound. Modelling it as a
+discriminated union means the question never arises:
+
+```ts
+type PolicyRateLevel =
+  | { kind: 'single'; ratePercent: PolicyRatePercent }
+  | {
+      kind: 'target-range'
+      lowerPercent: PolicyRatePercent
+      upperPercent: PolicyRatePercent
+    }
+```
+
+Presentation formats a range as a range. Nothing in the domain has to invent a
+midpoint, and the type makes "the Fed's policy rate is 3.63%" — which is the
+_effective_ rate, a different measure — unrepresentable.
+
+**(b) Decision date and effective date are different dates.** The ECB announces
+on a Thursday with the change effective the following Wednesday; the Fed's
+change is effective the day after the announcement. One field cannot carry
+both, and the difference is exactly the kind of thing a macro reader cares
+about. Carry `decisionDate` and `effectiveDate` separately.
+
+**(c) A rate is state; a decision is an event; a calendar is a third thing.**
+Folding `nextMeetingDate` and `statementUrl` into the rate object means every
+refresh of a daily rate series drags along communication metadata it did not
+observe. Three models, resolved by three capabilities:
+
+```ts
+interface CentralBankPolicyRate {
+  centralBank: CentralBankId // 'federal-reserve' | 'ecb' | 'riksbank'
+  jurisdiction: string
+  currency: IsoCurrencyCode
+  rateType: PolicyRateType // 'target-range' | 'deposit-facility'
+  //  | 'policy-rate' | 'repo-rate' | 'other'
+  level: PolicyRateLevel
+  previousLevel: PolicyRateLevel | null
+  changeBasisPoints: BasisPoints | null // null when the previous level is unknown
+  decisionDate: string // when the committee decided
+  effectiveDate: string // when the rate began to apply
+  seriesId: string
+  provenance: Provenance
+}
+
+interface CentralBankDecision {
+  centralBank: CentralBankId
+  decisionDate: string
+  outcome: 'raise' | 'hold' | 'cut'
+  changeBasisPoints: BasisPoints | null
+  statementUrl: string | null
+  publishedAt: string
+  provenance: Provenance
+}
+
+interface CentralBankMeeting {
+  centralBank: CentralBankId
+  scheduledDate: string
+  isConfirmed: boolean // see the calendar caveat in §56
+  kind: 'rate-decision' | 'non-policy' | 'projections'
+  provenance: Provenance
+}
+```
+
+**Use a distinct brand.** `PolicyRatePercent` must not be `YieldPercent`. Two
+brands over the same runtime number cost nothing and make the central rule of
+Part IX a compile error rather than a code-review question: a policy rate
+cannot be passed where a yield is expected, in either direction.
+
+**`changeBasisPoints` for a range.** Both bounds move together by convention,
+but the domain should compute the delta from the union rather than assume it —
+and refuse rather than guess if the two bounds ever moved by different amounts.
+
+## 56. Official source hierarchy — Federal Reserve
+
+All rows below verified live, keyless, on 2026-07-26.
+
+| Datum                  | Source                           | Endpoint                                                 | Verified                     |
+| ---------------------- | -------------------------------- | -------------------------------------------------------- | ---------------------------- |
+| FOMC target range      | Federal Reserve Bank of New York | `markets.newyorkfed.org/api/rates/unsecured/effr/last/N` | 3.50–3.75%, eff. 2026-07-23  |
+| Effective fed funds    | Federal Reserve Bank of New York | same payload, `percentRate`                              | 3.63%                        |
+| Statement timestamps   | Federal Reserve Board            | `federalreserve.gov/feeds/press_monetary.xml` (RSS)      | HTTP 200, `text/xml`         |
+| Meeting calendar       | Federal Reserve Board            | `federalreserve.gov/monetarypolicy/fomccalendars.htm`    | HTML only — see caveat       |
+| Historical convenience | FRED (`DFEDTARU` / `DFEDTARL`)   | requires an API key                                      | **secondary only, deferred** |
+
+The NY Fed payload is a good find: one keyless response carries both the
+**target range** (`targetRateFrom` / `targetRateTo`) and the **effective rate**
+(`percentRate`), clearly separated, with the operating-desk percentiles and
+volume alongside. That removes the need for FRED to obtain the target range at
+all, which keeps a future Phase 6A keyless like Phase 4B.
+
+Trust: route `central-bank` (the New York Fed), originator the FOMC. Both are
+`central-bank` grade, so `effectiveTrust` is unaffected — but the originator
+should still be recorded, because the desk publishes what the committee set.
+
+The four measures that must never be conflated:
+
+1. **target range** — what the FOMC decided
+2. **effective federal funds rate** — where the market actually traded within it
+3. **Treasury yields** — a different domain entirely (Part VIII)
+4. **market-implied expectations** — a different capability entirely (§59)
+
+## 57. Official source hierarchy — European Central Bank
+
+The ECB Data Portal is keyless SDMX. Verified live 2026-07-26:
+
+| Rate                           | Series key                     | Value     |
+| ------------------------------ | ------------------------------ | --------- |
+| **Deposit facility (primary)** | `FM.D.U2.EUR.4F.KR.DFR.LEV`    | **2.25%** |
+| Main refinancing operations    | `FM.D.U2.EUR.4F.KR.MRR_FR.LEV` | 2.40%     |
+| Marginal lending facility      | `FM.D.U2.EUR.4F.KR.MLFR.LEV`   | 2.65%     |
+
+The **deposit facility rate is the primary policy-stance indicator**, since it
+is the rate that steers short-term money market rates under the current
+operational framework. MRO and MLF should be carried in the model but presented
+as the corridor around it, not as competing headline rates, unless a later
+product spec asks for all three.
+
+Statement and press-conference timestamps: `ecb.europa.eu/rss/press.html`
+(HTTP 200, `application/rss+xml`). Governing Council calendar: HTML only.
+
+**Payload trap — the step-series problem.** These are daily series that carry
+the last set value forward, so 2026-07-26 returns 2.25% whether or not anything
+happened that day. The observation date is therefore **not** the effective
+date. A future adapter must scan back for the last value _change_ to derive
+`effectiveDate`, and must never report today's date as the date the rate was
+set. This is the same failure mode as Frankfurter's v2 carry-forward (§26) and
+must be handled the same way: honestly, or not at all.
+
+`format=csvdata` returns one flat row with a full metadata header including
+`TITLE`, `DECIMALS` and `SOURCE_AGENCY` — cheaper to parse correctly than the
+default SDMX-JSON, whose observations are positional arrays keyed by index.
+
+## 58. Official source hierarchy — Riksbank
+
+SWEA again — the same API Part VIII already consumes for yields. Verified live
+2026-07-26:
+
+| Datum           | Series            | Value                |
+| --------------- | ----------------- | -------------------- |
+| **Policy rate** | `SECBREPOEFF`     | **1.75%**            |
+| Deposit rate    | corridor floor    | policy − 0.75pp      |
+| Lending rate    | corridor ceiling  | policy + 0.75pp      |
+| Statements      | `riksbank.se` RSS | HTTP 200, `text/xml` |
+
+Three things the SWEA metadata makes explicit and a future adapter must honour:
+
+- **The corridor rates are defined by rule**, not independently observed —
+  SWEA's own description states they are always ±0.75pp from the policy rate.
+  If they are ever displayed, that relationship should be stated rather than
+  presented as three independent decisions.
+- **The series was renamed.** SWEA records that the policy rate "was called The
+  repo rate until June 8, 2022". `rateType` must reflect the period being
+  displayed; relabelling the whole history as `repo-rate`, or as `policy-rate`,
+  are both wrong.
+- **The Riksbank publishes a forecast rate path** — a projection of its own
+  future policy rate, which neither the Fed nor the ECB publishes in this form.
+  It is a forecast, not an observation, and must never enter
+  `CentralBankPolicyRate`. If it is ever shown it belongs in a distinct model
+  with its own provenance and a visible forecast label.
+
+That SWEA serves both `SEGVB10YC` (a market yield) and `SECBREPOEFF` (a policy
+rate) from one keyless API is the clearest argument for separating these
+domains at the **model** level rather than the provider level. The same adapter
+seam, the same trust record, the same HTTP client — and two domain types that
+cannot be substituted for one another.
+
+## 59. Market-implied policy expectations — a separate capability
+
+Not part of `CentralBankPolicyRate`, and not derivable from it. A dedicated
+port, resolved separately:
+
+```ts
+interface PolicyExpectationProvider {
+  fetchPolicyExpectations(
+    bank: CentralBankId,
+    ctx: RequestContext,
+  ): Promise<PolicyExpectation[]>
+}
+```
+
+**Nothing is displayed until all seven of these are documented for the specific
+source:** underlying instruments, calculation methodology, observation
+timestamp, assumptions, probability normalisation, source licensing, and
+whether the result is **provider-supplied or internally derived**. That last
+flag is not optional metadata — a probability we computed and a probability CME
+published are different claims and must be visibly different.
+
+Candidates for later evaluation, none approved: CME FedWatch or an approved
+futures-derived calculation for the Fed; OIS or short-rate futures for the ECB;
+FRA/OIS or equivalent Swedish instruments for the Riksbank. All three are
+licensed or non-keyless, so none can follow the Phase 4B pattern.
+
+**Explicitly forbidden:** inferring a probability distribution from analyst
+commentary, from the history of past policy moves, or from the shape of the
+government yield curve. A fabricated distribution is worse than an absent one,
+because it looks like a measurement.
+
+## 60. Architecture separation
+
+```
+domain/market/rates.ts        GovernmentYield, YieldCurve, YieldMethodology   [built]
+domain/policy/*.ts            CentralBankPolicyRate, Decision, Meeting        [future]
+                              PolicyRatePercent — a brand distinct from YieldPercent
+
+application/marketData/ports  + PolicyRateProvider, + PolicyExpectationProvider
+policy.ts categories          + policy-us, policy-ea, policy-se
+
+application layer only:
+  interface RatesSnapshot {
+    governmentYields: GovernmentYield[]
+    yieldCurves: YieldCurve[]
+    centralBanks: CentralBankPolicyRate[]
+  }
+```
+
+`RatesSnapshot` is a **presentation composition**, assembled at the application
+boundary from two independently resolved domains. It is not a domain model, it
+has no shared identity, and neither side may fall back to the other. The
+import-graph fitness test should be extended to assert that `domain/policy` and
+`domain/market` do not import each other.
+
+## 61. Future UI, documented only
+
+A separate Central Banks section, not a widening of the yield panel. Per bank:
+current rate (a range for the Fed, the DFR for the ECB, the policy rate for
+Sweden), latest change with its decision and effective dates, next scheduled
+meeting, latest statement link, and — only once §59 is satisfied — market-implied
+next move.
+
+**The current Overview is not redesigned in this phase.** The existing yield
+cards keep their present content and layout.
+
+**Calendar caveat.** Both the FOMC and Governing Council calendars are HTML
+pages; neither offers a machine-readable feed, and scraping them is out of
+scope on the same grounds as the TradingView investigation. `nextMeetingDate`
+therefore has no automatic official source today. The honest options are a
+curated schedule with `quality: 'fixture'` and a visible provenance of "manually
+entered from the published calendar", or omitting the field until a feed exists.
+It must not be silently interpolated from past meeting cadence.
+
+## 62. Capability boundaries for future agents
+
+Documented so the domain separation survives contact with agents. None of these
+are implemented.
+
+| Agent        | Reads                                                 | Must not                                     |
+| ------------ | ----------------------------------------------------- | -------------------------------------------- |
+| Macro        | policy rates, yield curves, inflation, growth, labour | treat a yield move as a policy decision      |
+| Central Bank | decisions, statements, minutes, speeches, guidance    | infer a decision from a market rate          |
+| Rates        | yields, curve shape, real rates, implied paths        | present an implied path as official guidance |
+| CIO          | both domains, plus portfolio state                    | resolve a divergence by averaging the two    |
+
+The shared rule: an agent may **join** the two domains and describe the gap
+between them, which is the entire point. It may never use one as evidence of
+the other, and any statement it makes must be able to name which domain each
+number came from.
+
+## 63. Sequencing
+
+Phase 5 (Swedish equities) is next and is unaffected by Part IX. The central
+bank work is **Phase 6A — Central Bank Policy Data**, to be scheduled after
+Phase 5 if that ordering still holds. Its prerequisites are the `domain/policy`
+module, the `PolicyRatePercent` brand, the three category entries, and a
+decision on the calendar caveat in §61.
