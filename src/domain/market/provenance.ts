@@ -91,6 +91,14 @@ export type ProviderTrust =
   | 'official-statistics'
   | 'exchange'
   | 'licensed-vendor'
+  /**
+   * A licensed redistributor that gives retail access to venue data — Avanza
+   * is the case. Not the origin, and never a substitute for one: a broker
+   * quoting a Stockholm share does not make the broker the exchange, and it
+   * does not license us to name the exchange as originator unless the payload
+   * actually says so.
+   */
+  | 'broker'
   | 'aggregator'
   /** Computed in-house from other observations. */
   | 'derived'
@@ -104,6 +112,9 @@ export const TRUST_TIER: Record<ProviderTrust, 1 | 2 | 3 | 4 | 5> = {
   'official-statistics': 1,
   exchange: 1,
   'licensed-vendor': 2,
+  // Same tier as a licensed vendor: a redistribution agreement, one step from
+  // the venue, not the venue itself.
+  broker: 2,
   aggregator: 3,
   derived: 4,
   synthetic: 5,
@@ -188,6 +199,17 @@ export interface Provenance {
   isDelayed: boolean
   /** Known provider delay; `null` when the provider does not quantify it. */
   delayMinutes: number | null
+  /**
+   * Trading venue this observation came from, as an ISO 10383 MIC — `'XSTO'`
+   * for Stockholmsbörsen.
+   *
+   * Only ever set when the payload states it. Absent means "not established",
+   * which is different from "no venue": Avanza returns the placeholder MIC
+   * `XXXX` for OMXS30, so the index gets no venue even though the shares
+   * quoted beside it do. Knowing where an instrument normally trades is not
+   * the same as the source telling us where this number came from.
+   */
+  venue?: string
   /** True when a different instrument stands in for the requested one. */
   isProxy: boolean
   /** Required whenever `isProxy` — what was substituted, for disclosure. */

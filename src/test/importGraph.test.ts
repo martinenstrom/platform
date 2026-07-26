@@ -302,16 +302,19 @@ describe('P11 — only approved providers are connected', () => {
   it('ships exactly the adapters their phase gates approved', () => {
     // A new adapter appearing here means a live integration landed without
     // its phase gate. Phase 0 approved the fixture; Phase 2 approved
-    // Frankfurter. httpClient is shared plumbing, not a data source.
+    // Frankfurter; Phase 5 approved Avanza. httpClient is shared plumbing,
+    // not a data source, and `avanza/map.ts` is a reviewed identity table.
     const adapters = FILES.filter(
       (f) =>
         f.path.startsWith('infrastructure/marketData/providers/') &&
         !isTest(f) &&
-        !f.path.includes('/fixture/'),
+        !f.path.includes('/fixture/') &&
+        !f.path.includes('/avanza/'),
     )
       .map((f) => f.path)
       .sort()
     expect(adapters).toEqual([
+      'infrastructure/marketData/providers/avanza.ts',
       'infrastructure/marketData/providers/bundesbank.ts',
       'infrastructure/marketData/providers/coinGecko.ts',
       'infrastructure/marketData/providers/fixture.ts',
@@ -391,6 +394,7 @@ describe('P11 — only approved providers are connected', () => {
       .map((m) => m[1])
       .sort()
     expect(imported).toEqual([
+      'avanza',
       'bundesbank',
       'coinGecko',
       'fixture',

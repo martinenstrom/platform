@@ -346,3 +346,103 @@ describe('intraday range', () => {
     ])
   })
 })
+
+/* ------------------------------------------------------------------ live mode */
+
+/**
+ * What the screen shows when nothing may be invented (Phase 5, D33).
+ *
+ * The other tests in this file run against fixtures, which is right for
+ * pinning layout and formatting. These render a genuine live-mode snapshot —
+ * Avanza serving quotes, fixtures barred by policy — because the guarantee
+ * being made is about production, and it is worth proving at the pixel rather
+ * than only at the envelope.
+ */
+describe('live mode', () => {
+  async function renderLive() {
+    const { createAvanzaProvider } =
+      await import('~/infrastructure/marketData/providers/avanza')
+    const { AVANZA_INSTRUMENTS } =
+      await import('~/infrastructure/marketData/providers/avanza/map')
+    const { readFileSync } = await import('node:fs')
+    const { join, resolve } = await import('node:path')
+    const recorded = JSON.parse(
+      readFileSync(
+        join(
+          resolve(process.cwd(), 'src/infrastructure/marketData/providers/__fixtures__'),
+          'avanza.quotes.json',
+        ),
+        'utf8',
+      ),
+    ) as Record<string, Record<string, unknown>>
+
+    const byId = Object.fromEntries(
+      AVANZA_INSTRUMENTS.map((i) => [
+        i.orderBookId,
+        i.symbol === 'idx:omxs30' ? recorded.omxs30 : recorded.volvB,
+      ]),
+    )
+    const tool = async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_marketplace_info') return recorded.marketplaceClosed
+      return byId[String(args.instrument_id)]
+    }
+
+    const container = createContainer({
+      env: { MARKETDATA_MODE: 'live' },
+      clock: new FakeClock(FROZEN_NOW),
+      random: new SeededRandom(1),
+      providers: [
+        {
+          provider: createAvanzaProvider(tool as never),
+          capabilities: new Set(['quotes'] as const),
+        },
+        {
+          provider: createFixtureProvider(),
+          capabilities: new Set([
+            'quotes',
+            'series',
+            'fx',
+            'yields',
+            'commodities',
+            'crypto',
+            'news',
+            'sentiment',
+          ]),
+        },
+      ],
+    })
+    const snapshot = await getOverviewSnapshot(createOverviewDataSource(container))
+    return renderOverview(undefined, () => snapshot)
+  }
+
+  it('renders the Swedish quotes Avanza supplied', async () => {
+    const { container } = await renderLive()
+    const text = container.textContent ?? ''
+    expect(text).toContain('3' + NBSP + '199,61')
+    expect(text).toContain('354,8')
+  })
+
+  it('draws no sparkline it cannot source', async () => {
+    // The PRNG generator is still wired for fixture mode, and must not stand
+    // in for market history here. `Sparkline` renders nothing below two
+    // points, so the honest empty state needed no layout change.
+    const { container, snapshot } = await renderLive()
+    expect(hasData(snapshot.indexSparklines)).toBe(false)
+    expect(hasData(snapshot.watchlistSparklines)).toBe(false)
+    expect(container.querySelectorAll('polyline')).toHaveLength(0)
+  })
+
+  it('would have drawn sparklines had the data been real', async () => {
+    // Guards the assertion above from passing for the wrong reason: the same
+    // page, fixture-backed, is full of polylines.
+    const { container } = await renderOverview()
+    expect(container.querySelectorAll('polyline').length).toBeGreaterThan(0)
+  })
+
+  it('presents no synthetic value anywhere on the page', async () => {
+    const { snapshot } = await renderLive()
+    const serialized = JSON.stringify(snapshot)
+    expect(serialized).not.toContain('"trust":"synthetic"')
+    expect(serialized).not.toContain('"quality":"fixture"')
+  })
+})

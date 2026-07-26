@@ -23,12 +23,14 @@ import type {
   SentimentProvider,
   YieldProvider,
 } from '~/application/marketData/ports'
+import { avanzaCovers } from './providers/avanza/map'
 import {
   hasData,
   SERIES_RANGES,
   type CanonicalSymbol,
   type Envelope,
   type GovernmentYield,
+  type MarketQuote,
   type MarketSeries,
   type Provenance,
   type SeriesRange,
@@ -59,27 +61,32 @@ function mergedProvenance(items: Array<{ provenance: Provenance }>): Provenance 
 }
 
 /**
- * Recombines per-country yield envelopes into the single envelope the panel
- * consumes, preserving the Overview's display order.
+ * Recombines envelopes resolved from several categories into the single
+ * envelope a panel consumes, preserving the Overview's display order.
  *
  * The combined state is the WORST of the parts, on the same ordering the rest
  * of the system uses: a panel that is partly stale is stale, and a panel where
- * one country failed outright reports that rather than quietly showing three
- * rows as though nothing happened.
+ * one part failed outright reports that rather than quietly showing the
+ * remaining rows as though nothing happened.
+ *
+ * Used by two panels that split for the same underlying reason — the sources
+ * differ per market, so one shared chain would let a failure in one market
+ * pull in a different kind of number from another.
  */
-export function combineYieldEnvelopes(
-  envelopes: Array<Envelope<GovernmentYield[]>>,
+export function combineBySymbol<T extends { symbol: CanonicalSymbol }>(
+  envelopes: Array<Envelope<T[]>>,
   order: readonly CanonicalSymbol[],
-): Envelope<GovernmentYield[]> {
+  emptyError: { code: 'unknown'; message: string; providerId: null; retryable: boolean },
+): Envelope<T[]> {
   const withData = envelopes.filter(hasData)
   const merged = withData.flatMap((envelope) => envelope.data)
   const ordered = order
     .map((symbol) => merged.find((entry) => entry.symbol === symbol))
-    .filter((entry): entry is GovernmentYield => entry !== undefined)
+    .filter((entry): entry is T => entry !== undefined)
 
   const failed = envelopes.find((envelope) => envelope.state === 'error')
   if (ordered.length === 0) {
-    return failed ?? { state: 'error', error: NO_YIELDS_ERROR }
+    return failed ?? { state: 'error', error: emptyError }
   }
 
   const provenance = mergedProvenance(
@@ -105,9 +112,23 @@ export function combineYieldEnvelopes(
   return { state: 'ok', data: ordered, provenance }
 }
 
+export function combineYieldEnvelopes(
+  envelopes: Array<Envelope<GovernmentYield[]>>,
+  order: readonly CanonicalSymbol[],
+): Envelope<GovernmentYield[]> {
+  return combineBySymbol(envelopes, order, NO_YIELDS_ERROR)
+}
+
 const NO_YIELDS_ERROR = {
   code: 'unknown' as const,
   message: 'No country produced a yield observation',
+  providerId: null,
+  retryable: true,
+}
+
+const NO_INDEX_QUOTES_ERROR = {
+  code: 'unknown' as const,
+  message: 'No market produced an index quote',
   providerId: null,
   retryable: true,
 }
@@ -175,10 +196,37 @@ export function createOverviewDataSource(
     now: () => container.clock.now(),
     correlationId: () => correlationId,
 
-    quotes: (symbols) =>
-      quoteLike('equity-index-intl', 'quotes', symbols, (p: QuoteProvider, s, ctx) =>
-        p.fetchQuotes(s, ctx),
-      ) as never,
+    /**
+     * Index tiles split by market, because only OMXS30 has a real provider.
+     * Avanza covers Stockholm; the five international indices have no approved
+     * source until D1 is resolved, and routing them through one chain would
+     * make a Swedish outage look like a global one — or worse, let an
+     * international fixture ride in on a successful Swedish fetch.
+     */
+    quotes: async (symbols) => {
+      const groups: Array<[DataCategory, CanonicalSymbol[]]> = [
+        ['equity-index-se', symbols.filter((symbol) => avanzaCovers(symbol))],
+        ['equity-index-intl', symbols.filter((symbol) => !avanzaCovers(symbol))],
+      ]
+
+      const resolved = await Promise.all(
+        groups
+          .filter(([, group]) => group.length > 0)
+          .map(([category, group]) =>
+            run<MarketQuote[]>({
+              category,
+              capability: 'quotes',
+              cacheKey: quotesKey('quotes', group),
+              attempt: async (provider, ctx) => {
+                const data = await (provider as QuoteProvider).fetchQuotes(group, ctx)
+                return { data, provenance: mergedProvenance(data) }
+              },
+            }),
+          ),
+      )
+
+      return combineBySymbol(resolved, symbols, NO_INDEX_QUOTES_ERROR) as never
+    },
 
     fx: (symbols) =>
       quoteLike('fx', 'fx', symbols, (p: FxProvider, s, ctx) =>

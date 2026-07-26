@@ -40,6 +40,8 @@ export async function getContainer(): Promise<Container> {
     { createUsTreasuryProvider },
     { createBundesbankProvider },
     { createRiksbankProvider },
+    { createAvanzaProvider },
+    { callAvanzaTool },
     { createHttpClient },
     { loadMarketDataConfig },
   ] = await Promise.all([
@@ -50,6 +52,10 @@ export async function getContainer(): Promise<Container> {
     import('./providers/usTreasury'),
     import('./providers/bundesbank'),
     import('./providers/riksbank'),
+    import('./providers/avanza'),
+    // The transport seam. A dynamic import inside this server-only handler is
+    // what keeps a child-process spawner out of the client graph entirely.
+    import('~/services/avanzaMcp/client'),
     import('./providers/httpClient'),
     import('./config'),
   ])
@@ -142,6 +148,25 @@ export async function getContainer(): Promise<Container> {
             supportsHistory: false,
             supportsIntraday: false,
             supportsBatch: true,
+            requiresAttribution: true,
+          },
+        },
+        {
+          provider: createAvanzaProvider(callAvanzaTool),
+          capabilities: new Set(['quotes'] as const),
+          metadata: {
+            // A broker redistributing venue prices. Not the exchange, and no
+            // originator is claimed — the payload never speaks for one.
+            trust: 'broker' as const,
+            // A `uvx` child process and an upstream call, not a bare fetch.
+            expectedLatencyMs: 1200,
+            updateFrequency: 'minutely' as const,
+            // `isRealTime: false`, but Avanza never states by how much.
+            delayMinutes: null,
+            supportsHistory: false,
+            supportsIntraday: false,
+            // One order book id per call; there is no batch quote tool.
+            supportsBatch: false,
             requiresAttribution: true,
           },
         },

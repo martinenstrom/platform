@@ -52,10 +52,39 @@ const PRICE_FALLBACK: FallbackPolicy = {
 
 export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
   Object.freeze({
+    /*
+     * Nasdaq Stockholm cash equities: 09:00-17:30 CET/CEST, Monday to Friday.
+     *
+     * TTL is unchanged from the pre-Avanza configuration. It is deliberately
+     * NOT tuned to the feed delay, because Avanza does not state one: a delay
+     * we cannot measure cannot justify a refresh interval, and inventing a
+     * "15 minutes" to pace against would be exactly the fabrication the rest
+     * of this file avoids. 60s while open keeps the tiles moving; SWR means no
+     * user waits on a refresh.
+     *
+     * `maxStaleMs` is 5 days, and the number is chosen against the exchange's
+     * own calendar rather than a round figure:
+     *
+     *   normal weekend      Fri 17:30 -> Mon 09:00        = 63.5 h
+     *   + a holiday Monday  Fri 17:30 -> Tue 09:00        = 87.5 h
+     *   Easter, the longest Thu 13:00 (half day) -> Tue 09:00 ~ 116 h
+     *
+     * A ceiling under ~116 h would blank the panel over Easter and Christmas
+     * while Avanza was working perfectly and the last trade was simply the one
+     * before the holiday. 5 days clears the longest scheduled closure with
+     * margin. It is a CEILING, not a claim of freshness — the envelope still
+     * reports `stale` and the observation timestamp is always rendered.
+     *
+     * No local holiday calendar is consulted anywhere. Session state comes
+     * from Avanza's own `get_marketplace_info`, and is `unknown` when that
+     * call fails. Weekday-and-clock is never treated as evidence the venue is
+     * open, and the opening and closing auctions are not represented at all
+     * because Avanza's schedule reports only OPEN and CLOSED.
+     */
     'equity-index-se': {
       ttlOpenMs: 60 * SECOND,
       ttlClosedMs: 15 * MINUTE,
-      fallback: PRICE_FALLBACK,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
       staleWhileRevalidate: true,
     },
     'equity-index-intl': {
@@ -66,10 +95,11 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       fallback: { ...PRICE_FALLBACK, allowProxy: false },
       staleWhileRevalidate: true,
     },
+    /** Same venue, same schedule, same reasoning as `equity-index-se`. */
     'equity-se': {
       ttlOpenMs: 60 * SECOND,
       ttlClosedMs: 15 * MINUTE,
-      fallback: PRICE_FALLBACK,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
       staleWhileRevalidate: true,
     },
     fx: {

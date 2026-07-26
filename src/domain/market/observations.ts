@@ -91,6 +91,45 @@ export function decimalsOf(value: number): number {
   return text.length - dot - 1
 }
 
+/**
+ * How far a provider's own two change figures may disagree, in percentage
+ * points, before the quote is refused.
+ *
+ * Sized for rounding, not for error. Avanza publishes `change` and
+ * `changePercent` each rounded to one or two decimals — 354.80 with a change
+ * of 2.80 implies 0.7955%, and Avanza states 0.80% — so half-ulp rounding on
+ * both fields contributes under 0.01pp. 0.05pp leaves room for a source that
+ * rounds harder, while still catching the failure that matters: a change
+ * figure left over from an earlier session against a freshly updated price.
+ */
+export const CHANGE_TOLERANCE_PP = 0.05
+
+function assertChangesAgree(
+  symbol: CanonicalSymbol,
+  value: number,
+  absoluteChange: number,
+  percentageChange: number,
+): void {
+  const impliedPrevious = value - absoluteChange
+  if (impliedPrevious === 0) {
+    throw new Error(
+      `buildQuote(${symbol}): absoluteChange implies a prior level of 0, ` +
+        `against which no percentage change is defined`,
+    )
+  }
+  const impliedPercent = (absoluteChange / Math.abs(impliedPrevious)) * 100
+  const disagreement = Math.abs(impliedPercent - percentageChange)
+  if (disagreement > CHANGE_TOLERANCE_PP) {
+    throw new Error(
+      `buildQuote(${symbol}): provider change figures disagree — ` +
+        `absolute ${absoluteChange} against ${value} implies ` +
+        `${impliedPercent.toFixed(4)}%, but the provider states ` +
+        `${percentageChange}% (${disagreement.toFixed(4)}pp apart, ` +
+        `tolerance ${CHANGE_TOLERANCE_PP}pp)`,
+    )
+  }
+}
+
 export function buildQuote(args: {
   symbol: CanonicalSymbol
   value: number
@@ -101,6 +140,16 @@ export function buildQuote(args: {
    * comparable prior close. Mutually exclusive with `previousClose`.
    */
   percentageChange?: number | null
+  /**
+   * Provider-authoritative ABSOLUTE change, for the sources that state both.
+   * Only valid alongside `percentageChange`; the two are cross-checked against
+   * each other by `CHANGE_TOLERANCE_PP`.
+   *
+   * This does not license inferring a `previousClose` from it. `value` minus
+   * this figure is arithmetically a prior level, but whether that level is the
+   * *official close* is a claim the provider has not made.
+   */
+  absoluteChange?: number | null
   dayHigh?: number | null
   dayLow?: number | null
   session?: SessionState
@@ -122,18 +171,42 @@ export function buildQuote(args: {
     )
   }
 
+  const hasProvidedAbsolute =
+    args.absoluteChange !== null && args.absoluteChange !== undefined
+
+  if (hasProvidedAbsolute && !hasProvided) {
+    throw new Error(
+      `buildQuote(${args.symbol}): absoluteChange requires percentageChange — an ` +
+        `unchecked absolute move is exactly what the cross-check exists to prevent`,
+    )
+  }
+  if (hasProvidedAbsolute && hasPrevious) {
+    throw new Error(
+      `buildQuote(${args.symbol}): supply previousClose OR absoluteChange, not both`,
+    )
+  }
+
   const previousClose = hasPrevious ? price(args.previousClose as number) : null
   const derived = changePercent(value, previousClose)
   const provided = hasProvided ? percent(args.percentageChange as number) : null
+
+  if (hasProvidedAbsolute) {
+    assertChangesAgree(args.symbol, value, args.absoluteChange as number, provided ?? 0)
+  }
 
   return {
     symbol: args.symbol,
     value,
     previousClose,
-    // Only derivable against a real prior close. A provider that states a
-    // percentage gives us no absolute move, and inventing one would mean
-    // reverse-engineering a price it never published.
-    absoluteChange: previousClose === null ? null : value - previousClose,
+    // Derivable against a real prior close, or stated outright by a provider
+    // that reports both figures. What is never done is reverse-engineering one
+    // from the other: a provider that gives only a percentage gives us no
+    // absolute move, and inventing one would invent a price it never published.
+    absoluteChange: hasProvidedAbsolute
+      ? (args.absoluteChange as number)
+      : previousClose === null
+        ? null
+        : value - previousClose,
     percentageChange: provided ?? derived,
     dayHigh:
       args.dayHigh === null || args.dayHigh === undefined ? null : price(args.dayHigh),

@@ -1,0 +1,55 @@
+{
+  "_note": "Recorded from avanza-mcp on 2026-07-26. Verbatim, including the fields this adapter deliberately ignores (updated, spread, volumeWeightedAveragePrice) — a fixture that drops them could not prove they stay ignored.",
+  "omxs30": {
+    "last": 3199.61,
+    "highest": 3199.61,
+    "lowest": 3160.44,
+    "change": 32.51,
+    "changePercent": 1.03,
+    "timeOfLast": 1784907000000,
+    "totalValueTraded": 11691633897.01,
+    "totalVolumeTraded": 55814336.0,
+    "updated": 1785003341173,
+    "isRealTime": false
+  },
+  "volvB": {
+    "buy": 354.0,
+    "sell": 354.2,
+    "last": 354.8,
+    "highest": 355.9,
+    "lowest": 350.7,
+    "change": 2.8,
+    "changePercent": 0.8,
+    "spread": 0.06,
+    "timeOfLast": 1784906970000,
+    "totalValueTraded": 898325854.7,
+    "totalVolumeTraded": 2535747.0,
+    "updated": 1785003423350,
+    "volumeWeightedAveragePrice": 354.3,
+    "isRealTime": false
+  },
+  "marketplaceClosed": {
+    "marketOpen": false,
+    "timeLeftMs": 50995225,
+    "openingTime": "09:00:00",
+    "todayClosingTime": "17:30:00",
+    "normalClosingTime": "17:30:00",
+    "currentStatus": "CLOSED",
+    "marketStateSchedule": [
+      { "status": "OPEN", "start": "09:00:00", "end": "17:30:00" },
+      { "status": "CLOSED", "start": "17:30:00", "end": "09:00:00" }
+    ]
+  },
+  "marketplaceOpen": {
+    "marketOpen": true,
+    "timeLeftMs": 9000000,
+    "openingTime": "09:00:00",
+    "todayClosingTime": "17:30:00",
+    "normalClosingTime": "17:30:00",
+    "currentStatus": "OPEN",
+    "marketStateSchedule": [
+      { "status": "OPEN", "start": "09:00:00", "end": "17:30:00" },
+      { "status": "CLOSED", "start": "17:30:00", "end": "09:00:00" }
+    ]
+  }
+}
