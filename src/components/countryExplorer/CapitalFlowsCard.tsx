@@ -126,7 +126,8 @@ export function CapitalFlowsCard() {
             if (!anchor) return null
             const [x, y] = project(anchor[0], anchor[1])
             const isPositive = flow.netFlowBillionsUsd >= 0
-            const barHeight = (Math.abs(flow.netFlowBillionsUsd) / maxAbs) * 46 + 4
+            const barHeight =
+              (Math.abs(flow.netFlowBillionsUsd) / maxAbs) * 46 + 4
             const color = isPositive ? '#2ecc84' : '#f2555a'
             return (
               <g key={flow.region}>

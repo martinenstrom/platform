@@ -96,7 +96,12 @@ export function GlobalNewsFeedCard() {
                 onClick={() => setExpandedId(expanded ? null : item.id)}
                 className="min-w-0 flex-1 rounded-md px-1 text-left transition-colors duration-150 hover:bg-surface-2"
               >
-                <p className={cn('hud-label text-[8px]', CATEGORY_CLASS[item.category])}>
+                <p
+                  className={cn(
+                    'hud-label text-[8px]',
+                    CATEGORY_CLASS[item.category],
+                  )}
+                >
                   {CATEGORY_LABEL[item.category]}
                 </p>
                 <p

@@ -95,7 +95,12 @@ export function MarketStatusPanel({ onClose }: { onClose?: () => void }) {
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
-                <span className={cn('hud-label text-[9px]', STATUS_TEXT_CLASS[status])}>
+                <span
+                  className={cn(
+                    'hud-label text-[9px]',
+                    STATUS_TEXT_CLASS[status],
+                  )}
+                >
                   • {status}
                 </span>
                 <span className="tabular w-10 text-right text-content-subtle">

@@ -67,15 +67,10 @@ function overviewPanel(id: string): PanelDatum | null {
 
 function countryIndexPanel(
   id: string,
-  markets: {
-    primaryIndexName: string
-    primaryIndexValue: string
-    indexChangeToday: string
-  },
+  markets: { primaryIndexName: string; primaryIndexValue: string; indexChangeToday: string },
   sparkSeed: number,
 ): PanelDatum {
-  const negative =
-    markets.indexChangeToday.trim().startsWith('−') ||
+  const negative = markets.indexChangeToday.trim().startsWith('−') ||
     markets.indexChangeToday.trim().startsWith('-')
   return {
     id,

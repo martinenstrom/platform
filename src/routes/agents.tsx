@@ -62,7 +62,10 @@ function AgentsPage() {
                 </span>
                 <span className="type-metadata block truncate">{run.type}</span>
               </span>
-              <time dateTime={run.generatedAt} className="type-metadata tabular shrink-0">
+              <time
+                dateTime={run.generatedAt}
+                className="type-metadata tabular shrink-0"
+              >
                 {formatDateTime(run.generatedAt)}
               </time>
             </li>

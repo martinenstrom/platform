@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
-import {
-  ACESFilmicToneMapping,
-  MeshBasicMaterial,
-  Vector2,
-  type PerspectiveCamera,
-} from 'three'
+import { ACESFilmicToneMapping, MeshBasicMaterial, Vector2, type PerspectiveCamera } from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { feature } from 'topojson-client'
@@ -393,16 +388,12 @@ function seededRandom(seed: number): () => number {
 
 /** Great-circle central angle as a 0–1 fraction of π (0 = same point, 1 =
  *  antipodal). Couples altitude and apparent packet speed to real distance. */
-function distanceFraction(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
+function distanceFraction(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const toRad = (d: number) => (d * Math.PI) / 180
   const lat1 = toRad(a.lat)
   const lat2 = toRad(b.lat)
   const dLng = toRad(b.lng - a.lng)
-  const cos =
-    Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  const cos = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLng)
   return Math.acos(Math.max(-1, Math.min(1, cos))) / Math.PI
 }
 
@@ -433,64 +424,19 @@ const ROUTE_STYLE: Record<
   // Hero backbone: lifted highest with the least jitter, so the 8 trunk lines
   // sit on a clean, well-spaced upper shell and guide the eye — no extra stroke
   // width or glow, just altitude, elegant spacing and slightly higher opacity.
-  hero: {
-    alt: 0.62,
-    altJitter: 0.02,
-    baseStroke: 0.3,
-    baseMid: 0.58,
-    baseEnd: 0.1,
-    packetStroke: 0.66,
-    packetDash: 0.05,
-    packetProb: 0.62,
-  },
-  trunk: {
-    alt: 0.42,
-    altJitter: 0.045,
-    baseStroke: 0.28,
-    baseMid: 0.44,
-    baseEnd: 0.08,
-    packetStroke: 0.64,
-    packetDash: 0.05,
-    packetProb: 0.6,
-  },
+  hero: { alt: 0.62, altJitter: 0.02, baseStroke: 0.3, baseMid: 0.58, baseEnd: 0.1, packetStroke: 0.66, packetDash: 0.05, packetProb: 0.62 },
+  trunk: { alt: 0.42, altJitter: 0.045, baseStroke: 0.28, baseMid: 0.44, baseEnd: 0.08, packetStroke: 0.64, packetDash: 0.05, packetProb: 0.6 },
   // Tier 2/3 opacity pulled down ~25–29% and packet probability down ~30% from
   // Tier 1, so hero routes read first and the regional mesh recedes into a
   // discovered-later background — layered density, not maximum visible density.
-  t2: {
-    alt: 0.28,
-    altJitter: 0.04,
-    baseStroke: 0.24,
-    baseMid: 0.27,
-    baseEnd: 0.05,
-    packetStroke: 0.6,
-    packetDash: 0.045,
-    packetProb: 0.25,
-  },
+  t2: { alt: 0.28, altJitter: 0.04, baseStroke: 0.24, baseMid: 0.27, baseEnd: 0.05, packetStroke: 0.6, packetDash: 0.045, packetProb: 0.25 },
   // The two regional strata are pushed further down and apart, widening the gap
   // to the primary shell so three altitude layers read cleanly: hero → primary →
   // regional.
-  t3: {
-    alt: 0.11,
-    altJitter: 0.03,
-    baseStroke: 0.17,
-    baseMid: 0.17,
-    baseEnd: 0.035,
-    packetStroke: 0.52,
-    packetDash: 0.04,
-    packetProb: 0.1,
-  },
+  t3: { alt: 0.11, altJitter: 0.03, baseStroke: 0.17, baseMid: 0.17, baseEnd: 0.035, packetStroke: 0.52, packetDash: 0.04, packetProb: 0.1 },
   // Short nearby-hub Tier-3 routes hug the surface even more closely — the
   // deepest stratum, reading as depth rather than as information.
-  t3low: {
-    alt: 0.035,
-    altJitter: 0.018,
-    baseStroke: 0.15,
-    baseMid: 0.14,
-    baseEnd: 0.03,
-    packetStroke: 0.5,
-    packetDash: 0.04,
-    packetProb: 0.08,
-  },
+  t3low: { alt: 0.035, altJitter: 0.018, baseStroke: 0.15, baseMid: 0.14, baseEnd: 0.03, packetStroke: 0.5, packetDash: 0.04, packetProb: 0.08 },
 }
 
 // Warm-gold carries almost every route; a restrained blue-white is the only accent.
@@ -626,8 +572,7 @@ const ARCS_DATA: ArcDatum[] = (() => {
       // a period and the field can never resolve into a synchronized wave.
       const quick = pr() < 0.16
       const speedFactor = quick ? 0.6 + pr() * 0.18 : 0.85 + pr() * 0.65
-      const speedBase =
-        cls === 'hero' || cls === 'trunk' ? 4200 : cls === 't2' ? 5200 : 5600
+      const speedBase = cls === 'hero' || cls === 'trunk' ? 4200 : cls === 't2' ? 5200 : 5600
       arcs.push({
         id: `${key}-packet-${salt}`,
         startLat: reverse ? to.lat : from.lat,
@@ -641,9 +586,7 @@ const ARCS_DATA: ArcDatum[] = (() => {
         // Random start offset across the whole pattern → fully asynchronous entry.
         dashInitialGap: pr() * (dashLength + dashGap),
         // Distance-coupled so long arcs never streak; continuous factor per packet.
-        animMs: Math.round(
-          (speedBase + pr() * 3600) * (0.8 + 0.55 * distFrac) * speedFactor,
-        ),
+        animMs: Math.round((speedBase + pr() * 3600) * (0.8 + 0.55 * distFrac) * speedFactor),
         stroke,
         altScale,
       })
@@ -869,12 +812,7 @@ export function GlobalCommandMap({
     const globe = globeRef.current
     if (!globe || size.width === 0 || IS_LOW_POWER_DEVICE) return
     const composer = globe.postProcessingComposer()
-    const bloom = new UnrealBloomPass(
-      new Vector2(size.width, size.height),
-      0.4,
-      0.5,
-      0.68,
-    )
+    const bloom = new UnrealBloomPass(new Vector2(size.width, size.height), 0.4, 0.5, 0.68)
     // Two alpha fixes so bloom doesn't turn this transparent canvas into an
     // opaque black square: (1) the pass's separable-blur shader hard-codes
     // alpha = 1.0 — rewrite it to carry the glow's own luminance as alpha so
@@ -1095,21 +1033,12 @@ export function GlobalCommandMap({
     if (reducedMotion) return
     const el = event.currentTarget
     const rect = el.getBoundingClientRect()
-    el.style.setProperty(
-      '--par-x',
-      (((event.clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3),
-    )
-    el.style.setProperty(
-      '--par-y',
-      (((event.clientY - rect.top) / rect.height - 0.5) * 2).toFixed(3),
-    )
+    el.style.setProperty('--par-x', (((event.clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3))
+    el.style.setProperty('--par-y', (((event.clientY - rect.top) / rect.height - 0.5) * 2).toFixed(3))
   }
 
   return (
-    <div
-      className="relative h-full w-full overflow-hidden"
-      onPointerMove={handleParallax}
-    >
+    <div className="relative h-full w-full overflow-hidden" onPointerMove={handleParallax}>
       {/* Base environment: a near-black navy gradient the whole scene sits in. */}
       <div
         aria-hidden="true"
@@ -1128,8 +1057,7 @@ export function GlobalCommandMap({
           background:
             'radial-gradient(ellipse 30% 40% at 18% 30%, rgba(10,21,32,0.55), transparent 70%), radial-gradient(ellipse 34% 45% at 72% 72%, rgba(16,24,34,0.5), transparent 70%)',
           filter: 'blur(40px)',
-          transform:
-            'translate3d(calc(var(--par-x, 0) * -7px), calc(var(--par-y, 0) * -5px), 0)',
+          transform: 'translate3d(calc(var(--par-x, 0) * -7px), calc(var(--par-y, 0) * -5px), 0)',
           transition: 'transform 0.5s ease-out',
         }}
       />
@@ -1150,14 +1078,8 @@ export function GlobalCommandMap({
       >
         {/* Far canyon wall — tallest, dimmest. */}
         {[
-          [0, 6, 8],
-          [7, 12, 6],
-          [12, 2, 9],
-          [20, 10, 6],
-          [25, 16, 7],
-          [56, 14, 6],
-          [61, 4, 8],
-          [68, 10, 6],
+          [0, 6, 8], [7, 12, 6], [12, 2, 9], [20, 10, 6], [25, 16, 7],
+          [56, 14, 6], [61, 4, 8], [68, 10, 6],
         ].map(([x = 0, top = 10, w = 8]) => (
           <rect
             key={`far-${x}`}
@@ -1170,14 +1092,8 @@ export function GlobalCommandMap({
         ))}
         {/* Near towers. */}
         {[
-          [2, 24, 9],
-          [10, 34, 7],
-          [16, 20, 8],
-          [23, 40, 8],
-          [29, 28, 6],
-          [58, 30, 7],
-          [64, 22, 8],
-          [70, 36, 7],
+          [2, 24, 9], [10, 34, 7], [16, 20, 8], [23, 40, 8], [29, 28, 6],
+          [58, 30, 7], [64, 22, 8], [70, 36, 7],
         ].map(([x = 0, top = 10, w = 8]) => (
           <rect
             key={`near-${x}`}
@@ -1190,36 +1106,11 @@ export function GlobalCommandMap({
         ))}
         {/* Dense restrained window lights, warm and cool. */}
         {[
-          [3, 28],
-          [4.5, 34],
-          [6, 40],
-          [3.5, 48],
-          [11, 38],
-          [12.5, 44],
-          [17, 24],
-          [18.5, 30],
-          [17.5, 38],
-          [24, 44],
-          [25.5, 50],
-          [24.5, 58],
-          [30, 32],
-          [31, 40],
-          [8, 16],
-          [13.5, 8],
-          [21, 14],
-          [26.5, 20],
-          [59, 34],
-          [60.5, 40],
-          [59.5, 48],
-          [65, 26],
-          [66.5, 32],
-          [65.5, 40],
-          [71, 40],
-          [72.5, 46],
-          [71.5, 54],
-          [62, 10],
-          [69, 16],
-          [57, 20],
+          [3, 28], [4.5, 34], [6, 40], [3.5, 48], [11, 38], [12.5, 44],
+          [17, 24], [18.5, 30], [17.5, 38], [24, 44], [25.5, 50], [24.5, 58],
+          [30, 32], [31, 40], [8, 16], [13.5, 8], [21, 14], [26.5, 20],
+          [59, 34], [60.5, 40], [59.5, 48], [65, 26], [66.5, 32], [65.5, 40],
+          [71, 40], [72.5, 46], [71.5, 54], [62, 10], [69, 16], [57, 20],
         ].map(([x = 0, y = 20], index) => (
           <rect
             key={`window-${index}`}
@@ -1257,34 +1148,10 @@ export function GlobalCommandMap({
         {[80.5, 86.2, 91.9].map((x) => (
           <g key={`flag-${x}`}>
             <rect x={x} y={20.5} width={0.18} height={4.5} fill="rgba(120,130,140,0.5)" />
-            <rect
-              x={x + 0.18}
-              y={20.7}
-              width={2.1}
-              height={1.3}
-              fill="rgba(178,60,66,0.55)"
-            />
-            <rect
-              x={x + 0.18}
-              y={21.05}
-              width={2.1}
-              height={0.22}
-              fill="rgba(224,228,235,0.5)"
-            />
-            <rect
-              x={x + 0.18}
-              y={21.5}
-              width={2.1}
-              height={0.22}
-              fill="rgba(224,228,235,0.5)"
-            />
-            <rect
-              x={x + 0.18}
-              y={20.7}
-              width={0.8}
-              height={0.75}
-              fill="rgba(52,74,140,0.65)"
-            />
+            <rect x={x + 0.18} y={20.7} width={2.1} height={1.3} fill="rgba(178,60,66,0.55)" />
+            <rect x={x + 0.18} y={21.05} width={2.1} height={0.22} fill="rgba(224,228,235,0.5)" />
+            <rect x={x + 0.18} y={21.5} width={2.1} height={0.22} fill="rgba(224,228,235,0.5)" />
+            <rect x={x + 0.18} y={20.7} width={0.8} height={0.75} fill="rgba(52,74,140,0.65)" />
           </g>
         ))}
         {/* Street lamps along the canyon base. */}
@@ -1319,24 +1186,9 @@ export function GlobalCommandMap({
         }}
       >
         {[
-          [0, 8],
-          [6, 13],
-          [11, 6],
-          [17, 11],
-          [22, 15],
-          [28, 7],
-          [33, 12],
-          [39, 9],
-          [44, 14],
-          [50, 6],
-          [55, 10],
-          [61, 13],
-          [66, 8],
-          [72, 12],
-          [77, 15],
-          [83, 9],
-          [88, 12],
-          [94, 7],
+          [0, 8], [6, 13], [11, 6], [17, 11], [22, 15], [28, 7], [33, 12],
+          [39, 9], [44, 14], [50, 6], [55, 10], [61, 13], [66, 8], [72, 12],
+          [77, 15], [83, 9], [88, 12], [94, 7],
         ].map(([x, h]) => (
           <rect
             key={x}
@@ -1438,7 +1290,8 @@ export function GlobalCommandMap({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28"
         style={{
-          background: 'linear-gradient(to top, rgba(76,198,232,0.04), transparent)',
+          background:
+            'linear-gradient(to top, rgba(76,198,232,0.04), transparent)',
         }}
       />
 
@@ -1449,8 +1302,7 @@ export function GlobalCommandMap({
         style={{
           background:
             'radial-gradient(circle 26% at 42% 46%, rgba(76,198,232,0.065), transparent 62%)',
-          transform:
-            'translate3d(calc(var(--par-x, 0) * 3px), calc(var(--par-y, 0) * 2px), 0)',
+          transform: 'translate3d(calc(var(--par-x, 0) * 3px), calc(var(--par-y, 0) * 2px), 0)',
           transition: 'transform 0.5s ease-out',
         }}
       />
@@ -1462,8 +1314,7 @@ export function GlobalCommandMap({
         style={{
           background:
             'radial-gradient(ellipse 22% 55% at 42% 76%, rgba(76,198,232,0.05), transparent 70%)',
-          transform:
-            'translate3d(calc(var(--par-x, 0) * 2px), calc(var(--par-y, 0) * 1.5px), 0)',
+          transform: 'translate3d(calc(var(--par-x, 0) * 2px), calc(var(--par-y, 0) * 1.5px), 0)',
           transition: 'transform 0.5s ease-out',
         }}
       />
@@ -1481,54 +1332,54 @@ export function GlobalCommandMap({
         onPointerMove={pauseAutoRotate}
         onWheel={pauseAutoRotate}
       >
-        {size.width > 0 && size.height > 0 && (
-          <Globe
-            ref={globeRef}
-            width={size.width}
-            height={size.height}
-            backgroundColor="rgba(0,0,0,0)"
-            globeImageUrl={null}
-            globeMaterial={dayNightMaterial ?? LOADING_MATERIAL}
-            polygonsData={countries}
-            polygonCapColor={polygonCapColor}
-            polygonSideColor={() => 'rgba(10, 13, 18, 0.4)'}
-            polygonStrokeColor={polygonStrokeColor}
-            polygonAltitude={(polygon: object) => {
-              const name = (polygon as CountryFeature).properties.name
-              return name === selectedGeoName
-                ? 0.02
-                : name === hoveredGeoName
-                  ? 0.015
-                  : 0.006
-            }}
-            polygonsTransitionDuration={reducedMotion ? 0 : 250}
-            polygonLabel={(polygon: object) => {
-              const p = polygon as CountryFeature
-              const entry = resolveCountryByGeoName(p.properties.name)
-              return `
+          {size.width > 0 && size.height > 0 && (
+            <Globe
+              ref={globeRef}
+              width={size.width}
+              height={size.height}
+              backgroundColor="rgba(0,0,0,0)"
+              globeImageUrl={null}
+              globeMaterial={dayNightMaterial ?? LOADING_MATERIAL}
+              polygonsData={countries}
+              polygonCapColor={polygonCapColor}
+              polygonSideColor={() => 'rgba(10, 13, 18, 0.4)'}
+              polygonStrokeColor={polygonStrokeColor}
+              polygonAltitude={(polygon: object) => {
+                const name = (polygon as CountryFeature).properties.name
+                return name === selectedGeoName
+                  ? 0.02
+                  : name === hoveredGeoName
+                    ? 0.015
+                    : 0.006
+              }}
+              polygonsTransitionDuration={reducedMotion ? 0 : 250}
+              polygonLabel={(polygon: object) => {
+                const p = polygon as CountryFeature
+                const entry = resolveCountryByGeoName(p.properties.name)
+                return `
                 <div class="hud-frame rounded-md bg-surface-2 px-3 py-2 font-mono text-[11px] shadow-pop">
                   <div class="text-content font-semibold tracking-wide">${entry.nameEn.toUpperCase()}</div>
                   <div class="text-content-subtle mt-0.5">${entry.countryCode} · ${entry.region.toUpperCase()}</div>
                   <div class="text-accent mt-1">Klicka för landsanalys</div>
                 </div>
               `
-            }}
-            onPolygonHover={(polygon) => {
-              const p = polygon as CountryFeature | null
-              setHoveredGeoName(p?.properties.name ?? null)
-            }}
-            onPolygonClick={(polygon) => handleSelect(polygon as CountryFeature)}
-            pointsData={layers.marketStatus ? marketPoints : []}
-            pointLat={(d) => (d as MarketPoint).center.lat}
-            pointLng={(d) => (d as MarketPoint).center.lng}
-            pointColor={(d) => MARKET_STATUS_COLOR[(d as MarketPoint).status]}
-            pointAltitude={0.022}
-            pointRadius={0.55}
-            pointsMerge={false}
-            pointLabel={(d) => {
-              const point = d as MarketPoint
-              const hubData = HUB_MARKET_DATA[point.center.id]
-              return `
+              }}
+              onPolygonHover={(polygon) => {
+                const p = polygon as CountryFeature | null
+                setHoveredGeoName(p?.properties.name ?? null)
+              }}
+              onPolygonClick={(polygon) => handleSelect(polygon as CountryFeature)}
+              pointsData={layers.marketStatus ? marketPoints : []}
+              pointLat={(d) => (d as MarketPoint).center.lat}
+              pointLng={(d) => (d as MarketPoint).center.lng}
+              pointColor={(d) => MARKET_STATUS_COLOR[(d as MarketPoint).status]}
+              pointAltitude={0.022}
+              pointRadius={0.55}
+              pointsMerge={false}
+              pointLabel={(d) => {
+                const point = d as MarketPoint
+                const hubData = HUB_MARKET_DATA[point.center.id]
+                return `
                 <div class="hud-frame rounded-md bg-surface-2 px-3 py-2 font-mono text-[11px] shadow-pop">
                   <div class="text-content font-semibold tracking-wide">${point.center.name.toUpperCase()}</div>
                   <div class="text-content-subtle mt-0.5">${point.center.openLocal}–${point.center.closeLocal} lokal tid</div>
@@ -1540,39 +1391,47 @@ export function GlobalCommandMap({
                   }</div>
                 </div>
               `
-            }}
-            ringsData={
-              layers.marketStatus && !reducedMotion
-                ? marketPoints.flatMap((point): MarketRingDatum[] => [
-                    { ...point, burst: false },
-                    { ...point, burst: true },
-                  ])
-                : []
-            }
-            ringLat={(d) => (d as MarketRingDatum).center.lat}
-            ringLng={(d) => (d as MarketRingDatum).center.lng}
-            ringColor={(d: object) => MARKET_STATUS_COLOR[(d as MarketRingDatum).status]}
-            ringMaxRadius={(d: object) => ((d as MarketRingDatum).burst ? 1.6 : 3)}
-            ringPropagationSpeed={(d: object) =>
-              (d as MarketRingDatum).burst ? 2.6 : 0.9
-            }
-            ringRepeatPeriod={(d: object) => ((d as MarketRingDatum).burst ? 4600 : 3000)}
-            arcsData={layers.network ? (reducedMotion ? BASE_ARCS_DATA : ARCS_DATA) : []}
-            arcStartLat={(d) => (d as ArcDatum).startLat}
-            arcStartLng={(d) => (d as ArcDatum).startLng}
-            arcEndLat={(d) => (d as ArcDatum).endLat}
-            arcEndLng={(d) => (d as ArcDatum).endLng}
-            arcColor={(d: object) => (d as ArcDatum).color}
-            arcCurveResolution={128}
-            arcAltitudeAutoScale={(d) => (d as ArcDatum).altScale}
-            arcStroke={(d) => (d as ArcDatum).stroke}
-            arcDashLength={(d: object) => (d as ArcDatum).dashLength}
-            arcDashGap={(d: object) => (d as ArcDatum).dashGap}
-            arcDashInitialGap={(d: object) => (d as ArcDatum).dashInitialGap}
-            arcDashAnimateTime={(d) => (reducedMotion ? 0 : (d as ArcDatum).animMs)}
-          />
-        )}
-      </div>
+              }}
+              ringsData={
+                layers.marketStatus && !reducedMotion
+                  ? marketPoints.flatMap((point): MarketRingDatum[] => [
+                      { ...point, burst: false },
+                      { ...point, burst: true },
+                    ])
+                  : []
+              }
+              ringLat={(d) => (d as MarketRingDatum).center.lat}
+              ringLng={(d) => (d as MarketRingDatum).center.lng}
+              ringColor={(d: object) =>
+                MARKET_STATUS_COLOR[(d as MarketRingDatum).status]
+              }
+              ringMaxRadius={(d: object) => ((d as MarketRingDatum).burst ? 1.6 : 3)}
+              ringPropagationSpeed={(d: object) =>
+                (d as MarketRingDatum).burst ? 2.6 : 0.9
+              }
+              ringRepeatPeriod={(d: object) =>
+                (d as MarketRingDatum).burst ? 4600 : 3000
+              }
+              arcsData={
+                layers.network ? (reducedMotion ? BASE_ARCS_DATA : ARCS_DATA) : []
+              }
+              arcStartLat={(d) => (d as ArcDatum).startLat}
+              arcStartLng={(d) => (d as ArcDatum).startLng}
+              arcEndLat={(d) => (d as ArcDatum).endLat}
+              arcEndLng={(d) => (d as ArcDatum).endLng}
+              arcColor={(d: object) => (d as ArcDatum).color}
+              arcCurveResolution={128}
+              arcAltitudeAutoScale={(d) => (d as ArcDatum).altScale}
+              arcStroke={(d) => (d as ArcDatum).stroke}
+              arcDashLength={(d: object) => (d as ArcDatum).dashLength}
+              arcDashGap={(d: object) => (d as ArcDatum).dashGap}
+              arcDashInitialGap={(d: object) => (d as ArcDatum).dashInitialGap}
+              arcDashAnimateTime={(d) =>
+                reducedMotion ? 0 : (d as ArcDatum).animMs
+              }
+            />
+          )}
+        </div>
 
       <FloatingMarketChips reducedMotion={reducedMotion} />
 
