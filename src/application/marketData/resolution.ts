@@ -31,7 +31,13 @@ import type {
   StaleReason,
 } from '~/domain/market'
 import { fixtureAllowed, policyFor, ttlFor } from './policy'
-import type { AnyProvider, Capability, DataCategory, FetchContext } from './ports'
+import type {
+  AnyProvider,
+  Capability,
+  DataCategory,
+  FetchContext,
+  PortByCapability,
+} from './ports'
 import { METRIC, type Metrics } from './metrics'
 import type {
   CachedValue,
@@ -74,17 +80,42 @@ export interface ResolveDeps {
   correlationId: CorrelationId
 }
 
-export interface ResolveRequest<T> {
+/**
+ * A resolution request, generic over the capability it asks for.
+ *
+ * `C` is inferred from the `capability` field, so `attempt` receives the port
+ * that serves it — `QuoteProvider` for `'quotes'`, `PolicyRateProvider` for
+ * `'policy-rates'` — instead of the `AnyProvider` union.
+ *
+ * This is what removes the `as never` casts that used to sit at every call
+ * site. They were not cosmetic: a cast is the compiler being told to stop
+ * checking, so an adapter registered under the wrong capability, or a call
+ * site naming the wrong port, typechecked cleanly and failed at runtime.
+ * `PortByCapability` already described this mapping and nothing consulted it.
+ */
+export interface ResolveRequest<T, C extends Capability = Capability> {
   category: DataCategory
-  capability: Capability
+  capability: C
   cacheKey: string
   chain: readonly string[]
   marketOpen: boolean
   attempt: (
-    provider: AnyProvider,
+    provider: PortByCapability[C],
     ctx: FetchContext,
   ) => Promise<{ data: T; provenance: Provenance }>
   signal?: AbortSignal
+}
+
+/**
+ * The ONE place the provider union is narrowed to a capability port.
+ *
+ * The registry stores providers as `AnyProvider` because it routes on
+ * capability, not on type. Every call site used to repeat this narrowing as an
+ * inline `as never`; now it happens once, here, guarded by the registry's own
+ * invariant that a provider is only ever selected for a capability it declared.
+ */
+function portFor<C extends Capability>(provider: AnyProvider): PortByCapability[C] {
+  return provider as PortByCapability[C]
 }
 
 /** Recomputes `ageMs` against the current clock — a cached age is meaningless. */
@@ -112,16 +143,16 @@ function staleReasonFor(code: ErrorCode | null): StaleReason {
   }
 }
 
-export async function resolve<T>(
+export async function resolve<T, C extends Capability = Capability>(
   deps: ResolveDeps,
-  request: ResolveRequest<T>,
+  request: ResolveRequest<T, C>,
 ): Promise<Envelope<T>> {
   return deps.singleFlight(request.cacheKey, () => resolveUncoordinated(deps, request))
 }
 
-async function resolveUncoordinated<T>(
+async function resolveUncoordinated<T, C extends Capability>(
   deps: ResolveDeps,
-  request: ResolveRequest<T>,
+  request: ResolveRequest<T, C>,
 ): Promise<Envelope<T>> {
   const policy = policyFor(request.category)
   const ttlMs = ttlFor(request.category, request.marketOpen)
@@ -213,7 +244,7 @@ async function resolveUncoordinated<T>(
       capability: request.capability,
       correlationId: deps.correlationId,
       ...(request.signal ? { signal: request.signal } : {}),
-      call: (ctx) => request.attempt(registration.provider, ctx),
+      call: (ctx) => request.attempt(portFor(registration.provider), ctx),
     })
 
     if (outcome.kind === 'success') {
@@ -267,7 +298,7 @@ async function resolveUncoordinated<T>(
         capability: request.capability,
         correlationId: deps.correlationId,
         ...(request.signal ? { signal: request.signal } : {}),
-        call: (ctx) => request.attempt(fixture.provider, ctx),
+        call: (ctx) => request.attempt(portFor(fixture.provider), ctx),
       })
       if (outcome.kind === 'success') {
         // Deliberately NOT cached: a fixture must never be resurrected later
@@ -347,9 +378,9 @@ async function resolveUncoordinated<T>(
  * foreground resolution that scheduled it, while still being deduplicated
  * against other background refreshes for the same entry.
  */
-async function revalidate<T>(
+async function revalidate<T, C extends Capability>(
   deps: ResolveDeps,
-  request: ResolveRequest<T>,
+  request: ResolveRequest<T, C>,
   ttlMs: number,
 ): Promise<void> {
   const key = `revalidate:${request.cacheKey}`
@@ -364,7 +395,7 @@ async function revalidate<T>(
           providerId: registration.provider.id,
           capability: request.capability,
           correlationId: deps.correlationId,
-          call: (ctx) => request.attempt(registration.provider, ctx),
+          call: (ctx) => request.attempt(portFor(registration.provider), ctx),
         })
         if (outcome.kind === 'success') {
           await deps.cache?.set(

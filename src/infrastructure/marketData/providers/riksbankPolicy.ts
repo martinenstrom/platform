@@ -37,6 +37,7 @@ import { isoCurrency } from '~/domain/shared/primitives'
 import type { DataSourceMetadata } from '~/domain/shared/provenance'
 import {
   detectRegime,
+  type CentralBankId,
   riksbankPublicationStatus,
   singleRate,
   type LevelObservation,
@@ -109,7 +110,16 @@ export function createRiksbankPolicyProvider(http: HttpClient): PolicyRateProvid
     name: RIKSBANK_POLICY_SOURCE.providerName,
     attributionUrl: RIKSBANK_POLICY_SOURCE.attributionUrl,
 
-    async fetchPolicyState(ctx: FetchContext): Promise<RiksbankPolicyState> {
+    async fetchPolicyState(
+      centralBank: CentralBankId,
+      ctx: FetchContext,
+    ): Promise<RiksbankPolicyState> {
+      // This adapter serves one institution. Being asked for another is a
+      // chain misconfiguration, not something to answer approximately.
+      if (centralBank !== 'riksbank') {
+        throw new HttpError('not-found', `riksbank adapter cannot serve ${centralBank}`)
+      }
+
       const now = ctx.clock.now()
       const today = now.toISOString().slice(0, 10)
       const from = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000)

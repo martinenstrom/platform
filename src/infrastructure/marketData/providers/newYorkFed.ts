@@ -34,6 +34,7 @@ import { isoCurrency } from '~/domain/shared/primitives'
 import type { DataSourceMetadata } from '~/domain/shared/provenance'
 import {
   detectRegime,
+  type CentralBankId,
   newYorkFedPublicationStatus,
   policyRatePercent,
   targetRange,
@@ -140,7 +141,19 @@ export function createNewYorkFedProvider(http: HttpClient): PolicyRateProvider {
     name: NY_FED_SOURCE.providerName,
     attributionUrl: NY_FED_SOURCE.attributionUrl,
 
-    async fetchPolicyState(ctx: FetchContext): Promise<FederalReservePolicyState> {
+    async fetchPolicyState(
+      centralBank: CentralBankId,
+      ctx: FetchContext,
+    ): Promise<FederalReservePolicyState> {
+      // This adapter serves one institution. Being asked for another is a
+      // chain misconfiguration, not something to answer approximately.
+      if (centralBank !== 'federal-reserve') {
+        throw new HttpError(
+          'not-found',
+          `federal-reserve adapter cannot serve ${centralBank}`,
+        )
+      }
+
       const now = ctx.clock.now()
       const today = now.toISOString().slice(0, 10)
       const from = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000)

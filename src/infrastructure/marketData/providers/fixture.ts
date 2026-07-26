@@ -17,7 +17,15 @@
  */
 
 import { basisPoints } from '~/domain/shared/primitives'
-import { singleRate, type RiksbankPolicyState } from '~/domain/policy'
+import {
+  keyRates,
+  singleRate,
+  targetRange,
+  type CentralBankId,
+  type CentralBankPolicyState,
+  type PolicyLevel,
+  type PolicyLevelChange,
+} from '~/domain/policy'
 import {
   buildDerivedSentiment,
   buildNewsItem,
@@ -366,29 +374,85 @@ function sentimentFor(ctx: FetchContext): MarketSentiment {
  * reading fixtures still has to handle the case the live sources actually
  * present. Barred from production like every other fixture.
  */
-function policyStateFor(ctx: FetchContext): RiksbankPolicyState {
+function policyStateFor(
+  centralBank: CentralBankId,
+  ctx: FetchContext,
+): CentralBankPolicyState {
   const now = ctx.clock.now()
   const observationDate = now.toISOString().slice(0, 10)
-  return {
-    centralBank: 'riksbank',
-    jurisdiction: 'Sweden',
-    currency: isoCurrency('SEK'),
-    rateType: 'policy-rate',
-    seriesId: 'FIXTURE',
-    regime: {
-      level: singleRate(1.75),
-      observationDate,
-      // Deliberately not today: a fixture that changed every day would hide
-      // exactly the bug this domain exists to prevent.
-      effectiveDate: '2025-10-01',
-      previousLevel: singleRate(2),
-      change: { kind: 'single', basisPoints: basisPoints(-25) },
-      effectiveDateConfidence: 'confirmed',
-      effectiveDateEarliestPossible: null,
-      observationRelation: 'repeated-confirmation',
-    },
-    publication: 'cadence-unknown',
+  /*
+   * A regime that is deliberately NOT current: the level took effect months
+   * before the latest observation. A fixture that changed every day would hide
+   * exactly the carry-forward bug this domain exists to prevent.
+   */
+  const regime = <L extends PolicyLevel>(
+    level: L,
+    previous: L,
+    change: PolicyLevelChange,
+  ) => ({
+    level,
+    observationDate,
+    effectiveDate: '2025-10-01',
+    effectiveDateConfidence: 'confirmed' as const,
+    effectiveDateEarliestPossible: null,
+    previousLevel: previous,
+    change,
+    observationRelation: 'repeated-confirmation' as const,
+  })
+
+  const shared = {
+    publication: 'cadence-unknown' as const,
     provenance: fixtureProvenance(ctx),
+    seriesId: 'FIXTURE',
+  }
+
+  /*
+   * Each institution gets its OWN shape. Returning one bank's state for all
+   * three would make the fixture path structurally different from the live
+   * path, which is the one thing a fixture must never be.
+   */
+  switch (centralBank) {
+    case 'federal-reserve':
+      return {
+        ...shared,
+        centralBank,
+        jurisdiction: 'United States',
+        currency: isoCurrency('USD'),
+        rateType: 'target-range',
+        regime: regime(targetRange(3.5, 3.75), targetRange(3.75, 4), {
+          kind: 'target-range',
+          lowerBasisPoints: basisPoints(-25),
+          upperBasisPoints: basisPoints(-25),
+        }),
+        effectiveFedFundsRate: null,
+      }
+    case 'ecb':
+      return {
+        ...shared,
+        centralBank,
+        jurisdiction: 'Euro area',
+        currency: isoCurrency('EUR'),
+        rateType: 'key-rates',
+        regime: regime(keyRates(2.25, 2.4, 2.65), keyRates(2, 2.15, 2.4), {
+          kind: 'key-rates',
+          depositFacilityBasisPoints: basisPoints(25),
+          mainRefinancingBasisPoints: basisPoints(25),
+          marginalLendingBasisPoints: basisPoints(25),
+        }),
+        primaryRate: 'deposit-facility',
+      }
+    case 'riksbank':
+      return {
+        ...shared,
+        centralBank,
+        jurisdiction: 'Sweden',
+        currency: isoCurrency('SEK'),
+        rateType: 'policy-rate',
+        regime: regime(singleRate(1.75), singleRate(2), {
+          kind: 'single',
+          basisPoints: basisPoints(-25),
+        }),
+      }
   }
 }
 
@@ -431,8 +495,8 @@ export function createFixtureProvider(): FixtureProvider {
     async fetchYields(symbols, ctx) {
       return yieldsFor(symbols, ctx)
     },
-    async fetchPolicyState(ctx) {
-      return policyStateFor(ctx)
+    async fetchPolicyState(centralBank, ctx) {
+      return policyStateFor(centralBank, ctx)
     },
     async fetchYieldCurve(countryCode, ctx) {
       return yieldCurveFor(countryCode, ctx)

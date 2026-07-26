@@ -63,6 +63,7 @@ const NYFED_ROUTES: Array<[RegExp, string]> = [
 describe('New York Fed', () => {
   it('keeps the target range a range, with no midpoint anywhere', async () => {
     const state = await createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(
+      'federal-reserve',
       context(),
     )
     expect(state.centralBank).toBe('federal-reserve')
@@ -77,6 +78,7 @@ describe('New York Fed', () => {
 
   it('keeps the effective federal funds rate a separate observation', async () => {
     const state = await createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(
+      'federal-reserve',
       context(),
     )
     if (state.centralBank !== 'federal-reserve') throw new Error('wrong bank')
@@ -90,6 +92,7 @@ describe('New York Fed', () => {
 
   it('finds the real effective date, not the observation date', async () => {
     const state = await createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(
+      'federal-reserve',
       context(),
     )
     expect(state.regime.observationDate).toBe('2026-01-15')
@@ -133,12 +136,13 @@ describe('New York Fed', () => {
   it('fails rather than inventing a level when nothing is usable', async () => {
     const empty = http([[/newyorkfed/, JSON.stringify({ refRates: [] })]])
     await expect(
-      createNewYorkFedProvider(empty).fetchPolicyState(context()),
+      createNewYorkFedProvider(empty).fetchPolicyState('federal-reserve', context()),
     ).rejects.toThrow(/no usable target range/)
   })
 
   it('reports date-only precision, because the payload has no time', async () => {
     const state = await createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(
+      'federal-reserve',
       context(),
     )
     expect(state.provenance.asOfPrecision).toBe('date')
@@ -157,7 +161,10 @@ const ECB_ROUTES: Array<[RegExp, string]> = [
 
 describe('ECB', () => {
   it('keeps all three key rates structurally distinct', async () => {
-    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(context())
+    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(
+      'ecb',
+      context(),
+    )
     expect(state.regime.level).toEqual({
       kind: 'key-rates',
       depositFacilityPercent: 2.25,
@@ -172,7 +179,10 @@ describe('ECB', () => {
     // The trap this whole phase is built around, on real bytes: the ECB
     // carried the value forward every calendar day for 39 days, weekends
     // included, and the latest observation is a Sunday.
-    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(context())
+    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(
+      'ecb',
+      context(),
+    )
     expect(state.regime.observationDate).toBe('2026-07-26')
     expect(new Date('2026-07-26T00:00:00Z').getUTCDay()).toBe(0)
     expect(state.regime.effectiveDate).toBe('2026-06-17')
@@ -181,7 +191,10 @@ describe('ECB', () => {
   })
 
   it('reports a delta for each of the three rates', async () => {
-    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(context())
+    const state = await createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(
+      'ecb',
+      context(),
+    )
     expect(state.regime.change).toEqual({
       kind: 'key-rates',
       depositFacilityBasisPoints: 25,
@@ -221,7 +234,7 @@ describe('ECB', () => {
         [new RegExp(ECB_SERIES.mainRefinancing.replace(/\./g, '\\.')), F('ecb.mro.csv')],
         [new RegExp(ECB_SERIES.marginalLending.replace(/\./g, '\\.')), short],
       ]),
-    ).fetchPolicyState(context())
+    ).fetchPolicyState('ecb', context())
     expect(state.regime.observationDate).toBe('2026-07-25')
   })
 
@@ -233,6 +246,7 @@ describe('ECB', () => {
   it('requests exactly the three official series', async () => {
     const urls: string[] = []
     await createEcbProvider(http(ECB_ROUTES, (u) => urls.push(u))).fetchPolicyState(
+      'ecb',
       context(),
     )
     expect(urls).toHaveLength(3)
@@ -252,6 +266,7 @@ const RIKS_ROUTES: Array<[RegExp, string]> = [
 describe('Riksbank policy rate', () => {
   it('keeps a scalar policy rate with no corridor fields', async () => {
     const state = await createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+      'riksbank',
       context(),
     )
     expect(state.regime.level).toEqual({ kind: 'single', ratePercent: 1.75 })
@@ -260,6 +275,7 @@ describe('Riksbank policy rate', () => {
 
   it('stores neither corridor rates nor the forecast path', async () => {
     const state = await createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+      'riksbank',
       context(),
     )
     const keys = Object.keys(state).join(' ')
@@ -270,6 +286,7 @@ describe('Riksbank policy rate', () => {
 
   it('separates a July observation from an October effective date', async () => {
     const state = await createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+      'riksbank',
       context(),
     )
     expect(state.regime.observationDate).toBe('2026-07-24')
@@ -288,6 +305,7 @@ describe('Riksbank policy rate', () => {
 
   it('uses the bank-day calendar only for publication detection', async () => {
     const state = await createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+      'riksbank',
       context(),
     )
     // The observation is the latest bank day, so nothing was skipped.
@@ -298,7 +316,7 @@ describe('Riksbank policy rate', () => {
     const provider = createRiksbankPolicyProvider(
       http([[/Observations\/SECBREPOEFF/, F('riksbank.policyrate.json')]]),
     )
-    const state = await provider.fetchPolicyState(context())
+    const state = await provider.fetchPolicyState('riksbank', context())
     // A broken calendar must not lose the rate, and must not invent a miss.
     expect(state.regime.level).toEqual({ kind: 'single', ratePercent: 1.75 })
     expect(state.publication).toBe('cadence-unknown')
@@ -317,19 +335,44 @@ describe('Riksbank policy rate', () => {
           [/Observations/, '[]'],
           [/CalendarDays/, '[]'],
         ]),
-      ).fetchPolicyState(context()),
+      ).fetchPolicyState('riksbank', context()),
     ).rejects.toThrow(/no policy-rate observation/)
   })
 })
 
 /* -------------------------------------------------- cross-source invariants */
 
+describe('an adapter refuses an institution it does not serve', () => {
+  it.each([
+    ['nyfed', () => createNewYorkFedProvider(http(NYFED_ROUTES)), 'ecb'],
+    ['ecb', () => createEcbProvider(http(ECB_ROUTES)), 'riksbank'],
+    [
+      'riksbank',
+      () => createRiksbankPolicyProvider(http(RIKS_ROUTES)),
+      'federal-reserve',
+    ],
+  ] as const)('%s rejects a request for %s', async (_id, make, wrongBank) => {
+    // A chain misconfiguration, not something to answer approximately. Without
+    // this the registry would happily route a Fed request to the ECB adapter,
+    // and euro rates would render under a US flag.
+    await expect(make().fetchPolicyState(wrongBank, context())).rejects.toThrow(
+      /cannot serve/,
+    )
+  })
+})
+
 describe('across all three institutions', () => {
   it('never reports the observation date as the effective date', async () => {
     const states = await Promise.all([
-      createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(context()),
-      createEcbProvider(http(ECB_ROUTES)).fetchPolicyState(context()),
-      createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(context()),
+      createNewYorkFedProvider(http(NYFED_ROUTES)).fetchPolicyState(
+        'federal-reserve',
+        context(),
+      ),
+      createEcbProvider(http(ECB_ROUTES)).fetchPolicyState('ecb', context()),
+      createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+        'riksbank',
+        context(),
+      ),
     ])
     for (const state of states) {
       expect(state.regime.effectiveDate).not.toBe(state.regime.observationDate)
@@ -342,6 +385,7 @@ describe('across all three institutions', () => {
 
   it('ages from the observation, never from the policy decision', async () => {
     const state = await createRiksbankPolicyProvider(http(RIKS_ROUTES)).fetchPolicyState(
+      'riksbank',
       context(),
     )
     // Two days since the source last confirmed it, not ten months since the

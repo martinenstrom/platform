@@ -23,6 +23,7 @@ import type {
   YieldCurve,
 } from '~/domain/market'
 import type {
+  CentralBankId,
   EcbPolicyState,
   FederalReservePolicyState,
   RiksbankPolicyState,
@@ -105,7 +106,17 @@ export interface QuoteProvider extends ProviderIdentity {
  * never have to be flattened into a shared shape.
  */
 export interface PolicyRateProvider extends ProviderIdentity {
+  /**
+   * `centralBank` names which institution is being asked for.
+   *
+   * The three official adapters each serve exactly one and validate the
+   * argument, but the parameter is not ceremony: without it a provider serving
+   * several institutions — a fixture, or a future multi-series source — has no
+   * way to know what to return, and silently answers with whichever one it
+   * happens to implement.
+   */
   fetchPolicyState(
+    centralBank: CentralBankId,
     ctx: FetchContext,
   ): Promise<FederalReservePolicyState | EcbPolicyState | RiksbankPolicyState>
 }

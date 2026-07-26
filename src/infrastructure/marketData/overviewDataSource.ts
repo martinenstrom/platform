@@ -13,15 +13,9 @@ import type { OverviewDataSource } from '~/application/marketData/getOverviewSna
 import { resolve, type ResolveDeps } from '~/application/marketData/providerRegistry'
 import type {
   Capability,
-  CommodityProvider,
-  CryptoProvider,
   DataCategory,
   FetchContext,
-  FxProvider,
-  NewsProvider,
-  QuoteProvider,
-  SentimentProvider,
-  YieldProvider,
+  PortByCapability,
 } from '~/application/marketData/ports'
 import { avanzaCovers } from './providers/avanza/map'
 import {
@@ -153,16 +147,16 @@ export function createOverviewDataSource(
   const chain = (category: DataCategory) => container.config.chains[category]
 
   /** One resolution, with the boilerplate that every category shares. */
-  function run<T>(args: {
+  function run<T, C extends Capability>(args: {
     category: DataCategory
-    capability: Capability
+    capability: C
     cacheKey: string
     attempt: (
-      provider: unknown,
+      provider: PortByCapability[C],
       ctx: FetchContext,
     ) => Promise<{ data: T; provenance: Provenance }>
   }): Promise<Envelope<T>> {
-    return resolve<T>(deps, {
+    return resolve<T, C>(deps, {
       category: args.category,
       capability: args.capability,
       cacheKey: args.cacheKey,
@@ -172,23 +166,32 @@ export function createOverviewDataSource(
     })
   }
 
-  const quoteLike = (
+  /**
+   * The shape every list-of-observations category shares.
+   *
+   * Generic over the capability, so `call` receives the port that serves it
+   * and the result type flows out to the caller. This used to take
+   * `provider: never`, which made any callback assignable and pushed an
+   * `as never` onto every call site — the compiler was being asked to stop
+   * checking exactly where a wrong port would do damage.
+   */
+  const quoteLike = <T extends { provenance: Provenance }, C extends Capability>(
     category: DataCategory,
-    capability: Capability,
+    capability: C,
     symbols: readonly CanonicalSymbol[],
     call: (
-      provider: never,
+      provider: PortByCapability[C],
       symbols: readonly CanonicalSymbol[],
       ctx: FetchContext,
-    ) => Promise<Array<{ provenance: Provenance }>>,
-  ) =>
-    run({
+    ) => Promise<T[]>,
+  ): Promise<Envelope<T[]>> =>
+    run<T[], C>({
       category,
       capability,
       cacheKey: quotesKey(capability, symbols),
       attempt: async (provider, ctx) => {
-        const data = await call(provider as never, symbols, ctx)
-        return { data: data as never, provenance: mergedProvenance(data) }
+        const data = await call(provider, symbols, ctx)
+        return { data, provenance: mergedProvenance(data) }
       },
     })
 
@@ -213,45 +216,37 @@ export function createOverviewDataSource(
         groups
           .filter(([, group]) => group.length > 0)
           .map(([category, group]) =>
-            run<MarketQuote[]>({
+            run<MarketQuote[], 'quotes'>({
               category,
               capability: 'quotes',
               cacheKey: quotesKey('quotes', group),
               attempt: async (provider, ctx) => {
-                const data = await (provider as QuoteProvider).fetchQuotes(group, ctx)
+                const data = await provider.fetchQuotes(group, ctx)
                 return { data, provenance: mergedProvenance(data) }
               },
             }),
           ),
       )
 
-      return combineBySymbol(resolved, symbols, NO_INDEX_QUOTES_ERROR) as never
+      return combineBySymbol(resolved, symbols, NO_INDEX_QUOTES_ERROR)
     },
 
     fx: (symbols) =>
-      quoteLike('fx', 'fx', symbols, (p: FxProvider, s, ctx) =>
-        p.fetchFxRates(s, ctx),
-      ) as never,
+      quoteLike('fx', 'fx', symbols, (p, s, ctx) => p.fetchFxRates(s, ctx)),
 
     commodities: (symbols) =>
-      quoteLike('commodities', 'commodities', symbols, (p: CommodityProvider, s, ctx) =>
+      quoteLike('commodities', 'commodities', symbols, (p, s, ctx) =>
         p.fetchCommodities(s, ctx),
-      ) as never,
+      ),
 
     crypto: (symbols) =>
-      quoteLike('crypto', 'crypto', symbols, (p: CryptoProvider, s, ctx) =>
-        p.fetchCrypto(s, ctx),
-      ) as never,
+      quoteLike('crypto', 'crypto', symbols, (p, s, ctx) => p.fetchCrypto(s, ctx)),
 
     sectors: (symbols) =>
-      quoteLike('sectors', 'quotes', symbols, (p: QuoteProvider, s, ctx) =>
-        p.fetchQuotes(s, ctx),
-      ) as never,
+      quoteLike('sectors', 'quotes', symbols, (p, s, ctx) => p.fetchQuotes(s, ctx)),
 
     watchlist: (symbols) =>
-      quoteLike('equity-se', 'quotes', symbols, (p: QuoteProvider, s, ctx) =>
-        p.fetchQuotes(s, ctx),
-      ) as never,
+      quoteLike('equity-se', 'quotes', symbols, (p, s, ctx) => p.fetchQuotes(s, ctx)),
 
     /**
      * Yields resolve PER COUNTRY, because the sources differ and so do their
@@ -276,12 +271,12 @@ export function createOverviewDataSource(
         byCountry
           .filter(([, group]) => group.length > 0)
           .map(async ([category, group]) => {
-            const envelope = await run<GovernmentYield[]>({
+            const envelope = await run<GovernmentYield[], 'yields'>({
               category,
               capability: 'yields',
               cacheKey: quotesKey('yields', group),
               attempt: async (provider, ctx) => {
-                const data = await (provider as YieldProvider).fetchYields(group, ctx)
+                const data = await provider.fetchYields(group, ctx)
                 return { data, provenance: mergedProvenance(data) }
               },
             })
@@ -298,7 +293,7 @@ export function createOverviewDataSource(
         capability: 'yields',
         cacheKey: yieldCurveKey(countryCode),
         attempt: async (provider, ctx) => {
-          const yieldProvider = provider as YieldProvider
+          const yieldProvider = provider
           if (!yieldProvider.fetchYieldCurve) {
             throw new Error(`${yieldProvider.id} does not publish a yield curve`)
           }
@@ -313,7 +308,7 @@ export function createOverviewDataSource(
         capability: 'news',
         cacheKey: newsKey([], limit),
         attempt: async (provider, ctx) => {
-          const items = await (provider as NewsProvider).fetchNews({ limit }, ctx)
+          const items = await provider.fetchNews({ limit }, ctx)
           return { data: items, provenance: mergedProvenance(items) }
         },
       }),
@@ -324,7 +319,7 @@ export function createOverviewDataSource(
         capability: 'sentiment',
         cacheKey: sentimentKey('v1'),
         attempt: async (provider, ctx) => {
-          const value = await (provider as SentimentProvider).fetchSentiment(ctx)
+          const value = await provider.fetchSentiment(ctx)
           return { data: value, provenance: value.provenance }
         },
       }),
@@ -335,7 +330,16 @@ export function createOverviewDataSource(
         capability: 'series',
         cacheKey: quotesKey('series', symbols),
         attempt: async (provider, ctx) => {
-          const fixture = provider as FixtureProvider
+          /*
+           * KNOWN DEBT: sparklines and intraday series are not ports.
+           *
+           * They are fixture-only helpers left over from Phase 0, so this cast
+           * is the one place the data source reaches past the port interface.
+           * It is safe today only because the `series` capability has no live
+           * provider — the moment one exists, this must become a real
+           * `SeriesProvider` call. Phase 6 owns that.
+           */
+          const fixture = provider as unknown as FixtureProvider
           const series = await Promise.all(
             symbols.map((symbol) => fixture.fetchSparkline(symbol, ctx)),
           )
@@ -355,7 +359,16 @@ export function createOverviewDataSource(
         capability: 'series',
         cacheKey: quotesKey('series', symbols) + ':watchlist',
         attempt: async (provider, ctx) => {
-          const fixture = provider as FixtureProvider
+          /*
+           * KNOWN DEBT: sparklines and intraday series are not ports.
+           *
+           * They are fixture-only helpers left over from Phase 0, so this cast
+           * is the one place the data source reaches past the port interface.
+           * It is safe today only because the `series` capability has no live
+           * provider — the moment one exists, this must become a real
+           * `SeriesProvider` call. Phase 6 owns that.
+           */
+          const fixture = provider as unknown as FixtureProvider
           const series = await Promise.all(
             symbols.map((symbol) => fixture.fetchWatchlistSeries(symbol, ctx)),
           )
@@ -378,7 +391,16 @@ export function createOverviewDataSource(
           to: 'session',
         }),
         attempt: async (provider, ctx) => {
-          const fixture = provider as FixtureProvider
+          /*
+           * KNOWN DEBT: sparklines and intraday series are not ports.
+           *
+           * They are fixture-only helpers left over from Phase 0, so this cast
+           * is the one place the data source reaches past the port interface.
+           * It is safe today only because the `series` capability has no live
+           * provider — the moment one exists, this must become a real
+           * `SeriesProvider` call. Phase 6 owns that.
+           */
+          const fixture = provider as unknown as FixtureProvider
           const entries = await Promise.all(
             SERIES_RANGES.map(
               async (range) => [range, await fixture.fetchIntraday(range, ctx)] as const,

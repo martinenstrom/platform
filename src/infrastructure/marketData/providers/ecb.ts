@@ -36,6 +36,7 @@ import { isoCurrency } from '~/domain/shared/primitives'
 import type { DataSourceMetadata } from '~/domain/shared/provenance'
 import {
   detectRegime,
+  type CentralBankId,
   ecbPublicationStatus,
   keyRates,
   type EcbPolicyState,
@@ -142,7 +143,16 @@ export function createEcbProvider(http: HttpClient): PolicyRateProvider {
     name: ECB_SOURCE.providerName,
     attributionUrl: ECB_SOURCE.attributionUrl,
 
-    async fetchPolicyState(ctx: FetchContext): Promise<EcbPolicyState> {
+    async fetchPolicyState(
+      centralBank: CentralBankId,
+      ctx: FetchContext,
+    ): Promise<EcbPolicyState> {
+      // This adapter serves one institution. Being asked for another is a
+      // chain misconfiguration, not something to answer approximately.
+      if (centralBank !== 'ecb') {
+        throw new HttpError('not-found', `ecb adapter cannot serve ${centralBank}`)
+      }
+
       const fetchSeries = async (key: string) => {
         const csv = await http.getText(
           `${BASE_URL}/${key}?lastNObservations=${LOOKBACK_OBSERVATIONS}&format=csvdata&detail=dataonly`,
