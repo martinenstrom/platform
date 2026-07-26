@@ -31,11 +31,19 @@ interface BreakerRecord {
 }
 
 /**
- * A schema error means our adapter is wrong, not that the provider is down.
- * Counting it toward the threshold would trip the breaker and mask the bug.
+ * Which failures are evidence that the provider is *unavailable*.
+ *
+ *  - `schema` / `not-found`: our adapter is wrong, not the provider. Tripping
+ *    would mask the bug.
+ *  - `rate-limit`: the provider answered, correctly, that we are asking too
+ *    often. That is a quota condition, not an outage, and it already has its
+ *    own controls — the token bucket, the daily budget and Retry-After.
+ *    Letting it open the availability breaker would conflate "we overspent"
+ *    with "they are down", and would suppress traffic long after the window
+ *    reset.
  */
 function countsTowardTripping(code: ErrorCode): boolean {
-  return code !== 'schema' && code !== 'not-found'
+  return code !== 'schema' && code !== 'not-found' && code !== 'rate-limit'
 }
 
 export class CircuitBreakerRegistry {

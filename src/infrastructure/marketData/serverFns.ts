@@ -31,12 +31,14 @@ async function getContainer(): Promise<Container> {
     { createContainer },
     { createFixtureProvider },
     { createFrankfurterProvider },
+    { createCoinGeckoProvider },
     { createHttpClient },
     { loadMarketDataConfig },
   ] = await Promise.all([
     import('./container'),
     import('./providers/fixture'),
     import('./providers/frankfurter'),
+    import('./providers/coinGecko'),
     import('./providers/httpClient'),
     import('./config'),
   ])
@@ -56,6 +58,29 @@ async function getContainer(): Promise<Container> {
   const networkProviders = !config.allowNetworkProviders
     ? []
     : [
+        {
+          provider: createCoinGeckoProvider(
+            createHttpClient({ networkDisabled: false }),
+            // Read here, never logged, never sent to the client, and passed
+            // as a header rather than a query parameter.
+            {
+              ...(process.env.COINGECKO_API_KEY
+                ? { apiKey: process.env.COINGECKO_API_KEY }
+                : {}),
+            },
+          ),
+          capabilities: new Set(['crypto'] as const),
+          metadata: {
+            expectedLatencyMs: 350,
+            updateFrequency: 'minutely' as const,
+            // Aggregated with a short cache, not a venue feed running behind.
+            delayMinutes: null,
+            supportsHistory: false,
+            supportsIntraday: false,
+            supportsBatch: true,
+            requiresAttribution: true,
+          },
+        },
         {
           provider: createFrankfurterProvider(
             createHttpClient({ networkDisabled: false }),

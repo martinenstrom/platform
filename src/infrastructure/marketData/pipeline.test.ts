@@ -62,6 +62,7 @@ function harness(
     rpd?: number | null
     timeoutMs?: number
     maxAttempts?: number
+    maxAttemptsRateLimited?: number
     production?: boolean
   } = {},
 ) {
@@ -92,7 +93,12 @@ function harness(
     },
     budgetLimitFor: () => options.rpd ?? null,
     timeoutMsFor: () => options.timeoutMs ?? 5_000,
-    retry: { maxAttempts: options.maxAttempts ?? 3, baseDelayMs: 1, maxDelayMs: 4 },
+    retry: {
+      maxAttempts: options.maxAttempts ?? 3,
+      baseDelayMs: 1,
+      maxDelayMs: 4,
+      maxAttemptsRateLimited: options.maxAttemptsRateLimited ?? 2,
+    },
   }
 
   const deps: ResolveDeps = {

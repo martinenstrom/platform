@@ -44,6 +44,8 @@ import { createLogger } from './logging'
 import {
   checkCacheSharing,
   checkLiveReadiness,
+  checkProviderCredentials,
+  checkQuotaSafety,
   loadMarketDataConfig,
   type MarketDataConfig,
 } from './config'
@@ -134,6 +136,20 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   }
   const sharingWarning = checkCacheSharing(config, cache.isShared)
   if (sharingWarning) logger.warn(sharingWarning)
+
+  // Quota safety and credentials are FATAL in live mode rather than merely
+  // warned about: starting a deployment that will silently overrun a
+  // provider's global quota, or that depends on an undocumented keyless
+  // endpoint, is worse than refusing to start.
+  const instanceCountWasExplicit =
+    (overrides.env ?? (process.env as never))?.MARKETDATA_INSTANCE_COUNT !== undefined
+  const quota = checkQuotaSafety(config, cache.isShared, instanceCountWasExplicit)
+  for (const warning of quota.warnings) logger.warn(warning)
+  const fatal = [...quota.errors, ...checkProviderCredentials(config)]
+  if (fatal.length > 0) {
+    const bullets = fatal.map((issue) => `  - ${issue}`).join('\n')
+    throw new Error(`Unsafe market-data configuration:\n${bullets}`)
+  }
 
   async function health(): Promise<MarketDataHealth> {
     const providerIds = new Set<string>([

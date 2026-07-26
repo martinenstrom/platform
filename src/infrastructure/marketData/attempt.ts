@@ -107,17 +107,30 @@ export async function attemptProvider<T>(
   const labels = { provider: providerId, capability }
 
   // 1 — breaker. Checked once, before anything is spent.
-  if (!deps.breakers.allows(providerId)) {
+  const breakerState = deps.breakers.state(providerId)
+  if (breakerState === 'open') {
     deps.metrics.increment(METRIC.providerSkipped, { ...labels, reason: 'circuit-open' })
     return skip(providerId, 'circuit-open')
   }
+
+  /*
+   * A half-open probe is ONE request.
+   *
+   * Retrying a probe cannot improve the answer to "are you back yet?", but it
+   * does triple the cost of being down. That matters whenever the refresh
+   * interval exceeds the breaker cooldown — with a 10-minute crypto TTL and a
+   * 60-second cooldown, every refresh finds the breaker half-open, so
+   * retrying probes would spend 3 requests per window (432/day) instead of 1
+   * (144/day) throughout an outage.
+   */
+  const maxAttempts = breakerState === 'half-open' ? 1 : deps.retry.maxAttempts
 
   const budgetLimit = deps.budgetLimitFor(providerId)
   const bucket = deps.bucketFor(providerId)
   const timeoutMs = deps.timeoutMsFor(providerId, capability)
   let lastError: DomainError | null = null
 
-  for (let attempt = 1; attempt <= deps.retry.maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // 2 — budget, reserved BEFORE the call so a crash costs a unit rather
     //     than allowing an overdraft. Re-entered on every retry.
     if (!(await deps.budget.reserve(providerId, budgetLimit))) {
@@ -176,10 +189,18 @@ export async function attemptProvider<T>(
         deps.metrics.increment(METRIC.providerTimeout, labels)
       }
 
-      const canRetry = domainError.retryable && attempt < deps.retry.maxAttempts
+      // A 429 gets its own, lower ceiling: the provider is healthy and we are
+      // simply over quota, so extra attempts only spend more budget.
+      const ceiling =
+        domainError.code === 'rate-limit'
+          ? Math.min(deps.retry.maxAttemptsRateLimited, maxAttempts)
+          : maxAttempts
+      const canRetry = domainError.retryable && attempt < ceiling
       if (!canRetry) break
 
       deps.metrics.increment(METRIC.providerRetry, { ...labels, attempt })
+      // Retry-After is the provider telling us exactly when to come back; it
+      // always beats our computed backoff.
       const delay =
         domainError.retryAfterMs ?? backoffDelayMs(attempt, deps.retry, deps.random)
       await sleep(delay)
@@ -196,5 +217,5 @@ export async function attemptProvider<T>(
   if (deps.breakers.onFailure(providerId, error.code)) {
     deps.metrics.increment(METRIC.breakerOpened, { provider: providerId })
   }
-  return { kind: 'failed', error, attempts: deps.retry.maxAttempts }
+  return { kind: 'failed', error, attempts: maxAttempts }
 }

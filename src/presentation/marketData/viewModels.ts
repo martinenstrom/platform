@@ -43,14 +43,18 @@ export interface QuoteViewModel {
 }
 
 /**
- * Decimals to render.
+ * Decimals to render, most authoritative first.
  *
- * The provider's own precision wins when it is known: padding 9.717 to
- * "9,7170" would imply a digit the source never published. The instrument's
- * conventional precision is the fallback for sources that do not say.
+ *  1. `sourcePrecision`    — the upstream source determined it (ECB's 9.717).
+ *                            Padding to 9,7170 would imply a digit it never
+ *                            published.
+ *  2. `requestedPrecision` — the provider rounded to what we asked for. Real,
+ *                            but ours, so it ranks below genuine source
+ *                            precision.
+ *  3. instrument default   — for sources that say nothing.
  */
 function displayPrecision(quote: MarketQuote, fallback: number): number {
-  return quote.sourcePrecision ?? fallback
+  return quote.sourcePrecision ?? quote.requestedPrecision ?? fallback
 }
 
 export function toQuoteViewModel(quote: MarketQuote): QuoteViewModel {

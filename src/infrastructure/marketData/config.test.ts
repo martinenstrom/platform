@@ -54,10 +54,47 @@ describe('loadMarketDataConfig', () => {
     expect(config.chains.news).toEqual(['marketaux', 'fixture'])
   })
 
-  it('keeps keyless providers without any credential', () => {
+  it('keeps genuinely keyless providers without any credential', () => {
     const config = loadMarketDataConfig(HYBRID)
     expect(config.chains.fx).toEqual(['frankfurter', 'fixture'])
+  })
+
+  it('drops CoinGecko without a key, even though keyless calls work today', () => {
+    // The keyless endpoint is not a published production contract, so it is
+    // opt-in rather than assumed.
+    expect(loadMarketDataConfig(HYBRID).chains.crypto).toEqual(['fixture'])
+  })
+
+  it('allows keyless CoinGecko in hybrid when explicitly opted in', () => {
+    const config = loadMarketDataConfig({ ...HYBRID, COINGECKO_ALLOW_KEYLESS: 'true' })
     expect(config.chains.crypto).toEqual(['coingecko', 'fixture'])
+    expect(config.coinGeckoKeyless).toBe(true)
+  })
+
+  it('never allows keyless CoinGecko in live mode', () => {
+    const config = loadMarketDataConfig({
+      MARKETDATA_MODE: 'live',
+      COINGECKO_ALLOW_KEYLESS: 'true',
+    })
+    expect(config.chains.crypto).toEqual(['fixture'])
+  })
+
+  it('keeps CoinGecko when a Demo key is present', () => {
+    const config = loadMarketDataConfig({ ...HYBRID, COINGECKO_API_KEY: 'CG-demo-key' })
+    expect(config.chains.crypto).toEqual(['coingecko', 'fixture'])
+    expect(config.coinGeckoKeyless).toBe(false)
+  })
+
+  it('divides per-day budgets across the configured instance count', () => {
+    const one = loadMarketDataConfig({ ...HYBRID, COINGECKO_API_KEY: 'k' })
+    const three = loadMarketDataConfig({
+      ...HYBRID,
+      COINGECKO_API_KEY: 'k',
+      MARKETDATA_INSTANCE_COUNT: '3',
+    })
+    expect(one.limits.coingecko?.requestsPerDay).toBe(250)
+    // Floor division, conservative by construction.
+    expect(three.limits.coingecko?.requestsPerDay).toBe(83)
   })
 
   it('ignores an unknown provider id with a warning', () => {

@@ -16,12 +16,22 @@ export interface RetryOptions {
   maxAttempts: number
   baseDelayMs: number
   maxDelayMs: number
+  /**
+   * Separate, lower ceiling for HTTP 429.
+   *
+   * A rate limit means the provider is fine and we are asking too often, so
+   * hammering it is both futile and expensive: every retry is a real external
+   * request and consumes the daily budget. One retry, honouring Retry-After,
+   * is the most that can help.
+   */
+  maxAttemptsRateLimited: number
 }
 
 export const DEFAULT_RETRY: RetryOptions = {
   maxAttempts: 3,
   baseDelayMs: 250,
   maxDelayMs: 4_000,
+  maxAttemptsRateLimited: 2,
 }
 
 /**

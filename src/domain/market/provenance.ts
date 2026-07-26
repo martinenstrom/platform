@@ -38,8 +38,18 @@ export type Unit =
  * both facts are true and both are preserved.
  */
 export type Quality =
-  /** Live provider tick. */
+  /** Exchange-grade live tick from the venue itself. */
   | 'realtime'
+  /**
+   * Aggregated market data with a provider timestamp and a short cache
+   * interval — current, but not exchange-grade.
+   *
+   * CoinGecko is the motivating case: a cross-exchange aggregate with a
+   * `last_updated_at` and a 30-60 s cache. Calling that 'realtime' would
+   * overstate it; calling it 'delayed' would misdescribe it, since it is not
+   * a venue feed running behind.
+   */
+  | 'near-realtime'
   /** Real, but behind by a known or unknown delay (most free tiers). */
   | 'delayed'
   /**

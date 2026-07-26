@@ -312,6 +312,7 @@ describe('P11 — only approved providers are connected', () => {
       .map((f) => f.path)
       .sort()
     expect(adapters).toEqual([
+      'infrastructure/marketData/providers/coinGecko.ts',
       'infrastructure/marketData/providers/fixture.ts',
       'infrastructure/marketData/providers/frankfurter.ts',
       'infrastructure/marketData/providers/httpClient.ts',
@@ -333,14 +334,33 @@ describe('P11 — only approved providers are connected', () => {
   })
 
   it('keeps provider response types inside their adapter', () => {
-    const frankfurter = readFileSync(
-      join(SRC, 'infrastructure/marketData/providers/frankfurter.ts'),
-      'utf8',
-    )
     // The wire contract must never be exported: nothing downstream may depend
     // on a provider's payload shape.
-    expect(/export\s+interface\s+Frankfurter/.test(frankfurter)).toBe(false)
-    expect(/interface\s+FrankfurterTimeSeries/.test(frankfurter)).toBe(true)
+    for (const [file, wireType] of [
+      ['frankfurter.ts', 'FrankfurterTimeSeries'],
+      ['coinGecko.ts', 'CoinGeckoSimplePrice'],
+    ] as const) {
+      const source = readFileSync(
+        join(SRC, `infrastructure/marketData/providers/${file}`),
+        'utf8',
+      )
+      expect(new RegExp(`interface\\s+${wireType}`).test(source)).toBe(true)
+      expect(new RegExp(`export\\s+interface\\s+${wireType}`).test(source)).toBe(false)
+    }
+  })
+
+  it('never places a credential in a URL', () => {
+    // Query strings end up in access logs, proxy caches and error messages.
+    const offenders: string[] = []
+    for (const file of FILES) {
+      if (!file.path.startsWith('infrastructure/marketData/providers/')) continue
+      if (isTest(file)) continue
+      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+      if (/[?&](api[-_]?key|apikey|token|x_cg[\w-]*)=/i.test(source)) {
+        offenders.push(file.path)
+      }
+    }
+    expect(offenders).toEqual([])
   })
 
   it('performs no outbound fetch outside the market-data layer', () => {
@@ -365,6 +385,6 @@ describe('P11 — only approved providers are connected', () => {
     ]
       .map((m) => m[1])
       .sort()
-    expect(imported).toEqual(['fixture', 'frankfurter', 'httpClient'])
+    expect(imported).toEqual(['coinGecko', 'fixture', 'frankfurter', 'httpClient'])
   })
 })

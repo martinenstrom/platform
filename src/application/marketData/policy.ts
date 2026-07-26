@@ -115,8 +115,12 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       staleWhileRevalidate: true,
     },
     crypto: {
-      ttlOpenMs: 60 * SECOND,
-      ttlClosedMs: 60 * SECOND,
+      // Quota-driven, not taste (D19). CoinGecko's Demo plan allows ~322
+      // calls/day; at 60 s this one tile would attempt 1,440. Ten minutes
+      // yields ~144/day in continuous use, comfortably inside the 250/day
+      // budget with room for retries. Configurable, like every TTL here.
+      ttlOpenMs: 10 * MINUTE,
+      ttlClosedMs: 10 * MINUTE,
       // A 24/7 market never closes, so staleness is unambiguously a fault.
       fallback: { ...PRICE_FALLBACK, maxStaleMs: 2 * HOUR },
       staleWhileRevalidate: true,

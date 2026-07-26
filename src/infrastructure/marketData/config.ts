@@ -72,6 +72,8 @@ export interface MarketDataConfig {
   /** Hard-fails any outbound call. Set true in CI and tests. */
   disableNetwork: boolean
   chains: Record<DataCategory, string[]>
+  /** True when CoinGecko may be called without a Demo key (hybrid dev only). */
+  coinGeckoKeyless: boolean
   credentials: Record<string, ProviderCredential>
   limits: Record<string, ProviderLimits>
   /** Per-provider request deadline; falls back to `defaultTimeoutMs`. */
@@ -107,11 +109,16 @@ const PROVIDER_KEY_ENV: Record<string, string> = {
   riksbank: 'RIKSBANK_API_KEY',
 }
 
-/** Keyless providers, listed explicitly so an omission is visible, not implied. */
+/**
+ * Providers that need no credential at all.
+ *
+ * CoinGecko is deliberately NOT here. Its keyless endpoint works today but is
+ * not a published production contract, so live mode requires a Demo key and
+ * hybrid must opt in explicitly via `COINGECKO_ALLOW_KEYLESS`.
+ */
 const KEYLESS_PROVIDERS = [
   'frankfurter',
   'treasury',
-  'coingecko',
   'avanza',
   'derived',
   'fixture',
@@ -196,6 +203,20 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
     credentials[providerId] = { providerId, envVar: '', present: true }
   }
 
+  // CoinGecko: a key is mandatory in live mode. In hybrid, the keyless
+  // endpoint may be used for local development, but only when asked for.
+  const coinGeckoKey = (env.COINGECKO_API_KEY ?? '').trim()
+  const allowKeyless = parseBoolean(
+    env.COINGECKO_ALLOW_KEYLESS,
+    false,
+    'COINGECKO_ALLOW_KEYLESS',
+  )
+  credentials.coingecko = {
+    providerId: 'coingecko',
+    envVar: 'COINGECKO_API_KEY',
+    present: coinGeckoKey.length > 0 || (allowKeyless && mode !== 'live'),
+  }
+
   const chains = {} as Record<DataCategory, string[]>
   for (const [category, envVar] of Object.entries(CATEGORY_ENV) as Array<
     [DataCategory, string]
@@ -224,18 +245,41 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
     chains[category] = usable
   }
 
+  /**
+   * Divides a per-day quota across instances, floor-wise with a floor of 1.
+   *
+   * A conservative TEMPORARY guard, not a correctness guarantee: it is only as
+   * good as the number configured, and autoscaling or a rolling deploy can
+   * exceed it. See `checkQuotaSafety`.
+   */
+  const perInstance = (perDay: number | null): number | null =>
+    perDay === null ? null : Math.max(1, Math.floor(perDay / instanceCount))
+
   const limits: Record<string, ProviderLimits> = {
     twelvedata: {
       requestsPerMinute: parseInteger(env.TWELVEDATA_RPM, 'TWELVEDATA_RPM') ?? 8,
-      requestsPerDay: parseInteger(env.TWELVEDATA_RPD, 'TWELVEDATA_RPD') ?? 800,
+      requestsPerDay: perInstance(
+        parseInteger(env.TWELVEDATA_RPD, 'TWELVEDATA_RPD') ?? 800,
+      ),
     },
     marketaux: {
       requestsPerMinute: null,
-      requestsPerDay: parseInteger(env.MARKETAUX_RPD, 'MARKETAUX_RPD') ?? 100,
+      requestsPerDay: perInstance(
+        parseInteger(env.MARKETAUX_RPD, 'MARKETAUX_RPD') ?? 100,
+      ),
     },
     coingecko: {
-      requestsPerMinute: parseInteger(env.COINGECKO_RPM, 'COINGECKO_RPM') ?? 100,
-      requestsPerDay: null,
+      // Demo plan: ~30 calls/min and 10,000 calls/month (~322/day). 250 leaves
+      // roughly 22% headroom for retries and clock skew. The DAILY ceiling is
+      // not a substitute for watching the MONTHLY allowance: normal use at a
+      // 10-minute TTL is ~144/day, i.e. ~4,320 per 30 days, well inside
+      // 10,000 — but sustained retry pressure at the daily ceiling would not
+      // be. Update these values in configuration, never in provider code, if
+      // the published plan changes.
+      requestsPerMinute: parseInteger(env.COINGECKO_RPM, 'COINGECKO_RPM') ?? 30,
+      requestsPerDay: perInstance(
+        parseInteger(env.COINGECKO_RPD, 'COINGECKO_RPD') ?? 250,
+      ),
     },
   }
 
@@ -262,6 +306,7 @@ export function loadMarketDataConfig(env: EnvSource): MarketDataConfig {
     ),
     disableNetwork,
     chains,
+    coinGeckoKeyless: coinGeckoKey.length === 0,
     credentials,
     limits,
     warnings,
@@ -315,4 +360,89 @@ export function checkCacheSharing(
     'counted per instance, so a multi-instance deployment will exceed its quotas. ' +
     'Use a shared store (KV) before scaling out.'
   )
+}
+
+export interface QuotaSafetyResult {
+  /** Fatal: configuration must be corrected before serving live traffic. */
+  errors: string[]
+  warnings: string[]
+}
+
+/**
+ * Quota safety for multi-instance deployment.
+ *
+ * Local memory and local disk **cannot enforce a global quota**. Each instance
+ * counts its own attempts, so N instances against a 250/day budget will
+ * attempt 250 × N. With CoinGecko's ~322/day that is exceeded at two
+ * instances.
+ *
+ * `MARKETDATA_INSTANCE_COUNT` divides the budget as a conservative guard, but
+ * it is only as good as the number configured. It must be set to the MAXIMUM
+ * POSSIBLE concurrent count, not the current one — autoscaling, rolling
+ * deployments and a stale value can all still breach the global quota. No
+ * multi-instance quota correctness is claimed until a shared `CacheStore`
+ * exists.
+ *
+ * Therefore, in live mode with a non-shared store and a metered provider, this
+ * FAILS rather than proceeding: silently risking a quota overrun is worse than
+ * refusing to start.
+ */
+export function checkQuotaSafety(
+  config: MarketDataConfig,
+  storeIsShared: boolean,
+  instanceCountWasExplicit: boolean,
+): QuotaSafetyResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  const metered = Object.entries(config.limits)
+    .filter(([, limit]) => limit.requestsPerDay !== null)
+    .map(([providerId]) => providerId)
+    .filter((providerId) =>
+      Object.values(config.chains).some((chain) => chain.includes(providerId)),
+    )
+
+  if (metered.length === 0) return { errors, warnings }
+
+  if (!storeIsShared) {
+    const detail =
+      `Provider budgets for ${metered.join(', ')} are counted PER INSTANCE ` +
+      `(cache store is not shared). ${config.instanceCount} instance(s) configured.`
+
+    if (config.production && !instanceCountWasExplicit) {
+      errors.push(
+        `${detail} In live mode this risks exceeding the provider's global quota. ` +
+          `Set MARKETDATA_INSTANCE_COUNT to the maximum possible concurrent instance ` +
+          `count, or provide a shared cache store.`,
+      )
+    } else {
+      warnings.push(
+        `${detail} The value must reflect the MAXIMUM possible concurrent instances; ` +
+          `autoscaling or a rolling deploy can still breach the global quota. ` +
+          `Multi-instance quota correctness is not guaranteed until a shared ` +
+          `CacheStore is in place.`,
+      )
+    }
+  }
+
+  return { errors, warnings }
+}
+
+/**
+ * CoinGecko's keyless endpoint works today but is not a published production
+ * contract, so live mode must not depend on it.
+ */
+export function checkProviderCredentials(config: MarketDataConfig): string[] {
+  const errors: string[] = []
+  const usesCoinGecko = Object.values(config.chains).some((chain) =>
+    chain.includes('coingecko'),
+  )
+  if (config.production && usesCoinGecko && config.coinGeckoKeyless) {
+    errors.push(
+      'CoinGecko is configured in live mode without COINGECKO_API_KEY. The keyless ' +
+        'endpoint is not a production contract; set a Demo API key or remove ' +
+        'coingecko from MARKETDATA_CHAIN_CRYPTO.',
+    )
+  }
+  return errors
 }

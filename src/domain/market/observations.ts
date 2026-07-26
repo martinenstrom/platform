@@ -7,7 +7,7 @@
  */
 
 import type { CanonicalSymbol } from './instruments'
-import { changePercent, price, type Percent, type Price } from './primitives'
+import { changePercent, percent, price, type Percent, type Price } from './primitives'
 import type { Provenance } from './provenance'
 
 /** Where an instrument's venue is in its trading day. */
@@ -29,7 +29,19 @@ export type ChangePeriod =
   | 'intraday'
   | 'daily'
   | 'publication-to-publication'
+  /** A rolling 24-hour window, as crypto aggregators report. */
+  | 'rolling-24h'
   | 'unknown'
+
+/**
+ * Whether we computed the change or the provider stated it.
+ *
+ * Worth recording: a derived change is reproducible from `value` and
+ * `previousClose`, while a provider-supplied one cannot be checked against
+ * anything we hold. They are different epistemic objects and should not look
+ * identical in the data.
+ */
+export type ChangeSource = 'derived' | 'provider'
 
 export interface MarketQuote {
   symbol: CanonicalSymbol
@@ -46,14 +58,22 @@ export interface MarketQuote {
   session: SessionState
   /** What period `absoluteChange` and `percentageChange` span. */
   changePeriod: ChangePeriod
+  /** Whether the change was computed here or stated by the provider. */
+  changeSource: ChangeSource | null
   /**
-   * Decimals the provider actually supplied, when known.
-   *
-   * Presentation uses `sourcePrecision ?? instrument.precision`, so a source
-   * quoting 9.717 renders as `9,717` rather than `9,7170` — padding a digit
-   * the source never published would imply precision it does not have.
+   * Decimals the upstream source itself determined, independently of anything
+   * we asked for. Frankfurter is the case: the ECB published `9.717`, and
+   * rendering `9,7170` would imply a digit it never gave.
    */
   sourcePrecision: number | null
+  /**
+   * Decimals produced because WE asked for them.
+   *
+   * Kept distinct from `sourcePrecision` on purpose: CoinGecko returns
+   * whatever `precision=` we request, so calling that intrinsic source
+   * precision would dress our own choice up as a property of the data.
+   */
+  requestedPrecision: number | null
   provenance: Provenance
 }
 
@@ -74,32 +94,55 @@ export function decimalsOf(value: number): number {
 export function buildQuote(args: {
   symbol: CanonicalSymbol
   value: number
+  /** Derives the change. Mutually exclusive with `percentageChange`. */
   previousClose?: number | null
+  /**
+   * Provider-authoritative change, for sources that report one without a
+   * comparable prior close. Mutually exclusive with `previousClose`.
+   */
+  percentageChange?: number | null
   dayHigh?: number | null
   dayLow?: number | null
   session?: SessionState
   changePeriod?: ChangePeriod
   sourcePrecision?: number | null
+  requestedPrecision?: number | null
   provenance: Provenance
 }): MarketQuote {
   const value = price(args.value)
-  const previousClose =
-    args.previousClose === null || args.previousClose === undefined
-      ? null
-      : price(args.previousClose)
+  const hasPrevious = args.previousClose !== null && args.previousClose !== undefined
+  const hasProvided =
+    args.percentageChange !== null && args.percentageChange !== undefined
+
+  // One change, one origin. Accepting both would mean holding two numbers that
+  // can disagree, with nothing to say which is right.
+  if (hasPrevious && hasProvided) {
+    throw new Error(
+      `buildQuote(${args.symbol}): supply previousClose OR percentageChange, not both`,
+    )
+  }
+
+  const previousClose = hasPrevious ? price(args.previousClose as number) : null
+  const derived = changePercent(value, previousClose)
+  const provided = hasProvided ? percent(args.percentageChange as number) : null
 
   return {
     symbol: args.symbol,
     value,
     previousClose,
+    // Only derivable against a real prior close. A provider that states a
+    // percentage gives us no absolute move, and inventing one would mean
+    // reverse-engineering a price it never published.
     absoluteChange: previousClose === null ? null : value - previousClose,
-    percentageChange: changePercent(value, previousClose),
+    percentageChange: provided ?? derived,
     dayHigh:
       args.dayHigh === null || args.dayHigh === undefined ? null : price(args.dayHigh),
     dayLow: args.dayLow === null || args.dayLow === undefined ? null : price(args.dayLow),
     session: args.session ?? 'unknown',
     changePeriod: args.changePeriod ?? 'unknown',
+    changeSource: hasProvided ? 'provider' : previousClose === null ? null : 'derived',
     sourcePrecision: args.sourcePrecision ?? null,
+    requestedPrecision: args.requestedPrecision ?? null,
     provenance: args.provenance,
   }
 }

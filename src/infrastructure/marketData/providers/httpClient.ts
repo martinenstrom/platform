@@ -45,14 +45,26 @@ function classify(status: number): ErrorCode {
 }
 
 export interface HttpClient {
-  getJson<T>(url: string, signal: AbortSignal): Promise<T>
+  /**
+   * `headers` is how credentials travel — never a query parameter, which
+   * would end up in access logs, proxy caches and error messages.
+   */
+  getJson<T>(
+    url: string,
+    signal: AbortSignal,
+    headers?: Record<string, string>,
+  ): Promise<T>
 }
 
 export function createHttpClient(options: HttpClientOptions): HttpClient {
   const doFetch = options.fetchImpl ?? globalThis.fetch
 
   return {
-    async getJson<T>(url: string, signal: AbortSignal): Promise<T> {
+    async getJson<T>(
+      url: string,
+      signal: AbortSignal,
+      headers: Record<string, string> = {},
+    ): Promise<T> {
       if (options.networkDisabled) {
         // Non-retryable on purpose: retrying a configuration decision would
         // burn budget and delay the fallback for no possible benefit.
@@ -66,7 +78,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
       try {
         response = await doFetch(url, {
           signal,
-          headers: { accept: 'application/json' },
+          headers: { accept: 'application/json', ...headers },
         })
       } catch (error) {
         // An abort is the pipeline's deadline firing; surface it as a timeout

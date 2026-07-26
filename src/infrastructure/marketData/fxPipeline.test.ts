@@ -85,7 +85,7 @@ function build(options: {
     clock,
     random: new SeededRandom(1),
     providers,
-    retry: { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 2 },
+    retry: { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 2, maxAttemptsRateLimited: 1 },
   })
   return { container, clock }
 }
