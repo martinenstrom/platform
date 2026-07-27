@@ -371,7 +371,7 @@ swap should be an adapter, not a redesign.
 | Stage                                     | State |
 | ----------------------------------------- | ----- |
 | 0 · transaction-capable ports             | done  |
-| 1 · schema and migrations                 | open  |
+| 1 · schema and migrations                 | done  |
 | 2 · PostgreSQL adapter                    | open  |
 | 3 · dual write                            | open  |
 | 4 · read verification                     | open  |
@@ -382,6 +382,81 @@ Stage 0 closed the two gaps the plan opened with: the ports had no transaction
 boundary, and no list method defined an ordering. Both are now on the port and
 enforced by the in-memory adapter, which becomes the reference implementation
 PostgreSQL is verified against in stage 4.
+
+Stage 1 built the schema, the migration runner and the seeded organization,
+verified by 110 integration tests against real PostgreSQL 18.4. **No adapter
+exists yet and nothing in the runtime connects to a database** — the in-memory
+adapter is still the only one, which is why this item stays open.
+
+---
+
+## TD-21 · Reviews attach to a thesis lineage, not to a revision
+
+**Incurred:** storage stage 1. **Severity:** high. **Blocks:** nothing today;
+must be resolved before stage 3 writes real governance records.
+
+`VerificationReview`, `DevilsAdvocateReview`, `ComplianceReview` and
+`RiskReview` all carry `thesisId` — the **lineage** — and no `revisionId`.
+
+That undercuts the argument the revision design rests on. A review reviewed a
+specific argument; once revision 2 exists, "verification approved thesis-1"
+does not say which version was approved, and the schema's guarantee that a
+sealed revision cannot be edited buys nothing if the review does not name the
+revision it read.
+
+The approved storage plan (§3, §4) specifies `reviews.revision_id`, so the
+column exists and is a foreign key to `thesis_revisions`. It is **nullable and
+unpopulated**, because the domain has nothing to put in it.
+
+**Preferred resolution:** add `revisionId` to the four review types, require it
+whenever the case has theses, and make the column `NOT NULL` for those kinds in
+a later migration. It is a domain change with a migration behind it, which is
+why it was not made silently inside a storage stage.
+
+---
+
+## TD-22 · The organization is not temporally versioned
+
+**Incurred:** storage stage 1. **Severity:** low. **Blocks:** nothing known.
+
+Departments, roles and employees have one current row each. There is no
+`valid_from` / `valid_to`, so the graph answers "how does the firm look now"
+and not "how did it look in March".
+
+What is preserved without versioning: every work record stores the department
+and employee involved, so an assignment's owner and a review's author are
+historical facts on the record itself, and `case_decisions.governance` pins the
+governance state at decision time. What is not preserved: names, reporting
+lines and governance classification as they stood.
+
+Three things hold the line meanwhile — the seed is insert-only, the runtime
+role has no UPDATE or DELETE on any organization table, and a structural change
+is therefore a new migration that states what it changes.
+
+**Preferred resolution, if it becomes necessary:** surrogate keys with validity
+ranges on `departments` and `employees`, with work records referencing the
+surrogate rather than the natural id. That is a wide change and was not worth
+making speculatively.
+
+---
+
+## TD-23 · `embedded-postgres` as the integration-test server
+
+**Incurred:** storage stage 1. **Severity:** low. **Blocks:** nothing.
+
+The plan assumed "real PostgreSQL in a container". The development machine has
+no container runtime, so the integration suite uses `embedded-postgres`, which
+downloads real PostgreSQL binaries (18.4) and runs them directly. The tests
+exercise a genuine server — roles, column-level grants, deferred constraint
+triggers, `NULLS NOT DISTINCT` and transactional DDL are all real.
+
+It is a devDependency of about 200 MB of binaries, which is a real cost for a
+project that keeps its dependency list short.
+
+**Preferred resolution:** CI runs a PostgreSQL service container and sets
+`TEST_DATABASE_URL`, which the harness already prefers over the embedded
+cluster. `embedded-postgres` then stays as the local-development convenience
+and can be dropped entirely once every contributor has a container runtime.
 
 ---
 

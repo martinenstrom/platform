@@ -759,3 +759,65 @@ describe('AI Phase B guards — the runtime respects its layers', () => {
     expect(navigation).toMatch(/label:\s*'Agenter'/)
   })
 })
+
+describe('Storage stage 1 — the database stays on the server', () => {
+  /*
+   * The migration runner opens a connection and reads the filesystem, and the
+   * test harness starts a database. Neither belongs anywhere near a browser
+   * bundle. The runner also guards itself at runtime, but a guard that throws
+   * in production is a worse outcome than a build that never shipped the
+   * module — so the import graph is the primary control.
+   */
+  const postgres = 'infrastructure/analysis/postgres/'
+
+  it('is never reached from presentation or routes', () => {
+    const client = FILES.filter(
+      (f) => inLayer(f, 'presentation/') || inLayer(f, 'routes/'),
+    )
+    const offenders = violations(client, (specifier) => {
+      const layer = toLayerPath(specifier)
+      return (
+        (layer?.startsWith(postgres) ?? false) ||
+        specifier.includes('/postgres/migrations') ||
+        specifier === 'pg'
+      )
+    })
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the database driver out of every layer above infrastructure', () => {
+    const above = FILES.filter(
+      (f) =>
+        !inLayer(f, 'infrastructure/') &&
+        !inLayer(f, 'test/') &&
+        f.imports.some((s) => s === 'pg' || s.startsWith('pg/')),
+    ).map((f) => f.path)
+    expect(above).toEqual([])
+  })
+
+  it('keeps the integration harness out of application code', () => {
+    /*
+     * `testDatabase` imports `embedded-postgres`, a devDependency. Reaching it
+     * from application code would compile locally and fail to install in
+     * production.
+     */
+    const offenders = FILES.filter((f) => !isTest(f) && !inLayer(f, 'test/'))
+      .filter((f) =>
+        f.imports.some((s) => s.includes('testDatabase') || s === 'embedded-postgres'),
+      )
+      .map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('applies migrations only through the runner', () => {
+    // Nothing else reads the SQL directory. A second code path that applied
+    // migrations would not record checksums, and the history would stop being
+    // a description of the database.
+    const offenders = FILES.filter(
+      (f) =>
+        !f.path.startsWith('infrastructure/analysis/postgres/') &&
+        codeOnly(readFileSync(join(SRC, f.path), 'utf8')).includes('db/migrations'),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+})

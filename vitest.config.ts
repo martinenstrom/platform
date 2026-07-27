@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import viteReact from '@vitejs/plugin-react'
 
 /**
@@ -19,5 +19,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    /*
+     * The PostgreSQL integration suite has its own config: it needs the `node`
+     * environment and a running database, and starting one would add ten
+     * seconds to every run of this suite. See `vitest.pg.config.ts`.
+     */
+    exclude: [...configDefaults.exclude, '**/*.pg.test.ts'],
   },
 })
