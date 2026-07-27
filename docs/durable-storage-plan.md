@@ -43,15 +43,17 @@ query set rather than something the ports have to anticipate.
 ## 1. Recommendation
 
 **PostgreSQL** as the single authoritative store, in development and
-production. **No SQLite. No object storage yet. No document database.**
+production. SQLite is **not a supported backend** — integration tests and
+production run against PostgreSQL only, though a narrow scratch role survives
+(§11). No object storage yet. No document database.
 
-|                     | Verdict                   | Why                                                                                                                                                              |
-| ------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PostgreSQL**      | **chosen**                | Transactional consistency across an aggregate; genuine relational shape; jsonb where the shape is genuinely open; row-level security available when auth arrives |
-| Managed PostgreSQL  | **chosen for production** | Backups, PITR and patching are exactly the operational work worth buying at this size                                                                            |
-| SQLite (local/test) | **rejected**              | See §11 — the divergence costs more than it saves                                                                                                                |
-| Object storage      | **deferred**              | Nothing is large enough yet. Revisit at >1 MB or binary artifacts                                                                                                |
-| Document database   | **rejected**              | Offers nothing here and costs the joins and transactions this workload is made of                                                                                |
+|                    | Verdict                   | Why                                                                                                                                                              |
+| ------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PostgreSQL**     | **chosen**                | Transactional consistency across an aggregate; genuine relational shape; jsonb where the shape is genuinely open; row-level security available when auth arrives |
+| Managed PostgreSQL | **chosen for production** | Backups, PITR and patching are exactly the operational work worth buying at this size                                                                            |
+| SQLite             | **not a backend**         | Never for integration or production. A narrow scratch role survives — see §11                                                                                    |
+| Object storage     | **deferred**              | Nothing is large enough yet. Revisit at >1 MB or binary artifacts                                                                                                |
+| Document database  | **rejected**              | Offers nothing here and costs the joins and transactions this workload is made of                                                                                |
 
 ### Why not a document database, specifically
 
@@ -265,11 +267,9 @@ than a partial write.
 
 ## 6. Idempotency
 
-Two layers. **Natural keys** where identity is derivable — assignment id from
-`(case_id, playbook_entry_key)`, event id, revision id, result content hash —
-all `ON CONFLICT DO NOTHING`. **An explicit `idempotency_keys` table** for
-commands whose identity is not derivable, chiefly "open a case", where the
-caller supplies a key and a replay returns the original case id.
+Two mechanisms — natural keys where identity is derivable, and an explicit
+`idempotency_keys` table for the three commands where it is not. Specified in
+full in §17.
 
 ---
 
@@ -326,46 +326,71 @@ deliberately short. Forward-only; a mistake is corrected by a new migration.
 
 ---
 
-## 10. Backup, retention, audit
+## 10. Retention and audit
 
-Managed Postgres gives daily backups and point-in-time recovery — the main
-reason to pay for managed rather than self-hosted at this size.
+**Nothing is deleted.** Rejected theses, dissent, superseded revisions and
+decisions stay indefinitely; that is the point of the record, and the workload
+analysis shows no size pressure to reconsider. The one exception is
+`idempotency_keys`, which is operational rather than institutional and expires
+after 30 days.
 
-**Retention: nothing is deleted.** Rejected theses, dissent, superseded
-revisions and decisions stay indefinitely; that is the point of the record, and
-the workload analysis shows no size pressure to reconsider. Deletion policy
-becomes a real question only when user-owned data exists, which is a
-post-authentication concern.
+A deletion policy becomes a real question only when user-owned data exists,
+which is a post-authentication concern.
 
 Auditability is already structural — append-only events, immutable revisions,
-content-addressed results — so no separate audit log is needed. What Postgres
-adds is that the append-only property is enforced by permissions.
+content-addressed results. No separate audit log is needed. What PostgreSQL
+adds is that the append-only property becomes a permission rather than a
+convention.
+
+Backup, point-in-time recovery and restore validation are in §15.
 
 ---
 
-## 11. Local development and testing — and why not SQLite
+## 11. Local development, testing, and where SQLite does and does not belong
 
-**Recommendation: Postgres locally too, via a container. No SQLite anywhere.**
+**PostgreSQL is the only supported backend.** Integration tests run against
+PostgreSQL, always. Production runs PostgreSQL. There is no second
+implementation of the repository ports pretending to be equivalent.
 
-This differs from the initial expectation, so the reasoning matters. The schema
-leans on jsonb, partial indexes, `ON CONFLICT`, column-level triggers and table
-permissions. SQLite supports none of those the same way, so the local schema
-would not be the production schema — and a test suite that passes against a
-different schema than the one that ships is worse than no integration test at
-all. The failure it would miss is exactly the class this gate exists to
-prevent.
+### Why not SQLite as a backend
 
-Three test tiers instead:
+The schema leans on jsonb, partial indexes, `ON CONFLICT`, column-level
+triggers and table-level permission revocation. SQLite supports none of those
+the same way, so a SQLite schema would not be the production schema — and an
+integration suite passing against a different schema than ships is worse than
+having none, because the failures it misses are exactly the class this gate
+exists to prevent: a trigger that does not fire, a permission that does not
+apply, a conflict clause that behaves differently.
 
-| Tier               | Store                        | Purpose                                          |
-| ------------------ | ---------------------------- | ------------------------------------------------ |
-| Unit               | existing in-memory repos     | Fast, offline, no I/O. Unchanged; still the bulk |
-| Integration        | real Postgres in a container | The correctness properties in §4                 |
-| Fitness / boundary | none                         | Unchanged                                        |
+### Where SQLite does have value
 
-The in-memory adapter is **kept, not replaced** — it is what makes 774 tests
-run in seconds, and it now also serves as the reference implementation of the
-transaction boundary.
+Dismissing it entirely would be overcorrecting. Two narrow uses are legitimate,
+and both share one property: **nothing that runs there is evidence about
+production behaviour.**
+
+| Use                                        | Verdict    | Note                                        |
+| ------------------------------------------ | ---------- | ------------------------------------------- |
+| Integration tests                          | **never**  | PostgreSQL only, without exception          |
+| Production or staging                      | **never**  | Not a backend                               |
+| A developer poking at query shapes offline | acceptable | Scratch work. No conclusions travel from it |
+| Exporting a case for offline inspection    | acceptable | A read-only artifact, not a running system  |
+
+Both are throwaway. Neither is wired into the composition root, neither
+implements the repository ports, and neither may be cited as evidence that
+something works. If either grows past that, it has become a second backend and
+this decision should be re-opened deliberately rather than by drift.
+
+### Three test tiers
+
+| Tier               | Store                          | Purpose                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------ |
+| Unit               | existing in-memory repos       | Fast, offline, no I/O. Unchanged; still the bulk |
+| Integration        | real PostgreSQL in a container | The §4 correctness properties                    |
+| Fitness / boundary | none                           | Unchanged                                        |
+
+The in-memory adapter is **kept, not replaced**. It is what makes 774 tests run
+in seconds, and after the port change it also serves as the reference
+implementation of the transaction boundary.
 
 ---
 
@@ -373,16 +398,16 @@ transaction boundary.
 
 **Currently undefined, and this plan cannot settle it.** The repository has no
 Docker, Vercel, Fly, Railway or Render configuration, and no database driver in
-`package.json`. Adding Postgres introduces the project's first infrastructure
+`package.json`. Adding PostgreSQL introduces the project's first infrastructure
 dependency.
 
 Managed options worth comparing when the host is chosen — Neon, Supabase, Fly
 Postgres, RDS — all comfortably free or near-free at the normal volume. The
-choice interacts with where the app runs, which is itself undecided, so it is
-listed as an open decision rather than resolved here.
+choice interacts with where the app itself runs, which is also undecided, so it
+is an open decision rather than one resolved here.
 
-The single-instance constraint from TD-6 is unaffected: a shared Postgres does
-not by itself make the market-data cache shared.
+The single-instance constraint from TD-6 is unaffected: a shared PostgreSQL for
+the analysis runtime does not by itself make the market-data cache shared.
 
 ---
 
@@ -394,11 +419,11 @@ so authentication is additive rather than a migration of every table:
 - `tenant_id` on `cases` and `departments` from the start, defaulting to a
   system tenant
 - `owner_employee_id` on `cases`, set to the system CIO for system-created work
-- **No anonymous ownerless rows** — a system-created case has an explicit
-  system owner, per the requirement
+- **no anonymous ownerless rows** — a system-created case has an explicit
+  system owner
 
 When authentication arrives it adds a `users` table, a mapping to employees,
-and row-level security policies keyed on `tenant_id`. Postgres RLS is a large
+and row-level security policies keyed on `tenant_id`. PostgreSQL RLS is a large
 part of why it is the right choice here: authorization becomes a policy rather
 than a query rewrite across every call site.
 
@@ -408,58 +433,253 @@ At-rest encryption comes from the managed provider; in-transit is TLS.
 
 ---
 
-## 14. Implementation phases
+## 14. Implementation phases and the staged migration
 
-1. **Port change** — `withTransaction` on `AnalysisRepositories`, implemented
-   in the in-memory adapter. No database involved. Unblocks everything else.
-2. **Schema and migrations** — SQL files, the runner, the seeded organization.
-3. **Postgres adapter** — implements the existing ports unchanged.
-4. **Integration suite** — the §4 correctness properties against real Postgres.
-5. **Composition** — the runtime uses Postgres; unit tests keep in-memory.
+The cutover is staged rather than a swap, so that at no point is correctness
+taken on trust.
 
-Phases 1 and 2 are independent and could run in parallel.
+| Stage                    | State                                                              | Exit criterion                                         |
+| ------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------ |
+| **0. Port change**       | `withTransaction` added; in-memory implements it                   | Unit suite green; no database involved                 |
+| **1. Schema**            | Migrations and the seeded organization exist                       | Applies cleanly from empty; rollback rehearsed         |
+| **2. Postgres adapter**  | Implements the ports; not yet wired in                             | Integration suite proves every §4 property             |
+| **3. Dual write**        | Both adapters write; **in-memory stays authoritative for reads**   | Every command writes both without error for a full run |
+| **4. Read verification** | Reads served from memory; PostgreSQL read in parallel and compared | Zero divergences across the whole test corpus          |
+| **5. Read switch**       | PostgreSQL authoritative for reads; in-memory still written        | Behaviour unchanged; snapshot queries inside budget    |
+| **6. Remove memory**     | PostgreSQL only in the composition root                            | In-memory retained **for unit tests only**             |
 
----
+Stages 3–5 exist because a repository swap is exactly the kind of change that
+looks complete and is not. **Read verification is the stage that earns the
+cutover**: it compares what each store returns for the same query and reports
+divergence rather than assuming equivalence.
 
-## 15. Open decisions
+One divergence is expected and must be handled explicitly rather than waved
+through — **ordering**. The in-memory adapter returns insertion order;
+PostgreSQL returns whatever the plan produces unless `ORDER BY` says otherwise.
+Every list query needs a deterministic sort, and read verification is where a
+missing one surfaces.
 
-|          | Decision                                     | Recommendation                                                         |
-| -------- | -------------------------------------------- | ---------------------------------------------------------------------- |
-| **D-S1** | Add `withTransaction` to the ports           | **Yes — required.** Half-created workflows are otherwise unpreventable |
-| **D-S2** | SQLite for local development                 | **No.** Divergent schema defeats the integration tests                 |
-| **D-S3** | Organization as seeded tables vs code config | Seeded tables — a department must be data                              |
-| **D-S4** | One `reviews` table vs four                  | One, with typed children — the headquarters asks one question          |
-| **D-S5** | Where Postgres runs in production            | **Open** — depends on the undecided app host                           |
-| **D-S6** | Migration tooling                            | Plain SQL + small runner, no framework                                 |
+**Stage 6 removes in-memory from the composition root, not from the codebase.**
+It remains the unit-test adapter and the reference implementation of the
+transaction semantics.
 
-**D-S1 is the one that matters.** It is a change to Phase B's ports, and
-without it several stated correctness properties cannot be met by any database.
-
----
-
-## 16. Risks
-
-**The port change touches approved Phase B code.** Small and additive, but it
-is a modification to something already signed off.
-
-**No deployment target exists.** Implementation can proceed regardless — the
-adapter does not care where Postgres runs — but the phase cannot be called
-production-ready until D-S5 is settled.
-
-**First infrastructure dependency.** Everything so far runs from a clean
-checkout with no external services. After this, the analysis runtime needs a
-database. The market-data side is unaffected and stays fully offline in fixture
-mode.
-
-**Trigger-enforced immutability is unusual in this codebase.** Correctness has
-so far been enforced in TypeScript. Moving part of it into the database is
-right — the guarantee should not depend on every future caller — but it means
-two places to look when something is refused.
+Stages 0 and 1 are independent and can run in parallel. Nothing after stage 2
+proceeds until the integration suite is green.
 
 ---
 
-## 17. Technical Debt & Future Improvements
+## 15. Operations
 
+### Backup
+
+Managed PostgreSQL, daily automated backups with a 7-day minimum retention, and
+continuous WAL archiving for point-in-time recovery. This is the main reason to
+buy managed rather than self-host at this size: the work is real, and none of
+it is differentiating.
+
+### Point-in-time recovery
+
+PITR to any moment inside the retention window. The recovery targets that
+matter here are not hardware failures but **logical** ones: a bad migration, a
+mistaken bulk update, a defect that wrote wrong lifecycle values across many
+rows. Those are what PITR addresses and what a nightly backup alone does not.
+
+### Restore validation
+
+**A backup that has never been restored is a hypothesis.** Restore is exercised
+on a schedule rather than assumed:
+
+- a monthly restore into a scratch database from the most recent backup
+- schema verified against the expected migration version
+- a fixed set of invariant queries run against the restored copy — revision
+  lineages intact, no orphaned reviews, every decision's selected revision
+  present, event counts consistent with case counts
+- the restore duration recorded, so the recovery-time assumption is measured
+  rather than guessed
+
+### Disaster recovery assumptions
+
+Stated plainly so they can be argued with:
+
+|                  | Assumption                                                              |
+| ---------------- | ----------------------------------------------------------------------- |
+| RPO              | ≤ 5 minutes — WAL archiving; a few minutes of analysis may be lost      |
+| RTO              | ≤ 4 hours — restore plus redeploy, and unmeasured until validation runs |
+| Failure scope    | Single region. Multi-region is not justified at this size               |
+| Data loss stance | Losing an in-flight case is acceptable; losing a `CaseDecision` is not  |
+| Rebuild          | Market data is re-fetchable; **analysis is not** — it is the asset      |
+
+That last row is the one that matters. Every market-data value in the system
+can be fetched again from its source. A rejected thesis, a Devil's Advocate
+challenge and the reasoning behind a decision cannot be reconstructed from
+anywhere.
+
+---
+
+## 16. Observability
+
+Extends the existing recorder rather than introducing a parallel system — the
+same `Metrics` interface, the same bounded registry, the same Prometheus
+exporter, and the same label-cardinality discipline that caps series at 2000.
+
+New metrics, namespaced `analysis.db.*` to sit beside `marketdata.*`:
+
+| Metric                                         | Type      | Why it earns a series                                                              |
+| ---------------------------------------------- | --------- | ---------------------------------------------------------------------------------- |
+| `analysis.db.transaction`                      | counter   | Labelled `outcome=committed / rolled-back`; the rollback rate is the health signal |
+| `analysis.db.transaction.latency_ms`           | histogram | Long transactions hold locks and are the first sign of trouble                     |
+| `analysis.db.rollback`                         | counter   | Labelled `reason=conflict / error / deadlock`                                      |
+| `analysis.db.deadlock`                         | counter   | PostgreSQL `40P01`. Should be zero; anything else is a design defect               |
+| `analysis.db.conflict`                         | counter   | Optimistic-concurrency losses. A rising rate means aggregates are too coarse       |
+| `analysis.db.retry`                            | counter   | Retries after conflict, labelled by outcome                                        |
+| `analysis.db.query.latency_ms`                 | histogram | Labelled by `operation`, **never by id**                                           |
+| `analysis.db.pool.size` / `.idle` / `.waiting` | gauge     | `waiting` above zero means the pool is the bottleneck                              |
+| `analysis.db.pool.acquire_wait_ms`             | histogram | Distinguishes a slow query from a starved pool                                     |
+
+**Slow-query logging** reuses the existing structured logger and its sampling:
+statements above a threshold (200 ms initially) log operation, duration and
+correlation id. **Never the parameters** — a query's parameters contain case and
+thesis content, and the discipline that keeps provider keys out of logs applies
+equally here.
+
+Two labelling rules carry over from Phase 3.5, because they are what keeps a
+metrics registry bounded: labels come from a fixed allowlist, and no label ever
+carries an id, a hash or a query string.
+
+---
+
+## 17. Idempotency — exactly what, and how
+
+Two mechanisms. Most operations have a **derivable identity** and need no key;
+a small set genuinely does not.
+
+### Derivable identity — no key required
+
+| Operation               | Natural key                                    | Enforcement                         |
+| ----------------------- | ---------------------------------------------- | ----------------------------------- |
+| Create assignment       | `(case_id, playbook_entry_key)`                | `UNIQUE` + `ON CONFLICT DO NOTHING` |
+| Append transition event | `event_id`, caller-generated deterministically | PK + `ON CONFLICT DO NOTHING`       |
+| Append run event        | `(run_id, at, state)`                          | `UNIQUE` + `ON CONFLICT DO NOTHING` |
+| Save evidence set       | content hash                                   | PK; re-save is a no-op              |
+| Store agent result      | `resultKey(...)` content hash                  | PK; **write-once**                  |
+| Create thesis revision  | `revision_id`                                  | PK                                  |
+| Record claim            | `claim_id`                                     | PK                                  |
+| Record decision         | `case_id`                                      | PK; one per case, write-once        |
+
+### Explicit idempotency keys — required
+
+Three operations have no derivable identity, because the caller decides when
+they happen:
+
+| Operation                    | Why a key is needed                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| **Open a case**              | Two calls are indistinguishable from one retried call; without a key a retry opens a second |
+| **Start a contribution run** | The run id is minted by the caller; a retry before the first response would mint a second   |
+| **Record a review**          | A reviewer submitting twice must not double-count a blocker and make a case look worse      |
+
+Enforced through `idempotency_keys(key PK, command_type, result_ref,
+created_at)`, written **inside the same transaction as the effect**. A replay
+finds the key, returns `result_ref`, and does no work. Because the insert and
+the effect share a transaction, there is no window in which the key exists
+without its effect or the reverse.
+
+Keys are retained 30 days — long enough for any realistic retry, short enough
+that the table stays small. They are the one thing in this schema that is
+deleted, and the reason is that they are operational rather than institutional.
+
+---
+
+## 18. The final repository surface
+
+`withTransaction` lives on the **container**, not on any individual repository.
+A transaction spans repositories — opening a case writes cases, assignments and
+events — so a per-repository transaction could not express it.
+
+```ts
+export interface AnalysisRepositories {
+  cases: CaseRepository
+  theses: ThesisRepository
+  assignments: AssignmentRepository
+  runs: RunRepository
+  reviews: ReviewRepository
+  events: EventRepository
+  evidence: EvidenceRepository
+  decisions: DecisionRepository
+  results: ResultStore
+  idempotency: IdempotencyStore
+
+  /**
+   * Runs `work` inside one transaction. The repositories handed to the
+   * callback are transaction-scoped; the outer ones are not and must not be
+   * used inside it.
+   */
+  withTransaction<T>(work: (tx: TransactionalRepositories) => Promise<T>): Promise<T>
+}
+
+/** Everything except the transaction opener — transactions do not nest. */
+export type TransactionalRepositories = Omit<AnalysisRepositories, 'withTransaction'>
+```
+
+Three consequences worth stating:
+
+**`TransactionalRepositories` omits `withTransaction`**, so a nested
+transaction is a compile error rather than a runtime surprise. No command in §5
+needs savepoints.
+
+**`ResultStore` and `IdempotencyStore` move onto the container.** The result
+store was standalone in Phase B; the idempotency store is new. Both must
+participate in the transaction — an idempotency key committed outside the
+effect's transaction would be exactly the window it exists to close.
+
+**The application layer never sees a driver type.** No `Pool`, no `Client`, no
+SQL. `withTransaction` is the whole of the abstraction, and the ports remain
+the application boundary as required.
+
+---
+
+## 19. Institutional memory
+
+This database becomes the institutional memory of Financial OS. It holds not
+only what was decided but what was rejected, contested and later proved wrong.
+Much of what is above is in service of five questions the system must answer
+years later.
+
+| Question                            | Answered from                                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Why did we make this decision?**  | `case_decisions.rationale`, the governance snapshot as it stood at decision time, and the transitions leading to it                             |
+| **What evidence existed?**          | `evidence_sets` + `evidence_items` via `case_decisions.evidence_set_id` — the exact observations, with provenance, as they read that day        |
+| **Which thesis was rejected?**      | `decision_revisions` where `relation` is `not-selected` or `rejected`, joined to the full revision and its claims                               |
+| **Who disagreed?**                  | `challenges` with their counter-evidence, plus `case_decisions.unresolved_dissent` — objections the CIO acknowledged and decided against anyway |
+| **Which assumptions proved wrong?** | `thesis_revisions.invalidation_criteria` and `reconsideration_triggers`, read against what subsequently happened                                |
+
+That last one is why `invalidationCriteria` is a required field rather than a
+nicety. A thesis that recorded what would falsify it can be graded later; one
+that did not, cannot — and the difference between an institution that learns and
+one that merely accumulates is whether it wrote down what would have changed its
+mind.
+
+Three design choices exist for this and would otherwise look like overhead:
+
+- **Nothing is deleted.** Rejected theses, superseded revisions and dissent are
+  retained indefinitely. The workload analysis confirms there is no size
+  pressure to reconsider.
+- **Revisions are immutable and superseded ones are kept**, so "what did we
+  believe in March" has an exact answer rather than a reconstructed one.
+- **Evidence is content-addressed and citations carry the content hash**, so a
+  later revision of an observation cannot silently rewrite what a past decision
+  rested on. The decision stays attached to what it actually saw.
+
+An outcome-review capability — grading decisions against what happened — is
+**not** in scope for this phase. What this phase guarantees is that the data to
+do it will exist, and will not have been quietly overwritten in the meantime.
+
+---
+
+## 20. Technical Debt & Future Improvements
+
+- **Outcome review** — grading past decisions against what subsequently
+  happened, using `invalidationCriteria` and `reconsiderationTriggers`.
+  The data is preserved for it; the capability is future work.
 - **Object storage** — not justified now. Revisit for published documents,
   charts or raw model transcripts, i.e. anything above ~1 MB or binary.
 - **Read replicas / caching for the headquarters snapshot** — unnecessary at
