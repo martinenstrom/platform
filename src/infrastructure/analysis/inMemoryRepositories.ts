@@ -60,6 +60,7 @@ import {
   type TransactionalAnalysisRepositories,
 } from '~/application/analysis/repositories'
 import type { ResultStore, StoredResult } from '~/application/analysis/resultStore'
+import { seal } from './seal'
 
 /* ------------------------------------------------------------------- state */
 
@@ -106,9 +107,14 @@ function emptyStore(): Store {
 /**
  * Shallow copy of every collection.
  *
- * Shallow is sufficient because every stored value is frozen by its domain
- * builder — nothing can be mutated in place, only replaced. Restoring the
- * collections therefore restores the state exactly.
+ * Shallow is sufficient because a stored value cannot be mutated in place, only
+ * replaced — so restoring the collections restores the state exactly.
+ *
+ * That is an enforced property rather than a hoped-for one: every write goes
+ * through `seal`, which deep-freezes what it stores and refuses anything it
+ * cannot make immutable. The domain builders freeze only their top level, so
+ * relying on them here would have left the rollback resting on a convention
+ * future domain code could break silently. See `seal.ts`.
  */
 function snapshot(store: Store): Store {
   return {
@@ -177,6 +183,7 @@ function caseRepository(store: Store, scope: Scope): CaseRepository {
     },
     async create(investmentCase) {
       guard(scope, 'cases.create')
+      seal(investmentCase, 'cases')
       const existing = store.cases.get(investmentCase.id)
       if (existing) return existing
       store.cases.set(investmentCase.id, investmentCase)
@@ -184,6 +191,7 @@ function caseRepository(store: Store, scope: Scope): CaseRepository {
     },
     async save(investmentCase, expectedVersion) {
       guard(scope, 'cases.save')
+      seal(investmentCase, 'cases')
       const stored = store.cases.get(investmentCase.id)
       if (stored && stored.version !== expectedVersion) {
         throw new ConcurrencyConflictError(
@@ -215,6 +223,7 @@ function thesisRepository(store: Store, scope: Scope): ThesisRepository {
     },
     async save(revision) {
       guard(scope, 'theses.save')
+      seal(revision, 'theses')
       /*
        * A sealed revision is never rewritten. Marking one superseded IS a
        * legitimate write to an old record, so only the lifecycle may move.
@@ -261,6 +270,7 @@ function assignmentRepository(store: Store, scope: Scope): AssignmentRepository 
     },
     async save(assignment) {
       guard(scope, 'assignments.save')
+      seal(assignment, 'assignments')
       store.assignments.set(assignment.id, assignment)
       return assignment
     },
@@ -281,6 +291,7 @@ function runRepository(store: Store, scope: Scope): RunRepository {
     },
     async save(run) {
       guard(scope, 'runs.save')
+      seal(run, 'runs')
       store.runs.set(run.id, run)
       return run
     },
@@ -309,6 +320,7 @@ function claimRepository(store: Store, scope: Scope): ClaimRepository {
     },
     async save(claim, caseId, runId) {
       guard(scope, 'claims.save')
+      seal(claim, 'claims')
       // Write-once: a claim that has been cited must not change underneath it.
       const existing = store.claims.get(claim.id)
       if (existing) return existing.claim
@@ -359,24 +371,28 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
     },
     async saveVerification(review) {
       guard(scope, 'reviews.saveVerification')
+      seal(review, 'reviews.verification')
       if (!store.verifications.some((r) => sameReview(r, review))) {
         store.verifications.push(review)
       }
     },
     async saveDevilsAdvocate(review) {
       guard(scope, 'reviews.saveDevilsAdvocate')
+      seal(review, 'reviews.devilsAdvocate')
       if (!store.challenges.some((r) => sameReview(r, review))) {
         store.challenges.push(review)
       }
     },
     async saveCompliance(review) {
       guard(scope, 'reviews.saveCompliance')
+      seal(review, 'reviews.compliance')
       if (!store.compliance.some((r) => sameReview(r, review))) {
         store.compliance.push(review)
       }
     },
     async saveRisk(review) {
       guard(scope, 'reviews.saveRisk')
+      seal(review, 'reviews.risk')
       if (!store.risk.some((r) => sameReview(r, review))) store.risk.push(review)
     },
   }
@@ -386,6 +402,7 @@ function eventRepository(store: Store, scope: Scope): EventRepository {
   return {
     async append(event) {
       guard(scope, 'events.append')
+      seal(event, 'events')
       if (store.events.some((e) => e.eventId === event.eventId)) return
       store.events.push(event)
     },
@@ -418,6 +435,7 @@ function evidenceRepository(store: Store, scope: Scope): EvidenceRepository {
     },
     async save(set) {
       guard(scope, 'evidence.save')
+      seal(set, 'evidence')
       // Content-addressed and immutable: an existing id already holds this
       // exact content, so a re-save is a no-op rather than a conflict.
       const existing = store.evidence.get(set.id)
@@ -444,6 +462,7 @@ function decisionRepository(store: Store, scope: Scope): DecisionRepository {
     },
     async save(decision) {
       guard(scope, 'decisions.save')
+      seal(decision, 'decisions')
       // One per case, and immutable once committed. A correction appends a new
       // superseding decision rather than rewriting a communicated one.
       const existing = store.decisions.get(decision.caseId)
@@ -462,6 +481,7 @@ function resultStore(store: Store, scope: Scope): ResultStore {
     },
     async put(result) {
       guard(scope, 'results.put')
+      seal(result, 'results')
       // Write-once. The key covers every semantic input, so a differing result
       // under the same key means something is wrong; overwriting would hide it.
       const existing = store.results.get(result.key)
@@ -480,6 +500,7 @@ function idempotencyStore(store: Store, scope: Scope): IdempotencyStore {
     },
     async reserve(record) {
       guard(scope, 'idempotency.reserve')
+      seal(record, 'idempotency')
       // A held key returns its original record, which is how a replay returns
       // the first result instead of producing a second effect.
       const existing = store.idempotency.get(record.key)
