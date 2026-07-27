@@ -90,6 +90,239 @@ export class TransactionClosedError extends Error {
   }
 }
 
+/**
+ * Everything else a store can fail with.
+ *
+ * Declared on the PORT rather than in the PostgreSQL adapter, for one reason:
+ * the semantic-parity suite runs the same tests against both stores, and it can
+ * only assert on an error both are able to throw. An adapter-local taxonomy
+ * would make "the in-memory store rejects this too" untestable.
+ *
+ * ## What these never carry
+ *
+ * No SQL, no query parameters, no connection string, and none of PostgreSQL's
+ * `detail` field — which is populated with the offending key VALUES, so a
+ * unique violation would otherwise reproduce a case id or a content hash in a
+ * message headed for a log. What they do carry: the operation, the constraint
+ * or record name, and a correlation id where one is in scope. Bounded, and
+ * enough to find the occurrence in the event log where the detail belongs.
+ */
+export class StorageError extends Error {
+  readonly operation: string
+  readonly correlationId?: string
+
+  constructor(message: string, operation: string, correlationId?: string) {
+    super(message)
+    this.name = 'StorageError'
+    this.operation = operation
+    this.correlationId = correlationId
+  }
+}
+
+/**
+ * The same key already holds DIFFERENT content.
+ *
+ * Distinct from a benign replay, which returns the stored record. Write-once
+ * records are keyed on everything that can change their content, so a
+ * collision with different content means something upstream is wrong — and
+ * silently returning the existing row would hide it for as long as anyone
+ * cared to look.
+ */
+export class ConflictingRecordError extends StorageError {
+  constructor(
+    readonly record: string,
+    readonly key: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(
+      `${record} "${key}" already exists with different content. A write-once ` +
+        `record is keyed on everything that determines it, so this is a real ` +
+        `disagreement rather than a retry.`,
+      operation,
+      correlationId,
+    )
+    this.name = 'ConflictingRecordError'
+  }
+}
+
+/** A uniqueness constraint rejected the write. Named by constraint, not value. */
+export class DuplicateRecordError extends StorageError {
+  constructor(
+    readonly constraint: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(
+      `"${operation}" violated uniqueness constraint "${constraint}"`,
+      operation,
+      correlationId,
+    )
+    this.name = 'DuplicateRecordError'
+  }
+}
+
+/** A referenced row does not exist. */
+export class ReferentialIntegrityError extends StorageError {
+  constructor(
+    readonly constraint: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(
+      `"${operation}" referenced a record that does not exist (${constraint})`,
+      operation,
+      correlationId,
+    )
+    this.name = 'ReferentialIntegrityError'
+  }
+}
+
+/** A CHECK or a domain rule the store enforces rejected the write. */
+export class InvariantViolationError extends StorageError {
+  constructor(
+    readonly constraint: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(`"${operation}" violated invariant "${constraint}"`, operation, correlationId)
+    this.name = 'InvariantViolationError'
+  }
+}
+
+/** An append-only or sealed record was asked to change. */
+export class ImmutableRecordError extends StorageError {
+  constructor(
+    readonly record: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(
+      `${record} is immutable. Append a correcting record rather than editing it.`,
+      operation,
+      correlationId,
+    )
+    this.name = 'ImmutableRecordError'
+  }
+}
+
+/**
+ * A stored record could not be mapped back into a valid domain value.
+ *
+ * The one error that indicates the STORE is wrong rather than the caller. A
+ * row edited by hand, restored from an incompatible backup, or written by an
+ * older version of this code fails here rather than entering the domain as a
+ * plausible-looking value.
+ */
+export class MalformedRowError extends StorageError {
+  constructor(
+    readonly record: string,
+    readonly why: string,
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(`Stored ${record} is not valid: ${why}`, operation, correlationId)
+    this.name = 'MalformedRowError'
+  }
+}
+
+/**
+ * Transient, and safe to retry: raised BEFORE commit, so nothing was written.
+ *
+ * The adapter does not retry on its own. It labels the failure and lets the
+ * command layer decide, because the command is what knows whether it can be
+ * re-derived.
+ */
+export class RetryableStorageError extends StorageError {
+  constructor(
+    readonly reason: 'serialization-failure' | 'deadlock',
+    operation: string,
+    correlationId?: string,
+  ) {
+    super(
+      `"${operation}" failed with a transient ${reason} and wrote nothing. Safe to retry.`,
+      operation,
+      correlationId,
+    )
+    this.name = 'RetryableStorageError'
+  }
+}
+
+/**
+ * The commit was sent and its outcome is unknown.
+ *
+ * **Deliberately not retryable.** The transaction may or may not have
+ * committed, and only the caller knows whether its command carries an
+ * idempotency identity. A blanket retry of one that does not would produce a
+ * second assignment, a second run, or a second decision — and a duplicate
+ * decision is a second valid-looking institutional record, which is worse than
+ * a failed request.
+ */
+export class AmbiguousCommitError extends StorageError {
+  constructor(operation: string, correlationId?: string) {
+    super(
+      `The commit for "${operation}" was sent and its outcome is unknown. Do not ` +
+        `retry unless the command has an idempotency key; re-read to establish ` +
+        `what happened.`,
+      operation,
+      correlationId,
+    )
+    this.name = 'AmbiguousCommitError'
+  }
+}
+
+export class StoragePermissionError extends StorageError {
+  constructor(operation: string, correlationId?: string) {
+    super(
+      `"${operation}" was refused by the database. The runtime role does not ` +
+        `hold the privilege this statement requires.`,
+      operation,
+      correlationId,
+    )
+    this.name = 'StoragePermissionError'
+  }
+}
+
+export class StorageUnavailableError extends StorageError {
+  constructor(operation: string, correlationId?: string) {
+    super(`The database was unreachable during "${operation}"`, operation, correlationId)
+    this.name = 'StorageUnavailableError'
+  }
+}
+
+/* --------------------------------------------------------------- provenance */
+
+/**
+ * Which storage implementation produced a piece of analysis.
+ *
+ * An analysis is already traceable to its evidence, prompt, model, output
+ * schema and agent contract. It has not been traceable to the code that read
+ * and wrote it — so "why does this decision cite an evidence set that looks
+ * wrong" could not be split into "the analysis was wrong" and "the storage
+ * layer was wrong at the time". Only the first was answerable.
+ *
+ * `queryCatalogHash` is the coordinate that had to be decided now rather than
+ * later: it is computable only if every statement lives in one enumerable
+ * place, which is a structural property of the adapter and a whole-adapter
+ * refactor to retrofit.
+ *
+ * Recording this alongside results needs columns on `runs` and `agent_results`
+ * and only becomes meaningful when a real agent writes a real result. See
+ * TD-24.
+ */
+export interface StorageProvenance {
+  adapterId: string
+  /** Bumped by hand when the adapter's behaviour changes. */
+  adapterVersion: string
+  /** Hash over every statement the adapter can issue. Null when it issues none. */
+  queryCatalogHash: string | null
+  /** Highest applied migration, and its checksum. Null for a store without one. */
+  schemaVersion: string | null
+  schemaChecksum: string | null
+  /** Which version of the analysis domain contracts was active. */
+  domainContractVersion: string
+}
+
 /* ------------------------------------------------------------- repositories */
 
 export interface CaseRepository {
@@ -245,7 +478,7 @@ export interface IdempotencyStore {
  */
 export type TransactionalAnalysisRepositories = Omit<
   AnalysisRepositories,
-  'withTransaction'
+  'withTransaction' | 'provenance'
 >
 
 export interface AnalysisRepositories {
@@ -281,4 +514,13 @@ export interface AnalysisRepositories {
   withTransaction<T>(
     operation: (repositories: TransactionalAnalysisRepositories) => Promise<T>,
   ): Promise<T>
+
+  /**
+   * Which implementation this is, and against which schema.
+   *
+   * Async because the schema version is a row in `schema_migrations`, and an
+   * adapter that reported a compiled-in constant would report what the code
+   * expects rather than what the database actually is.
+   */
+  provenance(): Promise<StorageProvenance>
 }

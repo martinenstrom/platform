@@ -29,11 +29,13 @@
  */
 
 import {
+  DOMAIN_CONTRACT_VERSION,
   reviewIdentity,
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
   type CaseDecision,
+  type CaseTransition,
   type ComplianceReview,
   type DevilsAdvocateReview,
   type EvidenceSet,
@@ -168,21 +170,74 @@ function guard(scope: Scope, operation: string): void {
 
 /* ------------------------------------------------------------ orderings */
 
-const byString = (a: string, b: string) => a.localeCompare(b)
+/**
+ * Byte order, not locale order.
+ *
+ * `localeCompare` sorts by the runtime's collation; PostgreSQL sorts by the
+ * database's. They disagree on non-ASCII — `å` sorts after `z` in Swedish and
+ * between `a` and `b` elsewhere — and the two stores are compared against each
+ * other in stage 4.
+ *
+ * Every ordering column in the adapter carries `COLLATE "C"`, and this is the
+ * matching comparator. Ids are kebab-case ASCII today, so this changes nothing
+ * observable; it removes a class of environment-dependent divergence that
+ * would otherwise be found late and diagnosed slowly.
+ */
+const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 /* ------------------------------------------------------- repository builders */
+
+/**
+ * `transitions` is a PROJECTION of the event log, not stored on the case.
+ *
+ * Migration 0003 made the same call for the same reason: two copies of one
+ * history are two things that can disagree, and the event log is the one with
+ * append-only permissions behind it. Storing the array verbatim here would
+ * also have been an in-memory-only behaviour — PostgreSQL derives it, so a
+ * case written with transitions and no events would round-trip differently in
+ * the two stores, and stage 4 would report a divergence that is really a
+ * modelling mistake.
+ *
+ * A case's movement history is therefore written through `events.append`.
+ */
+function projectTransitions(store: Store, caseId: string): CaseTransition[] {
+  return store.events
+    .filter((event) => event.subject === 'case' && event.caseId === caseId)
+    .sort(
+      (a, b) => byString(a.occurredAt, b.occurredAt) || byString(a.eventId, b.eventId),
+    )
+    .map((event) =>
+      Object.freeze({
+        caseId: event.caseId,
+        from: event.fromState as CaseTransition['from'],
+        to: event.toState as CaseTransition['to'],
+        at: event.occurredAt,
+        byEmployeeId: event.actorEmployeeId ?? '',
+        byDepartmentId: event.actorDepartmentId ?? '',
+        ...(event.reason ? { reason: event.reason } : {}),
+      }),
+    )
+}
+
+function withTransitions(store: Store, investmentCase: InvestmentCase): InvestmentCase {
+  return Object.freeze({
+    ...investmentCase,
+    transitions: Object.freeze(projectTransitions(store, investmentCase.id)),
+  })
+}
 
 function caseRepository(store: Store, scope: Scope): CaseRepository {
   return {
     async get(caseId) {
       guard(scope, 'cases.get')
-      return store.cases.get(caseId) ?? null
+      const stored = store.cases.get(caseId)
+      return stored ? withTransitions(store, stored) : null
     },
     async list() {
       guard(scope, 'cases.list')
-      return [...store.cases.values()].sort(
-        (a, b) => byString(b.openedAt, a.openedAt) || byString(a.id, b.id),
-      )
+      return [...store.cases.values()]
+        .sort((a, b) => byString(b.openedAt, a.openedAt) || byString(a.id, b.id))
+        .map((investmentCase) => withTransitions(store, investmentCase))
     },
     async create(investmentCase) {
       guard(scope, 'cases.create')
@@ -280,17 +335,40 @@ function assignmentRepository(store: Store, scope: Scope): AssignmentRepository 
   }
 }
 
+/**
+ * `claims` is hydrated from the claim store, not read off the run record.
+ *
+ * Claims live in their own repository because they are cited, contested and
+ * verified individually. Returning the array the run was saved with would make
+ * this store the only one where a claim written through `claims.save` is
+ * invisible on its run — PostgreSQL joins them back, so the two would disagree
+ * on the same aggregate.
+ */
+function withClaims(store: Store, record: AgentRunRecord): AgentRunRecord {
+  return Object.freeze({
+    ...record,
+    claims: Object.freeze(
+      [...store.claims.values()]
+        .filter((entry) => entry.runId === record.id)
+        .map((entry) => entry.claim)
+        .sort((a, b) => byString(a.id, b.id)),
+    ),
+  })
+}
+
 function runRepository(store: Store, scope: Scope): RunRepository {
   return {
     async get(id) {
       guard(scope, 'runs.get')
-      return store.runs.get(id) ?? null
+      const stored = store.runs.get(id)
+      return stored ? withClaims(store, stored) : null
     },
     async listForCase(caseId) {
       guard(scope, 'runs.listForCase')
       return [...store.runs.values()]
         .filter((r) => r.caseId === caseId)
         .sort((a, b) => byString(a.startedAt, b.startedAt) || byString(a.id, b.id))
+        .map((record) => withClaims(store, record))
     },
     async save(run) {
       guard(scope, 'runs.save')
@@ -546,11 +624,37 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
   }
 }
 
+/**
+ * Bumped when this adapter's observable behaviour changes.
+ *
+ * History:
+ *   1  stage 0 — transactions, deterministic ordering
+ *   2  stage 1.5 — reviews dedupe on the full scope
+ */
+const ADAPTER_VERSION = '2'
+
 export function createInMemoryRepositories(): AnalysisRepositories {
   const store = emptyStore()
 
   return {
     ...repositoriesFor(store, ALWAYS_OPEN),
+
+    async provenance() {
+      /*
+       * Null rather than a placeholder for the SQL and schema coordinates.
+       * This store issues no statements and has no migration history, and
+       * inventing values for them would make a provenance record claim a
+       * lineage that does not exist.
+       */
+      return {
+        adapterId: 'in-memory',
+        adapterVersion: ADAPTER_VERSION,
+        queryCatalogHash: null,
+        schemaVersion: null,
+        schemaChecksum: null,
+        domainContractVersion: DOMAIN_CONTRACT_VERSION,
+      }
+    },
 
     async withTransaction(operation) {
       const before = snapshot(store)

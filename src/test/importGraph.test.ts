@@ -821,3 +821,67 @@ describe('Storage stage 1 — the database stays on the server', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('Storage stage 2 — the adapter exists but is not wired', () => {
+  const postgres = 'infrastructure/analysis/postgres/'
+
+  it('is constructed by nothing outside its own directory and the tests', () => {
+    /*
+     * Stage 2 builds the adapter and stops. Dual write is stage 3 and the read
+     * switch is stage 5; wiring it early would make "PostgreSQL is not
+     * authoritative yet" a claim rather than a fact.
+     */
+    const offenders = FILES.filter((file) => !isTest(file) && !inLayer(file, postgres))
+      .filter((file) => file.imports.some((s) => s.includes('postgresRepositories')))
+      .map((file) => file.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('never lets a row type escape the adapter', () => {
+    // A row is a transport detail — snake_case, nullable, `unknown` where the
+    // domain has a union. Letting one out would put the database's shape into
+    // the application layer, which is what the ports exist to prevent.
+    const offenders = FILES.filter((file) => !inLayer(file, postgres))
+      .filter((file) => file.imports.some((s) => s.includes('/postgres/rows')))
+      .map((file) => file.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the analysis context off the market-data context', () => {
+    // The shared kernel exists so that observability is not a reason for one
+    // bounded context to depend on another.
+    const offenders = FILES.filter(
+      (file) =>
+        inLayer(file, 'application/analysis/') || inLayer(file, 'domain/analysis/'),
+    )
+      .filter((file) =>
+        file.imports.some((s) => s.startsWith('~/application/marketData')),
+      )
+      .map((file) => file.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('routes every statement through a catalogue', () => {
+    /*
+     * `StorageProvenance.queryCatalogHash` answers "which SQL produced this
+     * analysis" years later, and is computable only while every statement is
+     * enumerable. A repository that inlined SQL would silently shrink what the
+     * hash covers.
+     */
+    const repositories = FILES.filter(
+      (file) => inLayer(file, postgres) && file.path.endsWith('Repositories.ts'),
+    )
+    expect(repositories.length).toBeGreaterThan(0)
+
+    const offenders = repositories
+      .filter((file) => {
+        const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
+        // Every SELECT/INSERT/UPDATE must sit inside a `catalog({ … })` block.
+        return (
+          /(SELECT|INSERT INTO|UPDATE) /.test(source) && !source.includes('catalog({')
+        )
+      })
+      .map((file) => file.path)
+    expect(offenders).toEqual([])
+  })
+})

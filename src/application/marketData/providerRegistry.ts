@@ -14,6 +14,7 @@
  * check runs first even though `fixture` is configured at the chain's tail.
  */
 
+import type { Logger as SharedLogger } from '~/application/shared/logger'
 import type { ErrorCode, Provenance, StaleReason } from '~/domain/market'
 import type { Capability, DataCategory, ProviderRegistration } from './ports'
 
@@ -60,9 +61,9 @@ export interface ResolutionLog {
   note?: string
 }
 
-export interface Logger {
+/** The shared base plus this context's structured resolution event. */
+export interface Logger extends SharedLogger {
   resolution(entry: ResolutionLog): void
-  warn(message: string, meta?: Record<string, unknown>): void
 }
 
 export const noopLogger: Logger = { resolution: () => {}, warn: () => {} }

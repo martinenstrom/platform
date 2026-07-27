@@ -373,7 +373,7 @@ swap should be an adapter, not a redesign.
 | 0 · transaction-capable ports             | done  |
 | 1 · schema and migrations                 | done  |
 | 1.5 · revision-scoped governance reviews  | done  |
-| 2 · PostgreSQL adapter                    | open  |
+| 2 · PostgreSQL adapter                    | done  |
 | 3 · dual write                            | open  |
 | 4 · read verification                     | open  |
 | 5 · read switch                           | open  |
@@ -415,6 +415,59 @@ excess-property check accepts a property present on **any** arm of a target
 union, so omitting `revisionId` from the case-wide arm was not enough to stop a
 case-wide literal carrying one. The arm declares `revisionId?: never`
 explicitly, and a test holds that in place.
+
+---
+
+## TD-24 · Storage provenance is exposed but not recorded
+
+**Incurred:** storage stage 2. **Severity:** medium. **Blocks:** nothing today;
+wanted before Phase C produces analysis worth auditing.
+
+`AnalysisRepositories.provenance()` reports four coordinates — adapter and
+version, query-catalogue hash, schema version and checksum, domain contract
+version. Nothing **stores** them alongside a result, so a stored analysis is
+still not traceable to the code that wrote it.
+
+The structural half was done now because it is the expensive half later: the
+catalogue hash is computable only while every statement is enumerable, so the
+SQL lives in frozen per-repository catalogues and a fitness rule keeps it there.
+Retrofitting that once statements were inlined at forty call sites would have
+been a refactor of the whole adapter.
+
+The recording half was deferred because it needs columns on `runs` and
+`agent_results` that nothing would populate until a real agent writes a real
+result — and the schema principles rule out columns added speculatively.
+
+**Preferred resolution, designed and fixed:** a `storage_provenance` table keyed
+on the hash of the four coordinates, with `runs` and `agent_results` carrying a
+foreign key to it. That keeps the repeated coordinates out of every result row
+while making the join exact.
+
+**One honest limitation.** `adapterVersion` is a hand-maintained constant, so it
+is only as good as the discipline of bumping it when the mapping code changes.
+`queryCatalogHash` covers the SQL automatically; nothing covers the mapping. A
+fitness test tying the constant to any change in the adapter directory would be
+noise, so this is recorded as an obligation instead.
+
+---
+
+## TD-25 · Evidence integrity is checked at the set, not the item
+
+**Incurred:** storage stage 2. **Severity:** low.
+
+Reading an evidence set recomputes its content hash and refuses a mismatch, so
+an item added, removed, or repointed at different content is caught. The hash
+covers `[observationId, contentHash]` per item — the **composition** — and not
+the payloads.
+
+So a `value` edited without its `contentHash` being updated to match is not
+detected. Verifying each item's hash against its value on every read would
+catch it; that was not done because a legitimate value could hash differently
+after a jsonb round trip and break reads that are fine.
+
+**Preferred resolution:** verify item hashes in the read-verification stage,
+where a divergence is investigated rather than thrown, and promote it to a read
+check only if it proves stable.
 
 ---
 

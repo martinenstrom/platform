@@ -34,19 +34,30 @@ convenience is a divergence that has to be explained there.
 
 **Added**, all under `src/infrastructure/analysis/postgres/`:
 
-| File                      | Contents                                                         |
-| ------------------------- | ---------------------------------------------------------------- |
-| `pool.ts`                 | Pool construction, config, shutdown, type parsers                |
-| `sql.ts`                  | Query execution, timing, error mapping, the timestamp projection |
-| `rows.ts`                 | Row types. **Never exported from this directory**                |
-| `mapping.ts`              | Row → domain, through domain builders; `seal` on the way out     |
-| `transaction.ts`          | `withTransaction`, scope guard, client lifetime                  |
-| `caseRepository.ts`       | one file per port, plus `theses`, `assignments`, `runs`,         |
-|                           | `claims`, `reviews`, `events`, `evidence`, `decisions`,          |
-|                           | `results`, `idempotency`                                         |
-| `postgresRepositories.ts` | Assembles `AnalysisRepositories`                                 |
-| `identity.ts`             | Derived surrogate ids (reviews, findings) — see §5.4             |
-| `*.pg.test.ts`            | PostgreSQL-specific integrity tests                              |
+| File                        | Contents                                                         |
+| --------------------------- | ---------------------------------------------------------------- |
+| `pool.ts`                   | Pool construction, config, shutdown, type parsers                |
+| `sql.ts`                    | Query execution, timing, error mapping, the timestamp projection |
+| `rows.ts`                   | Row types. **Never exported from this directory**                |
+| `mapping.ts`                | Row → domain, through domain builders; `seal` on the way out     |
+| `transaction.ts`            | `withTransaction`, scope guard, client lifetime                  |
+| `caseRepositories.ts`       | cases + theses                                                   |
+| `workRepositories.ts`       | assignments + runs + claims                                      |
+| `evidenceRepositories.ts`   | evidence + results + idempotency                                 |
+| `governanceRepositories.ts` | reviews + decisions + events, and derived review ids             |
+| `postgresRepositories.ts`   | Assembles `AnalysisRepositories`                                 |
+| `*.pg.test.ts`              | PostgreSQL-specific integrity tests                              |
+
+**Deviation from the plan, as built.** The table originally said one file per
+port — eleven files, plus a separate `identity.ts`. The repositories were
+grouped into four files by aggregate instead, because the ports that share
+hydration also share their SQL: `runs` cannot be loaded without `claims`, and
+`claims` cannot be loaded without `claim_evidence`. Splitting them would have
+put `CLAIM_SQL` in one file and its only other caller in another.
+
+The grouping is by what loads together, not by convenience, and it does not
+change the port surface. The derived review id lives beside the reviews it
+identifies rather than in its own module, for the same reason.
 
 **Added elsewhere:**
 

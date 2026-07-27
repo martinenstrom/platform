@@ -22,3 +22,17 @@ export * from './evidence'
 export * from './claims'
 export * from './review'
 export * from './contributions'
+
+/**
+ * The version of the analysis domain contracts.
+ *
+ * Recorded alongside stored analysis so that "which contracts were active when
+ * this was produced" has an answer years later. Bumped when a contract in this
+ * directory changes in a way that alters what a stored record means — a new
+ * field is not a bump, a changed rule is.
+ *
+ * History:
+ *   1  Phase A/B contracts
+ *   2  storage stage 1.5 — reviews became revision-scoped
+ */
+export const DOMAIN_CONTRACT_VERSION = '2'

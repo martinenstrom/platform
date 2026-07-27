@@ -37,6 +37,22 @@ export interface TestDatabase {
   connectAs(role: string): Promise<Client>
   /** Applies every migration as the schema owner. */
   migrate(): Promise<void>
+  /**
+   * A connection string for a login user holding `role`.
+   *
+   * For the adapter, which builds its own pool and therefore needs a URL
+   * rather than a client.
+   */
+  loginUrlFor(role: string): Promise<string>
+  /**
+   * Empties every institutional table, leaving the seeded organization.
+   *
+   * A fresh database per test would cost a few hundred milliseconds each; the
+   * contract suite has fifty. `TRUNCATE … CASCADE` gives the same isolation
+   * for a fraction of the time. Run as the owner, deliberately — the runtime
+   * role cannot delete from any of these, which is the point.
+   */
+  truncateAnalysisData(): Promise<void>
   drop(): Promise<void>
 }
 
@@ -67,6 +83,27 @@ export async function createTestDatabase(): Promise<TestDatabase> {
 
   const clients: Client[] = []
 
+  /**
+   * A login user holding the group role, which is how deployment works:
+   * `finos_app` carries the privileges, a deployment-created user carries the
+   * credentials, and no password ever appears in a migration.
+   */
+  async function ensureLogin(role: string): Promise<string> {
+    const login = `${role}_login_${counter}`
+    await owner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${login}') THEN
+          CREATE ROLE ${login} LOGIN PASSWORD 'test';
+        END IF;
+      END;
+      $$
+    `)
+    await owner.query(`GRANT ${role} TO ${login}`)
+    await owner.query(`GRANT CONNECT ON DATABASE ${name} TO ${login}`)
+    return login
+  }
+
   return {
     name,
     owner,
@@ -75,25 +112,31 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       await migrate(owner)
     },
 
-    async connectAs(role: string) {
-      /*
-       * A login user granted the group role, which is how deployment works:
-       * `finos_app` carries the privileges, a deployment-created user carries
-       * the credentials, and no password ever appears in a migration.
-       */
-      const login = `${role}_login_${counter}`
-      await owner.query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${login}') THEN
-            CREATE ROLE ${login} LOGIN PASSWORD 'test';
-          END IF;
-        END;
-        $$
-      `)
-      await owner.query(`GRANT ${role} TO ${login}`)
-      await owner.query(`GRANT CONNECT ON DATABASE ${name} TO ${login}`)
+    async loginUrlFor(role: string) {
+      const login = await ensureLogin(role)
+      const url = new URL(urlFor(adminUrl, name))
+      url.username = login
+      url.password = 'test'
+      return url.toString()
+    },
 
+    async truncateAnalysisData() {
+      await owner.query(`
+        TRUNCATE
+          analysis.transition_events, analysis.case_decisions,
+          analysis.decision_revisions, analysis.challenge_evidence,
+          analysis.challenges, analysis.verification_findings, analysis.reviews,
+          analysis.claim_evidence, analysis.claims, analysis.run_events,
+          analysis.runs, analysis.assignments, analysis.thesis_claim_links,
+          analysis.thesis_revisions, analysis.case_participants, analysis.cases,
+          analysis.evidence_items, analysis.evidence_sets,
+          analysis.agent_results, analysis.idempotency_keys
+        CASCADE
+      `)
+    },
+
+    async connectAs(role: string) {
+      const login = await ensureLogin(role)
       const url = new URL(urlFor(adminUrl, name))
       url.username = login
       url.password = 'test'

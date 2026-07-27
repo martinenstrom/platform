@@ -349,7 +349,15 @@ describe('every entity the repositories accept is deeply frozen', () => {
     await repos.cases.create(mine)
 
     expect(Object.isFrozen(mine)).toBe(true)
-    expect(await repos.cases.get('case-1')).toBe(mine)
+    /*
+     * Equality, not identity — and `transitions` empty, because it is a
+     * projection of the event log rather than a stored field. This fixture
+     * carries a transition and appends no event, so nothing comes back.
+     *
+     * Object identity was an in-memory-only property that was never part of
+     * the port contract, and PostgreSQL could not honour it in any case.
+     */
+    expect(await repos.cases.get('case-1')).toEqual({ ...mine, transitions: [] })
   })
 })
 
@@ -518,7 +526,9 @@ describe('a failed transaction restores the exact prior logical state', () => {
       }),
     ).rejects.toThrow()
 
-    expect(await repos.cases.get('case-1')).toBe(before)
+    // Equality rather than identity, for the same reason as above: the case is
+    // reassembled on read, so the test asserts the state, not the object.
+    expect(await repos.cases.get('case-1')).toEqual(before)
     expect((await repos.cases.get('case-1'))?.subject.displayName).toBe('Policy regime')
   })
 })
