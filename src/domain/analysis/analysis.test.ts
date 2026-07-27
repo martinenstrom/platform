@@ -40,6 +40,7 @@ import {
   type InvestmentCase,
   type Organization,
   type VerificationReview,
+  type VerificationVerdict,
 } from './index'
 
 /* ------------------------------------------------------------- test fixtures */
@@ -750,7 +751,8 @@ describe('confidence composition', () => {
 /* ---------------------------------------------------------------- governance */
 
 describe('the governance gate', () => {
-  const verification = (over: Partial<VerificationReview> = {}): VerificationReview => ({
+  const verification = (over: Partial<VerificationVerdict> = {}): VerificationReview => ({
+    scope: 'case',
     caseId: 'case-1',
     byEmployeeId: 'fact-head',
     byDepartmentId: 'verification',
@@ -798,6 +800,7 @@ describe('the governance gate', () => {
     const result = evaluateGate({
       verification: verification(),
       devilsAdvocate: {
+        scope: 'case',
         caseId: 'case-1',
         byEmployeeId: 'da',
         byDepartmentId: 'devils-advocate',
@@ -822,6 +825,7 @@ describe('the governance gate', () => {
     const result = evaluateGate({
       verification: verification({ status: 'unresolved-discrepancy' }),
       compliance: {
+        scope: 'case',
         caseId: 'case-1',
         byEmployeeId: 'c',
         byDepartmentId: 'compliance',

@@ -63,6 +63,7 @@ describe('a clean database reaches the expected schema', () => {
       '0008',
       '0009',
       '0010',
+      '0011',
     ])
   })
 
@@ -413,9 +414,9 @@ describe('indexes support the deterministic ordering contracts', () => {
       ordering: /\(case_id, id\)/,
     },
     {
-      port: 'reviews.*ForCase — at, by_employee_id',
+      port: 'reviews.*ForCase — at, by_employee_id, revision_id',
       index: 'reviews_case_idx',
-      ordering: /\(case_id, kind, at, by_employee_id\)/,
+      ordering: /\(case_id, kind, at, by_employee_id, revision_id\)/,
     },
     {
       port: 'events.listForCase — occurred_at, event_id',

@@ -28,19 +28,22 @@
  * write-once.
  */
 
-import type {
-  AgentClaim,
-  AgentRunRecord,
-  Assignment,
-  CaseDecision,
-  ComplianceReview,
-  DevilsAdvocateReview,
-  EvidenceSet,
-  InvestmentCase,
-  InvestmentThesis,
-  RiskReview,
-  TransitionEvent,
-  VerificationReview,
+import {
+  reviewIdentity,
+  type AgentClaim,
+  type AgentRunRecord,
+  type Assignment,
+  type CaseDecision,
+  type ComplianceReview,
+  type DevilsAdvocateReview,
+  type EvidenceSet,
+  type InvestmentCase,
+  type InvestmentThesis,
+  type ReviewAttribution,
+  type ReviewScope,
+  type RiskReview,
+  type TransitionEvent,
+  type VerificationReview,
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
@@ -330,24 +333,40 @@ function claimRepository(store: Store, scope: Scope): ClaimRepository {
   }
 }
 
-/** Reviews share a natural key, so a replayed submission does not double-count. */
-function sameReview(
-  a: { caseId: string; thesisId?: string; byEmployeeId: string; at: string },
-  b: { caseId: string; thesisId?: string; byEmployeeId: string; at: string },
-) {
-  return (
-    a.caseId === b.caseId &&
-    a.thesisId === b.thesisId &&
-    a.byEmployeeId === b.byEmployeeId &&
-    a.at === b.at
-  )
-}
+/**
+ * Reviews dedupe on their natural key, so a replayed submission does not
+ * double-count in the gate.
+ *
+ * The key comes from `reviewIdentity` in the domain rather than being spelled
+ * out here, because PostgreSQL's unique index mirrors the same definition. Two
+ * stores that dedupe *approximately* the same way would diverge exactly where
+ * it matters least visibly — and the key includes the full scope, so a retry
+ * cannot collide with a review of a different revision.
+ */
+const sameReview = (
+  kind: Parameters<typeof reviewIdentity>[0],
+  a: ReviewScope & ReviewAttribution,
+  b: ReviewScope & ReviewAttribution,
+) => reviewIdentity(kind, a) === reviewIdentity(kind, b)
 
-const byReview = <T extends { at: string; byEmployeeId: string }>(a: T, b: T) =>
-  byString(a.at, b.at) || byString(a.byEmployeeId, b.byEmployeeId)
+/**
+ * `at`, then `byEmployeeId`, then `revisionId`.
+ *
+ * The revision is the final tie-break because one reviewer can record verdicts
+ * on two competing revisions at the same instant. Case-wide reviews sort as
+ * the empty string, which places them first among ties — a fixed position
+ * rather than an arbitrary one.
+ */
+const byReview = <T extends ReviewScope & ReviewAttribution>(a: T, b: T) =>
+  byString(a.at, b.at) ||
+  byString(a.byEmployeeId, b.byEmployeeId) ||
+  byString(
+    a.scope === 'thesis-revision' ? a.revisionId : '',
+    b.scope === 'thesis-revision' ? b.revisionId : '',
+  )
 
 function reviewRepository(store: Store, scope: Scope): ReviewRepository {
-  const list = <T extends { caseId: string; at: string; byEmployeeId: string }>(
+  const list = <T extends ReviewScope & ReviewAttribution>(
     all: T[],
     caseId: string,
     operation: string,
@@ -372,28 +391,28 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
     async saveVerification(review) {
       guard(scope, 'reviews.saveVerification')
       seal(review, 'reviews.verification')
-      if (!store.verifications.some((r) => sameReview(r, review))) {
+      if (!store.verifications.some((r) => sameReview('verification', r, review))) {
         store.verifications.push(review)
       }
     },
     async saveDevilsAdvocate(review) {
       guard(scope, 'reviews.saveDevilsAdvocate')
       seal(review, 'reviews.devilsAdvocate')
-      if (!store.challenges.some((r) => sameReview(r, review))) {
+      if (!store.challenges.some((r) => sameReview('devils-advocate', r, review))) {
         store.challenges.push(review)
       }
     },
     async saveCompliance(review) {
       guard(scope, 'reviews.saveCompliance')
       seal(review, 'reviews.compliance')
-      if (!store.compliance.some((r) => sameReview(r, review))) {
+      if (!store.compliance.some((r) => sameReview('compliance', r, review))) {
         store.compliance.push(review)
       }
     },
     async saveRisk(review) {
       guard(scope, 'reviews.saveRisk')
       seal(review, 'reviews.risk')
-      if (!store.risk.some((r) => sameReview(r, review))) store.risk.push(review)
+      if (!store.risk.some((r) => sameReview('risk', r, review))) store.risk.push(review)
     },
   }
 }

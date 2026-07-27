@@ -372,6 +372,7 @@ swap should be an adapter, not a redesign.
 | ----------------------------------------- | ----- |
 | 0 · transaction-capable ports             | done  |
 | 1 · schema and migrations                 | done  |
+| 1.5 · revision-scoped governance reviews  | done  |
 | 2 · PostgreSQL adapter                    | open  |
 | 3 · dual write                            | open  |
 | 4 · read verification                     | open  |
@@ -390,28 +391,30 @@ adapter is still the only one, which is why this item stays open.
 
 ---
 
-## TD-21 · Reviews attach to a thesis lineage, not to a revision
+## TD-21 · Reviews attached to a thesis lineage, not to a revision — RESOLVED
 
-**Incurred:** storage stage 1. **Severity:** high. **Blocks:** nothing today;
-must be resolved before stage 3 writes real governance records.
+**Incurred:** storage stage 1. **Resolved:** storage stage 1.5.
+**Was:** a correctness blocker on stage 2.
 
-`VerificationReview`, `DevilsAdvocateReview`, `ComplianceReview` and
-`RiskReview` all carry `thesisId` — the **lineage** — and no `revisionId`.
+The four review types carried `thesisId` — the **lineage** — and no
+`revisionId`. Once revision 2 existed, "verification approved thesis-1" did not
+say which argument was approved, and the schema's guarantee that a sealed
+revision cannot be edited bought nothing if the review never named the revision
+it read. A consumer could reasonably have treated a lineage-level approval as
+approval of the current revision, which is the failure the whole revision model
+exists to prevent.
 
-That undercuts the argument the revision design rests on. A review reviewed a
-specific argument; once revision 2 exists, "verification approved thesis-1"
-does not say which version was approved, and the schema's guarantee that a
-sealed revision cannot be edited buys nothing if the review does not name the
-revision it read.
+Resolved by modelling scope explicitly rather than by adding an optional field.
+A review is now exactly one of two shapes — case-wide, or attached to one exact
+immutable revision — and the illegal combinations do not typecheck and do not
+insert. Migration `0011` carries the constraints; `docs/durable-storage-plan.md`
+§3 is superseded on this point by the shape the code now uses.
 
-The approved storage plan (§3, §4) specifies `reviews.revision_id`, so the
-column exists and is a foreign key to `thesis_revisions`. It is **nullable and
-unpopulated**, because the domain has nothing to put in it.
-
-**Preferred resolution:** add `revisionId` to the four review types, require it
-whenever the case has theses, and make the column `NOT NULL` for those kinds in
-a later migration. It is a domain change with a migration behind it, which is
-why it was not made silently inside a storage stage.
+One thing found while proving it, worth remembering: TypeScript's
+excess-property check accepts a property present on **any** arm of a target
+union, so omitting `revisionId` from the case-wide arm was not enough to stop a
+case-wide literal carrying one. The arm declares `revisionId?: never`
+explicitly, and a test holds that in place.
 
 ---
 

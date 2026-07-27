@@ -149,8 +149,22 @@ export interface ClaimRepository {
   save(claim: AgentClaim, caseId: string, runId: string): Promise<AgentClaim>
 }
 
+/**
+ * Reviews for a case — both the case-wide ones and every revision-scoped one.
+ *
+ * There is deliberately no `…ForRevision` method. Matching a review to a
+ * revision is a domain rule (`reviewApplies`), and a second implementation of
+ * it in a repository is where a lineage-scoped match would quietly reappear.
+ * The store returns what exists; the domain decides what it speaks to.
+ */
 export interface ReviewRepository {
-  /** All ordered by `at`, then `byEmployeeId`. */
+  /**
+   * All ordered by `at`, then `byEmployeeId`, then `revisionId`.
+   *
+   * The revision is part of the tie-break because it is part of the identity:
+   * one reviewer can record verdicts on two competing revisions at the same
+   * instant, and without it the order of those two would be arbitrary.
+   */
   verificationsForCase(caseId: string): Promise<VerificationReview[]>
   challengesForCase(caseId: string): Promise<DevilsAdvocateReview[]>
   complianceForCase(caseId: string): Promise<ComplianceReview[]>

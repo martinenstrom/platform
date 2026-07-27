@@ -571,8 +571,8 @@ describe('governance records', () => {
     await expect(
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, case_id, tenant_id, by_employee_id, by_department_id, at, status)
-         VALUES ($1, 'verification', 'no-such-case', 'system', 'verification-head',
+           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
+         VALUES ($1, 'verification', 'case', 'no-such-case', 'system', 'verification-head',
                  'verification', now(), 'verified')`,
         [id('review')],
       ),
@@ -584,8 +584,8 @@ describe('governance records', () => {
     await expect(
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, case_id, tenant_id, by_employee_id, by_department_id, at, status)
-         VALUES ($1, 'risk', $2, 'system', 'chief-risk-officer', 'risk', now(), 'approved')`,
+           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
+         VALUES ($1, 'risk', 'case', $2, 'system', 'chief-risk-officer', 'risk', now(), 'approved')`,
         [id('review'), caseId],
       ),
     ).rejects.toThrow(/reviews_status_matches_kind/)
@@ -598,8 +598,8 @@ describe('governance records', () => {
     const insert = (reviewId: string) =>
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, case_id, tenant_id, thesis_id, by_employee_id, by_department_id, at, status)
-         VALUES ($1, 'verification', $2, 'system', NULL, 'verification-head',
+           (id, kind, scope, case_id, tenant_id, thesis_id, by_employee_id, by_department_id, at, status)
+         VALUES ($1, 'verification', 'case', $2, 'system', NULL, 'verification-head',
                  'verification', $3, 'verified')`,
         [reviewId, caseId, at],
       )
@@ -619,8 +619,8 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, case_id, tenant_id, by_employee_id, by_department_id, at)
-       VALUES ($1, 'devils-advocate', $2, 'system', 'devils-advocate-head',
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at)
+       VALUES ($1, 'devils-advocate', 'case', $2, 'system', 'devils-advocate-head',
                'devils-advocate', now())`,
       [reviewId, caseId],
     )
@@ -644,8 +644,8 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, case_id, tenant_id, by_employee_id, by_department_id, at)
-       VALUES ($1, 'devils-advocate', $2, 'system', 'devils-advocate-head',
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at)
+       VALUES ($1, 'devils-advocate', 'case', $2, 'system', 'devils-advocate-head',
                'devils-advocate', now())`,
       [reviewId, caseId],
     )
@@ -663,8 +663,8 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, case_id, tenant_id, by_employee_id, by_department_id, at, status)
-       VALUES ($1, 'verification', $2, 'system', 'verification-head', 'verification',
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
+       VALUES ($1, 'verification', 'case', $2, 'system', 'verification-head', 'verification',
                now(), 'correction-required')`,
       [reviewId, caseId],
     )

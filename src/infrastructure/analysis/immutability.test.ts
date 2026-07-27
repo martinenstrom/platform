@@ -162,7 +162,10 @@ const evidenceSet = (): EvidenceSet =>
   })
 
 const verification = (): VerificationReview => ({
+  scope: 'thesis-revision',
   caseId: 'case-1',
+  thesisId: 'thesis-1',
+  revisionId: 'rev-1',
   byEmployeeId: 'verifier',
   byDepartmentId: 'verification',
   at: NOW,
@@ -179,7 +182,10 @@ const verification = (): VerificationReview => ({
 })
 
 const challenge = (): DevilsAdvocateReview => ({
+  scope: 'thesis-revision',
   caseId: 'case-1',
+  thesisId: 'thesis-1',
+  revisionId: 'rev-1',
   byEmployeeId: 'advocate',
   byDepartmentId: 'devils-advocate',
   at: NOW,
@@ -195,7 +201,9 @@ const challenge = (): DevilsAdvocateReview => ({
   outcomes: { 'ch-1': 'open' },
 })
 
+// Case-wide: publication compliance concerns the whole report.
 const compliance = (): ComplianceReview => ({
+  scope: 'case',
   caseId: 'case-1',
   byEmployeeId: 'compliance-head',
   byDepartmentId: 'compliance',
@@ -205,7 +213,10 @@ const compliance = (): ComplianceReview => ({
 })
 
 const risk = (): RiskReview => ({
+  scope: 'thesis-revision',
   caseId: 'case-1',
+  thesisId: 'thesis-1',
+  revisionId: 'rev-1',
   byEmployeeId: 'cro',
   byDepartmentId: 'risk',
   at: NOW,

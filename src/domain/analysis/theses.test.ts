@@ -16,7 +16,7 @@ import {
   canTransitionThesis,
   currentRevision,
   evaluateThesisEligibility,
-  evaluateThesisGates,
+  evaluateRevisionGates,
   hasCompetingTheses,
   reviseThesis,
   thesisIsSealed,
@@ -292,13 +292,16 @@ describe('lifecycle and governance are orthogonal', () => {
   })
 })
 
-describe('governance runs per thesis', () => {
-  const verification = (
-    thesisId: string | undefined,
+describe('governance runs per revision', () => {
+  const revisionVerification = (
+    thesisId: string,
+    revisionId: string,
     status: VerificationReview['status'],
   ): VerificationReview => ({
+    scope: 'thesis-revision',
     caseId: 'case-1',
-    ...(thesisId ? { thesisId } : {}),
+    thesisId,
+    revisionId,
     byEmployeeId: 'fact-head',
     byDepartmentId: 'verification',
     at: '2026-07-27T10:00:00.000Z',
@@ -307,29 +310,64 @@ describe('governance runs per thesis', () => {
     claimsReviewed: [],
   })
 
-  it('clears one thesis while blocking another', () => {
-    const results = evaluateThesisGates(['th-buy', 'th-sell'], {
-      verification: [
-        verification('th-buy', 'verified'),
-        verification('th-sell', 'correction-required'),
-      ],
-    })
-    expect(results.find((r) => r.thesisId === 'th-buy')?.passed).toBe(true)
-    expect(results.find((r) => r.thesisId === 'th-sell')?.passed).toBe(false)
+  const caseVerification = (
+    status: VerificationReview['status'],
+  ): VerificationReview => ({
+    scope: 'case',
+    caseId: 'case-1',
+    byEmployeeId: 'fact-head',
+    byDepartmentId: 'verification',
+    at: '2026-07-27T10:00:00.000Z',
+    status,
+    findings: [],
+    claimsReviewed: [],
   })
 
-  it('applies a case-wide review to every thesis', () => {
-    const results = evaluateThesisGates(['th-buy', 'th-sell'], {
-      verification: [verification(undefined, 'verified')],
+  const buy = { thesisId: 'th-buy', revisionId: 'buy-r1' }
+  const sell = { thesisId: 'th-sell', revisionId: 'sell-r1' }
+
+  it('clears one revision while blocking another', () => {
+    const results = evaluateRevisionGates([buy, sell], 'case-1', {
+      verification: [
+        revisionVerification('th-buy', 'buy-r1', 'verified'),
+        revisionVerification('th-sell', 'sell-r1', 'correction-required'),
+      ],
+    })
+    expect(results.find((r) => r.revisionId === 'buy-r1')?.passed).toBe(true)
+    expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
+  })
+
+  it('applies a case-wide review to every revision', () => {
+    const results = evaluateRevisionGates([buy, sell], 'case-1', {
+      verification: [caseVerification('verified')],
     })
     expect(results.every((r) => r.passed)).toBe(true)
   })
 
-  it('blocks a thesis nobody verified', () => {
-    const results = evaluateThesisGates(['th-buy', 'th-sell'], {
-      verification: [verification('th-buy', 'verified')],
+  it('blocks a revision nobody verified', () => {
+    const results = evaluateRevisionGates([buy, sell], 'case-1', {
+      verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
     })
-    expect(results.find((r) => r.thesisId === 'th-sell')?.passed).toBe(false)
+    expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
+  })
+
+  it('does not let a review of revision 1 clear revision 2', () => {
+    // TD-21, as a test. The verifier read revision 1; revision 2 is a
+    // different argument and has been reviewed by nobody.
+    const results = evaluateRevisionGates(
+      [{ thesisId: 'th-buy', revisionId: 'buy-r2' }],
+      'case-1',
+      { verification: [revisionVerification('th-buy', 'buy-r1', 'verified')] },
+    )
+    expect(results[0]!.passed).toBe(false)
+    expect(results[0]!.blockers.join(' ')).toMatch(/verification has not been performed/)
+  })
+
+  it('ignores a review belonging to another case', () => {
+    const results = evaluateRevisionGates([buy], 'case-2', {
+      verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
+    })
+    expect(results[0]!.passed).toBe(false)
   })
 })
 

@@ -21,23 +21,127 @@ import type { ClaimId } from './claims'
 import type { CaseId } from './cases'
 import type { DepartmentId, EmployeeId } from './organization'
 import type { EvidenceRef } from './identity'
-import type { ThesisId } from './theses'
+import {
+  evaluateThesisEligibility,
+  type Blocker,
+  type BlockerKind,
+  type ThesisEligibility,
+  type ThesisLifecycleState,
+} from './lifecycle'
+import type { RevisionId, ThesisId } from './theses'
 
 /**
  * What a review is ABOUT.
  *
- * A case-level review answers "is this body of work sound". A thesis-level one
- * answers "is THIS argument sound", and with competing theses that is the only
- * useful question: Buy and Sell have opposite downsides, so a single risk
- * verdict per case says nothing about either.
+ * A case-wide review answers "is this body of work sound" — publication
+ * compliance on the language of the whole report, an operational review, a
+ * risk view of the combined recommendation. A thesis-revision review answers
+ * "is THIS argument sound", and with competing theses that is the only useful
+ * question: Buy and Sell have opposite downsides, so a single risk verdict per
+ * case says nothing about either.
  *
- * Optional rather than required, because early-stage work legitimately has no
- * theses yet — but once a case has them, reviews attach to them.
+ * ## Why a discriminated union and not an optional `revisionId`
+ *
+ * The earlier model carried an optional `thesisId` and nothing else, which
+ * scoped a review to a LINEAGE. That is the flaw this replaced: revision 1 is
+ * verified, revision 2 supersedes it, and "verification approved thesis-1"
+ * silently reads as approval of an argument the verifier never saw. An
+ * optional `revisionId` would have made that failure rarer without making it
+ * impossible.
+ *
+ * A union makes the illegal states unrepresentable rather than merely
+ * discouraged:
+ *
+ *   - a thesis-revision review without a revision does not typecheck
+ *   - a case-wide review has no `thesisId` or `revisionId` FIELD to carry, so
+ *     it cannot hold a hidden one
+ *   - narrowing on `scope` is the only way to read `revisionId`, so no call
+ *     site can forget which it is looking at
+ *
+ * `caseId` is on both arms, so `review.caseId` is always available and only
+ * the revision-scoped fields require narrowing.
  */
-export interface ReviewScope {
-  caseId: CaseId
-  /** Absent for a case-wide review; present once theses exist. */
-  thesisId?: ThesisId
+export type ReviewScope =
+  | {
+      scope: 'case'
+      caseId: CaseId
+      /*
+       * Declared as `never` rather than omitted. TypeScript's excess-property
+       * check accepts a property that exists on ANY arm of the target union,
+       * so simply leaving these out would still let a case-wide literal carry
+       * `revisionId: 'r-1'` — present but unreachable, and therefore invisible
+       * to every reader while sitting in the database.
+       */
+      thesisId?: never
+      revisionId?: never
+    }
+  | {
+      scope: 'thesis-revision'
+      caseId: CaseId
+      /** The lineage. Kept alongside the revision so ownership is checkable. */
+      thesisId: ThesisId
+      /** The exact immutable revision reviewed. Never the lineage's latest. */
+      revisionId: RevisionId
+    }
+
+export type RevisionScopedReview = Extract<ReviewScope, { scope: 'thesis-revision' }>
+
+/** Who performed the review, and when. Common to all four control functions. */
+export interface ReviewAttribution {
+  byEmployeeId: EmployeeId
+  byDepartmentId: DepartmentId
+  at: string
+}
+
+export function isRevisionScoped<T extends ReviewScope>(
+  review: T,
+): review is T & RevisionScopedReview {
+  return review.scope === 'thesis-revision'
+}
+
+/**
+ * Whether a review speaks to a specific revision.
+ *
+ * The rule that makes the whole model work: a case-wide review applies to
+ * every revision of its case, and a revision-scoped review applies to exactly
+ * one. **A review of revision n never applies to revision n+1** — not by
+ * fallback, not by "most recent", not by lineage. A superseding revision
+ * starts with no inherited approval, and `evaluateGate` treats missing
+ * verification as a blocker, so the new revision must be verified on its own
+ * before it can reach the CIO.
+ */
+export function reviewApplies(
+  review: ReviewScope,
+  target: { caseId: CaseId; revisionId: RevisionId },
+): boolean {
+  if (review.caseId !== target.caseId) return false
+  if (review.scope === 'case') return true
+  return review.revisionId === target.revisionId
+}
+
+/**
+ * The natural key a replayed submission must collide on.
+ *
+ * Includes the full scope, so a retry cannot find a review of a different
+ * revision and treat it as this one's. Both adapters compute it from here, and
+ * the `reviews_natural_key_unique` index mirrors it, so the in-memory store
+ * and PostgreSQL dedupe identically rather than approximately.
+ */
+export function reviewIdentity(
+  kind: 'verification' | 'devils-advocate' | 'compliance' | 'risk',
+  review: ReviewScope & ReviewAttribution,
+): string {
+  const revisionId = isRevisionScoped(review) ? review.revisionId : ''
+  const thesisId = isRevisionScoped(review) ? review.thesisId : ''
+  return [
+    kind,
+    review.caseId,
+    thesisId,
+    revisionId,
+    review.byDepartmentId,
+    review.byEmployeeId,
+    review.at,
+  ].join('|')
 }
 
 /* ------------------------------------------------------------- verification */
@@ -86,18 +190,15 @@ export type VerificationStatus =
   | 'insufficient-evidence'
   | 'blocked'
 
-export interface VerificationReview {
-  caseId: CaseId
-  /** Which thesis this verdict concerns. See `ReviewScope`. */
-  thesisId?: ThesisId
-  byEmployeeId: EmployeeId
-  byDepartmentId: DepartmentId
-  at: string
+/** The verdict, separate from where it applies. */
+export interface VerificationVerdict {
   status: VerificationStatus
   findings: readonly VerificationFinding[]
   /** Claims explicitly checked, so unchecked claims are visible as unchecked. */
   claimsReviewed: readonly ClaimId[]
 }
+
+export type VerificationReview = ReviewScope & ReviewAttribution & VerificationVerdict
 
 /** Statuses that stop a case reaching the CIO. */
 const VERIFICATION_BLOCKING: readonly VerificationStatus[] = [
@@ -171,17 +272,21 @@ export function buildChallenge(challenge: Challenge): Challenge {
 
 export type ChallengeStatus = 'open' | 'accepted' | 'rejected' | 'resolved'
 
-export interface DevilsAdvocateReview {
-  caseId: CaseId
-  /** Which thesis is being challenged. */
-  thesisId?: ThesisId
-  byEmployeeId: EmployeeId
-  byDepartmentId: DepartmentId
-  at: string
+/**
+ * A challenge belongs to the revision its review is scoped to.
+ *
+ * So an objection raised against revision 1 stays attached to revision 1 when
+ * revision 2 arrives. It neither blocks nor approves the new argument; if the
+ * objection still stands, it is raised again as new review work against the
+ * new revision, explicitly and visibly, rather than silently carried over.
+ */
+export interface DevilsAdvocateVerdict {
   challenges: readonly Challenge[]
   /** Per challenge, how the organization answered it. */
   outcomes: Readonly<Record<string, ChallengeStatus>>
 }
+
+export type DevilsAdvocateReview = ReviewScope & ReviewAttribution & DevilsAdvocateVerdict
 
 export function unresolvedChallenges(review: DevilsAdvocateReview): Challenge[] {
   return review.challenges.filter((c) => (review.outcomes[c.id] ?? 'open') === 'open')
@@ -197,16 +302,12 @@ export interface ComplianceFinding {
   claimId?: ClaimId
 }
 
-export interface ComplianceReview {
-  caseId: CaseId
-  /** Which thesis this verdict concerns. See `ReviewScope`. */
-  thesisId?: ThesisId
-  byEmployeeId: EmployeeId
-  byDepartmentId: DepartmentId
-  at: string
+export interface ComplianceVerdict {
   status: ComplianceStatus
   findings: readonly ComplianceFinding[]
 }
+
+export type ComplianceReview = ReviewScope & ReviewAttribution & ComplianceVerdict
 
 export function complianceBlocks(review: ComplianceReview): boolean {
   return review.status !== 'approved'
@@ -214,18 +315,14 @@ export function complianceBlocks(review: ComplianceReview): boolean {
 
 /* ----------------------------------------------------------------------- risk */
 
-export interface RiskReview {
-  caseId: CaseId
-  /** Which thesis this verdict concerns. See `ReviewScope`. */
-  thesisId?: ThesisId
-  byEmployeeId: EmployeeId
-  byDepartmentId: DepartmentId
-  at: string
+export interface RiskVerdict {
   status: 'accepted' | 'accepted-with-limits' | 'rejected'
   concerns: readonly string[]
   /** Position or exposure limits attached as a condition of acceptance. */
   limits?: readonly string[]
 }
+
+export type RiskReview = ReviewScope & ReviewAttribution & RiskVerdict
 
 export function riskBlocks(review: RiskReview): boolean {
   return review.status === 'rejected'
@@ -272,9 +369,10 @@ export interface GateResult {
   blockers: readonly string[]
 }
 
-/** One gate verdict per thesis, plus the case-wide reviews that apply to all. */
-export interface ThesisGateResult extends GateResult {
+/** One gate verdict per REVISION, plus the case-wide reviews that apply to all. */
+export interface RevisionGateResult extends GateResult {
   thesisId: ThesisId
+  revisionId: RevisionId
 }
 
 /**
@@ -310,40 +408,116 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
   return { passed: blockers.length === 0, blockers: Object.freeze(blockers) }
 }
 
-/**
- * Evaluates the gate for each thesis separately.
- *
- * Necessary once a case holds competing positions: thesis A may clear while
- * thesis B is blocked, and collapsing that into one verdict would either hide
- * a blocked argument or suppress a sound one. The CIO is entitled to both
- * facts.
- *
- * Reviews with no `thesisId` are case-wide and apply to every thesis —
- * compliance on the language of the whole report, for instance.
- */
-export function evaluateThesisGates(
-  thesisIds: readonly ThesisId[],
-  reviews: {
-    verification?: readonly VerificationReview[]
-    devilsAdvocate?: readonly DevilsAdvocateReview[]
-    compliance?: readonly ComplianceReview[]
-    risk?: readonly RiskReview[]
-  },
-): ThesisGateResult[] {
-  const forThesis = <T extends { thesisId?: ThesisId }>(
-    all: readonly T[] | undefined,
-    thesisId: ThesisId,
-  ): T | undefined =>
-    all?.find((r) => r.thesisId === thesisId) ??
-    all?.find((r) => r.thesisId === undefined)
+export interface CaseReviews {
+  verification?: readonly VerificationReview[]
+  devilsAdvocate?: readonly DevilsAdvocateReview[]
+  compliance?: readonly ComplianceReview[]
+  risk?: readonly RiskReview[]
+}
 
-  return thesisIds.map((thesisId) => {
+/**
+ * Evaluates the gate for each REVISION separately.
+ *
+ * Two reasons it is per revision rather than per thesis. Competing positions:
+ * Buy may clear while Sell is blocked, and one verdict per case would either
+ * hide a blocked argument or suppress a sound one. And revisions: an argument
+ * that has been revised is a different argument, so the verdicts on its
+ * predecessor say nothing about it.
+ *
+ * A revision-scoped review is matched EXACTLY. There is deliberately no
+ * fallback to the lineage and no "most recent review wins" — those are the
+ * two ways a stale approval reattaches itself to work nobody reviewed. A
+ * case-wide review applies to every revision, which is what makes publication
+ * compliance on the whole report expressible.
+ *
+ * Where several reviews of one kind apply, the LATEST is authoritative: a
+ * control function that re-reviews has changed its mind, and the record keeps
+ * both while the gate reads the current one.
+ */
+export function evaluateRevisionGates(
+  revisions: ReadonlyArray<{ thesisId: ThesisId; revisionId: RevisionId }>,
+  caseId: CaseId,
+  reviews: CaseReviews,
+): RevisionGateResult[] {
+  const applicable = <T extends ReviewScope & ReviewAttribution>(
+    all: readonly T[] | undefined,
+    revisionId: RevisionId,
+  ): T | undefined => {
+    const matching = (all ?? []).filter((review) =>
+      reviewApplies(review, { caseId, revisionId }),
+    )
+    if (matching.length === 0) return undefined
+    return [...matching].sort((a, b) => a.at.localeCompare(b.at)).at(-1)
+  }
+
+  return revisions.map(({ thesisId, revisionId }) => {
     const result = evaluateGate({
-      verification: forThesis(reviews.verification, thesisId),
-      devilsAdvocate: forThesis(reviews.devilsAdvocate, thesisId),
-      compliance: forThesis(reviews.compliance, thesisId),
-      risk: forThesis(reviews.risk, thesisId),
+      verification: applicable(reviews.verification, revisionId),
+      devilsAdvocate: applicable(reviews.devilsAdvocate, revisionId),
+      compliance: applicable(reviews.compliance, revisionId),
+      risk: applicable(reviews.risk, revisionId),
     })
-    return { thesisId, ...result }
+    return { thesisId, revisionId, ...result }
   })
+}
+
+/**
+ * Gate plus lifecycle, in one call, per revision.
+ *
+ * Exists so that nothing assembles `ThesisGateInputs` by hand. Hand-assembly
+ * is precisely where a lineage-scoped match creeps back in: a caller with a
+ * list of reviews and a list of theses will reach for `find(r => r.thesisId
+ * === t)`, and the resulting eligibility looks entirely plausible.
+ *
+ * A `CaseDecision` is refused for any revision this reports as ineligible, so
+ * a revision whose only reviews belong to its predecessor cannot be decided —
+ * `evaluateGate` counts missing verification as a blocker, and a superseding
+ * revision inherits none.
+ */
+export function evaluateRevisionEligibility(
+  revisions: ReadonlyArray<{
+    thesisId: ThesisId
+    revisionId: RevisionId
+    lifecycle: ThesisLifecycleState
+    /** Required playbook contributions for this revision that have not landed. */
+    missingRequiredContributions?: readonly string[]
+  }>,
+  caseId: CaseId,
+  reviews: CaseReviews,
+): ThesisEligibility[] {
+  const gates = evaluateRevisionGates(revisions, caseId, reviews)
+
+  return revisions.map((revision, index) => {
+    const gate = gates[index]!
+    return evaluateThesisEligibility(revision.thesisId, revision.revisionId, {
+      lifecycle: revision.lifecycle,
+      blockers: governanceBlockers(gate),
+      missingRequiredContributions: revision.missingRequiredContributions ?? [],
+    })
+  })
+}
+
+/**
+ * Turns the gate verdicts into the blockers eligibility is computed from.
+ *
+ * Exists so no call site derives blockers from reviews by hand — which is
+ * exactly where a lineage-scoped match would creep back in. The application
+ * layer supplies contribution state; governance comes from here.
+ */
+export function governanceBlockers(gate: GateResult): Blocker[] {
+  return gate.blockers.map((detail) => ({
+    kind: blockerKindFor(detail),
+    detail,
+    severity: 'blocks-decision' as const,
+  }))
+}
+
+function blockerKindFor(detail: string): BlockerKind {
+  if (detail.startsWith('verification has not been performed')) {
+    return 'verification-missing'
+  }
+  if (detail.startsWith('verification:')) return 'verification-correction-required'
+  if (detail.includes('unresolved challenge')) return 'unresolved-challenge'
+  if (detail.startsWith('compliance:')) return 'compliance-block'
+  return 'risk-rejected'
 }
