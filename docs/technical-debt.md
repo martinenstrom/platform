@@ -366,6 +366,23 @@ The ports were shaped with a durable adapter in mind — optimistic concurrency
 on `save`, idempotent creates, append-only events, write-once results — so the
 swap should be an adapter, not a redesign.
 
+**Migration progress** (plan: `docs/durable-storage-plan.md` §14):
+
+| Stage                                     | State |
+| ----------------------------------------- | ----- |
+| 0 · transaction-capable ports             | done  |
+| 1 · schema and migrations                 | open  |
+| 2 · PostgreSQL adapter                    | open  |
+| 3 · dual write                            | open  |
+| 4 · read verification                     | open  |
+| 5 · read switch                           | open  |
+| 6 · in-memory out of the composition root | open  |
+
+Stage 0 closed the two gaps the plan opened with: the ports had no transaction
+boundary, and no list method defined an ordering. Both are now on the port and
+enforced by the in-memory adapter, which becomes the reference implementation
+PostgreSQL is verified against in stage 4.
+
 ---
 
 ## TD-20 · Runtime capabilities deferred within Phase B

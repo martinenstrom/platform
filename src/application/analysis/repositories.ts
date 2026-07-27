@@ -1,24 +1,34 @@
 /**
  * Repository ports.
  *
- * Defined here, implemented in `infrastructure/analysis`. Phase B ships an
- * in-memory adapter only — see the limitation note below, which is deliberate
- * and load-bearing rather than an oversight.
+ * Defined here, implemented in `infrastructure/analysis`. The application layer
+ * never sees a driver type — no pool, no client, no SQL. `withTransaction` is
+ * the whole of the abstraction.
  *
  * ## Optimistic concurrency
  *
- * `saveCase` takes the version the caller read. Two departments finishing at
+ * `cases.save` takes the version the caller read. Two departments finishing at
  * the same moment both computed their change against version 12; the second
- * write must be rejected rather than silently overwriting the first. The
- * caller re-reads and retries.
+ * write is rejected rather than silently overwriting the first, and the caller
+ * re-reads and retries.
  *
  * A global lock would also prevent the lost update, and would serialise the
- * entire organization to protect one case. Optimistic concurrency keeps
- * independent cases independent, which is what a firm running many cases at
- * once actually needs.
+ * entire organization to protect one case. Only the case row is a concurrency
+ * unit — assignments, runs, claims and events are independently keyed or
+ * append-only.
+ *
+ * ## Deterministic ordering
+ *
+ * **Every method returning a list defines its ordering explicitly**, and each
+ * order ends in a unique tie-breaker. Nothing may rely on insertion order,
+ * primary-key coincidence, physical row order or planner behaviour: the
+ * in-memory adapter would return one thing and PostgreSQL another, and the
+ * read-verification stage exists precisely to catch that. The guarantee is
+ * stated on each method so both adapters implement the same one.
  */
 
 import type {
+  AgentClaim,
   AgentRunRecord,
   Assignment,
   CaseDecision,
@@ -31,19 +41,18 @@ import type {
   TransitionEvent,
   VerificationReview,
 } from '~/domain/analysis'
+import type { ResultStore } from './resultStore'
 
 /**
  * PHASE B LIMITATION, recorded where an implementer will see it.
  *
- * The only adapter is in-memory and process-local. On restart every case,
- * thesis, run, review and decision is gone. That is acceptable for a
- * deterministic runtime prototype with no live agents, and it is **not**
- * acceptable for real analysis, user-owned work or production.
+ * The only adapter today is in-memory and process-local. On restart every case,
+ * thesis, run, review and decision is gone. Acceptable for a deterministic
+ * runtime prototype with no live agents; not acceptable for real analysis,
+ * user-owned work or production.
  *
- * Durable storage is a hard gate before AI Phase C connects a real agent. It
- * does not depend on authentication: a system-level durable repository can
- * exist before users do. Authentication later adds ownership, access, tenancy
- * and permissions on top of it.
+ * Durable storage is a hard gate before AI Phase C. It does not depend on
+ * authentication: a system-level durable repository can exist before users do.
  */
 export const PHASE_B_PERSISTENCE_IS_PROCESS_LOCAL = true
 
@@ -62,8 +71,30 @@ export class ConcurrencyConflictError extends Error {
   }
 }
 
+/**
+ * Thrown when a transaction-scoped repository is used after its transaction
+ * has closed.
+ *
+ * The failure this prevents is quiet and severe: a repository captured inside
+ * `withTransaction` and called afterwards would run against a connection that
+ * has been committed, rolled back, or handed to someone else entirely. Failing
+ * loudly is the only safe behaviour.
+ */
+export class TransactionClosedError extends Error {
+  constructor(operation: string) {
+    super(
+      `"${operation}" was called after its transaction closed. Repositories ` +
+        `obtained inside withTransaction must not escape the callback.`,
+    )
+    this.name = 'TransactionClosedError'
+  }
+}
+
+/* ------------------------------------------------------------- repositories */
+
 export interface CaseRepository {
   get(caseId: string): Promise<InvestmentCase | null>
+  /** Ordered by `openedAt` descending, then `id` ascending. */
   list(): Promise<InvestmentCase[]>
   /**
    * Creates a case. Idempotent on `id`: replaying the command returns the
@@ -76,6 +107,7 @@ export interface CaseRepository {
 
 export interface ThesisRepository {
   get(revisionId: string): Promise<InvestmentThesis | null>
+  /** Ordered by `thesisId`, then `revisionNumber` ascending. */
   listForCase(caseId: string): Promise<InvestmentThesis[]>
   /** Idempotent on `revisionId`. */
   save(revision: InvestmentThesis): Promise<InvestmentThesis>
@@ -83,7 +115,9 @@ export interface ThesisRepository {
 
 export interface AssignmentRepository {
   get(assignmentId: string): Promise<Assignment | null>
+  /** Ordered by `priority` descending, then `createdAt`, then `id`. */
   listForCase(caseId: string): Promise<Assignment[]>
+  /** Same ordering as `listForCase`. */
   listForDepartment(departmentId: string): Promise<Assignment[]>
   /** Idempotent on `id`. */
   save(assignment: Assignment): Promise<Assignment>
@@ -91,12 +125,32 @@ export interface AssignmentRepository {
 
 export interface RunRepository {
   get(runId: string): Promise<AgentRunRecord | null>
+  /** Ordered by `startedAt`, then `id`. */
   listForCase(caseId: string): Promise<AgentRunRecord[]>
   /** Idempotent on `id`. */
   save(run: AgentRunRecord): Promise<AgentRunRecord>
 }
 
+/**
+ * Claims, stored beside their run rather than inside it.
+ *
+ * A claim is cited by theses, contested by challenges and verified
+ * individually, so it needs its own identity and its own lookups — embedding
+ * it in the run record would make "which claims did verification review"
+ * a scan.
+ */
+export interface ClaimRepository {
+  get(claimId: string): Promise<AgentClaim | null>
+  /** Ordered by `id`. */
+  listForRun(runId: string): Promise<AgentClaim[]>
+  /** Ordered by `id`. */
+  listForCase(caseId: string): Promise<AgentClaim[]>
+  /** Idempotent on `id`. Claims are write-once. */
+  save(claim: AgentClaim, caseId: string, runId: string): Promise<AgentClaim>
+}
+
 export interface ReviewRepository {
+  /** All ordered by `at`, then `byEmployeeId`. */
   verificationsForCase(caseId: string): Promise<VerificationReview[]>
   challengesForCase(caseId: string): Promise<DevilsAdvocateReview[]>
   complianceForCase(caseId: string): Promise<ComplianceReview[]>
@@ -110,8 +164,9 @@ export interface ReviewRepository {
 /** Append-only. There is deliberately no update or delete. */
 export interface EventRepository {
   append(event: TransitionEvent): Promise<void>
+  /** Ordered by `occurredAt`, then `eventId`. */
   listForCase(caseId: string): Promise<TransitionEvent[]>
-  /** Most recent first, across every case. Feeds the activity projection. */
+  /** Most recent first: `occurredAt` descending, then `eventId` descending. */
   recent(limit: number): Promise<TransitionEvent[]>
 }
 
@@ -123,18 +178,93 @@ export interface EvidenceRepository {
 
 export interface DecisionRepository {
   getForCase(caseId: string): Promise<CaseDecision | null>
+  /** Ordered by `decidedAt` descending, then `caseId`. */
   list(limit: number): Promise<CaseDecision[]>
-  /** Idempotent on `caseId`: a case has at most one decision. */
+  /**
+   * Idempotent on `caseId`: a case has at most one decision, and a committed
+   * decision is immutable. A correction appends a new superseding decision
+   * rather than rewriting this one.
+   */
   save(decision: CaseDecision): Promise<CaseDecision>
 }
+
+/* -------------------------------------------------------------- idempotency */
+
+export interface IdempotencyRecord {
+  key: string
+  commandType: string
+  /** The id of whatever the command produced, so a replay can return it. */
+  resultRef: string
+  createdAt: string
+}
+
+/**
+ * Explicit idempotency, for the commands whose identity is not derivable.
+ *
+ * Most operations need none: an assignment id follows from
+ * `(caseId, playbookEntryKey)`, an event carries its own id, a result is
+ * keyed by content hash. Keys exist for the three where two calls are
+ * indistinguishable from one retried call — opening a case, starting a run,
+ * recording a review — and for the decision, where a duplicate would be a
+ * second valid-looking institutional record.
+ *
+ * The record and its effect **must commit in the same transaction**, or there
+ * is a window in which the key exists without the effect it guards.
+ */
+export interface IdempotencyStore {
+  get(key: string): Promise<IdempotencyRecord | null>
+  /**
+   * Reserves a key. Returns the existing record when the key is already held,
+   * which is how a replay returns the original result instead of doing work.
+   */
+  reserve(record: IdempotencyRecord): Promise<IdempotencyRecord>
+}
+
+/* ---------------------------------------------------------------- container */
+
+/**
+ * Everything a command needs, minus the ability to open another transaction.
+ *
+ * `withTransaction` is deliberately absent, so a nested transaction is a
+ * compile error rather than a runtime surprise. No command in the runtime
+ * needs savepoints.
+ */
+export type TransactionalAnalysisRepositories = Omit<
+  AnalysisRepositories,
+  'withTransaction'
+>
 
 export interface AnalysisRepositories {
   cases: CaseRepository
   theses: ThesisRepository
   assignments: AssignmentRepository
   runs: RunRepository
+  claims: ClaimRepository
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
   decisions: DecisionRepository
+  results: ResultStore
+  idempotency: IdempotencyStore
+
+  /**
+   * Runs `operation` inside one transaction.
+   *
+   * A transaction spans repositories — opening a case writes the case, its
+   * assignments, its first thesis revision and their events — so the boundary
+   * belongs on the container. A per-repository transaction could not express
+   * it, and compensating deletion after a partial failure is not an acceptable
+   * substitute when the database can simply guarantee atomicity.
+   *
+   * The repositories handed to the callback are transaction-scoped and stop
+   * working the moment it resolves. The outer ones are not transactional and
+   * must not be used inside.
+   *
+   * The callback throwing rolls everything back. A commit failure surfaces to
+   * the caller — **no caller receives a success result before commit
+   * succeeds.**
+   */
+  withTransaction<T>(
+    operation: (repositories: TransactionalAnalysisRepositories) => Promise<T>,
+  ): Promise<T>
 }
