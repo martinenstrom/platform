@@ -1,6 +1,55 @@
-# Stage 3 — dual write
+# Dual write — a deferred migration design
 
-Planning gate. Nothing here is implemented.
+**Status: designed, reviewed, approved as a design, and deliberately NOT
+implemented.** Reclassified from "Stage 3 of the durable-storage migration" on
+2026-07-28.
+
+## Why it is not implemented
+
+The prerequisite problem does not exist. Dual write, shadow read verification
+and a gradual read switch are how you migrate an **active stateful runtime**
+without taking correctness on trust. At the time of deferral Financial OS had:
+
+- no application command writing to the repositories
+- no production read path consuming them
+- in-memory state that is empty after every restart
+- no accumulated institutional history
+- no users and no live agents
+
+There was therefore no cutover risk for dual write to protect against, and
+building the journal, replay, divergence ledger, reconciliation and
+ambiguous-commit spool would have been substantial migration machinery wrapped
+around a command boundary that did not yet exist — likely to be reshaped once
+Phase C defined the real commands.
+
+The revised sequence makes PostgreSQL the sole authoritative runtime store from
+the first real command, and keeps the in-memory adapter as the unit-test
+reference, the semantic parity oracle, and a deterministic runtime-test tool.
+See `docs/phase-c-plan.md`.
+
+## When to come back to this
+
+When Financial OS actually has one of:
+
+- an existing authoritative store with persistent data to migrate
+- live traffic that cannot be interrupted
+- a rollback requirement
+- a replacement database or storage backend
+
+The design below is retained in full because the reasoning does not expire.
+What is worth keeping regardless of the eventual migration:
+
+- **recorded replay rather than double callback execution** (§2) — running a
+  callback against two stores whose contents differ produces two different
+  sequences of writes, so the mechanism meant to detect divergence causes it
+- **canonical comparison functions** (§9) rather than ad-hoc deep equality
+- **divergence classification** into safe-to-repair and must-be-blocked (§8)
+- **ambiguous-commit handling** by identity lookup rather than blind replay (§5)
+- **reconciliation that never overwrites to make counts match** (§8)
+- **storage provenance** (§10), which was extracted and is being implemented
+  independently — see D-T6 and the Phase C plan
+
+Everything below is the original plan, unchanged.
 
 ---
 

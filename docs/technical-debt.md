@@ -368,17 +368,22 @@ swap should be an adapter, not a redesign.
 
 **Migration progress** (plan: `docs/durable-storage-plan.md` §14):
 
-| Stage                                     | State |
-| ----------------------------------------- | ----- |
-| 0 · transaction-capable ports             | done  |
-| 1 · schema and migrations                 | done  |
-| 1.5 · revision-scoped governance reviews  | done  |
-| 2 · PostgreSQL adapter                    | done  |
-| 2.1 · review corrections                  | done  |
-| 3 · dual write                            | open  |
-| 4 · read verification                     | open  |
-| 5 · read switch                           | open  |
-| 6 · in-memory out of the composition root | open  |
+| Stage                                     | State        |
+| ----------------------------------------- | ------------ |
+| 0 · transaction-capable ports             | done         |
+| 1 · schema and migrations                 | done         |
+| 1.5 · revision-scoped governance reviews  | done         |
+| 2 · PostgreSQL adapter                    | done         |
+| 2.1 · review corrections                  | done         |
+| 3 · dual write                            | **deferred** |
+| 4 · read verification                     | **deferred** |
+| 5 · read switch                           | **deferred** |
+| 6 · in-memory out of the composition root | superseded   |
+
+Stage 6 is superseded rather than pending: in-memory was never wired into the
+composition root, so there is nothing to remove. It stays as the unit-test
+reference adapter and the parity oracle, which was always its post-cutover
+role.
 
 Stage 0 closed the two gaps the plan opened with: the ports had no transaction
 boundary, and no list method defined an ordering. Both are now on the port and
@@ -386,9 +391,18 @@ enforced by the in-memory adapter, which becomes the reference implementation
 PostgreSQL is verified against in stage 4.
 
 Stage 1 built the schema, the migration runner and the seeded organization,
-verified by 110 integration tests against real PostgreSQL 18.4. **No adapter
-exists yet and nothing in the runtime connects to a database** — the in-memory
-adapter is still the only one, which is why this item stays open.
+verified by integration tests against real PostgreSQL 18.4. Stage 2 built the
+adapter; stage 2.1 corrected ten defects an architecture review found, five of
+them confirmed divergences between the two stores.
+
+**Stages 3–5 are deferred, not skipped.** Dual write, shadow read verification
+and a gradual read switch migrate an _active stateful runtime_; nothing writes
+to any store today, the in-memory state is empty after every restart, and there
+is no accumulated history, traffic or rollback exposure. The design is retained
+in `docs/dual-write-plan.md` for a future migration. The revised sequence makes
+PostgreSQL authoritative from the first real command — see `docs/phase-c-plan.md`.
+
+This item stays open until that wiring exists.
 
 ---
 
