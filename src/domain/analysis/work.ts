@@ -28,9 +28,25 @@ export type AssignmentStatus =
   /** Reviewed and sent back with required corrections. */
   | 'returned'
   | 'completed'
+  /**
+   * The department tried and its run failed non-retryably.
+   *
+   * Distinct from `cancelled`, which means the organization withdrew the work.
+   * A desk that attempted something and could not finish it is a different
+   * institutional fact from one that was told to stop, and collapsing them
+   * would hide provider trouble behind a managerial decision nobody made.
+   */
+  | 'failed'
   | 'cancelled'
 
-/** Open statuses occupy a queue; the rest do not. */
+/**
+ * Open statuses occupy a queue; the rest do not.
+ *
+ * `failed` is deliberately NOT open. The desk is not working on it and has no
+ * further move to make on its own — it is a blocker for a manager, and it
+ * surfaces through case health and eligibility rather than by inflating a
+ * department's workload with work nobody is doing.
+ */
 export const OPEN_ASSIGNMENT_STATUSES: readonly AssignmentStatus[] = [
   'queued',
   'active',

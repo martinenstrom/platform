@@ -971,13 +971,111 @@ describe('Phase C1A — the command foundation', () => {
     expect(handlers?.sort()).toEqual([
       'definition.ts',
       'envelope.ts',
+      'eventIdentity.ts',
+      'failAgentRun.ts',
       'instantiatePlaybook.ts',
       'openInvestmentCase.ts',
       'proposeThesis.ts',
       'registry.ts',
       'resolveCommand.ts',
       'runCommand.ts',
+      'startAgentRun.ts',
     ])
+  })
+})
+
+describe('Phase C1C-1 — the external-work boundary', () => {
+  it('lets no command reach a contribution provider', () => {
+    /*
+     * The first of three protections for D-C1C-4. A command body runs inside
+     * `runCommand`'s transaction; if it could call a provider, a PostgreSQL
+     * transaction would stay open across a network call that may take minutes
+     * or never return. A command that cannot SEE the provider cannot call it.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        f.imports.some((specifier) => specifier.includes('contributionPort')),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('lets the orchestrator write nothing directly', () => {
+    /*
+     * The second. The orchestrator sequences commands and calls the provider
+     * between them; a direct repository write from there would be an
+     * institutional effect with no command, no actor and no ledger entry.
+     */
+    const orchestrator = FILES.find((f) =>
+      f.path.endsWith('application/analysis/orchestrator.ts'),
+    )
+    expect(orchestrator).toBeDefined()
+    const forbidden = orchestrator!.imports.filter(
+      (specifier) =>
+        specifier.includes('/repositories') || specifier.includes('/commandLog'),
+    )
+    expect(forbidden).toEqual([])
+  })
+
+  it('derives every record identity in one place', () => {
+    /*
+     * TD-30. A handler building an id by hand would be a second scheme, and
+     * two schemes eventually collide or diverge across a restart.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        !f.path.endsWith('eventIdentity.ts') &&
+        /eventId:\s*`/.test(sourceOf(f)),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('accepts no caller-supplied event or assignment identity', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        /(eventIdPrefix|assignmentIdPrefix|creationEventId)/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('resolves playbooks only through the registry', () => {
+    /*
+     * TD-31. A command importing the macro playbook directly would be making
+     * the routing decision at the call site again.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        f.imports.some((specifier) => specifier.includes('macroPlaybook')),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('ships no live contribution provider', () => {
+    // C2 remains blocked: recorded and stub only.
+    const offenders = FILES.filter(
+      (f) => !isTest(f) && /providerKind:\s*'live'/.test(sourceOf(f)),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps raw provider text out of the failure record', () => {
+    /*
+     * The orchestrator used to put `error.message` — a provider's own words —
+     * into a free-text `failureReason`, which then flowed into logs and read
+     * models. The field is a closed category now, and nothing may reintroduce
+     * the old one.
+     */
+    const offenders = FILES.filter(
+      (f) => !isTest(f) && /failureReason/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
   })
 })
 

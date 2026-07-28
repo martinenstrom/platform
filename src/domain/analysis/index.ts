@@ -38,5 +38,7 @@ export * from './requirements'
  *   2  storage stage 1.5 — reviews became revision-scoped
  *   3  Phase C1B — a revision declares its investment implications, and
  *      conditional requirements resolve against an exact revision
+ *   4  Phase C1C — runs carry execution provenance, failures are a bounded
+ *      category rather than free text, and an assignment can be failed
  */
-export const DOMAIN_CONTRACT_VERSION = '3'
+export const DOMAIN_CONTRACT_VERSION = '4'

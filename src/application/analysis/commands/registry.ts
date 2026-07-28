@@ -16,6 +16,8 @@ import type { CommandDefinition } from './definition'
 import { openInvestmentCase } from './openInvestmentCase'
 import { instantiatePlaybook } from './instantiatePlaybook'
 import { proposeThesis } from './proposeThesis'
+import { startAgentRun } from './startAgentRun'
+import { failAgentRun } from './failAgentRun'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a heterogeneous list of
    definitions has no useful common Input/Result; every consumer reads only the
@@ -30,5 +32,7 @@ export function productionCommands(
     openInvestmentCase(organization),
     instantiatePlaybook(organization),
     proposeThesis(organization),
+    startAgentRun(organization),
+    failAgentRun(organization),
   ]
 }

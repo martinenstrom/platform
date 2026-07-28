@@ -381,8 +381,14 @@ export interface RunRepository {
   get(runId: string): Promise<AgentRunRecord | null>
   /** Ordered by `startedAt`, then `id`. */
   listForCase(caseId: string): Promise<AgentRunRecord[]>
-  /** Idempotent on `id`. */
-  save(run: AgentRunRecord): Promise<AgentRunRecord>
+  /**
+   * Idempotent on `id`.
+   *
+   * Takes provenance because a run carries a FK to it: execution provenance
+   * says what produced the analysis, storage provenance says what wrote the
+   * row, and a run row is not legible without both.
+   */
+  save(run: AgentRunRecord, provenance: StorageProvenance): Promise<AgentRunRecord>
 }
 
 /**

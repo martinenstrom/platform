@@ -25,6 +25,7 @@ import {
 } from '~/application/analysis/writeOnce'
 import type { AgentClaim, AgentRunRecord, RunEvent } from '~/domain/analysis'
 import { groupBy } from './caseRepositories'
+import { ensureProvenance } from './provenance'
 import { toAssignment, toClaim, toRun, toRunEvent } from './mapping'
 import type {
   AssignmentRow,
@@ -304,7 +305,10 @@ const RUN_COLUMNS = `
   state, obsolete, agent_contract_version, output_schema_version, prompt_id,
   prompt_version, prompt_content_hash, model_id, model_provider,
   model_parameters_hash, model_parameters, evidence_set_id,
-  ${ts('started_at')}, ${ts('completed_at')}, failure_reason,
+  ${ts('started_at')}, ${ts('completed_at')},
+  failure_category, failure_retryable, failure_attempt, ${ts('failed_at')},
+  playbook_id, playbook_version, playbook_entry_key,
+  provider_id, provider_version, provider_kind, missing_optional_inputs,
   input_tokens, output_tokens, cost_minor_units, currency
 `
 
@@ -326,15 +330,23 @@ export const RUN_SQL = catalog({
             revision_id, state, obsolete, agent_contract_version,
             output_schema_version, prompt_id, prompt_version, prompt_content_hash,
             model_id, model_provider, model_parameters_hash, model_parameters,
-            evidence_set_id, started_at, completed_at, failure_reason,
+            evidence_set_id, started_at, completed_at,
+            failure_category, failure_retryable, failure_attempt, failed_at,
+            playbook_id, playbook_version, playbook_entry_key,
+            provider_id, provider_version, provider_kind, missing_optional_inputs,
+            provenance_id,
             input_tokens, output_tokens, cost_minor_units, currency)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                 $19,$20,$21,$22,$23,$24,$25,$26)
+                 $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
+                 $34,$35,$36,$37)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
            completed_at = EXCLUDED.completed_at,
-           failure_reason = EXCLUDED.failure_reason,
+           failure_category = EXCLUDED.failure_category,
+           failure_retryable = EXCLUDED.failure_retryable,
+           failure_attempt = EXCLUDED.failure_attempt,
+           failed_at = EXCLUDED.failed_at,
            input_tokens = EXCLUDED.input_tokens,
            output_tokens = EXCLUDED.output_tokens,
            cost_minor_units = EXCLUDED.cost_minor_units,
@@ -443,8 +455,15 @@ export function createRunRepository(
         return hydrate(client, rows, 'runs.listForCase')
       }),
 
-    save: (record) =>
+    save: (record, provenance) =>
       unitOfWork(scope, 'runs.save', async (client) => {
+        /*
+         * The run owns its foreign key, as the ledger does. Requiring the
+         * caller to have written the provenance row first would make an
+         * ordering rule out of something the store can guarantee.
+         */
+        await ensureProvenance(client, context, provenance, record.startedAt)
+
         await run(client, context, 'runs.save', RUN_SQL.save, [
           record.id,
           record.caseId,
@@ -467,7 +486,18 @@ export function createRunRepository(
           record.evidenceSetId,
           record.startedAt,
           record.completedAt ?? null,
-          record.failureReason ?? null,
+          record.failure?.category ?? null,
+          record.failure?.retryable ?? null,
+          record.failure?.attempt ?? null,
+          record.failure?.at ?? null,
+          record.execution.playbookId,
+          record.execution.playbookVersion,
+          record.execution.playbookEntryKey,
+          record.execution.providerId,
+          record.execution.providerVersion,
+          record.execution.providerKind,
+          [...record.missingOptionalInputs],
+          provenance.provenanceId,
           record.cost?.inputTokens ?? null,
           record.cost?.outputTokens ?? null,
           record.cost?.costMinorUnits ?? null,

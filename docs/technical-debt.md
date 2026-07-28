@@ -538,9 +538,26 @@ by deleting from it.
 
 ---
 
-## TD-28 · Execution provenance is not yet recorded
+## TD-28 · Execution provenance is not yet recorded — CLOSED in C1C-1
 
-**Incurred:** Phase C1A. **Severity:** medium. **Blocks:** nothing until C1C.
+**Incurred:** Phase C1A. **Closed:** Phase C1C-1, migration 0015.
+
+`analysis.runs` now carries `playbook_id`, `playbook_version`,
+`playbook_entry_key`, `provider_id`, `provider_version`, `provenance_id` and —
+the one that matters — `provider_kind`, NOT NULL with a CHECK over
+`recorded | stub | live`. A run cannot exist without saying what produced it,
+so recorded fixtures and deterministic stubs stay distinguishable from live
+institutional work everywhere downstream.
+
+The employee, department and role snapshot is deliberately NOT duplicated onto
+the run: the command that started it already carries the full actor snapshot,
+and a second copy is a second organizational history that can disagree.
+
+The original entry follows, for the record.
+
+---
+
+**Severity:** medium. **Blocks:** nothing until C1C.
 
 Runtime provenance — adapter, derived version, build id, query-catalogue hash,
 schema version, domain-contract version, command-contract version — is recorded
@@ -579,10 +596,23 @@ explanation.
 
 ---
 
-## TD-30 · Command ids and event ids are supplied by the caller
+## TD-30 · Event ids supplied by the caller — CLOSED in C1C-1
 
-**Incurred:** Phase C1B. **Severity:** medium. **Blocks:** nothing today;
-blocks a public API.
+**Incurred:** Phase C1B. **Closed:** Phase C1C-1.
+
+`deriveEventId`, `deriveAssignmentId` and `deriveRunId` in
+`application/analysis/commands/eventIdentity.ts` derive every record identity
+from the command id, which the ledger already guarantees is stable across a
+retry and unique across commands. `creationEventId`, `eventIdPrefix` and
+`assignmentIdPrefix` are gone from every command input, and two fitness rules
+keep them gone: no command may accept one, and no handler may build an id by
+hand.
+
+The original entry follows, for the record.
+
+---
+
+**Severity:** medium. **Blocks:** nothing today; blocks a public API.
 
 `OpenInvestmentCase` takes `creationEventId`, and `InstantiatePlaybook` takes
 `assignmentIdPrefix` and `eventIdPrefix`. Generating them inside the handler
@@ -603,9 +633,22 @@ from outside the runtime.
 
 ---
 
-## TD-31 · The playbook is chosen by the caller, not routed to
+## TD-31 · The playbook is chosen by the caller — CLOSED in C1C-1
 
-**Incurred:** Phase C1B. **Severity:** low. **Blocks:** nothing.
+**Incurred:** Phase C1B. **Closed:** Phase C1C-1.
+
+`application/analysis/playbookRegistry.ts` owns resolution.
+`InstantiatePlaybook` now takes `(playbookId, playbookVersion)` and resolves the
+immutable definition this build ships; an arbitrary workflow object can no
+longer be expressed as input. `resolveForCaseKind` answers which workflow is
+approved for a kind of case, so a second playbook is a second entry in
+`COMPILED_PLAYBOOKS` rather than a conditional in a handler.
+
+The original entry follows, for the record.
+
+---
+
+**Severity:** low. **Blocks:** nothing.
 
 `InstantiatePlaybook` receives a whole `CasePlaybook` object and validates that
 its `caseKind` matches the case. The intended long-run shape is the opposite:
@@ -620,6 +663,44 @@ not bitten yet.
 resolve against `COMPILED_PLAYBOOKS`, once there is a second playbook to
 choose between. Passing the object through is a one-playbook convenience that
 would become a routing decision scattered across call sites.
+
+---
+
+## TD-32 · A stub or recorded run still declares a prompt and a model
+
+**Incurred:** Phase C1C-1. **Severity:** low. **Blocks:** nothing.
+
+`runs.prompt_*` and `runs.model_*` are NOT NULL, dating from a design where
+every run came from a model. A deterministic stub has neither, so it supplies
+placeholder values — `model_provider = 'recorded'` and similar.
+
+This is honest today only because `provider_kind` sits beside it and says
+`recorded` or `stub`. It would stop being honest if a read model showed the
+model reference without the kind.
+
+**Preferred resolution:** either make the prompt and model columns nullable and
+require them only when `provider_kind = 'live'`, or add a CHECK that a
+non-live run's model provider is one of the reserved placeholder values. The
+second is cheaper and catches the real mistake. Worth doing in C1C-2, when
+recorded providers actually populate these.
+
+---
+
+## TD-33 · Run cost and token fields are still unmeasured
+
+**Incurred:** Phase A, unchanged by C1C-1. **Severity:** low.
+**Blocks:** live budget enforcement.
+
+`input_tokens`, `output_tokens`, `cost_minor_units` and `currency` remain null
+for every run, and null means **not measured** rather than free — the semantics
+the port has carried since Phase A.
+
+Recorded and stub providers have nothing to report, so this stays true through
+C1C. It becomes a real gap the moment a live provider exists, because a runtime
+that cannot measure spend cannot refuse work it cannot afford.
+
+**Preferred resolution:** populate from the provider's usage report in C1C-2,
+and add the refusal path in C2 where a budget can actually be exceeded.
 
 ---
 

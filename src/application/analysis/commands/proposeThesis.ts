@@ -26,6 +26,7 @@ import {
   type Organization,
   type ThesisPosition,
 } from '~/domain/analysis'
+import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
@@ -50,7 +51,6 @@ export interface ProposeThesisInput {
    */
   implications: readonly InvestmentImplication[]
   proposedByDepartmentId: string
-  eventId: string
 }
 
 export function proposeThesis(
@@ -151,7 +151,11 @@ export function proposeThesis(
 
       await repositories.events.append(
         thesisEvent({
-          eventId: input.eventId,
+          eventId: deriveEventId({
+            commandId: context.commandId,
+            recordType: 'thesis-proposed',
+            entityId: input.revisionId,
+          }),
           caseId: input.caseId,
           thesisId: input.thesisId,
           revisionId: input.revisionId,

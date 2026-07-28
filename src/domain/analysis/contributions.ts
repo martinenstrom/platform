@@ -127,6 +127,71 @@ export interface RunEvent {
   reason?: string
 }
 
+/**
+ * Why a run stopped, from a closed vocabulary.
+ *
+ * Closed on purpose. The previous field was a free-text `failureReason`, and a
+ * free-text field on a failure path is where a provider's response body, a
+ * prompt or an evidence excerpt eventually lands — none of which may be stored
+ * on a record that ends up in logs, metrics and read models. A category cannot
+ * carry any of that.
+ *
+ * The specific detail belongs where detail belongs: the provider's own
+ * telemetry, correlated by the run id.
+ */
+export type RunFailureCategory =
+  /** The provider could not be reached at all. */
+  | 'provider-unavailable'
+  /** It was reached and did not answer in time. */
+  | 'provider-timeout'
+  /** It answered with an error. */
+  | 'provider-error'
+  /** It answered with something that is not a contribution. */
+  | 'malformed-output'
+  /** It answered in the right shape against the wrong schema version. */
+  | 'schema-violation'
+  /** A token, cost or time budget was exhausted. */
+  | 'budget-exhausted'
+  /** The evidence the run needed could not be resolved. */
+  | 'evidence-unavailable'
+  /** An upstream dependency failed, so this could never have run. */
+  | 'upstream-failed'
+  /** Withdrawn by the organization rather than failed by the provider. */
+  | 'cancelled-by-organization'
+  /** The revision it was working against was superseded mid-flight. */
+  | 'revision-superseded'
+  /** Ours, not theirs. */
+  | 'internal-error'
+
+export const RUN_FAILURE_CATEGORIES: readonly RunFailureCategory[] = [
+  'provider-unavailable',
+  'provider-timeout',
+  'provider-error',
+  'malformed-output',
+  'schema-violation',
+  'budget-exhausted',
+  'evidence-unavailable',
+  'upstream-failed',
+  'cancelled-by-organization',
+  'revision-superseded',
+  'internal-error',
+] as const
+
+/**
+ * The failure record.
+ *
+ * `retryable` is a judgement the provider boundary makes and the organization
+ * acts on: a retryable failure returns the assignment to its queue, and a
+ * non-retryable one leaves it failed for a person to decide about.
+ */
+export interface RunFailure {
+  category: RunFailureCategory
+  retryable: boolean
+  /** 1 for the first attempt. Lets repeated provider trouble be visible. */
+  attempt: number
+  at: string
+}
+
 /** Cost accounting. Defined in Phase A, populated when a live provider exists. */
 export interface RunCost {
   inputTokens: number
@@ -134,6 +199,42 @@ export interface RunCost {
   /** Minor currency units, to avoid float drift on money. */
   costMinorUnits: number
   currency: string
+}
+
+/**
+ * What kind of thing produced a contribution.
+ *
+ * The distinction the whole record rests on. A recorded fixture replayed in a
+ * test and a live institutional agent doing real analysis must never be
+ * indistinguishable once stored — a read model that cannot tell them apart
+ * would present test output as work the firm stands behind, which is the same
+ * failure as presenting fixture market data as live.
+ */
+export type ProviderKind =
+  /** A captured real contribution, replayed deterministically. */
+  | 'recorded'
+  /** Synthetic output, generated to exercise a path. */
+  | 'stub'
+  /** A live provider doing real work. Not permitted before Phase C2. */
+  | 'live'
+
+export const PROVIDER_KINDS: readonly ProviderKind[] = ['recorded', 'stub', 'live']
+
+/**
+ * Which workflow and which producer stand behind a run.
+ *
+ * Distinct from `StorageProvenance`, which records the code that read and
+ * wrote the row. This records the code that *decided the content*. TD-28
+ * existed because only the first was answerable.
+ */
+export interface ExecutionProvenance {
+  /** The exact playbook version whose entry this run is executing. */
+  playbookId: string
+  playbookVersion: string
+  playbookEntryKey: string
+  providerId: string
+  providerVersion: string
+  providerKind: ProviderKind
 }
 
 export interface AgentRunRecord {
@@ -164,7 +265,25 @@ export interface AgentRunRecord {
   claims: readonly AgentClaim[]
   cost?: RunCost
   /** Present when the run failed, timed out, was blocked or cancelled. */
-  failureReason?: string
+  failure?: RunFailure
+  /**
+   * What produced this work, and under which workflow.
+   *
+   * Required, and `providerKind` is the field that matters: a recorded fixture
+   * and a live institutional agent must never be indistinguishable downstream.
+   * A run that could not say which it was would let test output serialize as
+   * analysis the firm stands behind.
+   */
+  execution: ExecutionProvenance
+  /**
+   * Declared optional inputs that had NOT completed when this run started.
+   *
+   * Captured at start rather than derived later, because it is a fact about
+   * the conditions the work was done under. Derived at read time it would
+   * change as late contributions arrived, and the record would stop describing
+   * what the desk actually had.
+   */
+  missingOptionalInputs: readonly string[]
   /**
    * True when the result arrived after the revision it targeted was
    * superseded.
@@ -208,18 +327,38 @@ export function runCacheKey(run: {
 
 export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
   const needsReason: readonly RunState[] = ['failed', 'timed-out', 'blocked', 'cancelled']
-  if (needsReason.includes(record.state) && !record.failureReason) {
-    throw new Error(`Run "${record.id}" is ${record.state} without a reason`)
+  if (needsReason.includes(record.state) && !record.failure) {
+    throw new Error(`Run "${record.id}" is ${record.state} without a failure record`)
   }
   if (record.state === 'completed' && !record.completedAt) {
     throw new Error(`Run "${record.id}" is completed but has no completion time`)
+  }
+  if (record.failure && record.failure.attempt < 1) {
+    throw new Error(`Run "${record.id}" records attempt ${record.failure.attempt}`)
+  }
+  if (record.failure && RUN_STATES_WITHOUT_FAILURE.includes(record.state)) {
+    // A completed or still-running run carrying a failure would be two answers.
+    throw new Error(
+      `Run "${record.id}" is ${record.state} and also carries a failure record`,
+    )
   }
   return Object.freeze({
     ...record,
     events: Object.freeze([...record.events]),
     claims: Object.freeze([...record.claims]),
+    missingOptionalInputs: Object.freeze([...record.missingOptionalInputs]),
+    execution: Object.freeze({ ...record.execution }),
   })
 }
+
+/** States in which a failure record would contradict the run's own state. */
+const RUN_STATES_WITHOUT_FAILURE: readonly RunState[] = [
+  'queued',
+  'waiting-for-dependencies',
+  'ready',
+  'running',
+  'completed',
+] as const
 
 /* ------------------------------------------------------------ activity feed */
 

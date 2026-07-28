@@ -880,6 +880,15 @@ describe('run records and the activity feed', () => {
     state: 'completed',
     startedAt: '2026-07-27T09:00:00.000Z',
     completedAt: '2026-07-27T09:02:00.000Z',
+    execution: {
+      playbookId: 'macro-regime',
+      playbookVersion: '1',
+      playbookEntryKey: 'macro-analysis',
+      providerId: 'recorded-macro',
+      providerVersion: '1',
+      providerKind: 'recorded',
+    },
+    missingOptionalInputs: [],
     events: [{ runId: 'run-1', at: '2026-07-27T09:00:00.000Z', state: 'running' }],
     claims: [],
   })
@@ -898,9 +907,9 @@ describe('run records and the activity feed', () => {
   })
 
   it('refuses a failed run with no reason', () => {
-    expect(() =>
-      buildRunRecord({ ...run, state: 'failed', failureReason: undefined }),
-    ).toThrow(/is failed without a reason/)
+    expect(() => buildRunRecord({ ...run, state: 'failed', failure: undefined })).toThrow(
+      /without a failure record/,
+    )
   })
 
   it('builds the activity feed only from recorded state changes', () => {

@@ -225,15 +225,13 @@ const openInput = (over: Record<string, unknown> = {}) => ({
   question: 'Does the ECB cut before Q2?',
   ownerEmployeeId: 'research-director',
   participatingDepartmentIds: ['research-office'],
-  creationEventId: 'evt-open-1',
   ...over,
 })
 
 const instantiateInput = (over: Record<string, unknown> = {}) => ({
   caseId: 'case-1',
-  playbook: MACRO_REGIME_PLAYBOOK,
-  assignmentIdPrefix: 'asg-case-1',
-  eventIdPrefix: 'evt-inst',
+  playbookId: MACRO_REGIME_PLAYBOOK.id,
+  playbookVersion: MACRO_REGIME_PLAYBOOK.version,
   onBehalfOfDepartmentId: 'research-office',
   ...over,
 })
@@ -247,7 +245,6 @@ const proposeInput = (over: Record<string, unknown> = {}) => ({
   invalidationCriteria: 'Core inflation prints below 2.0% for two months.',
   implications: [],
   proposedByDepartmentId: 'research-office',
-  eventId: 'evt-thesis-1',
   ...over,
 })
 
@@ -274,11 +271,13 @@ async function instantiate(over: Record<string, unknown> = {}) {
 describe('command declarations', () => {
   const commands = productionCommands(organization)
 
-  it('registers exactly the three C1B commands', () => {
+  it('registers exactly the approved commands', () => {
     expect(commands.map((c) => c.type).sort()).toEqual([
+      'FailAgentRun',
       'InstantiatePlaybook',
       'OpenInvestmentCase',
       'ProposeThesis',
+      'StartAgentRun',
     ])
   })
 
@@ -444,9 +443,12 @@ describe('InstantiatePlaybook', () => {
     await instantiate()
     const events = await repositories.events.listForCase('case-1')
     const assignmentEvents = events.filter((e) => e.subject === 'assignment')
+    const caseMove = events.find((e) => e.subject === 'case' && e.toState === 'research')!
 
     expect(assignmentEvents).toHaveLength(MACRO_REGIME_PLAYBOOK.entries.length)
-    expect(assignmentEvents.every((e) => e.causationId === 'evt-inst-case')).toBe(true)
+    // Derived, so the test cannot know the literal id — which is the point.
+    expect(caseMove.eventId).toMatch(/^evt-[0-9a-f]{32}$/)
+    expect(assignmentEvents.every((e) => e.causationId === caseMove.eventId)).toBe(true)
   })
 
   it('replays from the ledger without executing a second time', async () => {
@@ -480,6 +482,7 @@ describe('InstantiatePlaybook', () => {
       definition.execute(
         tx,
         {
+          commandId: 'cmd-direct',
           actor: resolveActor(organization, SEED, {
             kind: 'employee',
             employeeId: 'research-director',
@@ -487,6 +490,7 @@ describe('InstantiatePlaybook', () => {
           occurredAt: AT,
           correlationId: 'corr-1',
           expectedVersion: 1,
+          provenance: deps.provenance,
         },
         input,
       ),
@@ -591,17 +595,31 @@ describe('InstantiatePlaybook', () => {
     })
   })
 
-  it('refuses a playbook written for another kind of case', async () => {
-    const equity: CasePlaybook = { ...MACRO_REGIME_PLAYBOOK, caseKind: 'equity' }
+  it('refuses a playbook this build does not ship', async () => {
+    // The registry is the only source. An arbitrary definition cannot even be
+    // expressed as input any more, which is the point of D-C1C-2.
     const result = await runCommand(
       instantiatePlaybook(organization),
-      instantiateInput({ playbook: equity }),
-      envelope({ commandId: 'cmd-inst-kind', expectedVersion: 1 }),
+      instantiateInput({ playbookId: 'invented-workflow' }),
+      envelope({ commandId: 'cmd-inst-unknown', expectedVersion: 1 }),
       deps,
     )
     expect(result).toMatchObject({
       outcome: 'rejected',
-      rejection: { code: 'invariant-violated' },
+      rejection: { code: 'not-found' },
+    })
+  })
+
+  it('refuses a version of a known playbook that was never registered', async () => {
+    const result = await runCommand(
+      instantiatePlaybook(organization),
+      instantiateInput({ playbookVersion: '99' }),
+      envelope({ commandId: 'cmd-inst-version', expectedVersion: 1 }),
+      deps,
+    )
+    expect(result).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'not-found' },
     })
   })
 

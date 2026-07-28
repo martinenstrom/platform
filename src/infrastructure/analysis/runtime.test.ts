@@ -390,7 +390,7 @@ describe('orchestration', () => {
     expect([...result.blockedKeys].sort()).toEqual(['equity', 'quant', 'risk'])
     const blocked = result.outcomes.find((o) => o.entryKey === 'equity')
     expect(blocked?.state).toBe('blocked')
-    expect(blocked?.failureReason).toMatch(/upstream failure/)
+    expect(blocked?.failureCategory).toBe('upstream-failed')
   })
 
   it('reports a failed required contribution as missing', async () => {

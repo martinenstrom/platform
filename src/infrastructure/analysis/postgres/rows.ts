@@ -100,7 +100,17 @@ export interface RunRow {
   evidence_set_id: string
   started_at: string
   completed_at: string | null
-  failure_reason: string | null
+  failure_category: string | null
+  failure_retryable: boolean | null
+  failure_attempt: number | null
+  failed_at: string | null
+  playbook_id: string
+  playbook_version: string
+  playbook_entry_key: string
+  provider_id: string
+  provider_version: string
+  provider_kind: string
+  missing_optional_inputs: string[]
   input_tokens: number | null
   output_tokens: number | null
   cost_minor_units: number | null

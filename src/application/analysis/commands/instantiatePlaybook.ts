@@ -37,18 +37,24 @@ import {
   type TransitionEvent,
 } from '~/domain/analysis'
 import { buildTransitionEvent } from '~/domain/analysis'
-import { validatePlaybook, type CasePlaybook } from '../playbooks'
+import { validatePlaybook } from '../playbooks'
+import { UnknownPlaybookError, requirePlaybook } from '../playbookRegistry'
+import { deriveAssignmentId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
 export interface InstantiatePlaybookInput {
   caseId: string
-  /** The compiled-in playbook being instantiated, at an exact version. */
-  playbook: CasePlaybook
-  /** Deterministic id prefix, so a retry produces the same assignment ids. */
-  assignmentIdPrefix: string
-  /** Deterministic id prefix for the events this command writes. */
-  eventIdPrefix: string
+  /**
+   * The workflow, by stable identity.
+   *
+   * Not a playbook OBJECT. A caller that could hand in an arbitrary definition
+   * could run a case under a workflow the firm never approved, and with two
+   * playbooks it would make the routing decision at every call site. The
+   * registry owns both concerns.
+   */
+  playbookId: string
+  playbookVersion: string
   /**
    * The department whose manager is instantiating this.
    *
@@ -59,11 +65,6 @@ export interface InstantiatePlaybookInput {
    * workflow for any case by nominating their own department.
    */
   onBehalfOfDepartmentId: string
-}
-
-/** `case-1|macro-analysis` — the identity the store dedupes on. */
-function assignmentIdFor(prefix: string, entryKey: string): string {
-  return `${prefix}-${entryKey}`
 }
 
 export function instantiatePlaybook(
@@ -85,8 +86,8 @@ export function instantiatePlaybook(
     }),
     scope: (input) => ({ caseId: input.caseId }),
     payload: (input) => ({
-      playbookId: input.playbook.id,
-      playbookVersion: input.playbook.version,
+      playbookId: input.playbookId,
+      playbookVersion: input.playbookVersion,
       onBehalfOfDepartmentId: input.onBehalfOfDepartmentId,
     }),
 
@@ -120,10 +121,22 @@ export function instantiatePlaybook(
         )
       }
 
-      if (existing.subject.kind !== input.playbook.caseKind) {
+      /*
+       * Resolved through the registry, so the definition is the immutable one
+       * this build ships rather than whatever the caller had in hand.
+       */
+      let requested
+      try {
+        requested = requirePlaybook(input.playbookId, input.playbookVersion)
+      } catch (error) {
+        if (error instanceof UnknownPlaybookError) reject('not-found', error.message)
+        throw error
+      }
+
+      if (existing.subject.kind !== requested.caseKind) {
         reject(
           'invariant-violated',
-          `Playbook "${input.playbook.id}" applies to ${input.playbook.caseKind} ` +
+          `Playbook "${requested.id}" applies to ${requested.caseKind} ` +
             `cases; "${input.caseId}" is a ${existing.subject.kind} case.`,
         )
       }
@@ -135,7 +148,7 @@ export function instantiatePlaybook(
        * moves.
        */
       try {
-        validatePlaybook(input.playbook, {
+        validatePlaybook(requested, {
           knownDepartmentIds: organization.departments.map((d) => d.id),
           handlesByDepartment: Object.fromEntries(
             organization.departments.map((d) => [d.id, d.handles]),
@@ -154,13 +167,19 @@ export function instantiatePlaybook(
        * and a version that was edited without being bumped fails here rather
        * than producing a case running under a workflow nobody can reproduce.
        */
-      const playbook = await repositories.playbooks.register(input.playbook)
+      const playbook = await repositories.playbooks.register(requested)
 
       const events: TransitionEvent[] = []
       const assignments: Assignment[] = []
 
+      const caseEventId = deriveEventId({
+        commandId: context.commandId,
+        recordType: 'case-instantiated',
+        entityId: input.caseId,
+      })
+
       for (const entry of playbook.entries) {
-        const assignmentId = assignmentIdFor(input.assignmentIdPrefix, entry.key)
+        const assignmentId = deriveAssignmentId(context.commandId, entry.key)
         const assignment = buildAssignment({
           id: assignmentId,
           caseId: input.caseId,
@@ -175,7 +194,11 @@ export function instantiatePlaybook(
 
         events.push(
           buildTransitionEvent({
-            eventId: `${input.eventIdPrefix}-${entry.key}`,
+            eventId: deriveEventId({
+              commandId: context.commandId,
+              recordType: 'assignment-queued',
+              entityId: assignmentId,
+            }),
             subject: 'assignment',
             caseId: input.caseId,
             assignmentId,
@@ -190,7 +213,7 @@ export function instantiatePlaybook(
              * a timeline can show one command producing seven facts rather than
              * seven unrelated ones.
              */
-            causationId: `${input.eventIdPrefix}-case`,
+            causationId: caseEventId,
             aggregateVersion: existing.version + 1,
           }),
         )
@@ -223,7 +246,7 @@ export function instantiatePlaybook(
 
       await repositories.events.append(
         caseEvent({
-          eventId: `${input.eventIdPrefix}-case`,
+          eventId: caseEventId,
           caseId: input.caseId,
           from: 'intake',
           to: 'research',

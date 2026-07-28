@@ -23,7 +23,7 @@
 
 import { isolate } from '~/application/shared/isolate'
 import { withDeadline } from '~/application/shared/deadline'
-import type { AgentClaim, RunState } from '~/domain/analysis'
+import type { AgentClaim, RunFailureCategory, RunState } from '~/domain/analysis'
 import {
   blockedEntries,
   readyEntries,
@@ -47,7 +47,15 @@ export interface StageOutcome {
   claims: readonly AgentClaim[]
   startedAt: string
   completedAt?: string
-  failureReason?: string
+  /**
+   * Why it stopped, from the closed vocabulary.
+   *
+   * Was `failureReason: string`, and the timeout branch put
+   * `error.message` — raw provider text — straight into it. A bounded category
+   * cannot carry a response body, a prompt or an evidence excerpt into the
+   * logs and read models this record flows through.
+   */
+  failureCategory?: RunFailureCategory
   /** True when the target revision was superseded while this was in flight. */
   obsolete?: boolean
 }
@@ -140,7 +148,7 @@ export async function runPlaybook(
       state: 'blocked',
       claims: [],
       startedAt: context.now().toISOString(),
-      failureReason: `blocked by an upstream failure in ${entry.blockedBy.join(', ')}`,
+      failureCategory: 'upstream-failed',
     })
   }
 
@@ -229,10 +237,7 @@ async function runEntry(
       claims: [],
       startedAt,
       completedAt: context.now().toISOString(),
-      failureReason:
-        settled.state === 'error'
-          ? settled.error.message
-          : 'contribution did not resolve',
+      failureCategory: timedOut ? 'provider-timeout' : 'provider-error',
     }
   }
 
@@ -251,7 +256,7 @@ async function runEntry(
       startedAt,
       completedAt: context.now().toISOString(),
       obsolete: true,
-      failureReason: `thesis revision ${context.revisionId} was superseded while this ran`,
+      failureCategory: 'revision-superseded',
     }
   }
 

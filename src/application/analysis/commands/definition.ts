@@ -9,7 +9,10 @@
  */
 
 import type { Mandate } from '~/domain/analysis'
-import type { TransactionalAnalysisRepositories } from '../repositories'
+import type {
+  StorageProvenance,
+  TransactionalAnalysisRepositories,
+} from '../repositories'
 import type { ActorSnapshot } from '~/domain/analysis'
 import type { CommandCategory } from '../commandLog'
 
@@ -52,10 +55,27 @@ export interface CommandEffect<T> {
 }
 
 export interface CommandContext {
+  /**
+   * The command's own identity.
+   *
+   * Present so that every record a handler writes can derive its id from it —
+   * see `eventIdentity.ts`. That is what lets callers stop supplying event ids
+   * without handlers inventing their own formats, and it inherits the two
+   * properties the ledger already guarantees: stable across a retry, unique
+   * across commands.
+   */
+  commandId: string
   actor: ActorSnapshot
   occurredAt: string
   correlationId: string
   expectedVersion?: number
+  /**
+   * Which code is reading and writing.
+   *
+   * Handed to handlers because some records carry a provenance foreign key of
+   * their own — a run has to say what produced it as well as what stored it.
+   */
+  provenance: StorageProvenance
 }
 
 export interface CommandDefinition<Input, Result> {
@@ -134,6 +154,7 @@ export const VERSION_GUARDED_COMMANDS: readonly string[] = [
  */
 export const REASON_REQUIRED_COMMANDS: readonly string[] = [
   'BlockCase',
+  'FailAgentRun',
   'ReturnWork',
   'ReopenCase',
   'ReviseThesis',

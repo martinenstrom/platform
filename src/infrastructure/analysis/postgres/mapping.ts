@@ -39,8 +39,10 @@ import {
   type EvidenceItem,
   type EvidenceRef,
   type EvidenceSet,
+  type ProviderKind,
   type RequirementResolution,
   type RoleFunction,
+  type RunFailureCategory,
   type InvestmentCase,
   type InvestmentThesis,
   type ReviewScope,
@@ -359,7 +361,25 @@ export function toRun(
           events: events.map(toRunEvent),
           claims: [...claims],
           cost,
-          failureReason: row.failure_reason,
+          ...(row.failure_category
+            ? {
+                failure: {
+                  category: row.failure_category as RunFailureCategory,
+                  retryable: row.failure_retryable!,
+                  attempt: row.failure_attempt!,
+                  at: row.failed_at!,
+                },
+              }
+            : {}),
+          missingOptionalInputs: row.missing_optional_inputs ?? [],
+          execution: {
+            playbookId: row.playbook_id,
+            playbookVersion: row.playbook_version,
+            playbookEntryKey: row.playbook_entry_key,
+            providerId: row.provider_id,
+            providerVersion: row.provider_version,
+            providerKind: row.provider_kind as ProviderKind,
+          },
           obsolete: row.obsolete ? true : null,
         }) as unknown as AgentRunRecord,
       ),

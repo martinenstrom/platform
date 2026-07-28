@@ -35,6 +35,7 @@ import {
   type PostgresRepositories,
 } from './postgresRepositories'
 import { poolScope, unitOfWork } from './transaction'
+import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 
 let db: TestDatabase
@@ -126,6 +127,9 @@ const evidenceSet = (value = 4.1) =>
 /** Case, assignment, evidence and run — the prerequisites a claim needs. */
 async function seedRun(): Promise<string> {
   await repos.cases.create(investmentCase())
+  // A run points at the exact playbook entry it executes, so the workflow has
+  // to be registered before any run can exist.
+  await repos.playbooks.register(MACRO_REGIME_PLAYBOOK)
   await repos.assignments.save(
     buildAssignment({
       id: 'a-1',
@@ -150,11 +154,21 @@ async function seedRun(): Promise<string> {
       prompt: { id: 'p', version: '1', contentHash: 'h' },
       model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'h' },
       evidenceSetId: set.id,
+      execution: {
+        playbookId: 'macro-regime',
+        playbookVersion: '1',
+        playbookEntryKey: 'macro-analysis',
+        providerId: 'recorded-macro',
+        providerVersion: '1',
+        providerKind: 'recorded',
+      },
+      missingOptionalInputs: [],
       state: 'running',
       startedAt: AT,
       events: [],
       claims: [],
     }),
+    await repos.provenance(),
   )
   return set.id
 }
@@ -288,6 +302,7 @@ describe('what the adapter checks on the way out', () => {
      * version of this code is exactly when validation matters most.
      */
     await repos.cases.create(investmentCase())
+    await repos.playbooks.register(MACRO_REGIME_PLAYBOOK)
     await repos.assignments.save(
       buildAssignment({
         id: 'a-1',
@@ -312,11 +327,21 @@ describe('what the adapter checks on the way out', () => {
         prompt: { id: 'p', version: '1', contentHash: 'ph' },
         model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
         evidenceSetId: set.id,
+        execution: {
+          playbookId: 'macro-regime',
+          playbookVersion: '1',
+          playbookEntryKey: 'macro-analysis',
+          providerId: 'recorded-macro',
+          providerVersion: '1',
+          providerKind: 'recorded',
+        },
+        missingOptionalInputs: [],
         state: 'running',
         startedAt: AT,
         events: [],
         claims: [],
       }),
+      await repos.provenance(),
     )
 
     await db.owner.query(
@@ -654,7 +679,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0014')
+    expect(provenance.schemaVersion).toBe('0015')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

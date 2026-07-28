@@ -38,6 +38,7 @@ import {
   TransactionClosedError,
   type AnalysisRepositories,
   type CaseRepository,
+  type StorageProvenance,
 } from '~/application/analysis/repositories'
 import type { StoredResult } from '~/application/analysis/resultStore'
 import {
@@ -75,10 +76,13 @@ const LATER = '2026-07-28T11:00:00.000Z'
 export function describeRepositoryContract(name: string, options: ContractOptions): void {
   describe(`repository contract — ${name}`, () => {
     let repos: AnalysisRepositories
+    /** This store's provenance, for the records that carry a foreign key to it. */
+    let prov: StorageProvenance
     const f = options.fixtures
 
     beforeEach(async () => {
       repos = await options.create()
+      prov = await repos.provenance()
     })
 
     /*
@@ -167,7 +171,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
       buildRunRecord({
         id: runId,
         caseId: 'case-1',
-        assignmentId: 'a-1',
+        assignmentId: `a-${runId}`,
         departmentId: f.departmentId,
         employeeId: f.ownerEmployeeId,
         agentContractVersion: '1',
@@ -181,6 +185,15 @@ export function describeRepositoryContract(name: string, options: ContractOption
         },
         evidenceSetId: setId,
         state: 'running',
+        execution: {
+          playbookId: 'contract-playbook',
+          playbookVersion: '1',
+          playbookEntryKey: 'primary',
+          providerId: 'recorded-provider',
+          providerVersion: '1',
+          providerKind: 'recorded',
+        },
+        missingOptionalInputs: [],
         startedAt: AT,
         events: [{ runId, at: AT, state: 'running' }],
         claims: [],
@@ -283,12 +296,78 @@ export function describeRepositoryContract(name: string, options: ContractOption
     })
 
     /** Case, thesis, assignment, run and evidence — the usual prerequisites. */
+    /**
+     * The workflow the contract's runs execute.
+     *
+     * Hoisted so `seedCase` can register it: a run carries a foreign key to
+     * its playbook entry, because execution provenance names the exact step of
+     * the exact workflow version that produced the work.
+     */
+    const contractPlaybook = (over: Partial<CasePlaybook> = {}): CasePlaybook => ({
+      id: 'contract-playbook',
+      version: '1',
+      caseKind: 'macro',
+      name: 'Contract playbook',
+      entries: [
+        {
+          key: 'primary',
+          departmentId: f.departmentId,
+          brief: 'Primary analysis',
+          blockedBy: [],
+          optionalInputs: [],
+          requirement: 'required',
+          priority: 10,
+        },
+        {
+          key: 'supporting',
+          departmentId: f.departmentId,
+          brief: 'Supporting analysis',
+          blockedBy: [],
+          optionalInputs: ['primary'],
+          requirement: 'optional',
+          priority: 5,
+        },
+        {
+          key: 'gate',
+          departmentId: f.governanceDepartmentId,
+          brief: 'Governance gate',
+          blockedBy: ['primary'],
+          optionalInputs: ['supporting'],
+          requirement: 'conditional',
+          conditionalRule: {
+            ruleId: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleId,
+            ruleVersion: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleVersion,
+          },
+          priority: 1,
+        },
+      ],
+      ...over,
+    })
+
+    /**
+     * Saves a run together with the assignment it belongs to.
+     *
+     * At most one non-terminal run may exist per assignment, so fixtures that
+     * write several runs need several assignments. That is not a test
+     * concession — a second live run on one assignment would mean a department
+     * doing the same piece of work twice.
+     */
+    async function saveRun(
+      runId: string,
+      setId: string,
+      over: Record<string, unknown> = {},
+    ) {
+      await repos.assignments.save(assignment(`a-${runId}`))
+      return repos.runs.save(run(runId, setId, over), prov)
+    }
+
     async function seedCase(): Promise<{ setId: string; observationId: string }> {
       await repos.cases.create(investmentCase())
       await repos.theses.save(thesis())
       await repos.assignments.save(assignment('a-1'))
+      await repos.playbooks.register(contractPlaybook())
       const set = await repos.evidence.save(evidenceSet())
-      await repos.runs.save(run('run-1', set.id))
+      await saveRun('run-1', set.id)
       return { setId: set.id, observationId: set.items[0]!.ref.id }
     }
 
@@ -462,8 +541,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
 
       it('lists runs by startedAt, then id', async () => {
         const { setId } = await seedCase()
-        await repos.runs.save(run('run-b', setId, { startedAt: LATER }))
-        await repos.runs.save(run('run-a', setId, { startedAt: LATER }))
+        await saveRun('run-b', setId, { startedAt: LATER })
+        await saveRun('run-a', setId, { startedAt: LATER })
 
         expect((await repos.runs.listForCase('case-1')).map((entry) => entry.id)).toEqual(
           ['run-1', 'run-a', 'run-b'],
@@ -1310,16 +1389,12 @@ export function describeRepositoryContract(name: string, options: ContractOption
     describe('run events accumulate (B3)', () => {
       it('does not erase earlier events when a later save carries fewer', async () => {
         const { setId } = await seedCase()
-        await repos.runs.save(
-          run('run-2', setId, {
-            events: [{ runId: 'run-2', at: AT, state: 'queued' }],
-          }),
-        )
-        await repos.runs.save(
-          run('run-2', setId, {
-            events: [{ runId: 'run-2', at: LATER, state: 'running' }],
-          }),
-        )
+        await saveRun('run-2', setId, {
+          events: [{ runId: 'run-2', at: AT, state: 'queued' }],
+        })
+        await saveRun('run-2', setId, {
+          events: [{ runId: 'run-2', at: LATER, state: 'running' }],
+        })
 
         const stored = await repos.runs.get('run-2')
         expect(stored!.events.map((entry) => entry.state)).toEqual(['queued', 'running'])
@@ -1328,25 +1403,21 @@ export function describeRepositoryContract(name: string, options: ContractOption
       it('is idempotent for an identical event', async () => {
         const { setId } = await seedCase()
         const events = [{ runId: 'run-3', at: AT, state: 'queued' as const }]
-        await repos.runs.save(run('run-3', setId, { events }))
-        await repos.runs.save(run('run-3', setId, { events }))
+        await saveRun('run-3', setId, { events })
+        await saveRun('run-3', setId, { events })
 
         expect((await repos.runs.get('run-3'))!.events).toHaveLength(1)
       })
 
       it('refuses the same instant and state recorded with a different reason', async () => {
         const { setId } = await seedCase()
-        await repos.runs.save(
-          run('run-4', setId, {
-            events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'first' }],
-          }),
-        )
+        await saveRun('run-4', setId, {
+          events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'first' }],
+        })
         await expect(
-          repos.runs.save(
-            run('run-4', setId, {
-              events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'second' }],
-            }),
-          ),
+          saveRun('run-4', setId, {
+            events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'second' }],
+          }),
         ).rejects.toBeInstanceOf(ConflictingRecordError)
       })
     })
@@ -1507,46 +1578,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
     /* ---------------------------------------------------- playbook registry */
 
     describe('playbook versions', () => {
-      const playbook = (over: Partial<CasePlaybook> = {}): CasePlaybook => ({
-        id: 'contract-playbook',
-        version: '1',
-        caseKind: 'macro',
-        name: 'Contract playbook',
-        entries: [
-          {
-            key: 'primary',
-            departmentId: f.departmentId,
-            brief: 'Primary analysis',
-            blockedBy: [],
-            optionalInputs: [],
-            requirement: 'required',
-            priority: 10,
-          },
-          {
-            key: 'supporting',
-            departmentId: f.departmentId,
-            brief: 'Supporting analysis',
-            blockedBy: [],
-            optionalInputs: ['primary'],
-            requirement: 'optional',
-            priority: 5,
-          },
-          {
-            key: 'gate',
-            departmentId: f.governanceDepartmentId,
-            brief: 'Governance gate',
-            blockedBy: ['primary'],
-            optionalInputs: ['supporting'],
-            requirement: 'conditional',
-            conditionalRule: {
-              ruleId: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleId,
-              ruleVersion: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleVersion,
-            },
-            priority: 1,
-          },
-        ],
-        ...over,
-      })
+      const playbook = contractPlaybook
 
       it('round-trips entries, both edge kinds and the rule reference', async () => {
         await repos.playbooks.register(playbook())
@@ -1725,7 +1757,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('3')
+        expect(provenance.domainContractVersion).toBe('4')
       })
     })
   })

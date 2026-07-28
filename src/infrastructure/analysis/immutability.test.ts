@@ -135,6 +135,16 @@ const run = (): AgentRunRecord =>
     },
     evidenceSetId: 'set-1',
     state: 'running',
+    execution: {
+      playbookId: 'macro-regime',
+      playbookVersion: '1',
+      playbookEntryKey: 'macro-analysis',
+      providerId: 'recorded-macro',
+      providerVersion: '1',
+      providerKind: 'recorded',
+    },
+    missingOptionalInputs: [],
+
     startedAt: NOW,
     events: [{ runId: 'run-1', at: NOW, state: 'running' }],
     claims: [],
@@ -282,7 +292,7 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
   await repos.cases.create(investmentCase())
   await repos.theses.save(thesis())
   await repos.assignments.save(assignment())
-  await repos.runs.save(run())
+  await repos.runs.save(run(), await repos.provenance())
   await repos.claims.save(claim(), 'case-1', 'run-1')
   await repos.evidence.save(evidenceSet())
   await repos.reviews.saveVerification(verification())
@@ -456,7 +466,7 @@ describe('a stored entity cannot be mutated after insertion', () => {
     // Three levels down: run → model → parameters.
     const repos = createInMemoryRepositories()
     const mine = run()
-    await repos.runs.save(mine)
+    await repos.runs.save(mine, await repos.provenance())
 
     expect(() => {
       ;(mine.model.parameters as Record<string, number>).temperature = 1

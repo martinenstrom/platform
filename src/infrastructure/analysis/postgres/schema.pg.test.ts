@@ -100,6 +100,44 @@ async function insertRevision(
   return revisionId
 }
 
+/**
+ * A registered playbook entry and a provenance row.
+ *
+ * Both became foreign keys on `runs` in 0015: a run says which step of which
+ * workflow version produced the work, and which code stored it. Shared here so
+ * every raw-SQL run fixture gets the same honest provenance.
+ */
+let executionSeeded = false
+async function seedExecutionRefs() {
+  if (executionSeeded) return
+  await sql.query(
+    `INSERT INTO analysis.playbooks (id, case_kind, name)
+     VALUES ('schema-test', 'macro', 'Schema test playbook')
+     ON CONFLICT (id) DO NOTHING`,
+  )
+  await sql.query(
+    `INSERT INTO analysis.playbook_versions (playbook_id, version, content_hash)
+     VALUES ('schema-test', '1', 'hash')
+     ON CONFLICT DO NOTHING`,
+  )
+  await sql.query(
+    `INSERT INTO analysis.playbook_entries
+       (playbook_id, version, entry_key, department_id, brief, requirement, priority)
+     VALUES ('schema-test', '1', 'entry', 'global-macro', 'Regime read', 'required', 5)
+     ON CONFLICT DO NOTHING`,
+  )
+  await sql.query(
+    `INSERT INTO analysis.storage_provenance
+       (id, adapter_id, adapter_version, build_id, query_catalog_hash,
+        schema_version, domain_contract_version, command_contract_version,
+        first_seen_at)
+     VALUES ('schema-test-prov', 'postgres', 'v', 'test', 'catalog', '0015',
+             '4', '2', now())
+     ON CONFLICT (id) DO NOTHING`,
+  )
+  executionSeeded = true
+}
+
 async function insertRun(caseId: string) {
   const assignmentId = id('assignment')
   await sql.query(
@@ -109,14 +147,20 @@ async function insertRun(caseId: string) {
     [assignmentId, caseId],
   )
   const runId = id('run')
+  await seedExecutionRefs()
   await sql.query(
     `INSERT INTO analysis.runs
        (id, case_id, tenant_id, assignment_id, department_id, employee_id, state,
         agent_contract_version, output_schema_version, prompt_id, prompt_version,
         prompt_content_hash, model_id, model_provider, model_parameters_hash,
-        evidence_set_id, started_at)
+        evidence_set_id, started_at,
+        playbook_id, playbook_version, playbook_entry_key,
+        provider_id, provider_version, provider_kind, missing_optional_inputs,
+        provenance_id)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', 'running',
-             '1', '1', 'p', '1', 'ph', 'm', 'anthropic', 'mh', $4, now())`,
+             '1', '1', 'p', '1', 'ph', 'm', 'anthropic', 'mh', $4, now(),
+             'schema-test', '1', 'entry',
+             'recorded-provider', '1', 'recorded', '{}', 'schema-test-prov')`,
     [runId, caseId, assignmentId, await insertEvidenceSet()],
   )
   return { assignmentId, runId }

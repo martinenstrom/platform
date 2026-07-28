@@ -27,6 +27,7 @@ import {
   createPostgresRepositories,
   type PostgresRepositories,
 } from './postgresRepositories'
+import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 
 let db: TestDatabase
@@ -64,6 +65,13 @@ beforeEach(async () => {
   await db.truncateAnalysisData()
   counts.clear()
   repos = createPostgresRepositories({ connectionString: appUrl, metrics: counting })
+  /*
+   * A run carries a foreign key to its playbook entry from 0015, so the
+   * workflow it executes has to exist. Registered before counting starts, so
+   * it does not distort the statement counts these tests police.
+   */
+  await repos.playbooks.register(MACRO_REGIME_PLAYBOOK)
+  counts.clear()
   opened.push(repos)
 })
 
@@ -123,6 +131,15 @@ const runWith = (setId: string, events: number) =>
     prompt: { id: 'p', version: '1', contentHash: 'ph' },
     model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
     evidenceSetId: setId,
+    execution: {
+      playbookId: 'macro-regime',
+      playbookVersion: '1',
+      playbookEntryKey: 'macro-analysis',
+      providerId: 'recorded-macro',
+      providerVersion: '1',
+      providerKind: 'recorded',
+    },
+    missingOptionalInputs: [],
     state: 'running',
     startedAt: AT,
     events: Array.from({ length: events }, (_, index) => ({
@@ -168,7 +185,7 @@ describe('write paths do not scale with their children', () => {
     const set = await repos.evidence.save(evidenceSet(40))
     await repos.cases.create(investmentCase())
     await repos.assignments.save(assignment())
-    await repos.runs.save(runWith(set.id, 0))
+    await repos.runs.save(runWith(set.id, 0), await repos.provenance())
 
     const cite = (id: string, count: number) =>
       buildClaim({
@@ -201,11 +218,11 @@ describe('write paths do not scale with their children', () => {
     await repos.assignments.save(assignment())
 
     counts.clear()
-    await repos.runs.save(runWith(set.id, 1))
+    await repos.runs.save(runWith(set.id, 1), await repos.provenance())
     const few = statementsFor('runs.save')
 
     counts.clear()
-    await repos.runs.save(runWith(set.id, 25))
+    await repos.runs.save(runWith(set.id, 25), await repos.provenance())
     // The conflict check reads the run's history once, not once per event.
     expect(statementsFor('runs.save')).toBe(few)
   })
@@ -245,7 +262,7 @@ describe('read paths do not scale with their results', () => {
     const set = await repos.evidence.save(evidenceSet(1))
     await repos.cases.create(investmentCase())
     await repos.assignments.save(assignment())
-    await repos.runs.save(runWith(set.id, 3))
+    await repos.runs.save(runWith(set.id, 3), await repos.provenance())
     await repos.claims.save(
       buildClaim({
         id: 'claim-1',
@@ -272,7 +289,7 @@ describe('read paths do not scale with their results', () => {
     const set = await repos.evidence.save(evidenceSet(1))
     await repos.cases.create(investmentCase())
     await repos.assignments.save(assignment())
-    await repos.runs.save(runWith(set.id, 1))
+    await repos.runs.save(runWith(set.id, 1), await repos.provenance())
 
     counts.clear()
     await repos.runs.get('run-1')

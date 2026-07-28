@@ -18,6 +18,7 @@ import {
   type InvestmentCase,
   type Organization,
 } from '~/domain/analysis'
+import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
@@ -29,8 +30,6 @@ export interface OpenInvestmentCaseInput {
   ownerEmployeeId: string
   /** Departments asked to contribute. Grows as the case moves. */
   participatingDepartmentIds: readonly string[]
-  /** The id of the creation event, supplied so a retry writes the same one. */
-  creationEventId: string
 }
 
 export function openInvestmentCase(
@@ -108,7 +107,11 @@ export function openInvestmentCase(
        */
       await repositories.events.append(
         caseEvent({
-          eventId: input.creationEventId,
+          eventId: deriveEventId({
+            commandId: context.commandId,
+            recordType: 'case-opened',
+            entityId: input.caseId,
+          }),
           caseId: input.caseId,
           from: null,
           to: 'intake',

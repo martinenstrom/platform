@@ -190,9 +190,11 @@ export async function runCommand<Input, Result>(
       const produced = await definition.execute(
         tx,
         {
+          commandId: envelope.commandId,
           actor,
           occurredAt: envelope.occurredAt,
           correlationId: envelope.correlationId,
+          provenance,
           ...(envelope.expectedVersion !== undefined
             ? { expectedVersion: envelope.expectedVersion }
             : {}),

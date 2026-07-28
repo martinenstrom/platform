@@ -45,7 +45,7 @@ async function insertProvenance() {
        (id, adapter_id, adapter_version, build_id, query_catalog_hash,
         schema_version, domain_contract_version, command_contract_version,
         first_seen_at)
-     VALUES ($1, 'postgres', 'v', 'test', 'catalog', '0014', '3', '2', now())`,
+     VALUES ($1, 'postgres', 'v', 'test', 'catalog', '0015', '4', '2', now())`,
     [provenanceId],
   )
   return provenanceId
