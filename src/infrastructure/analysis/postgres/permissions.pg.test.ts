@@ -27,11 +27,22 @@ let db: TestDatabase
 let app: Client
 let readonly: Client
 
+const provenanceId = 'provenance-test'
+
 beforeAll(async () => {
   db = await createTestDatabase()
   await db.migrate()
   app = await db.connectAs(APP_ROLE)
   readonly = await db.connectAs(READONLY_ROLE)
+  // The command ledger references it, so one has to exist.
+  await db.owner.query(
+    `INSERT INTO analysis.storage_provenance
+       (id, adapter_id, adapter_version, build_id, query_catalog_hash,
+        schema_version, domain_contract_version, command_contract_version,
+        first_seen_at)
+     VALUES ($1, 'postgres', 'v', 'test', 'catalog', '0013', '2', '1', now())`,
+    [provenanceId],
+  )
 })
 afterAll(async () => {
   await db.drop()
@@ -317,18 +328,41 @@ describe('only the fields that legitimately move may be updated', () => {
 
 /* --------------------------------------------------------------- exceptions */
 
-describe('the one deletable table', () => {
-  it('lets the runtime expire idempotency keys', async () => {
-    // Operational rather than institutional. Everything else in this schema is
-    // kept indefinitely, which is the point of the record.
-    const key = id('idem')
-    await app.query(
-      `INSERT INTO analysis.idempotency_keys (key, command_type, result_ref, created_at)
-       VALUES ($1, 'open-case', 'case-1', now())`,
-      [key],
-    )
+describe('nothing is deletable', () => {
+  it('refuses to delete a command', async () => {
+    /*
+     * The schema has no deletable table at all since migration 0013. The
+     * command ledger is an institutional record — what was asked, by whom,
+     * under what authority — not a thirty-day operational cache, which is what
+     * `idempotency_keys` was when it held the only DELETE grant.
+     */
+    await expectDenied(app, 'DELETE FROM analysis.commands')
+    await expectDenied(app, 'DELETE FROM analysis.command_outcomes')
+  })
+
+  it('refuses to edit a command or its outcomes', async () => {
+    await expectDenied(app, `UPDATE analysis.commands SET command_type = 'other'`)
+    await expectDenied(app, `UPDATE analysis.command_outcomes SET state = 'committed'`)
+  })
+
+  it('lets the runtime record a command and append an outcome', async () => {
+    const caseId = await appCase()
     await expect(
-      app.query('DELETE FROM analysis.idempotency_keys WHERE key = $1', [key]),
+      app.query(
+        `INSERT INTO analysis.commands
+           (command_id, tenant_id, command_type, command_contract_version,
+            payload_hash, case_id, actor_kind, actor_employee_id, actor_role_id,
+            actor_role_function, actor_department_id, actor_authentication,
+            organization_seed_version, mandate_kind, authorization_basis,
+            initiator_kind, initiator_id, correlation_id, occurred_at,
+            received_at, provenance_id)
+         VALUES ($1, 'system', 'ProbeCommand', '1', 'hash', $2, 'employee',
+                 'research-director', 'research-director', 'manager',
+                 'research-office', 'system-asserted', '1', 'any-employee',
+                 'employee-of-the-firm', 'orchestrator', 'test', 'corr', now(),
+                 now(), $3)`,
+        [id('cmd'), caseId, provenanceId],
+      ),
     ).resolves.toBeDefined()
   })
 })
@@ -352,6 +386,6 @@ describe('the read-only operator role', () => {
        VALUES ('ro', 'system', 1, 'cio', 'macro', 'r', 'd', 'q', 'intake', now())`,
     )
     await expectDenied(readonly, `UPDATE analysis.cases SET stage = 'research'`)
-    await expectDenied(readonly, 'DELETE FROM analysis.idempotency_keys')
+    await expectDenied(readonly, 'DELETE FROM analysis.commands')
   })
 })

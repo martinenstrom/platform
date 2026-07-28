@@ -22,6 +22,7 @@ export * from './evidence'
 export * from './claims'
 export * from './review'
 export * from './contributions'
+export * from './authority'
 
 /**
  * The version of the analysis domain contracts.

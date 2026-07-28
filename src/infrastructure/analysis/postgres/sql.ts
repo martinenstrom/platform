@@ -134,9 +134,19 @@ export function mapDatabaseError(
     case '23514':
     case '23P01':
       return new InvariantViolationError(constraint, operation, correlationId)
+    /*
+     * Our own RAISEs, from the immutability, scope and terminality triggers.
+     *
+     * `23000` is bare `integrity_constraint_violation`, which the engine never
+     * emits on its own — it always uses a specific subclass — so it uniquely
+     * identifies a rule this schema raised. `P0001` is plpgsql's default for a
+     * RAISE without an explicit ERRCODE.
+     *
+     * The message is ours and was written to be shown: it names records and
+     * constraints, never content.
+     */
+    case '23000':
     case 'P0001':
-      // Our own RAISE, from the immutability and scope triggers. The message is
-      // ours and was written to be shown; it names records, never content.
       return new ImmutableRecordError(
         failure.message ?? 'a sealed record',
         operation,

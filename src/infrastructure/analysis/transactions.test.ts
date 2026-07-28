@@ -28,9 +28,46 @@ import {
   type CaseRepository,
   type TransactionalAnalysisRepositories,
 } from '~/application/analysis/repositories'
+import {
+  CommandPayloadConflictError,
+  type CommandIntent,
+} from '~/application/analysis/commandLog'
 import { createInMemoryRepositories } from './inMemoryRepositories'
 
 const NOW = '2026-07-28T09:00:00.000Z'
+
+/**
+ * A ledger intent, for tests that only need one to exist.
+ *
+ * The command foundation builds these properly; here they are fixtures.
+ */
+const commandIntent = (over: Partial<CommandIntent> = {}): CommandIntent => ({
+  commandId: 'cmd-1',
+  commandType: 'ProbeCommand',
+  commandContractVersion: '1',
+  payloadHash: 'hash-a',
+  actor: {
+    kind: 'employee',
+    employeeId: 'research-director',
+    roleId: 'research-director',
+    roleFunction: 'manager',
+    departmentId: 'research-office',
+    departmentIsGovernance: false,
+    departmentHandles: ['aggregation'],
+    authentication: 'system-asserted',
+    organizationSeedVersion: '1',
+  },
+  mandate: { kind: 'any-employee' },
+  authorizationBasis: 'employee-of-the-firm',
+  initiator: { kind: 'orchestrator', orchestratorId: 'test' },
+  correlationId: 'corr-1',
+  occurredAt: NOW,
+  receivedAt: NOW,
+  ...over,
+})
+
+const committed = (resultRef: string) =>
+  ({ state: 'committed', resultKind: 'case', resultRef, recordedAt: NOW }) as const
 
 const investmentCase = (over: Partial<InvestmentCase> = {}): InvestmentCase => ({
   id: 'case-1',
@@ -83,18 +120,13 @@ describe('aggregate creation is atomic', () => {
       await tx.assignments.save(assignment('a-macro'))
       await tx.assignments.save(assignment('a-verify', { departmentId: 'verification' }))
       await tx.events.append(event('e1'))
-      await tx.idempotency.reserve({
-        key: 'open:case-1',
-        commandType: 'open-case',
-        resultRef: 'case-1',
-        createdAt: NOW,
-      })
+      await tx.commands.record(commandIntent(), await repos.provenance())
     })
 
     expect(await repos.cases.get('case-1')).not.toBeNull()
     expect(await repos.assignments.listForCase('case-1')).toHaveLength(2)
     expect(await repos.events.listForCase('case-1')).toHaveLength(1)
-    expect(await repos.idempotency.get('open:case-1')).not.toBeNull()
+    expect(await repos.commands.find('cmd-1')).not.toBeNull()
   })
 
   it('leaves none of the workflow visible when a later write fails', async () => {
@@ -112,7 +144,7 @@ describe('aggregate creation is atomic', () => {
     expect(await repos.cases.get('case-1')).toBeNull()
     expect(await repos.assignments.listForCase('case-1')).toEqual([])
     expect(await repos.events.listForCase('case-1')).toEqual([])
-    expect(await repos.idempotency.get('open:case-1')).toBeNull()
+    expect(await repos.commands.find('cmd-1')).toBeNull()
   })
 
   it('rolls back a partial decision', async () => {
@@ -318,57 +350,55 @@ describe('every list method has a deterministic order', () => {
   })
 })
 
-/* ------------------------------------------------------------ idempotency */
+/* --------------------------------------------------------- command ledger */
 
-describe('idempotency', () => {
-  it('returns the original record for a replayed key', async () => {
-    const first = await repos.idempotency.reserve({
-      key: 'open:case-1',
-      commandType: 'open-case',
-      resultRef: 'case-1',
-      createdAt: NOW,
-    })
-    const replay = await repos.idempotency.reserve({
-      key: 'open:case-1',
-      commandType: 'open-case',
-      resultRef: 'case-DIFFERENT',
-      createdAt: '2026-07-28T10:00:00.000Z',
-    })
-    // The replay learns what the first call produced rather than producing a
-    // second effect.
-    expect(replay.resultRef).toBe(first.resultRef)
+describe('the command ledger', () => {
+  it('returns the original intent for a replayed command id', async () => {
+    const first = await repos.commands.record(commandIntent(), await repos.provenance())
+    const replay = await repos.commands.record(commandIntent(), await repos.provenance())
+    // The replay learns what the first call recorded rather than producing a
+    // second entry.
+    expect(replay.payloadHash).toBe(first.payloadHash)
+    expect((await repos.commands.find('cmd-1'))?.outcomes).toEqual([])
   })
 
-  it('commits the key and its effect together', async () => {
+  it('refuses one command id carrying two different payloads', async () => {
+    await repos.commands.record(commandIntent(), await repos.provenance())
+    await expect(
+      repos.commands.record(
+        commandIntent({ payloadHash: 'hash-b' }),
+        await repos.provenance(),
+      ),
+    ).rejects.toBeInstanceOf(CommandPayloadConflictError)
+  })
+
+  it('commits the entry and its effect together', async () => {
     await repos.withTransaction(async (tx) => {
-      await tx.idempotency.reserve({
-        key: 'open:case-1',
-        commandType: 'open-case',
-        resultRef: 'case-1',
-        createdAt: NOW,
-      })
       await tx.cases.create(investmentCase())
+      await tx.commands.record(
+        commandIntent({ caseId: 'case-1' }),
+        await repos.provenance(),
+      )
+      await tx.commands.appendOutcome(
+        'cmd-1',
+        committed('case-1'),
+        await repos.provenance(),
+      )
     })
-    expect(await repos.idempotency.get('open:case-1')).not.toBeNull()
+    expect(await repos.commands.find('cmd-1')).not.toBeNull()
     expect(await repos.cases.get('case-1')).not.toBeNull()
   })
 
-  it('leaves no key behind when the effect fails', async () => {
-    // Otherwise a retry would find the key, assume the work was done, and
+  it('leaves no entry behind when the effect fails', async () => {
+    // Otherwise a retry would find the command, assume the work was done, and
     // return a reference to a case that does not exist.
     await expect(
       repos.withTransaction(async (tx) => {
-        await tx.idempotency.reserve({
-          key: 'open:case-1',
-          commandType: 'open-case',
-          resultRef: 'case-1',
-          createdAt: NOW,
-        })
-        throw new Error('case creation failed')
+        await tx.commands.record(commandIntent(), await repos.provenance())
+        throw new Error('the case could not be created')
       }),
     ).rejects.toThrow()
-
-    expect(await repos.idempotency.get('open:case-1')).toBeNull()
+    expect(await repos.commands.find('cmd-1')).toBeNull()
   })
 })
 

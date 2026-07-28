@@ -42,6 +42,7 @@ import type {
   VerificationReview,
 } from '~/domain/analysis'
 import type { ResultStore } from './resultStore'
+import type { CommandLog } from './commandLog'
 
 /**
  * PHASE B LIMITATION, recorded where an implementer will see it.
@@ -311,9 +312,25 @@ export class StorageUnavailableError extends StorageError {
  * TD-24.
  */
 export interface StorageProvenance {
+  /**
+   * Content address of every coordinate below.
+   *
+   * Two runtimes with identical coordinates share one provenance row by
+   * construction, which is what keeps the ledger from repeating six columns on
+   * every command.
+   */
+  provenanceId: string
   adapterId: string
-  /** Bumped by hand when the adapter's behaviour changes. */
+  /**
+   * DERIVED from the coordinates, not hand-maintained.
+   *
+   * A constant somebody has to remember to bump is only as good as the
+   * remembering. `buildId` covers the mapping code, `queryCatalogHash` covers
+   * the SQL, and together they cover what a hand-written version claimed to.
+   */
   adapterVersion: string
+  /** Git commit, injected at build. `dev` locally. */
+  buildId: string
   /** Hash over every statement the adapter can issue. Null when it issues none. */
   queryCatalogHash: string | null
   /** Highest applied migration, and its checksum. Null for a store without one. */
@@ -321,6 +338,8 @@ export interface StorageProvenance {
   schemaChecksum: string | null
   /** Which version of the analysis domain contracts was active. */
   domainContractVersion: string
+  /** Which version of the command contract was active. */
+  commandContractVersion: string
 }
 
 /* ------------------------------------------------------------- repositories */
@@ -435,37 +454,18 @@ export interface DecisionRepository {
   save(decision: CaseDecision): Promise<CaseDecision>
 }
 
-/* -------------------------------------------------------------- idempotency */
+/* --------------------------------------------------------- command ledger */
 
-export interface IdempotencyRecord {
-  key: string
-  commandType: string
-  /** The id of whatever the command produced, so a replay can return it. */
-  resultRef: string
-  createdAt: string
-}
-
-/**
- * Explicit idempotency, for the commands whose identity is not derivable.
+/*
+ * `IdempotencyStore` lived here until Phase C1A. It described a thirty-day
+ * operational cache and could not answer what Phase C needs: what was asked,
+ * by whom, under what authority, against what version, and what came of it.
  *
- * Most operations need none: an assignment id follows from
- * `(caseId, playbookEntryKey)`, an event carries its own id, a result is
- * keyed by content hash. Keys exist for the three where two calls are
- * indistinguishable from one retried call — opening a case, starting a run,
- * recording a review — and for the decision, where a duplicate would be a
- * second valid-looking institutional record.
- *
- * The record and its effect **must commit in the same transaction**, or there
- * is a window in which the key exists without the effect it guards.
+ * The replacement is `CommandLog` in `./commandLog`, which separates immutable
+ * intent from append-only outcomes. Duplicate PREVENTION was never this
+ * table's job anyway — the unique constraints do that — so nothing is lost by
+ * the change.
  */
-export interface IdempotencyStore {
-  get(key: string): Promise<IdempotencyRecord | null>
-  /**
-   * Reserves a key. Returns the existing record when the key is already held,
-   * which is how a replay returns the original result instead of doing work.
-   */
-  reserve(record: IdempotencyRecord): Promise<IdempotencyRecord>
-}
 
 /* ---------------------------------------------------------------- container */
 
@@ -492,7 +492,7 @@ export interface AnalysisRepositories {
   evidence: EvidenceRepository
   decisions: DecisionRepository
   results: ResultStore
-  idempotency: IdempotencyStore
+  commands: CommandLog
 
   /**
    * Runs `operation` inside one transaction.

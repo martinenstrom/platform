@@ -497,6 +497,66 @@ check only if it proves stable against jsonb round-tripping.
 
 ---
 
+## TD-26 · Actor identity is asserted, not authenticated
+
+**Incurred:** Phase C1A. **Severity:** high. **Blocks:** any user-triggered
+command.
+
+Every command records an actor, and the actor is **asserted by the caller**. The
+model is as tight as it can be without authentication — the caller supplies only
+an employee id, role and department are resolved from the seeded organization,
+an unknown id is refused, and the authentication state is recorded as
+`system-asserted` and never as anything else — but nothing verifies that the
+caller is who it says.
+
+A fitness rule asserts no code in the analysis layers ever writes
+`authentication: 'authenticated'`, so the honest label cannot drift into a
+dishonest one by accident.
+
+**Before user-triggered commands exist, authentication and authorization must
+replace asserted identity** (TD-8). The command ledger is already shaped for it:
+`actor_authentication` is a column, not an assumption.
+
+---
+
+## TD-27 · The command ledger has no archival story
+
+**Incurred:** Phase C1A. **Severity:** low.
+
+Migration 0013 removed the last `DELETE` grant, so the schema now has no
+deletable table. That is right for institutional records and leaves the command
+ledger growing with every command ever issued — including rejections and
+failures, which are the high-volume kind.
+
+At the workload the storage plan describes this is thousands of rows a year and
+not a problem. It becomes one at a different order of magnitude.
+
+**Preferred resolution:** partition `commands` and `command_outcomes` by month
+and detach old partitions to cold storage, rather than deleting. If operational
+deduplication ever needs a short-lived index, add one beside the ledger — never
+by deleting from it.
+
+---
+
+## TD-28 · Execution provenance is not yet recorded
+
+**Incurred:** Phase C1A. **Severity:** medium. **Blocks:** nothing until C1C.
+
+Runtime provenance — adapter, derived version, build id, query-catalogue hash,
+schema version, domain-contract version, command-contract version — is recorded
+in `analysis.storage_provenance` and referenced by every command.
+
+**Execution provenance is not**: the playbook id and version a command ran
+under, and the contribution provider that produced a result. Both are per-run
+rather than per-runtime, so they belong on `runs`, and there are no runs until
+C1C.
+
+**Preferred resolution:** add `playbook_id`, `playbook_version` and
+`contribution_provider_id` to `runs` in the migration that lands the run
+commands. The ledger schema already carries what references them.
+
+---
+
 ## TD-22 · The organization is not temporally versioned
 
 **Incurred:** storage stage 1. **Severity:** low. **Blocks:** nothing known.

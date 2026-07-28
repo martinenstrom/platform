@@ -62,14 +62,18 @@ import {
   type DecisionRepository,
   type EventRepository,
   type EvidenceRepository,
-  type IdempotencyRecord,
-  type IdempotencyStore,
   type ReviewRepository,
   type RunRepository,
   type ThesisRepository,
   type TransactionalAnalysisRepositories,
 } from '~/application/analysis/repositories'
 import type { ResultStore, StoredResult } from '~/application/analysis/resultStore'
+import {
+  CommandPayloadConflictError,
+  type CommandIntent,
+  type CommandLog,
+  type CommandOutcome,
+} from '~/application/analysis/commandLog'
 import {
   claimSemanticKey,
   decisionSemanticKey,
@@ -79,6 +83,7 @@ import {
   runEventSemanticKey,
   transitionEventSemanticKey,
 } from '~/application/analysis/writeOnce'
+import { COMMAND_CONTRACT_VERSION } from '~/application/analysis/commands/envelope'
 import { seal } from './seal'
 
 /* ------------------------------------------------------------------- state */
@@ -102,7 +107,7 @@ interface Store {
   evidence: Map<string, EvidenceSet>
   decisions: Map<string, CaseDecision>
   results: Map<string, StoredResult>
-  idempotency: Map<string, IdempotencyRecord>
+  commands: Map<string, { intent: CommandIntent; outcomes: CommandOutcome[] }>
 }
 
 function emptyStore(): Store {
@@ -121,7 +126,7 @@ function emptyStore(): Store {
     evidence: new Map(),
     decisions: new Map(),
     results: new Map(),
-    idempotency: new Map(),
+    commands: new Map(),
   }
 }
 
@@ -153,7 +158,7 @@ function snapshot(store: Store): Store {
     evidence: new Map(store.evidence),
     decisions: new Map(store.decisions),
     results: new Map(store.results),
-    idempotency: new Map(store.idempotency),
+    commands: new Map(store.commands),
   }
 }
 
@@ -172,7 +177,7 @@ function restore(target: Store, from: Store): void {
   target.evidence = from.evidence
   target.decisions = from.decisions
   target.results = from.results
-  target.idempotency = from.idempotency
+  target.commands = from.commands
 }
 
 /** A transaction's liveness, shared by every repository scoped to it. */
@@ -720,21 +725,79 @@ function resultStore(store: Store, scope: Scope): ResultStore {
   }
 }
 
-function idempotencyStore(store: Store, scope: Scope): IdempotencyStore {
+/**
+ * The command ledger.
+ *
+ * Intent is immutable and outcomes are append-only, matching the schema: a
+ * command that was unresolved and is later confirmed gains a second outcome
+ * rather than having its first overwritten.
+ *
+ * The entry is stored as one frozen object per command, so a snapshot restore
+ * puts back exactly the outcomes that existed at the time.
+ */
+function commandLog(store: Store, scope: Scope): CommandLog {
   return {
-    async get(key) {
-      guard(scope, 'idempotency.get')
-      return store.idempotency.get(key) ?? null
+    async find(commandId) {
+      guard(scope, 'commands.find')
+      const entry = store.commands.get(commandId)
+      return entry ? { intent: entry.intent, outcomes: [...entry.outcomes] } : null
     },
-    async reserve(record) {
-      guard(scope, 'idempotency.reserve')
-      seal(record, 'idempotency')
-      // A held key returns its original record, which is how a replay returns
-      // the first result instead of producing a second effect.
-      const existing = store.idempotency.get(record.key)
-      if (existing) return existing
-      store.idempotency.set(record.key, record)
-      return record
+
+    async record(intent) {
+      guard(scope, 'commands.record')
+      seal(intent, 'commands')
+
+      const existing = store.commands.get(intent.commandId)
+      if (existing) {
+        // One command id identifies one request. Reusing it for a different
+        // payload is not a retry, and returning the earlier result would
+        // answer a question nobody asked.
+        if (existing.intent.payloadHash !== intent.payloadHash) {
+          throw new CommandPayloadConflictError(
+            intent.commandId,
+            existing.intent.payloadHash,
+            intent.payloadHash,
+          )
+        }
+        return existing.intent
+      }
+
+      store.commands.set(intent.commandId, { intent, outcomes: [] })
+      return intent
+    },
+
+    async appendOutcome(commandId, outcome) {
+      guard(scope, 'commands.appendOutcome')
+      seal(outcome, 'commands.outcome')
+
+      const entry = store.commands.get(commandId)
+      if (!entry) {
+        throw new MalformedRowError(
+          'command outcome',
+          `no command "${commandId}" to append an outcome to`,
+          'commands.appendOutcome',
+        )
+      }
+
+      /*
+       * Only `unresolved` may be followed by anything. A rejected command did
+       * not happen, a failed one wrote nothing, a committed one has its
+       * result — a later outcome would be a second answer to a settled
+       * question.
+       */
+      const settled = entry.outcomes.find((candidate) => candidate.state !== 'unresolved')
+      if (settled) {
+        throw new ConflictingRecordError(
+          `Command "${commandId}" is already ${settled.state}, which is terminal, and`,
+          commandId,
+          'commands.appendOutcome',
+        )
+      }
+
+      store.commands.set(commandId, {
+        intent: entry.intent,
+        outcomes: [...entry.outcomes, outcome],
+      })
     },
   }
 }
@@ -751,7 +814,7 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     evidence: evidenceRepository(store, scope),
     decisions: decisionRepository(store, scope),
     results: resultStore(store, scope),
-    idempotency: idempotencyStore(store, scope),
+    commands: commandLog(store, scope),
   }
 }
 
@@ -778,12 +841,15 @@ export function createInMemoryRepositories(): AnalysisRepositories {
        * lineage that does not exist.
        */
       return {
+        provenanceId: `in-memory:${ADAPTER_VERSION}:${DOMAIN_CONTRACT_VERSION}:${COMMAND_CONTRACT_VERSION}`,
         adapterId: 'in-memory',
         adapterVersion: ADAPTER_VERSION,
+        buildId: 'in-memory',
         queryCatalogHash: null,
         schemaVersion: null,
         schemaChecksum: null,
         domainContractVersion: DOMAIN_CONTRACT_VERSION,
+        commandContractVersion: COMMAND_CONTRACT_VERSION,
       }
     },
 

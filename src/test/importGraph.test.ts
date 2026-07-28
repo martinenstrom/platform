@@ -885,3 +885,88 @@ describe('Storage stage 2 — the adapter exists but is not wired', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('Phase C1A — the command foundation', () => {
+  it('constructs the in-memory store nowhere but its own module and tests', () => {
+    /*
+     * The composition root selects PostgreSQL and nothing else. A fallback to
+     * memory is how a system ends up "working" while storing nothing, which is
+     * discovered later and by someone else.
+     */
+    const offenders = FILES.filter(
+      (file) =>
+        !isTest(file) &&
+        file.path !== 'infrastructure/analysis/inMemoryRepositories.ts' &&
+        file.path !== 'infrastructure/analysis/repositoryContract.ts',
+    )
+      .filter((file) => file.imports.some((s) => s.includes('inMemoryRepositories')))
+      .map((file) => file.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps command handlers out of infrastructure', () => {
+    // A handler may use the domain and the ports. Reaching an adapter would
+    // let one command know which database it is running against.
+    const commands = FILES.filter((f) => inLayer(f, 'application/analysis/commands/'))
+    expect(commands.length).toBeGreaterThan(0)
+
+    const offenders = violations(commands, (specifier) => {
+      const layer = toLayerPath(specifier)
+      return layer?.startsWith('infrastructure/') ?? false
+    })
+    expect(offenders).toEqual([])
+  })
+
+  it('opens no transaction inside a command handler', () => {
+    /*
+     * `runCommand` owns the boundary. A handler that opened its own would put
+     * the ledger entry and the effect in different transactions, and a
+     * committed command could then exist without its effect.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        !f.path.endsWith('runCommand.ts') &&
+        !f.path.endsWith('resolveCommand.ts'),
+    )
+      .filter((f) =>
+        codeOnly(readFileSync(join(SRC, f.path), 'utf8')).includes('withTransaction('),
+      )
+      .map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('never describes an actor as authenticated', () => {
+    // TD-8 is open. `system-asserted` is the only honest state, and a stray
+    // `authenticated` would be a claim the system cannot make.
+    const analysis = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        (inLayer(f, 'domain/analysis/') ||
+          inLayer(f, 'application/analysis/') ||
+          inLayer(f, 'infrastructure/analysis/')),
+    )
+    const offenders = analysis
+      .filter((f) => {
+        const source = codeOnly(readFileSync(join(SRC, f.path), 'utf8'))
+        return /authentication:\s*'authenticated'/.test(source)
+      })
+      .map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('ships no production command in C1A', () => {
+    // The foundation is exercised by a test-only probe. A real workflow command
+    // deserves its own gate rather than arriving as a side effect of this one.
+    const handlers = FILES.filter(
+      (f) => inLayer(f, 'application/analysis/commands/') && !isTest(f),
+    ).map((f) => f.path.split('/').pop())
+    expect(handlers?.sort()).toEqual([
+      'definition.ts',
+      'envelope.ts',
+      'resolveCommand.ts',
+      'runCommand.ts',
+    ])
+  })
+})

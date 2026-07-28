@@ -17,6 +17,7 @@ import {
   type TransactionalAnalysisRepositories,
 } from '~/application/analysis/repositories'
 import { DOMAIN_CONTRACT_VERSION } from '~/domain/analysis'
+import { COMMAND_CONTRACT_VERSION } from '~/application/analysis/commands/envelope'
 import type {
   StorageLogger,
   StorageMetrics,
@@ -34,12 +35,11 @@ import {
 } from './caseRepositories'
 import {
   EVIDENCE_SQL,
-  IDEMPOTENCY_SQL,
   RESULT_SQL,
   createEvidenceRepository,
-  createIdempotencyStore,
   createResultStore,
 } from './evidenceRepositories'
+import { COMMAND_SQL, createCommandLog } from './commandLog'
 import {
   DECISION_SQL,
   EVENT_SQL,
@@ -49,7 +49,15 @@ import {
   createReviewRepository,
 } from './governanceRepositories'
 import { createPostgresPool, recordPoolGauges, type PostgresPoolOptions } from './pool'
-import { catalog, catalogHash, defaultSqlContext, one, type SqlContext } from './sql'
+import {
+  catalog,
+  catalogHash,
+  defaultSqlContext,
+  one,
+  type Queryable,
+  type SqlContext,
+} from './sql'
+import { buildProvenance, PROVENANCE_SQL } from './provenance'
 import { poolScope, runInTransaction, type Scope } from './transaction'
 import {
   ASSIGNMENT_SQL,
@@ -61,16 +69,10 @@ import {
 } from './workRepositories'
 
 /**
- * Bumped by hand when the adapter's observable behaviour changes.
- *
- * Hand-maintained, and therefore only as honest as the discipline of bumping
- * it — recorded as an obligation in the debt register rather than pretended
- * away. It covers the mapping code; `queryCatalogHash` covers the SQL.
- *
- * History:
- *   1  stage 2 — first implementation
+ * Identifies the implementation. The VERSION is derived, not written here —
+ * see `deriveAdapterVersion`.
  */
-const ADAPTER_VERSION = '1'
+const ADAPTER_ID = 'postgres'
 
 /**
  * The container's own statement.
@@ -79,13 +81,15 @@ const ADAPTER_VERSION = '1'
  * issue" is the definition the hash relies on — and a fitness rule enforces it
  * rather than leaving it to memory.
  */
-const PROVENANCE_SQL = catalog({
+const CONTAINER_SQL = catalog({
   schemaVersion: `SELECT version, checksum FROM analysis.schema_migrations
                   ORDER BY version DESC LIMIT 1`,
 })
 
 /** Every statement the adapter can issue, for `queryCatalogHash`. See D-S20. */
 const CATALOGS = [
+  CONTAINER_SQL,
+  COMMAND_SQL,
   PROVENANCE_SQL,
   CASE_SQL,
   THESIS_SQL,
@@ -94,7 +98,7 @@ const CATALOGS = [
   CLAIM_SQL,
   EVIDENCE_SQL,
   RESULT_SQL,
-  IDEMPOTENCY_SQL,
+  COMMAND_SQL,
   REVIEW_SQL,
   DECISION_SQL,
   EVENT_SQL,
@@ -114,6 +118,8 @@ export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
    * the seam where that changes.
    */
   tenantId?: string
+  /** Git commit, injected at build. `dev` locally. */
+  buildId?: string
 }
 
 /**
@@ -129,7 +135,17 @@ export interface ClosableRepositories extends AnalysisRepositories {
   close(): Promise<void>
 }
 
-export type PostgresRepositories = ClosableRepositories
+export interface PostgresRepositories extends ClosableRepositories {
+  /**
+   * A query surface for infrastructure that is not a repository.
+   *
+   * The organization reader and the provenance writer need one, and neither is
+   * a repository — the organization is read-only reference data and provenance
+   * describes the runtime rather than the analysis. Deliberately not on the
+   * port: nothing in the application layer may reach it.
+   */
+  readonly sql: Queryable
+}
 
 export function createPostgresRepositories(
   options: PostgresRepositoriesOptions,
@@ -155,7 +171,7 @@ export function createPostgresRepositories(
     evidence: createEvidenceRepository(scope, context),
     decisions: createDecisionRepository(scope, context, tenantId),
     results: createResultStore(scope, context),
-    idempotency: createIdempotencyStore(scope, context),
+    commands: createCommandLog(scope, context, tenantId),
   })
 
   /*
@@ -167,6 +183,7 @@ export function createPostgresRepositories(
 
   return {
     ...ambient,
+    sql: pool as unknown as Queryable,
 
     async withTransaction(operation) {
       recordPoolGauges(pool, metrics)
@@ -184,17 +201,18 @@ export function createPostgresRepositories(
         pool,
         context,
         'provenance',
-        PROVENANCE_SQL.schemaVersion,
+        CONTAINER_SQL.schemaVersion,
       )
 
-      return {
-        adapterId: 'postgres',
-        adapterVersion: ADAPTER_VERSION,
+      return buildProvenance({
+        adapterId: ADAPTER_ID,
+        buildId: options.buildId ?? 'dev',
         queryCatalogHash: catalogHash(CATALOGS),
-        schemaVersion: row?.version ?? null,
+        schemaVersion: row?.version ?? 'unknown',
         schemaChecksum: row?.checksum ?? null,
         domainContractVersion: DOMAIN_CONTRACT_VERSION,
-      }
+        commandContractVersion: COMMAND_CONTRACT_VERSION,
+      })
     },
 
     async close() {

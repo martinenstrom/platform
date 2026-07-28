@@ -291,12 +291,32 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
   await repos.events.append(event())
   await repos.decisions.save(decision())
   await repos.results.put(result())
-  await repos.idempotency.reserve({
-    key: 'open:case-1',
-    commandType: 'open-case',
-    resultRef: 'case-1',
-    createdAt: NOW,
-  })
+  await repos.commands.record(
+    {
+      commandId: 'cmd-1',
+      commandType: 'ProbeCommand',
+      commandContractVersion: '1',
+      payloadHash: 'hash-a',
+      actor: {
+        kind: 'employee',
+        employeeId: 'research-director',
+        roleId: 'research-director',
+        roleFunction: 'manager',
+        departmentId: 'research-office',
+        departmentIsGovernance: false,
+        departmentHandles: ['aggregation'],
+        authentication: 'system-asserted',
+        organizationSeedVersion: '1',
+      },
+      mandate: { kind: 'any-employee' },
+      authorizationBasis: 'employee-of-the-firm',
+      initiator: { kind: 'orchestrator', orchestratorId: 'test' },
+      correlationId: 'corr-1',
+      occurredAt: NOW,
+      receivedAt: NOW,
+    },
+    await repos.provenance(),
+  )
 }
 
 /** Everything the store holds, read back through the ports. */
@@ -315,7 +335,7 @@ async function readEverything(repos: AnalysisRepositories) {
     events: await repos.events.listForCase('case-1'),
     decisions: await repos.decisions.getForCase('case-1'),
     result: await repos.results.get('result-1'),
-    idempotency: await repos.idempotency.get('open:case-1'),
+    command: (await repos.commands.find('cmd-1'))?.intent ?? null,
   }
 }
 

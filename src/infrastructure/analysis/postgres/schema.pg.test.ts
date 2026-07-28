@@ -829,18 +829,6 @@ describe('append-only and write-once records', () => {
     await expect(insert()).rejects.toThrow(/duplicate key/)
   })
 
-  it('refuses a duplicate idempotency key', async () => {
-    const key = id('idem')
-    const insert = () =>
-      sql.query(
-        `INSERT INTO analysis.idempotency_keys (key, command_type, result_ref, created_at)
-         VALUES ($1, 'open-case', 'case-1', now())`,
-        [key],
-      )
-    await insert()
-    await expect(insert()).rejects.toThrow(/duplicate key/)
-  })
-
   it('deduplicates evidence sets by content address', async () => {
     // Two cases assembled from the same observations share one row.
     const setId = id('set')

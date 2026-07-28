@@ -14,7 +14,6 @@
 import {
   ConflictingRecordError,
   type EvidenceRepository,
-  type IdempotencyStore,
 } from '~/application/analysis/repositories'
 import type { ResultStore } from '~/application/analysis/resultStore'
 import {
@@ -22,12 +21,7 @@ import {
   resultSemanticKey,
 } from '~/application/analysis/writeOnce'
 import { toEvidenceSet, toStoredResult } from './mapping'
-import type {
-  AgentResultRow,
-  EvidenceItemRow,
-  EvidenceSetRow,
-  IdempotencyKeyRow,
-} from './rows'
+import type { AgentResultRow, EvidenceItemRow, EvidenceSetRow } from './rows'
 import { catalog, one, run, ts, type Queryable, type SqlContext } from './sql'
 import { singleStatement, unitOfWork, type Scope } from './transaction'
 
@@ -184,71 +178,6 @@ export function createResultStore(scope: Scope, context: SqlContext): ResultStor
           JSON.stringify(result.inputs),
         ])
         return (await read(client, result.key, 'results.put'))!
-      }),
-  }
-}
-
-/* ------------------------------------------------------------- idempotency */
-
-export const IDEMPOTENCY_SQL = catalog({
-  get: `SELECT key, command_type, result_ref, ${ts('created_at')}
-        FROM analysis.idempotency_keys WHERE key = $1`,
-
-  /*
-   * `DO NOTHING` then re-read, rather than `DO UPDATE … RETURNING`. Two
-   * reasons, either sufficient: the runtime holds no UPDATE grant on this
-   * table, and the re-read is only correct under READ COMMITTED, where each
-   * statement takes a fresh snapshot and can see the row a concurrent
-   * transaction just committed. `unitOfWork` states that level explicitly.
-   */
-  reserve: `INSERT INTO analysis.idempotency_keys
-              (key, command_type, result_ref, created_at)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (key) DO NOTHING`,
-})
-
-export function createIdempotencyStore(
-  scope: Scope,
-  context: SqlContext,
-): IdempotencyStore {
-  const read = async (client: Queryable, key: string, operation: string) => {
-    const row = await one<IdempotencyKeyRow>(
-      client,
-      context,
-      operation,
-      IDEMPOTENCY_SQL.get,
-      [key],
-    )
-    return row
-      ? {
-          key: row.key,
-          commandType: row.command_type,
-          resultRef: row.result_ref,
-          createdAt: row.created_at,
-        }
-      : null
-  }
-
-  return {
-    /** One statement. */
-    async get(key) {
-      return read(singleStatement(scope, 'idempotency.get'), key, 'idempotency.get')
-    },
-
-    reserve: (record) =>
-      unitOfWork(scope, 'idempotency.reserve', async (client) => {
-        await run(client, context, 'idempotency.reserve', IDEMPOTENCY_SQL.reserve, [
-          record.key,
-          record.commandType,
-          record.resultRef,
-          record.createdAt,
-        ])
-        /*
-         * Always the stored record, never the argument. A held key returns its
-         * ORIGINAL `result_ref`, which is how a replay returns the first result
-         * instead of producing a second effect.
-         */
-        return (await read(client, record.key, 'idempotency.reserve'))!
       }),
   }
 }

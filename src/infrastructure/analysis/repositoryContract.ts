@@ -40,6 +40,10 @@ import {
   type CaseRepository,
 } from '~/application/analysis/repositories'
 import type { StoredResult } from '~/application/analysis/resultStore'
+import {
+  CommandPayloadConflictError,
+  type CommandIntent,
+} from '~/application/analysis/commandLog'
 import { isDeeplyFrozen } from './seal'
 
 export interface ContractFixtures {
@@ -729,58 +733,173 @@ export function describeRepositoryContract(name: string, options: ContractOption
 
     /* --------------------------------------------------------- idempotency */
 
-    describe('idempotency', () => {
-      it('returns the original record when a key is replayed', async () => {
-        const first = await repos.idempotency.reserve({
-          key: 'open:case-1',
-          commandType: 'open-case',
-          resultRef: 'case-1',
-          createdAt: AT,
-        })
-        const replay = await repos.idempotency.reserve({
-          key: 'open:case-1',
-          commandType: 'open-case',
-          resultRef: 'case-2',
-          createdAt: LATER,
-        })
-
-        expect(replay.resultRef).toBe('case-1')
-        expect(replay.createdAt).toBe(first.createdAt)
+    describe('the command ledger', () => {
+      const intent = (over: Partial<CommandIntent> = {}): CommandIntent => ({
+        commandId: 'cmd-1',
+        commandType: 'ProbeCommand',
+        commandContractVersion: '1',
+        payloadHash: 'hash-a',
+        actor: {
+          kind: 'employee',
+          employeeId: f.ownerEmployeeId,
+          roleId: 'research-director',
+          roleFunction: 'manager',
+          departmentId: 'research-office',
+          departmentIsGovernance: false,
+          departmentHandles: ['aggregation'],
+          authentication: 'system-asserted',
+          organizationSeedVersion: '1',
+        },
+        mandate: { kind: 'any-employee' },
+        authorizationBasis: 'employee-of-the-firm',
+        initiator: { kind: 'orchestrator', orchestratorId: 'test' },
+        correlationId: 'corr-1',
+        occurredAt: AT,
+        receivedAt: AT,
+        ...over,
       })
 
-      it('commits the key and its effect together', async () => {
+      const provenance = async () => repos.provenance()
+
+      it('returns null for a command that never reached the ledger', async () => {
+        expect(await repos.commands.find('never')).toBeNull()
+      })
+
+      it('records intent and an outcome together', async () => {
+        await repos.commands.record(intent(), await provenance())
+        await repos.commands.appendOutcome(
+          'cmd-1',
+          { state: 'committed', resultKind: 'case', resultRef: 'case-1', recordedAt: AT },
+          await provenance(),
+        )
+
+        const entry = await repos.commands.find('cmd-1')
+        expect(entry?.intent.commandType).toBe('ProbeCommand')
+        expect(entry?.intent.actor.employeeId).toBe(f.ownerEmployeeId)
+        expect(entry?.outcomes).toHaveLength(1)
+        expect(entry?.outcomes[0]).toMatchObject({
+          state: 'committed',
+          resultRef: 'case-1',
+        })
+      })
+
+      it('is idempotent on an identical replay of intent', async () => {
+        await repos.commands.record(intent(), await provenance())
+        await repos.commands.record(intent(), await provenance())
+
+        expect((await repos.commands.find('cmd-1'))?.intent.payloadHash).toBe('hash-a')
+      })
+
+      it('refuses one command id carrying two different payloads', async () => {
+        // A command id identifies one request. Reusing it for a different one
+        // is not a retry, and returning the earlier result would answer a
+        // question nobody asked.
+        await repos.commands.record(intent(), await provenance())
+        await expect(
+          repos.commands.record(intent({ payloadHash: 'hash-b' }), await provenance()),
+        ).rejects.toBeInstanceOf(CommandPayloadConflictError)
+      })
+
+      it('keeps an unresolved outcome when a later one settles it', async () => {
+        // How long the answer was unknown is itself part of the record.
+        await repos.commands.record(intent(), await provenance())
+        await repos.commands.appendOutcome(
+          'cmd-1',
+          { state: 'unresolved', resolutionReference: 'probe', recordedAt: AT },
+          await provenance(),
+        )
+        await repos.commands.appendOutcome(
+          'cmd-1',
+          {
+            state: 'committed',
+            resultKind: 'case',
+            resultRef: 'case-1',
+            recordedAt: LATER,
+          },
+          await provenance(),
+        )
+
+        const entry = await repos.commands.find('cmd-1')
+        expect(entry?.outcomes.map((outcome) => outcome.state)).toEqual([
+          'unresolved',
+          'committed',
+        ])
+      })
+
+      it('refuses a second outcome once one is terminal', async () => {
+        await repos.commands.record(intent(), await provenance())
+        await repos.commands.appendOutcome(
+          'cmd-1',
+          { state: 'rejected', reasonCode: 'not-authorised', recordedAt: AT },
+          await provenance(),
+        )
+
+        await expect(
+          repos.commands.appendOutcome(
+            'cmd-1',
+            {
+              state: 'committed',
+              resultKind: 'case',
+              resultRef: 'case-1',
+              recordedAt: LATER,
+            },
+            await provenance(),
+          ),
+        ).rejects.toThrow()
+      })
+
+      it('commits the ledger entry and its effect together', async () => {
         await repos.withTransaction(async (tx) => {
           await tx.cases.create(investmentCase())
-          await tx.idempotency.reserve({
-            key: 'open:case-1',
-            commandType: 'open-case',
-            resultRef: 'case-1',
-            createdAt: AT,
-          })
+          await tx.commands.record(intent({ caseId: 'case-1' }), await provenance())
+          await tx.commands.appendOutcome(
+            'cmd-1',
+            {
+              state: 'committed',
+              resultKind: 'case',
+              resultRef: 'case-1',
+              recordedAt: AT,
+            },
+            await provenance(),
+          )
         })
 
-        expect(await repos.idempotency.get('open:case-1')).not.toBeNull()
+        expect(await repos.commands.find('cmd-1')).not.toBeNull()
         expect(await repos.cases.get('case-1')).not.toBeNull()
       })
 
-      it('leaves no key behind when the effect fails', async () => {
+      it('leaves no ledger entry behind when the effect fails', async () => {
         await expect(
           repos.withTransaction(async (tx) => {
-            await tx.idempotency.reserve({
-              key: 'open:case-1',
-              commandType: 'open-case',
-              resultRef: 'case-1',
-              createdAt: AT,
-            })
+            await tx.commands.record(intent(), await provenance())
             throw new Error('boom')
           }),
         ).rejects.toThrow()
 
-        expect(await repos.idempotency.get('open:case-1')).toBeNull()
+        expect(await repos.commands.find('cmd-1')).toBeNull()
       })
 
-      it('returns null for a key nobody reserved', async () => {
-        expect(await repos.idempotency.get('never')).toBeNull()
+      it('carries the actor snapshot rather than a bare reference', async () => {
+        // The snapshot is what survives a later reorganization: a command must
+        // keep showing the authority it actually ran under.
+        await repos.commands.record(intent(), await provenance())
+
+        const stored = (await repos.commands.find('cmd-1'))!.intent.actor
+        expect(stored.roleId).toBe('research-director')
+        expect(stored.departmentId).toBe('research-office')
+        expect(stored.authentication).toBe('system-asserted')
+        expect(stored.organizationSeedVersion).toBe('1')
+      })
+
+      it('keeps the initiator distinct from the accountable actor', async () => {
+        await repos.commands.record(intent(), await provenance())
+
+        const entry = (await repos.commands.find('cmd-1'))!
+        expect(entry.intent.initiator).toEqual({
+          kind: 'orchestrator',
+          orchestratorId: 'test',
+        })
+        expect(entry.intent.actor.employeeId).toBe(f.ownerEmployeeId)
       })
     })
 

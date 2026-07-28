@@ -73,6 +73,32 @@ const investmentCase = (over: Partial<InvestmentCase> = {}): InvestmentCase => (
   ...over,
 })
 
+/** A ledger intent, for the concurrency and isolation tests. */
+const probeIntent = () => ({
+  commandId: 'cmd-probe',
+  commandType: 'ProbeCommand',
+  commandContractVersion: '1',
+  payloadHash: 'hash-a',
+  caseId: undefined,
+  actor: {
+    kind: 'employee' as const,
+    employeeId: 'research-director',
+    roleId: 'research-director',
+    roleFunction: 'manager' as const,
+    departmentId: 'research-office',
+    departmentIsGovernance: false,
+    departmentHandles: ['aggregation'],
+    authentication: 'system-asserted' as const,
+    organizationSeedVersion: '1',
+  },
+  mandate: { kind: 'any-employee' as const },
+  authorizationBasis: 'employee-of-the-firm' as const,
+  initiator: { kind: 'orchestrator' as const, orchestratorId: 'test' },
+  correlationId: 'corr-1',
+  occurredAt: AT,
+  receivedAt: AT,
+})
+
 const evidenceSet = (value = 4.1) =>
   buildEvidenceSet({
     items: [
@@ -462,20 +488,15 @@ describe('isolation is stated, not inherited (B5)', () => {
     opened.push(first, second)
 
     try {
-      const record = {
-        key: 'open:iso',
-        commandType: 'open-case',
-        resultRef: 'case-1',
-        createdAt: AT,
-      }
+      const intent = probeIntent()
       const [a, b] = await Promise.all([
-        first.idempotency.reserve(record),
-        second.idempotency.reserve({ ...record, resultRef: 'case-2' }),
+        first.commands.record(intent, await first.provenance()),
+        second.commands.record(intent, await second.provenance()),
       ])
-      expect(a.resultRef).toBe(b.resultRef)
+      expect(a.payloadHash).toBe(b.payloadHash)
 
       const { rows } = await db.owner.query(
-        'SELECT count(*)::int n FROM analysis.idempotency_keys',
+        'SELECT count(*)::int n FROM analysis.commands',
       )
       expect(rows[0].n).toBe(1)
     } finally {
@@ -498,21 +519,14 @@ describe('two real connections', () => {
     const other = createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
-    const record = {
-      key: 'open:case-1',
-      commandType: 'open-case',
-      resultRef: 'case-1',
-      createdAt: AT,
-    }
+    const intent = probeIntent()
     const [first, second] = await Promise.all([
-      repos.idempotency.reserve(record),
-      other.idempotency.reserve({ ...record, resultRef: 'case-2' }),
+      repos.commands.record(intent, await repos.provenance()),
+      other.commands.record(intent, await other.provenance()),
     ])
 
-    expect(first.resultRef).toBe(second.resultRef)
-    const { rows } = await db.owner.query(
-      'SELECT count(*)::int n FROM analysis.idempotency_keys',
-    )
+    expect(first.payloadHash).toBe(second.payloadHash)
+    const { rows } = await db.owner.query('SELECT count(*)::int n FROM analysis.commands')
     expect(rows[0].n).toBe(1)
   })
 
@@ -638,7 +652,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0012')
+    expect(provenance.schemaVersion).toBe('0013')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

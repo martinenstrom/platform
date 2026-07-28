@@ -65,6 +65,7 @@ describe('a clean database reaches the expected schema', () => {
       '0010',
       '0011',
       '0012',
+      '0013',
     ])
   })
 
@@ -88,13 +89,14 @@ describe('a clean database reaches the expected schema', () => {
       'challenges',
       'claim_evidence',
       'claims',
+      'command_outcomes',
+      'commands',
       'decision_revisions',
       'department_handles',
       'departments',
       'employees',
       'evidence_items',
       'evidence_sets',
-      'idempotency_keys',
       'organization_seed_versions',
       'organizations',
       'playbook_entries',
@@ -107,6 +109,7 @@ describe('a clean database reaches the expected schema', () => {
       'run_events',
       'runs',
       'schema_migrations',
+      'storage_provenance',
       'teams',
       'tenants',
       'thesis_claim_links',
