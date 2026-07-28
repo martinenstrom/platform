@@ -187,6 +187,7 @@ export interface VerificationFindingRow {
   blocking: boolean
   evidence_set_id: string | null
   observation_id: string | null
+  content_hash: string | null
 }
 
 export interface ChallengeRow {

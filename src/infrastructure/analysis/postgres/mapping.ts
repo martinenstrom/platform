@@ -129,18 +129,30 @@ export function toCase(
     throw new MalformedRowError('case', `unknown stage "${row.stage}"`, 'cases')
   }
 
-  const movements = transitions.map(
-    (event) =>
-      present({
-        caseId: event.case_id,
-        from: event.from_state as InvestmentCase['stage'],
-        to: event.to_state as InvestmentCase['stage'],
-        at: event.occurred_at,
-        byEmployeeId: event.actor_employee_id ?? '',
-        byDepartmentId: event.actor_department_id ?? '',
-        reason: event.reason,
-      }) as unknown as CaseTransition,
-  )
+  const movements = transitions.map((event) => {
+    if (!event.actor_employee_id || !event.actor_department_id) {
+      /*
+       * Refused rather than filled with an empty string. A department acts
+       * through a person, and an empty employee id reads as an employee rather
+       * than as the absence of one. Migration 0012 enforces this at write time;
+       * this is the read half, for rows written before it existed.
+       */
+      throw new MalformedRowError(
+        'case transition',
+        `event "${event.event_id}" moves the case but names no actor`,
+        'cases.get',
+      )
+    }
+    return present({
+      caseId: event.case_id,
+      from: event.from_state as InvestmentCase['stage'],
+      to: event.to_state as InvestmentCase['stage'],
+      at: event.occurred_at,
+      byEmployeeId: event.actor_employee_id,
+      byDepartmentId: event.actor_department_id,
+      reason: event.reason,
+    }) as unknown as CaseTransition
+  })
 
   return seal(
     present({
@@ -217,6 +229,7 @@ export function toAssignment(row: AssignmentRow): Assignment {
         present({
           id: row.id,
           caseId: row.case_id,
+          playbookEntryKey: row.playbook_entry_key,
           departmentId: row.department_id,
           assigneeEmployeeId: row.assignee_employee_id,
           brief: row.brief,
@@ -452,12 +465,20 @@ export function toVerification(
             claimId: finding.claim_id,
             detail: finding.detail,
             blocking: finding.blocking,
+            /*
+             * All three parts, or no citation at all. The hash was previously
+             * reconstructed as `''` because the column did not exist — which
+             * fabricated data AND disabled the one thing the hash is for:
+             * detecting that the evidence moved after somebody verified against
+             * it. Migration 0012 added the column; 0012's CHECK keeps the three
+             * parts together.
+             */
             evidence:
-              finding.evidence_set_id && finding.observation_id
+              finding.evidence_set_id && finding.observation_id && finding.content_hash
                 ? {
                     setId: finding.evidence_set_id,
                     observationId: finding.observation_id,
-                    contentHash: '',
+                    contentHash: finding.content_hash,
                   }
                 : null,
           }) as VerificationFinding,
@@ -582,8 +603,19 @@ export function toDecision(
 export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
   return seal(
     build('transition event', 'events', () =>
-      buildTransitionEvent(
-        present({
+      buildTransitionEvent({
+        /*
+         * `fromState` is set AFTER `present()` rather than through it.
+         *
+         * `present` drops nulls so that an absent optional field stays absent —
+         * but `fromState: null` is not an absent field. It is the recorded fact
+         * that there was no previous state, which is what makes an event a
+         * creation rather than a movement. Running it through `present` turned
+         * `null` into `undefined`, and the in-memory store kept the null: a
+         * silent divergence on every creation event, which the parity suite
+         * passed straight over.
+         */
+        ...(present({
           eventId: row.event_id,
           subject: row.subject,
           caseId: row.case_id,
@@ -591,7 +623,6 @@ export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
           revisionId: row.revision_id,
           assignmentId: row.assignment_id,
           runId: row.run_id,
-          fromState: row.from_state,
           toState: row.to_state,
           actorEmployeeId: row.actor_employee_id,
           actorDepartmentId: row.actor_department_id,
@@ -601,18 +632,13 @@ export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
           causationId: row.causation_id,
           aggregateVersion: row.aggregate_version,
           corrects: row.corrects,
-        }) as TransitionEvent,
-      ),
+        }) as Omit<TransitionEvent, 'fromState'>),
+        fromState: row.from_state,
+      }),
     ),
     'events',
   )
 }
-
-/*
- * `fromState` is deliberately restored as null rather than dropped: null means
- * "there was no previous state", which is a fact about a creation event, and
- * `present()` would remove the key entirely.
- */
 
 /* ---------------------------------------------------------------- results */
 

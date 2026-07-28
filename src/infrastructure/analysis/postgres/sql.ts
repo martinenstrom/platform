@@ -20,7 +20,6 @@ import {
   StorageError,
   StoragePermissionError,
   StorageUnavailableError,
-  TransactionClosedError,
 } from '~/application/analysis/repositories'
 import {
   ANALYSIS_DB_METRIC,
@@ -114,8 +113,14 @@ export function mapDatabaseError(
   operation: string,
   correlationId?: string,
 ): StorageError {
+  /*
+   * Already mapped — a nested call, or an error the repository raised itself.
+   *
+   * `TransactionClosedError` deliberately has no branch here: the scope guard
+   * runs before any statement is issued, so it never reaches a driver catch.
+   * A branch for it would have been dead code that looked like protection.
+   */
   if (error instanceof StorageError) return error
-  if (error instanceof TransactionClosedError) throw error
 
   const failure = error as DatabaseFailure
   const constraint = failure.constraint ?? 'unknown'

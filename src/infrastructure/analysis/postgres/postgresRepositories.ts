@@ -116,10 +116,20 @@ export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
   tenantId?: string
 }
 
-export interface PostgresRepositories extends AnalysisRepositories {
+/**
+ * A repository container that owns a resource.
+ *
+ * `AnalysisRepositories` deliberately has no `close`: an in-memory store has
+ * nothing to release, and putting a lifecycle method on the port would make
+ * every consumer responsible for one. Infrastructure that owns a pool declares
+ * it here, and only whoever constructed it needs to know.
+ */
+export interface ClosableRepositories extends AnalysisRepositories {
   /** Drains the pool. Nothing else may be called afterwards. */
   close(): Promise<void>
 }
+
+export type PostgresRepositories = ClosableRepositories
 
 export function createPostgresRepositories(
   options: PostgresRepositoriesOptions,
@@ -153,7 +163,7 @@ export function createPostgresRepositories(
    * statement, one implicit transaction. A multi-statement read that needs a
    * consistent snapshot must use `withTransaction`.
    */
-  const ambient = repositoriesFor(poolScope(pool))
+  const ambient = repositoriesFor(poolScope(pool, (p) => recordPoolGauges(p, metrics)))
 
   return {
     ...ambient,

@@ -30,6 +30,7 @@
 
 import {
   DOMAIN_CONTRACT_VERSION,
+  playbookAssignmentIdentity,
   reviewIdentity,
   type AgentClaim,
   type AgentRunRecord,
@@ -41,6 +42,7 @@ import {
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
+  type RunEvent,
   type ReviewAttribution,
   type ReviewScope,
   type RiskReview,
@@ -49,6 +51,9 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  ConflictingRecordError,
+  DuplicateRecordError,
+  MalformedRowError,
   TransactionClosedError,
   type AnalysisRepositories,
   type AssignmentRepository,
@@ -65,6 +70,15 @@ import {
   type TransactionalAnalysisRepositories,
 } from '~/application/analysis/repositories'
 import type { ResultStore, StoredResult } from '~/application/analysis/resultStore'
+import {
+  claimSemanticKey,
+  decisionSemanticKey,
+  evidenceSetSemanticKey,
+  resultSemanticKey,
+  runEventIdentity,
+  runEventSemanticKey,
+  transitionEventSemanticKey,
+} from '~/application/analysis/writeOnce'
 import { seal } from './seal'
 
 /* ------------------------------------------------------------------- state */
@@ -78,6 +92,7 @@ interface Store {
   theses: Map<string, InvestmentThesis>
   assignments: Map<string, Assignment>
   runs: Map<string, AgentRunRecord>
+  runEvents: RunEvent[]
   claims: Map<string, { claim: AgentClaim; caseId: string; runId: string }>
   verifications: VerificationReview[]
   challenges: DevilsAdvocateReview[]
@@ -96,6 +111,7 @@ function emptyStore(): Store {
     theses: new Map(),
     assignments: new Map(),
     runs: new Map(),
+    runEvents: [],
     claims: new Map(),
     verifications: [],
     challenges: [],
@@ -127,6 +143,7 @@ function snapshot(store: Store): Store {
     theses: new Map(store.theses),
     assignments: new Map(store.assignments),
     runs: new Map(store.runs),
+    runEvents: [...store.runEvents],
     claims: new Map(store.claims),
     verifications: [...store.verifications],
     challenges: [...store.challenges],
@@ -145,6 +162,7 @@ function restore(target: Store, from: Store): void {
   target.theses = from.theses
   target.assignments = from.assignments
   target.runs = from.runs
+  target.runEvents = from.runEvents
   target.claims = from.claims
   target.verifications = from.verifications
   target.challenges = from.challenges
@@ -202,21 +220,41 @@ const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
  */
 function projectTransitions(store: Store, caseId: string): CaseTransition[] {
   return store.events
-    .filter((event) => event.subject === 'case' && event.caseId === caseId)
+    .filter(
+      (event) =>
+        event.subject === 'case' &&
+        event.caseId === caseId &&
+        // A creation event has no previous state, so it is not a MOVEMENT.
+        // `CaseTransition.from` is required, and inventing one to fill it would
+        // put a stage the case was never in into its history.
+        event.fromState !== null,
+    )
     .sort(
       (a, b) => byString(a.occurredAt, b.occurredAt) || byString(a.eventId, b.eventId),
     )
-    .map((event) =>
-      Object.freeze({
+    .map((event) => {
+      if (!event.actorEmployeeId || !event.actorDepartmentId) {
+        /*
+         * Refused rather than filled with an empty string. A department acts
+         * through a person, and an empty employee id reads as an employee.
+         * Migration 0012 enforces this at write time; this is the read half.
+         */
+        throw new MalformedRowError(
+          'case transition',
+          `event "${event.eventId}" moves the case but names no actor`,
+          'cases.get',
+        )
+      }
+      return Object.freeze({
         caseId: event.caseId,
         from: event.fromState as CaseTransition['from'],
         to: event.toState as CaseTransition['to'],
         at: event.occurredAt,
-        byEmployeeId: event.actorEmployeeId ?? '',
-        byDepartmentId: event.actorDepartmentId ?? '',
+        byEmployeeId: event.actorEmployeeId,
+        byDepartmentId: event.actorDepartmentId,
         ...(event.reason ? { reason: event.reason } : {}),
-      }),
-    )
+      })
+    })
 }
 
 function withTransitions(store: Store, investmentCase: InvestmentCase): InvestmentCase {
@@ -329,6 +367,30 @@ function assignmentRepository(store: Store, scope: Scope): AssignmentRepository 
     async save(assignment) {
       guard(scope, 'assignments.save')
       seal(assignment, 'assignments')
+
+      /*
+       * One assignment per case per playbook entry. A retried open-case command
+       * must not give a department the same work twice — and until
+       * `playbookEntryKey` existed on the domain type the unique index in the
+       * schema could never fire, so this rule was enforced nowhere at all.
+       *
+       * Ad-hoc assignments carry no key, and several on one case are fine.
+       */
+      const identity = playbookAssignmentIdentity(assignment)
+      if (identity) {
+        const clash = [...store.assignments.values()].find(
+          (candidate) =>
+            candidate.id !== assignment.id &&
+            playbookAssignmentIdentity(candidate) === identity,
+        )
+        if (clash) {
+          throw new DuplicateRecordError(
+            'assignments_case_playbook_entry_unique',
+            'assignments.save',
+          )
+        }
+      }
+
       store.assignments.set(assignment.id, assignment)
       return assignment
     },
@@ -344,9 +406,21 @@ function assignmentRepository(store: Store, scope: Scope): AssignmentRepository 
  * invisible on its run — PostgreSQL joins them back, so the two would disagree
  * on the same aggregate.
  */
-function withClaims(store: Store, record: AgentRunRecord): AgentRunRecord {
+function hydrateRun(store: Store, record: AgentRunRecord): AgentRunRecord {
   return Object.freeze({
     ...record,
+    /*
+     * Both collections come from their own stores rather than off the record.
+     * Claims live in their own repository; run events are append-only, so a
+     * later save carrying fewer of them does not erase what was recorded.
+     * Returning the record's own arrays would make this the only store where
+     * that erasure is possible.
+     */
+    events: Object.freeze(
+      store.runEvents
+        .filter((event) => event.runId === record.id)
+        .sort((a, b) => byString(a.at, b.at) || byString(a.state, b.state)),
+    ),
     claims: Object.freeze(
       [...store.claims.values()]
         .filter((entry) => entry.runId === record.id)
@@ -361,20 +435,36 @@ function runRepository(store: Store, scope: Scope): RunRepository {
     async get(id) {
       guard(scope, 'runs.get')
       const stored = store.runs.get(id)
-      return stored ? withClaims(store, stored) : null
+      return stored ? hydrateRun(store, stored) : null
     },
     async listForCase(caseId) {
       guard(scope, 'runs.listForCase')
       return [...store.runs.values()]
         .filter((r) => r.caseId === caseId)
         .sort((a, b) => byString(a.startedAt, b.startedAt) || byString(a.id, b.id))
-        .map((record) => withClaims(store, record))
+        .map((record) => hydrateRun(store, record))
     },
-    async save(run) {
+    async save(record) {
       guard(scope, 'runs.save')
-      seal(run, 'runs')
-      store.runs.set(run.id, run)
-      return run
+      seal(record, 'runs')
+      store.runs.set(record.id, record)
+
+      for (const event of record.events) {
+        const identity = runEventIdentity(event)
+        const existing = store.runEvents.find(
+          (candidate) => runEventIdentity(candidate) === identity,
+        )
+        if (existing) {
+          // Same instant, same state, a different reason: a disagreement about
+          // what happened rather than a retry of the same write.
+          if (runEventSemanticKey(existing) !== runEventSemanticKey(event)) {
+            throw new ConflictingRecordError('Run event', identity, 'runs.save')
+          }
+          continue
+        }
+        store.runEvents.push(event)
+      }
+      return hydrateRun(store, record)
     },
   }
 }
@@ -404,7 +494,12 @@ function claimRepository(store: Store, scope: Scope): ClaimRepository {
       seal(claim, 'claims')
       // Write-once: a claim that has been cited must not change underneath it.
       const existing = store.claims.get(claim.id)
-      if (existing) return existing.claim
+      if (existing) {
+        if (claimSemanticKey(existing.claim) !== claimSemanticKey(claim)) {
+          throw new ConflictingRecordError('Claim', claim.id, 'claims.save')
+        }
+        return existing.claim
+      }
       store.claims.set(claim.id, { claim, caseId, runId })
       return claim
     },
@@ -500,7 +595,19 @@ function eventRepository(store: Store, scope: Scope): EventRepository {
     async append(event) {
       guard(scope, 'events.append')
       seal(event, 'events')
-      if (store.events.some((e) => e.eventId === event.eventId)) return
+      const existing = store.events.find((e) => e.eventId === event.eventId)
+      if (existing) {
+        // Append-only: the same id carrying different facts is a rewrite of
+        // history attempted through the one door meant to refuse it.
+        if (transitionEventSemanticKey(existing) !== transitionEventSemanticKey(event)) {
+          throw new ConflictingRecordError(
+            'Transition event',
+            event.eventId,
+            'events.append',
+          )
+        }
+        return
+      }
       store.events.push(event)
     },
     async listForCase(caseId) {
@@ -536,7 +643,17 @@ function evidenceRepository(store: Store, scope: Scope): EvidenceRepository {
       // Content-addressed and immutable: an existing id already holds this
       // exact content, so a re-save is a no-op rather than a conflict.
       const existing = store.evidence.get(set.id)
-      if (existing) return existing
+      if (existing) {
+        /*
+         * The id hashes the set's COMPOSITION, not its payloads, so two sets
+         * can share an id and hold different values. Comparing the payloads is
+         * what makes that detectable on the write path.
+         */
+        if (evidenceSetSemanticKey(existing) !== evidenceSetSemanticKey(set)) {
+          throw new ConflictingRecordError('Evidence set', set.id, 'evidence.save')
+        }
+        return existing
+      }
       store.evidence.set(set.id, set)
       return set
     },
@@ -563,7 +680,16 @@ function decisionRepository(store: Store, scope: Scope): DecisionRepository {
       // One per case, and immutable once committed. A correction appends a new
       // superseding decision rather than rewriting a communicated one.
       const existing = store.decisions.get(decision.caseId)
-      if (existing) return existing
+      if (existing) {
+        if (decisionSemanticKey(existing) !== decisionSemanticKey(decision)) {
+          throw new ConflictingRecordError(
+            'Case decision',
+            decision.caseId,
+            'decisions.save',
+          )
+        }
+        return existing
+      }
       store.decisions.set(decision.caseId, decision)
       return decision
     },
@@ -582,7 +708,12 @@ function resultStore(store: Store, scope: Scope): ResultStore {
       // Write-once. The key covers every semantic input, so a differing result
       // under the same key means something is wrong; overwriting would hide it.
       const existing = store.results.get(result.key)
-      if (existing) return existing
+      if (existing) {
+        if (resultSemanticKey(existing) !== resultSemanticKey(result)) {
+          throw new ConflictingRecordError('Agent result', result.key, 'results.put')
+        }
+        return existing
+      }
       store.results.set(result.key, result)
       return result
     },

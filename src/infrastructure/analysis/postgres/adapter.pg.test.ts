@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   ConflictingRecordError,
+  InvariantViolationError,
   MalformedRowError,
   ReferentialIntegrityError,
   StorageError,
@@ -19,17 +20,20 @@ import {
 } from '~/application/analysis/repositories'
 import {
   buildAssignment,
+  buildClaim,
   buildEvidenceSet,
   buildRunRecord,
   buildTransitionEvent,
   observationRef,
   type InvestmentCase,
 } from '~/domain/analysis'
-import { catalogHash } from './sql'
+import { catalogHash, defaultSqlContext, run } from './sql'
+import { createPostgresPool } from './pool'
 import {
   createPostgresRepositories,
   type PostgresRepositories,
 } from './postgresRepositories'
+import { poolScope, unitOfWork } from './transaction'
 import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 
 let db: TestDatabase
@@ -90,6 +94,42 @@ const evidenceSet = (value = 4.1) =>
     assembledAt: AT,
     correlationId: 'corr-1',
   })
+
+/** Case, assignment, evidence and run — the prerequisites a claim needs. */
+async function seedRun(): Promise<string> {
+  await repos.cases.create(investmentCase())
+  await repos.assignments.save(
+    buildAssignment({
+      id: 'a-1',
+      caseId: 'case-1',
+      departmentId: 'global-macro',
+      brief: 'b',
+      status: 'queued',
+      createdAt: AT,
+      priority: 1,
+    }),
+  )
+  const set = await repos.evidence.save(evidenceSet())
+  await repos.runs.save(
+    buildRunRecord({
+      id: 'run-1',
+      caseId: 'case-1',
+      assignmentId: 'a-1',
+      departmentId: 'global-macro',
+      employeeId: 'macro-head',
+      agentContractVersion: '1',
+      outputSchemaVersion: '1',
+      prompt: { id: 'p', version: '1', contentHash: 'h' },
+      model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'h' },
+      evidenceSetId: set.id,
+      state: 'running',
+      startedAt: AT,
+      events: [],
+      claims: [],
+    }),
+  )
+  return set.id
+}
 
 /* ------------------------------------------------------------- error map */
 
@@ -274,9 +314,173 @@ describe('what the adapter checks on the way out', () => {
     await expect(
       repos.results.put({
         ...result,
-        claims: [{ id: 'claim-1' }] as never,
+        claims: [
+          buildClaim({
+            id: 'claim-1',
+            type: 'observation',
+            statement: 'x',
+            status: 'insufficient-evidence',
+            evidenceRefs: [],
+            contradictingEvidenceRefs: [],
+            confidence: { level: 'high', basis: [] },
+            temporalScope: { asOf: AT },
+          }),
+        ],
       }),
     ).rejects.toBeInstanceOf(ConflictingRecordError)
+  })
+})
+
+/* ------------------------------------------------------------- atomicity */
+
+describe('a logical write is atomic even outside a transaction (B4)', () => {
+  /*
+   * `cases.create` is three statements. Against a pool those would be three
+   * implicit transactions on up to three connections, so a crash between them
+   * would leave a case with no participants — a state the in-memory store
+   * cannot produce, because it writes each aggregate with one assignment.
+   *
+   * These tests inject a real mid-write failure through a foreign key, which
+   * is the only failure available that lands between the statements rather
+   * than before them.
+   */
+  it('leaves no case and no participants when the case write fails', async () => {
+    await expect(
+      repos.cases.create(investmentCase({ ownerEmployeeId: 'nobody-at-all' })),
+    ).rejects.toBeInstanceOf(ReferentialIntegrityError)
+
+    expect(await repos.cases.get('case-1')).toBeNull()
+    const { rows } = await db.owner.query(
+      'SELECT count(*)::int n FROM analysis.case_participants',
+    )
+    expect(rows[0].n).toBe(0)
+  })
+
+  it('leaves no citations when a claim write fails after the claim row', async () => {
+    await seedRun()
+    await expect(
+      repos.claims.save(
+        {
+          id: 'claim-bad',
+          type: 'observation',
+          statement: 'x',
+          status: 'insufficient-evidence',
+          evidenceRefs: [
+            { setId: 'no-such-set', observationId: 'no-such-obs', contentHash: 'h' },
+          ],
+          contradictingEvidenceRefs: [],
+          confidence: { level: 'high', basis: [] },
+          temporalScope: { asOf: AT },
+        },
+        'case-1',
+        'run-1',
+      ),
+    ).rejects.toBeInstanceOf(ReferentialIntegrityError)
+
+    // The claim row is inserted BEFORE its citations, so a naive
+    // implementation leaves a claim with no evidence behind.
+    expect(await repos.claims.get('claim-bad')).toBeNull()
+  })
+
+  it('joins the caller transaction rather than opening its own', async () => {
+    // No nesting, and the caller's boundary stays the atomic one.
+    await expect(
+      repos.withTransaction(async (tx) => {
+        await tx.cases.create(investmentCase())
+        await tx.assignments.save(
+          buildAssignment({
+            id: 'a-1',
+            caseId: 'case-1',
+            departmentId: 'global-macro',
+            brief: 'b',
+            status: 'queued',
+            createdAt: AT,
+            priority: 1,
+          }),
+        )
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow(/boom/)
+
+    expect(await repos.cases.get('case-1')).toBeNull()
+    expect(await repos.assignments.get('a-1')).toBeNull()
+  })
+})
+
+/* -------------------------------------------------------------- isolation */
+
+describe('isolation is stated, not inherited (B5)', () => {
+  it('runs READ COMMITTED even when the session default is REPEATABLE READ', async () => {
+    /*
+     * The whole idempotency design rests on READ COMMITTED. Inheriting the
+     * server default made that depend on a deployment setting nobody would
+     * think to check — and no test would have failed, because the test cluster
+     * happens to use the default.
+     *
+     * So the session default is deliberately set to the level that BREAKS the
+     * design, and the level in force inside a unit of work is read back.
+     */
+    const login = new URL(appUrl).username
+    await db.owner.query(
+      `ALTER ROLE ${login} SET default_transaction_isolation = 'repeatable read'`,
+    )
+
+    const pool = createPostgresPool({ connectionString: appUrl })
+    try {
+      const scope = poolScope(pool)
+      const context = defaultSqlContext()
+
+      const inForce = await unitOfWork(scope, 'probe', (client) =>
+        run<{ transaction_isolation: string }>(
+          client,
+          context,
+          'probe',
+          'SHOW transaction_isolation',
+        ),
+      )
+      expect(inForce[0]!.transaction_isolation).toBe('read committed')
+
+      // And the session default really was the other one, so the assertion
+      // above is about the BEGIN and not about the cluster.
+      const sessionDefault = await pool.query('SHOW default_transaction_isolation')
+      expect(sessionDefault.rows[0].default_transaction_isolation).toBe('repeatable read')
+    } finally {
+      await pool.end()
+      await db.owner.query(`ALTER ROLE ${login} RESET default_transaction_isolation`)
+    }
+  })
+
+  it('lets the idempotency pattern work under that session default', async () => {
+    // The behaviour the level buys: reserve, then read back the row a
+    // concurrent writer committed. REPEATABLE READ would find nothing.
+    const login = new URL(appUrl).username
+    await db.owner.query(
+      `ALTER ROLE ${login} SET default_transaction_isolation = 'repeatable read'`,
+    )
+    const first = createPostgresRepositories({ connectionString: appUrl })
+    const second = createPostgresRepositories({ connectionString: appUrl })
+    opened.push(first, second)
+
+    try {
+      const record = {
+        key: 'open:iso',
+        commandType: 'open-case',
+        resultRef: 'case-1',
+        createdAt: AT,
+      }
+      const [a, b] = await Promise.all([
+        first.idempotency.reserve(record),
+        second.idempotency.reserve({ ...record, resultRef: 'case-2' }),
+      ])
+      expect(a.resultRef).toBe(b.resultRef)
+
+      const { rows } = await db.owner.query(
+        'SELECT count(*)::int n FROM analysis.idempotency_keys',
+      )
+      expect(rows[0].n).toBe(1)
+    } finally {
+      await db.owner.query(`ALTER ROLE ${login} RESET default_transaction_isolation`)
+    }
   })
 })
 
@@ -338,7 +542,7 @@ describe('the event repository', () => {
     expect(Object.keys(repos.events).sort()).toEqual(['append', 'listForCase', 'recent'])
   })
 
-  it('keeps the first version of an event that is appended twice', async () => {
+  it('is idempotent for an identical replay', async () => {
     await repos.cases.create(investmentCase())
     const event = buildTransitionEvent({
       eventId: 'e-1',
@@ -352,11 +556,79 @@ describe('the event repository', () => {
     })
 
     await repos.events.append(event)
-    await repos.events.append({ ...event, toState: 'research' })
+    await repos.events.append(event)
 
-    const stored = await repos.events.listForCase('case-1')
-    expect(stored).toHaveLength(1)
-    expect(stored[0]!.toState).toBe('intake')
+    expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+  })
+
+  it('refuses the same id carrying different facts', async () => {
+    // Append-only means the log cannot be edited. Accepting this silently
+    // would have let a rewrite through the one door meant to refuse it.
+    await repos.cases.create(investmentCase())
+    const event = buildTransitionEvent({
+      eventId: 'e-1',
+      subject: 'case',
+      caseId: 'case-1',
+      fromState: null,
+      toState: 'intake',
+      occurredAt: AT,
+      correlationId: 'corr-1',
+      aggregateVersion: 1,
+    })
+
+    await repos.events.append(event)
+    await expect(
+      repos.events.append({ ...event, toState: 'withdrawn' }),
+    ).rejects.toBeInstanceOf(ConflictingRecordError)
+  })
+
+  it('refuses a case movement written without an actor', async () => {
+    // The database CHECK from 0012, reached through the adapter. The domain
+    // builder refuses it first; this proves the second line holds too.
+    await repos.cases.create(investmentCase())
+    await expect(
+      repos.events.append({
+        eventId: 'e-actorless',
+        subject: 'case',
+        caseId: 'case-1',
+        fromState: 'intake',
+        toState: 'research',
+        occurredAt: AT,
+        correlationId: 'corr-1',
+        aggregateVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(InvariantViolationError)
+  })
+
+  it('refuses to read a movement stored without an actor', async () => {
+    /*
+     * The read-side half, for rows that predate the constraint. Written behind
+     * the adapter's back with the CHECK dropped, because that is now the only
+     * way such a row can exist at all.
+     */
+    await repos.cases.create(investmentCase())
+    await db.owner.query(
+      `ALTER TABLE analysis.transition_events
+       DROP CONSTRAINT transition_events_case_movement_has_actor`,
+    )
+    await db.owner.query(
+      `INSERT INTO analysis.transition_events
+         (event_id, subject, case_id, tenant_id, from_state, to_state,
+          occurred_at, correlation_id, aggregate_version)
+       VALUES ('legacy', 'case', 'case-1', 'system', 'intake', 'research',
+               now(), 'corr', 2)`,
+    )
+    try {
+      await expect(repos.cases.get('case-1')).rejects.toBeInstanceOf(MalformedRowError)
+    } finally {
+      await db.owner.query('DELETE FROM analysis.transition_events')
+      await db.owner.query(
+        `ALTER TABLE analysis.transition_events
+         ADD CONSTRAINT transition_events_case_movement_has_actor CHECK (
+           subject <> 'case' OR from_state IS NULL
+           OR (actor_employee_id IS NOT NULL AND actor_department_id IS NOT NULL))`,
+      )
+    }
   })
 })
 
@@ -366,7 +638,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0011')
+    expect(provenance.schemaVersion).toBe('0012')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

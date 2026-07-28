@@ -80,6 +80,26 @@ export function buildTransitionEvent(event: TransitionEvent): TransitionEvent {
         `work does not stall anonymously`,
     )
   }
+  /*
+   * A case movement acts through somebody.
+   *
+   * `InvestmentCase.transitions` is projected from these events, and
+   * `CaseTransition` requires both an employee and a department — so an
+   * actorless movement leaves a reader with nowhere honest to go. The adapter
+   * used to fill the gap with an empty string, which reads as an employee and
+   * is not one; refusing it here means neither store has to invent anything.
+   *
+   * Creation events (`fromState === null`) and run events are exempt: a
+   * creation is not a movement, and a run is its own actor.
+   */
+  if (event.subject === 'case' && event.fromState !== null) {
+    if (!event.actorEmployeeId || !event.actorDepartmentId) {
+      throw new Error(
+        `Event "${event.eventId}" moves a case but names no actor. A department ` +
+          `acts through a person, and work does not move by itself.`,
+      )
+    }
+  }
   if (event.aggregateVersion < 0) {
     throw new Error(`Event "${event.eventId}" has a negative aggregate version`)
   }

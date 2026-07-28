@@ -374,6 +374,7 @@ swap should be an adapter, not a redesign.
 | 1 · schema and migrations                 | done  |
 | 1.5 · revision-scoped governance reviews  | done  |
 | 2 · PostgreSQL adapter                    | done  |
+| 2.1 · review corrections                  | done  |
 | 3 · dual write                            | open  |
 | 4 · read verification                     | open  |
 | 5 · read switch                           | open  |
@@ -451,7 +452,10 @@ noise, so this is recorded as an obligation instead.
 
 ---
 
-## TD-25 · Evidence integrity is checked at the set, not the item
+## TD-25 · Evidence payload integrity is checked on write, not on read
+
+**Incurred:** storage stage 2. **Partly resolved:** stage 2.1.
+**Severity:** low.
 
 **Incurred:** storage stage 2. **Severity:** low.
 
@@ -465,9 +469,17 @@ detected. Verifying each item's hash against its value on every read would
 catch it; that was not done because a legitimate value could hash differently
 after a jsonb round trip and break reads that are fine.
 
-**Preferred resolution:** verify item hashes in the read-verification stage,
+Stage 2.1 closed the **write** path: `evidenceSetSemanticKey` compares the
+stored payloads against the incoming ones, so two sets sharing an id and
+holding different values now raise `ConflictingRecordError` in both adapters
+rather than one silently winning.
+
+What remains open is the **read** path. A payload edited directly in the
+database, with its `content_hash` left alone, is still not detected on read.
+
+**Preferred resolution:** verify item hashes during stage 4 read verification,
 where a divergence is investigated rather than thrown, and promote it to a read
-check only if it proves stable.
+check only if it proves stable against jsonb round-tripping.
 
 ---
 

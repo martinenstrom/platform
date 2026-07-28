@@ -3,8 +3,13 @@
  *
  * Claims are stored beside their run rather than inside it, because a claim is
  * cited by theses, contested by challenges and verified individually — so it
- * needs its own identity and its own lookups. `runs.get` therefore hydrates
- * them back onto the record, in a fixed number of statements.
+ * needs its own identity and its own lookups. `runs.get` hydrates them back
+ * onto the record in a fixed number of statements.
+ *
+ * Run events are **append-only**: a save carrying fewer events than a previous
+ * one does not erase what was recorded. Migration 0012 put a unique constraint
+ * behind that, because the previous `WHERE NOT EXISTS` guard was a race rather
+ * than a rule.
  */
 
 import { ConflictingRecordError } from '~/application/analysis/repositories'
@@ -13,9 +18,14 @@ import type {
   ClaimRepository,
   RunRepository,
 } from '~/application/analysis/repositories'
-import type { AgentClaim, AgentRunRecord } from '~/domain/analysis'
+import {
+  claimSemanticKey,
+  runEventIdentity,
+  runEventSemanticKey,
+} from '~/application/analysis/writeOnce'
+import type { AgentClaim, AgentRunRecord, RunEvent } from '~/domain/analysis'
 import { groupBy } from './caseRepositories'
-import { toAssignment, toClaim, toRun } from './mapping'
+import { toAssignment, toClaim, toRun, toRunEvent } from './mapping'
 import type {
   AssignmentRow,
   ClaimEvidenceRow,
@@ -23,8 +33,8 @@ import type {
   RunEventRow,
   RunRow,
 } from './rows'
-import { catalog, one, run, ts, type SqlContext } from './sql'
-import { activeClient, type Scope } from './transaction'
+import { catalog, one, run, ts, type Queryable, type SqlContext } from './sql'
+import { singleStatement, unitOfWork, type Scope } from './transaction'
 
 /* ------------------------------------------------------------ assignments */
 
@@ -49,8 +59,9 @@ export const ASSIGNMENT_SQL = catalog({
 
   /*
    * The SET list is exactly the column grant `finos_app` holds. `brief`,
-   * `case_id` and `department_id` are what the assignment IS, and are absent
-   * on purpose — a blanket SET would be denied as well as wrong.
+   * `case_id`, `department_id` and `playbook_entry_key` are what the assignment
+   * IS, and are absent on purpose — a blanket SET would be denied as well as
+   * wrong.
    */
   save: `INSERT INTO analysis.assignments
            (id, case_id, tenant_id, department_id, assignee_employee_id,
@@ -75,17 +86,22 @@ export function createAssignmentRepository(
   context: SqlContext,
   tenantId: string,
 ): AssignmentRepository {
+  /** One statement, so no transaction is needed to make it consistent. */
   const list = async (operation: string, sql: string, parameter: string) => {
-    const client = activeClient(scope, operation)
-    const rows = await run<AssignmentRow>(client, context, operation, sql, [parameter])
+    const rows = await run<AssignmentRow>(
+      singleStatement(scope, operation),
+      context,
+      operation,
+      sql,
+      [parameter],
+    )
     return rows.map(toAssignment)
   }
 
   return {
     async get(assignmentId) {
-      const client = activeClient(scope, 'assignments.get')
       const row = await one<AssignmentRow>(
-        client,
+        singleStatement(scope, 'assignments.get'),
         context,
         'assignments.get',
         ASSIGNMENT_SQL.get,
@@ -104,29 +120,38 @@ export function createAssignmentRepository(
         departmentId,
       ),
 
-    async save(assignment) {
-      const client = activeClient(scope, 'assignments.save')
-      const waitingOn = assignment.waitingOn
-      await run(client, context, 'assignments.save', ASSIGNMENT_SQL.save, [
-        assignment.id,
-        assignment.caseId,
-        tenantId,
-        assignment.departmentId,
-        assignment.assigneeEmployeeId ?? null,
-        null,
-        assignment.brief,
-        assignment.status,
-        assignment.priority,
-        assignment.createdAt,
-        assignment.startedAt ?? null,
-        assignment.completedAt ?? null,
-        waitingOn?.kind ?? null,
-        waitingOn?.kind === 'assignment' ? waitingOn.assignmentId : null,
-        waitingOn?.kind === 'evidence' ? waitingOn.description : null,
-        assignment.returnedReason ?? null,
-      ])
-      return (await this.get(assignment.id))!
-    },
+    save: (assignment) =>
+      unitOfWork(scope, 'assignments.save', async (client) => {
+        const waitingOn = assignment.waitingOn
+        await run(client, context, 'assignments.save', ASSIGNMENT_SQL.save, [
+          assignment.id,
+          assignment.caseId,
+          tenantId,
+          assignment.departmentId,
+          assignment.assigneeEmployeeId ?? null,
+          // Half of the identity that makes opening a case idempotent. Null for
+          // ad-hoc work, several of which on one case is legitimate.
+          assignment.playbookEntryKey ?? null,
+          assignment.brief,
+          assignment.status,
+          assignment.priority,
+          assignment.createdAt,
+          assignment.startedAt ?? null,
+          assignment.completedAt ?? null,
+          waitingOn?.kind ?? null,
+          waitingOn?.kind === 'assignment' ? waitingOn.assignmentId : null,
+          waitingOn?.kind === 'evidence' ? waitingOn.description : null,
+          assignment.returnedReason ?? null,
+        ])
+        const row = await one<AssignmentRow>(
+          client,
+          context,
+          'assignments.save',
+          ASSIGNMENT_SQL.get,
+          [assignment.id],
+        )
+        return toAssignment(row!)
+      }),
   }
 }
 
@@ -165,20 +190,22 @@ export const CLAIM_SQL = catalog({
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          ON CONFLICT (id) DO NOTHING`,
 
+  /** One statement for every citation, rather than one round trip each. */
   saveEvidence: `INSERT INTO analysis.claim_evidence
                    (claim_id, evidence_set_id, observation_id, content_hash, stance)
-                 VALUES ($1, $2, $3, $4, $5)
+                 SELECT $1, s, o, h, t
+                 FROM unnest($2::text[], $3::text[], $4::text[], $5::text[])
+                      AS batch(s, o, h, t)
                  ON CONFLICT DO NOTHING`,
 })
 
-async function hydrateClaims(
-  scope: Scope,
+export async function hydrateClaims(
+  client: Queryable,
   context: SqlContext,
   operation: string,
   rows: ClaimRow[],
 ): Promise<AgentClaim[]> {
   if (rows.length === 0) return []
-  const client = activeClient(scope, operation)
   const evidence = await run<ClaimEvidenceRow>(
     client,
     context,
@@ -195,76 +222,78 @@ export function createClaimRepository(
   context: SqlContext,
   tenantId: string,
 ): ClaimRepository {
-  const list = async (operation: string, sql: string, parameter: string) => {
-    const client = activeClient(scope, operation)
-    const rows = await run<ClaimRow>(client, context, operation, sql, [parameter])
-    return hydrateClaims(scope, context, operation, rows)
+  async function readOne(client: Queryable, claimId: string, operation: string) {
+    const row = await one<ClaimRow>(client, context, operation, CLAIM_SQL.get, [claimId])
+    if (!row) return null
+    return (await hydrateClaims(client, context, operation, [row]))[0]!
   }
 
+  const list = (operation: string, sql: string, parameter: string) =>
+    unitOfWork(scope, operation, async (client) => {
+      const rows = await run<ClaimRow>(client, context, operation, sql, [parameter])
+      return hydrateClaims(client, context, operation, rows)
+    })
+
   return {
-    async get(claimId) {
-      const client = activeClient(scope, 'claims.get')
-      const row = await one<ClaimRow>(client, context, 'claims.get', CLAIM_SQL.get, [
-        claimId,
-      ])
-      if (!row) return null
-      return (await hydrateClaims(scope, context, 'claims.get', [row]))[0]!
-    },
+    get: (claimId) =>
+      unitOfWork(scope, 'claims.get', (client) => readOne(client, claimId, 'claims.get')),
 
     listForRun: (runId) => list('claims.listForRun', CLAIM_SQL.listForRun, runId),
     listForCase: (caseId) => list('claims.listForCase', CLAIM_SQL.listForCase, caseId),
 
-    async save(claim, caseId, runId) {
-      const client = activeClient(scope, 'claims.save')
-      const existing = await this.get(claim.id)
-      if (existing) {
-        /*
-         * Write-once, so a re-save is either a replay or a fault. Returning
-         * the stored claim on a replay matches the in-memory adapter;
-         * different content under the same id means something upstream is
-         * wrong, and silence would hide it for as long as anyone cared to look.
-         */
-        if (existing.statement !== claim.statement || existing.type !== claim.type) {
-          throw new ConflictingRecordError('Claim', claim.id, 'claims.save')
+    save: (claim, caseId, runId) =>
+      unitOfWork(scope, 'claims.save', async (client) => {
+        const existing = await readOne(client, claim.id, 'claims.save')
+        if (existing) {
+          /*
+           * Write-once, so a re-save is either a replay or a fault. The
+           * comparison lives in `writeOnce.ts` so both adapters use exactly
+           * the same definition of "the same claim" — the Stage 2 review found
+           * them disagreeing here, with the authoritative store the lenient one.
+           */
+          if (claimSemanticKey(existing) !== claimSemanticKey(claim)) {
+            throw new ConflictingRecordError('Claim', claim.id, 'claims.save')
+          }
+          return existing
         }
-        return existing
-      }
 
-      await run(client, context, 'claims.save', CLAIM_SQL.save, [
-        claim.id,
-        caseId,
-        tenantId,
-        runId,
-        claim.type,
-        claim.statement,
-        claim.status,
-        claim.confidence.level,
-        claim.confidence.cappedBy ?? null,
-        JSON.stringify(claim.confidence.basis),
-        claim.temporalScope.asOf,
-        claim.temporalScope.horizon ?? null,
-        claim.contests ?? null,
-        claim.supportsThesisId ?? null,
-        claim.opposesThesisId ?? null,
-        claim.type === 'causal' ? JSON.stringify(claim.attribution) : null,
-      ])
+        await run(client, context, 'claims.save', CLAIM_SQL.save, [
+          claim.id,
+          caseId,
+          tenantId,
+          runId,
+          claim.type,
+          claim.statement,
+          claim.status,
+          claim.confidence.level,
+          claim.confidence.cappedBy ?? null,
+          JSON.stringify(claim.confidence.basis),
+          claim.temporalScope.asOf,
+          claim.temporalScope.horizon ?? null,
+          claim.contests ?? null,
+          claim.supportsThesisId ?? null,
+          claim.opposesThesisId ?? null,
+          claim.type === 'causal' ? JSON.stringify(claim.attribution) : null,
+        ])
 
-      for (const [stance, refs] of [
-        ['supporting', claim.evidenceRefs],
-        ['contradicting', claim.contradictingEvidenceRefs],
-      ] as const) {
-        for (const ref of refs) {
+        const citations = [
+          ...claim.evidenceRefs.map((ref) => ({ ref, stance: 'supporting' })),
+          ...claim.contradictingEvidenceRefs.map((ref) => ({
+            ref,
+            stance: 'contradicting',
+          })),
+        ]
+        if (citations.length > 0) {
           await run(client, context, 'claims.save', CLAIM_SQL.saveEvidence, [
             claim.id,
-            ref.setId,
-            ref.observationId,
-            ref.contentHash,
-            stance,
+            citations.map((entry) => entry.ref.setId),
+            citations.map((entry) => entry.ref.observationId),
+            citations.map((entry) => entry.ref.contentHash),
+            citations.map((entry) => entry.stance),
           ])
         }
-      }
-      return (await this.get(claim.id))!
-    },
+        return (await readOne(client, claim.id, 'claims.save'))!
+      }),
   }
 }
 
@@ -286,7 +315,11 @@ export const RUN_SQL = catalog({
                 WHERE case_id = $1 ORDER BY started_at, id COLLATE "C"`,
 
   events: `SELECT run_id, ${ts('at')}, state, reason FROM analysis.run_events
-           WHERE run_id = ANY($1::text[]) ORDER BY run_id COLLATE "C", at, id`,
+           WHERE run_id = ANY($1::text[])
+           ORDER BY run_id COLLATE "C", at, state COLLATE "C"`,
+
+  eventsForRun: `SELECT run_id, ${ts('at')}, state, reason FROM analysis.run_events
+                 WHERE run_id = $1`,
 
   save: `INSERT INTO analysis.runs
            (id, case_id, tenant_id, assignment_id, department_id, employee_id,
@@ -307,13 +340,16 @@ export const RUN_SQL = catalog({
            cost_minor_units = EXCLUDED.cost_minor_units,
            currency = EXCLUDED.currency`,
 
-  // Append-only: a run's state history is a record, not a current value.
-  appendEvent: `INSERT INTO analysis.run_events (run_id, at, state, reason)
-                SELECT $1, $2::timestamptz, $3, $4
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM analysis.run_events
-                  WHERE run_id = $1 AND at = $2::timestamptz AND state = $3
-                )`,
+  /*
+   * Append-only, one statement for the whole batch. `ON CONFLICT DO NOTHING`
+   * against `run_events_identity_unique` (0012) rather than a `WHERE NOT
+   * EXISTS` probe: an existence test without a unique index behind it is a
+   * race two concurrent saves both win.
+   */
+  appendEvents: `INSERT INTO analysis.run_events (run_id, at, state, reason)
+                 SELECT $1, a::timestamptz, s, r
+                 FROM unnest($2::text[], $3::text[], $4::text[]) AS batch(a, s, r)
+                 ON CONFLICT ON CONSTRAINT run_events_identity_unique DO NOTHING`,
 })
 
 export function createRunRepository(
@@ -321,9 +357,12 @@ export function createRunRepository(
   context: SqlContext,
   tenantId: string,
 ): RunRepository {
-  async function hydrate(rows: RunRow[], operation: string): Promise<AgentRunRecord[]> {
+  async function hydrate(
+    client: Queryable,
+    rows: RunRow[],
+    operation: string,
+  ): Promise<AgentRunRecord[]> {
     if (rows.length === 0) return []
-    const client = activeClient(scope, operation)
     const ids = rows.map((row) => row.id)
 
     // Two statements for any number of runs, never one per run.
@@ -331,83 +370,120 @@ export function createRunRepository(
       run<RunEventRow>(client, context, operation, RUN_SQL.events, [ids]),
       run<ClaimRow>(client, context, operation, CLAIM_SQL.forRuns, [ids]),
     ])
-    const claims = await hydrateClaims(scope, context, operation, claimRows)
+    const claims = await hydrateClaims(client, context, operation, claimRows)
 
     const eventsByRun = groupBy(events, (event) => event.run_id)
-    const claimsByRun = groupBy(
-      claimRows.map((row, index) => ({ runId: row.run_id, claim: claims[index]! })),
-      (entry) => entry.runId,
-    )
+    const claimsByRun = new Map<string, AgentClaim[]>()
+    claimRows.forEach((row, index) => {
+      const existing = claimsByRun.get(row.run_id)
+      if (existing) existing.push(claims[index]!)
+      else claimsByRun.set(row.run_id, [claims[index]!])
+    })
 
     return rows.map((row) =>
-      toRun(
-        row,
-        eventsByRun.get(row.id) ?? [],
-        (claimsByRun.get(row.id) ?? []).map((entry) => entry.claim),
-      ),
+      toRun(row, eventsByRun.get(row.id) ?? [], claimsByRun.get(row.id) ?? []),
     )
   }
 
-  return {
-    async get(runId) {
-      const client = activeClient(scope, 'runs.get')
-      const row = await one<RunRow>(client, context, 'runs.get', RUN_SQL.get, [runId])
-      if (!row) return null
-      return (await hydrate([row], 'runs.get'))[0]!
-    },
+  async function readOne(client: Queryable, runId: string, operation: string) {
+    const row = await one<RunRow>(client, context, operation, RUN_SQL.get, [runId])
+    if (!row) return null
+    return (await hydrate(client, [row], operation))[0]!
+  }
 
-    async listForCase(caseId) {
-      const client = activeClient(scope, 'runs.listForCase')
-      const rows = await run<RunRow>(
-        client,
-        context,
-        'runs.listForCase',
-        RUN_SQL.listForCase,
-        [caseId],
-      )
-      return hydrate(rows, 'runs.listForCase')
-    },
+  /**
+   * Refuses the same instant and state recorded with a different reason.
+   *
+   * One query for the run's whole history, compared in memory. Checking each
+   * incoming event with its own `SELECT` made a ten-event save fifteen round
+   * trips instead of five — the kind of shape that is survivable at this
+   * volume and stops being survivable without anyone noticing.
+   */
+  async function assertNoConflictingEvents(
+    client: Queryable,
+    runId: string,
+    events: readonly RunEvent[],
+    operation: string,
+  ) {
+    const stored = await run<RunEventRow>(
+      client,
+      context,
+      operation,
+      RUN_SQL.eventsForRun,
+      [runId],
+    )
+    const byIdentity = new Map(
+      stored.map((row) => {
+        const event = toRunEvent(row)
+        return [runEventIdentity(event), runEventSemanticKey(event)]
+      }),
+    )
 
-    async save(record) {
-      const client = activeClient(scope, 'runs.save')
-      await run(client, context, 'runs.save', RUN_SQL.save, [
-        record.id,
-        record.caseId,
-        tenantId,
-        record.assignmentId,
-        record.departmentId,
-        record.employeeId,
-        record.revisionId ?? null,
-        record.state,
-        record.obsolete ?? false,
-        record.agentContractVersion,
-        record.outputSchemaVersion,
-        record.prompt.id,
-        record.prompt.version,
-        record.prompt.contentHash,
-        record.model.id,
-        record.model.provider,
-        record.model.parametersHash,
-        JSON.stringify(record.model.parameters),
-        record.evidenceSetId,
-        record.startedAt,
-        record.completedAt ?? null,
-        record.failureReason ?? null,
-        record.cost?.inputTokens ?? null,
-        record.cost?.outputTokens ?? null,
-        record.cost?.costMinorUnits ?? null,
-        record.cost?.currency ?? null,
-      ])
-
-      for (const event of record.events) {
-        await run(client, context, 'runs.save', RUN_SQL.appendEvent, [
-          record.id,
-          event.at,
-          event.state,
-          event.reason ?? null,
-        ])
+    for (const event of events) {
+      const existing = byIdentity.get(runEventIdentity(event))
+      if (existing !== undefined && existing !== runEventSemanticKey(event)) {
+        throw new ConflictingRecordError('Run event', runEventIdentity(event), operation)
       }
-      return (await this.get(record.id))!
-    },
+    }
+  }
+
+  return {
+    get: (runId) =>
+      unitOfWork(scope, 'runs.get', (client) => readOne(client, runId, 'runs.get')),
+
+    listForCase: (caseId) =>
+      unitOfWork(scope, 'runs.listForCase', async (client) => {
+        const rows = await run<RunRow>(
+          client,
+          context,
+          'runs.listForCase',
+          RUN_SQL.listForCase,
+          [caseId],
+        )
+        return hydrate(client, rows, 'runs.listForCase')
+      }),
+
+    save: (record) =>
+      unitOfWork(scope, 'runs.save', async (client) => {
+        await run(client, context, 'runs.save', RUN_SQL.save, [
+          record.id,
+          record.caseId,
+          tenantId,
+          record.assignmentId,
+          record.departmentId,
+          record.employeeId,
+          record.revisionId ?? null,
+          record.state,
+          record.obsolete ?? false,
+          record.agentContractVersion,
+          record.outputSchemaVersion,
+          record.prompt.id,
+          record.prompt.version,
+          record.prompt.contentHash,
+          record.model.id,
+          record.model.provider,
+          record.model.parametersHash,
+          JSON.stringify(record.model.parameters),
+          record.evidenceSetId,
+          record.startedAt,
+          record.completedAt ?? null,
+          record.failureReason ?? null,
+          record.cost?.inputTokens ?? null,
+          record.cost?.outputTokens ?? null,
+          record.cost?.costMinorUnits ?? null,
+          record.cost?.currency ?? null,
+        ])
+
+        if (record.events.length > 0) {
+          await assertNoConflictingEvents(client, record.id, record.events, 'runs.save')
+          await run(client, context, 'runs.save', RUN_SQL.appendEvents, [
+            record.id,
+            record.events.map((event) => event.at),
+            record.events.map((event) => event.state),
+            record.events.map((event) => event.reason ?? null),
+          ])
+        }
+        return (await readOne(client, record.id, 'runs.save'))!
+      }),
   }
 }

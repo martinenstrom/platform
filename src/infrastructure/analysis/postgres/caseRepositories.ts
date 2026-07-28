@@ -1,20 +1,23 @@
 /**
  * Cases and thesis revisions.
  *
+ * Every method is one `unitOfWork` — one connection, one transaction, joined
+ * to the caller's when there is one. That is what makes a three-statement
+ * `create` atomic and a three-statement `get` a single coherent snapshot,
+ * without the caller having to know how many statements either uses.
+ *
  * ## Why the statements live in a frozen catalogue
  *
  * `StorageProvenance.queryCatalogHash` answers "which SQL produced this
- * analysis", years later. It is computable only if every statement the adapter
- * can issue is enumerable, which is a structural property — retrofitting it
- * once SQL is inlined at forty call sites is a refactor of the whole adapter.
- * See D-S20.
+ * analysis" years later, and is computable only while every statement is
+ * enumerable. See D-S20.
  *
  * ## `COLLATE "C"`
  *
  * Byte order, matching the in-memory comparator. The test cluster collates
- * `Swedish_Sweden.1252`, where `å` sorts after `z`; a JS runtime sorts it
- * elsewhere. Ids are ASCII today, so this changes nothing observable and
- * removes an environment-dependent divergence before stage 4 has to find it.
+ * `Swedish_Sweden.1252`, where `å` sorts after `z`. Ids are ASCII today, so
+ * this changes nothing observable and removes an environment-dependent
+ * divergence before stage 4 has to find it.
  */
 
 import { ConcurrencyConflictError } from '~/application/analysis/repositories'
@@ -31,8 +34,8 @@ import type {
   ThesisRevisionRow,
   TransitionEventRow,
 } from './rows'
-import { catalog, one, run, ts, type SqlContext } from './sql'
-import { activeClient, type Scope } from './transaction'
+import { catalog, one, run, ts, type Queryable, type SqlContext } from './sql'
+import { unitOfWork, type Scope } from './transaction'
 
 const CASE_COLUMNS = `
   id, tenant_id, version, owner_employee_id, subject_kind, subject_ref,
@@ -49,7 +52,6 @@ const TRANSITION_COLUMNS = `
 export const CASE_SQL = catalog({
   get: `SELECT ${CASE_COLUMNS} FROM analysis.cases WHERE id = $1`,
 
-  // opened_at DESC, then id — the port's contract.
   list: `SELECT ${CASE_COLUMNS} FROM analysis.cases
          ORDER BY opened_at DESC, id COLLATE "C"`,
 
@@ -58,15 +60,19 @@ export const CASE_SQL = catalog({
                  ORDER BY case_id COLLATE "C", department_id COLLATE "C"`,
 
   /*
-   * The movement history. Projected rather than stored: two copies of one
+   * The movement history, projected rather than stored: two copies of one
    * history are two things that can disagree, and this table is the one with
    * append-only permissions behind it.
+   *
+   * `from_state IS NOT NULL` excludes creation events. A creation is not a
+   * MOVEMENT, and `CaseTransition.from` is required — including them would
+   * mean inventing a stage the case was never in.
    */
   transitions: `SELECT ${TRANSITION_COLUMNS} FROM analysis.transition_events
                 WHERE case_id = ANY($1::text[]) AND subject = 'case'
+                  AND from_state IS NOT NULL
                 ORDER BY occurred_at, event_id COLLATE "C"`,
 
-  // Idempotent on id: a replayed open-case command returns the existing case.
   create: `INSERT INTO analysis.cases
              (id, tenant_id, version, owner_employee_id, subject_kind, subject_ref,
               subject_display_name, question, stage, opened_at, closed_at)
@@ -79,8 +85,8 @@ export const CASE_SQL = catalog({
 
   /*
    * Only the three columns `finos_app` holds an UPDATE grant for. A blanket
-   * SET would be denied — and would also be able to rewrite the question the
-   * case was opened to answer, which is what the case IS.
+   * SET would be denied — and could rewrite the question the case was opened
+   * to answer, which is what the case IS.
    */
   save: `UPDATE analysis.cases SET stage = $2, version = $3, closed_at = $4
          WHERE id = $1 AND version = $5
@@ -89,8 +95,11 @@ export const CASE_SQL = catalog({
   currentVersion: `SELECT version FROM analysis.cases WHERE id = $1`,
 })
 
-/** Groups child rows by their parent id, so hydration never queries in a loop. */
-function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
+/** Groups child rows by parent id, so hydration never queries in a loop. */
+export function groupBy<T>(
+  rows: readonly T[],
+  key: (row: T) => string,
+): Map<string, T[]> {
   const grouped = new Map<string, T[]>()
   for (const row of rows) {
     const id = key(row)
@@ -107,16 +116,18 @@ export function createCaseRepository(
   tenantId: string,
 ): CaseRepository {
   /**
-   * Hydrates any number of cases in three statements.
+   * Hydrates any number of cases in two further statements.
    *
-   * One for the cases, one for every participant, one for every transition —
    * `= ANY` rather than a join, because participants and transitions are
    * collections: a join would return their Cartesian product and repeat every
    * case column once per combination.
    */
-  async function hydrate(rows: CaseRow[], operation: string): Promise<InvestmentCase[]> {
+  async function hydrate(
+    client: Queryable,
+    rows: CaseRow[],
+    operation: string,
+  ): Promise<InvestmentCase[]> {
     if (rows.length === 0) return []
-    const client = activeClient(scope, operation)
     const ids = rows.map((row) => row.id)
 
     const [participants, transitions] = await Promise.all([
@@ -136,93 +147,94 @@ export function createCaseRepository(
     )
   }
 
+  async function readOne(client: Queryable, caseId: string, operation: string) {
+    const row = await one<CaseRow>(client, context, operation, CASE_SQL.get, [caseId])
+    if (!row) return null
+    return (await hydrate(client, [row], operation))[0]!
+  }
+
+  async function writeParticipants(
+    client: Queryable,
+    investmentCase: InvestmentCase,
+    operation: string,
+  ) {
+    if (investmentCase.participatingDepartmentIds.length === 0) return
+    await run(client, context, operation, CASE_SQL.addParticipants, [
+      investmentCase.id,
+      [...investmentCase.participatingDepartmentIds],
+    ])
+  }
+
   return {
-    async get(caseId) {
-      const client = activeClient(scope, 'cases.get')
-      const row = await one<CaseRow>(client, context, 'cases.get', CASE_SQL.get, [caseId])
-      if (!row) return null
-      return (await hydrate([row], 'cases.get'))[0]!
-    },
+    get: (caseId) =>
+      unitOfWork(scope, 'cases.get', (client) => readOne(client, caseId, 'cases.get')),
 
-    async list() {
-      const client = activeClient(scope, 'cases.list')
-      const rows = await run<CaseRow>(client, context, 'cases.list', CASE_SQL.list)
-      return hydrate(rows, 'cases.list')
-    },
+    list: () =>
+      unitOfWork(scope, 'cases.list', async (client) => {
+        const rows = await run<CaseRow>(client, context, 'cases.list', CASE_SQL.list)
+        return hydrate(client, rows, 'cases.list')
+      }),
 
-    async create(investmentCase) {
-      const client = activeClient(scope, 'cases.create')
-      await run(client, context, 'cases.create', CASE_SQL.create, [
-        investmentCase.id,
-        tenantId,
-        investmentCase.version,
-        investmentCase.ownerEmployeeId,
-        investmentCase.subject.kind,
-        investmentCase.subject.ref,
-        investmentCase.subject.displayName,
-        investmentCase.question,
-        investmentCase.stage,
-        investmentCase.openedAt,
-        investmentCase.closedAt ?? null,
-      ])
-      if (investmentCase.participatingDepartmentIds.length > 0) {
-        await run(client, context, 'cases.create', CASE_SQL.addParticipants, [
+    create: (investmentCase) =>
+      unitOfWork(scope, 'cases.create', async (client) => {
+        await run(client, context, 'cases.create', CASE_SQL.create, [
           investmentCase.id,
-          [...investmentCase.participatingDepartmentIds],
-        ])
-      }
-      /*
-       * Re-read rather than echo the argument. `ON CONFLICT DO NOTHING` means
-       * a replay wrote nothing, and the caller is entitled to the case that
-       * actually exists — which is the in-memory adapter's behaviour too.
-       */
-      return (await this.get(investmentCase.id))!
-    },
-
-    async save(investmentCase, expectedVersion) {
-      const client = activeClient(scope, 'cases.save')
-      const updated = await run<{ version: number }>(
-        client,
-        context,
-        'cases.save',
-        CASE_SQL.save,
-        [
-          investmentCase.id,
-          investmentCase.stage,
+          tenantId,
           investmentCase.version,
+          investmentCase.ownerEmployeeId,
+          investmentCase.subject.kind,
+          investmentCase.subject.ref,
+          investmentCase.subject.displayName,
+          investmentCase.question,
+          investmentCase.stage,
+          investmentCase.openedAt,
           investmentCase.closedAt ?? null,
-          expectedVersion,
-        ],
-      )
-
-      if (updated.length === 0) {
+        ])
+        await writeParticipants(client, investmentCase, 'cases.create')
         /*
-         * Zero rows means either the version moved or the case is gone. The
-         * extra read is what lets the error say which — worth one statement on
-         * a path that is already failing.
+         * Re-read rather than echo the argument. `ON CONFLICT DO NOTHING`
+         * means a replay wrote nothing, and the caller is entitled to the case
+         * that actually exists — which is the in-memory adapter's behaviour.
          */
-        const current = await one<{ version: number }>(
+        return (await readOne(client, investmentCase.id, 'cases.create'))!
+      }),
+
+    save: (investmentCase, expectedVersion) =>
+      unitOfWork(scope, 'cases.save', async (client) => {
+        const updated = await run<{ version: number }>(
           client,
           context,
           'cases.save',
-          CASE_SQL.currentVersion,
-          [investmentCase.id],
+          CASE_SQL.save,
+          [
+            investmentCase.id,
+            investmentCase.stage,
+            investmentCase.version,
+            investmentCase.closedAt ?? null,
+            expectedVersion,
+          ],
         )
-        throw new ConcurrencyConflictError(
-          investmentCase.id,
-          expectedVersion,
-          current?.version ?? -1,
-        )
-      }
 
-      if (investmentCase.participatingDepartmentIds.length > 0) {
-        await run(client, context, 'cases.save', CASE_SQL.addParticipants, [
-          investmentCase.id,
-          [...investmentCase.participatingDepartmentIds],
-        ])
-      }
-      return (await this.get(investmentCase.id))!
-    },
+        if (updated.length === 0) {
+          // Zero rows means the version moved or the case is gone. The extra
+          // read is what lets the error say which.
+          const current = await one<{ version: number }>(
+            client,
+            context,
+            'cases.save',
+            CASE_SQL.currentVersion,
+            [investmentCase.id],
+          )
+          throw new ConcurrencyConflictError(
+            investmentCase.id,
+            expectedVersion,
+            current?.version ?? -1,
+          )
+        }
+
+        await writeParticipants(client, investmentCase, 'cases.save')
+        return (await readOne(client, investmentCase.id, 'cases.save'))!
+      }),
   }
 }
 
@@ -269,11 +281,11 @@ export function createThesisRepository(
   context: SqlContext,
 ): ThesisRepository {
   async function hydrate(
+    client: Queryable,
     rows: ThesisRevisionRow[],
     operation: string,
   ): Promise<InvestmentThesis[]> {
     if (rows.length === 0) return []
-    const client = activeClient(scope, operation)
     const links = await run<ThesisClaimLinkRow>(
       client,
       context,
@@ -285,68 +297,66 @@ export function createThesisRepository(
     return rows.map((row) => toThesis(row, byRevision.get(row.revision_id) ?? []))
   }
 
+  async function readOne(client: Queryable, revisionId: string, operation: string) {
+    const row = await one<ThesisRevisionRow>(client, context, operation, THESIS_SQL.get, [
+      revisionId,
+    ])
+    if (!row) return null
+    return (await hydrate(client, [row], operation))[0]!
+  }
+
   return {
-    async get(revisionId) {
-      const client = activeClient(scope, 'theses.get')
-      const row = await one<ThesisRevisionRow>(
-        client,
-        context,
-        'theses.get',
-        THESIS_SQL.get,
-        [revisionId],
-      )
-      if (!row) return null
-      return (await hydrate([row], 'theses.get'))[0]!
-    },
+    get: (revisionId) =>
+      unitOfWork(scope, 'theses.get', (client) =>
+        readOne(client, revisionId, 'theses.get'),
+      ),
 
-    async listForCase(caseId) {
-      const client = activeClient(scope, 'theses.listForCase')
-      const rows = await run<ThesisRevisionRow>(
-        client,
-        context,
-        'theses.listForCase',
-        THESIS_SQL.listForCase,
-        [caseId],
-      )
-      return hydrate(rows, 'theses.listForCase')
-    },
+    listForCase: (caseId) =>
+      unitOfWork(scope, 'theses.listForCase', async (client) => {
+        const rows = await run<ThesisRevisionRow>(
+          client,
+          context,
+          'theses.listForCase',
+          THESIS_SQL.listForCase,
+          [caseId],
+        )
+        return hydrate(client, rows, 'theses.listForCase')
+      }),
 
-    async save(revision) {
-      const client = activeClient(scope, 'theses.save')
-      await run(client, context, 'theses.save', THESIS_SQL.save, [
-        revision.revisionId,
-        revision.thesisId,
-        revision.revisionNumber,
-        revision.supersedesRevisionId ?? null,
-        revision.caseId,
-        revision.statement,
-        revision.position,
-        revision.lifecycle,
-        revision.invalidationCriteria,
-        revision.horizon ?? null,
-        revision.proposedByDepartmentId,
-        revision.proposedByEmployeeId,
-        revision.proposedAt,
-        revision.revisedAt ?? null,
-        revision.revisionReason ?? null,
-      ])
+    save: (revision) =>
+      unitOfWork(scope, 'theses.save', async (client) => {
+        await run(client, context, 'theses.save', THESIS_SQL.save, [
+          revision.revisionId,
+          revision.thesisId,
+          revision.revisionNumber,
+          revision.supersedesRevisionId ?? null,
+          revision.caseId,
+          revision.statement,
+          revision.position,
+          revision.lifecycle,
+          revision.invalidationCriteria,
+          revision.horizon ?? null,
+          revision.proposedByDepartmentId,
+          revision.proposedByEmployeeId,
+          revision.proposedAt,
+          revision.revisedAt ?? null,
+          revision.revisionReason ?? null,
+        ])
 
-      for (const [relation, ids] of [
-        ['supporting', revision.supportingClaimIds],
-        ['opposing', revision.opposingClaimIds],
-        ['cites', revision.citedByClaimIds],
-      ] as const) {
-        if (ids.length > 0) {
-          await run(client, context, 'theses.save', THESIS_SQL.saveLinks, [
-            revision.revisionId,
-            [...ids],
-            relation,
-          ])
+        for (const [relation, ids] of [
+          ['supporting', revision.supportingClaimIds],
+          ['opposing', revision.opposingClaimIds],
+          ['cites', revision.citedByClaimIds],
+        ] as const) {
+          if (ids.length > 0) {
+            await run(client, context, 'theses.save', THESIS_SQL.saveLinks, [
+              revision.revisionId,
+              [...ids],
+              relation,
+            ])
+          }
         }
-      }
-      return (await this.get(revision.revisionId))!
-    },
+        return (await readOne(client, revision.revisionId, 'theses.save'))!
+      }),
   }
 }
-
-export { groupBy }

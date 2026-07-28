@@ -42,6 +42,22 @@ export const OPEN_ASSIGNMENT_STATUSES: readonly AssignmentStatus[] = [
 export interface Assignment {
   id: AssignmentId
   caseId: CaseId
+  /**
+   * The playbook entry this assignment came from, when it came from one.
+   *
+   * Absent for ad-hoc work, which is legitimate and common — a manager asks a
+   * department for something the playbook did not anticipate. Present for
+   * playbook-created work, where it is half of the identity that makes opening
+   * a case idempotent: a retried command must not give a department the same
+   * work twice, and `(caseId, playbookEntryKey)` is what says it is the same
+   * work.
+   *
+   * The distinction is deliberate rather than incidental. Without it, "one
+   * assignment per case per playbook entry" is a rule the store can enforce
+   * and the domain cannot express — which is how it came to be enforced by a
+   * unique index that nothing could ever trigger.
+   */
+  playbookEntryKey?: string
   /** The department that owes the work. */
   departmentId: DepartmentId
   /** Set once someone picks it up. */
@@ -77,7 +93,27 @@ export function buildAssignment(assignment: Assignment): Assignment {
   if (assignment.status === 'returned' && !assignment.returnedReason) {
     throw new Error(`Assignment "${assignment.id}" was returned without a reason`)
   }
+  if (assignment.playbookEntryKey !== undefined && !assignment.playbookEntryKey.trim()) {
+    throw new Error(
+      `Assignment "${assignment.id}" carries a blank playbook entry key. Omit it ` +
+        `for ad-hoc work rather than recording an empty one — an empty key would ` +
+        `collide with every other empty key on the case.`,
+    )
+  }
   return Object.freeze({ ...assignment })
+}
+
+/**
+ * The identity that makes a playbook-created assignment idempotent.
+ *
+ * `null` for ad-hoc work, which has no derivable identity — several ad-hoc
+ * assignments on one case are legitimate, so they are distinguished only by
+ * their own ids.
+ */
+export function playbookAssignmentIdentity(assignment: Assignment): string | null {
+  return assignment.playbookEntryKey
+    ? `${assignment.caseId}|${assignment.playbookEntryKey}`
+    : null
 }
 
 export function isOpen(assignment: Assignment): boolean {

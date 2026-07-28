@@ -33,6 +33,8 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  ConflictingRecordError,
+  DuplicateRecordError,
   TransactionClosedError,
   type AnalysisRepositories,
   type CaseRepository,
@@ -206,14 +208,63 @@ export function describeRepositoryContract(name: string, options: ContractOption
         ...over,
       }) as VerificationReview
 
+    /** A real actor, for events that move a case. Never an empty string. */
+    const actor = {
+      actorEmployeeId: f.ownerEmployeeId,
+      actorDepartmentId: f.departmentId,
+    }
+
+    const storedResult = (): StoredResult => ({
+      key: 'result-1',
+      claims: [],
+      storedAt: AT,
+      inputs: {
+        evidenceSetId: 'set-1',
+        promptId: 'p',
+        promptVersion: '1',
+        promptContentHash: 'ph',
+        modelId: 'm',
+        modelParametersHash: 'mh',
+        agentContractVersion: '1',
+        outputSchemaVersion: '1',
+        canonicalizationVersion: '1',
+        agentImplementationVersion: '1',
+        departmentId: f.departmentId,
+      },
+    })
+
+    const decisionFor = (
+      evidenceSetId: string,
+      over: Partial<CaseDecision> = {},
+    ): CaseDecision => ({
+      caseId: 'case-1',
+      aggregateVersion: 3,
+      decidedAt: AT,
+      decidedByEmployeeId: f.ownerEmployeeId,
+      selectedRevisionId: 'rev-1',
+      notSelectedRevisionIds: [],
+      rejectedRevisionIds: [],
+      evidenceSetId,
+      governance: {
+        verification: 'verified',
+        unresolvedChallengeCount: 0,
+        compliance: 'approved',
+        risk: 'accepted',
+      },
+      rationale: 'The policy path is mispriced',
+      unresolvedDissent: [],
+      reconsiderationTriggers: [],
+      ...over,
+    })
+
     /** Case, thesis, assignment, run and evidence — the usual prerequisites. */
-    async function seedCase(): Promise<{ setId: string }> {
+    async function seedCase(): Promise<{ setId: string; observationId: string }> {
       await repos.cases.create(investmentCase())
       await repos.theses.save(thesis())
       await repos.assignments.save(assignment('a-1'))
       const set = await repos.evidence.save(evidenceSet())
       await repos.runs.save(run('run-1', set.id))
-      return { setId: set.id }
+      return { setId: set.id, observationId: set.items[0]!.ref.id }
     }
 
     /* --------------------------------------------------------- create/get */
@@ -988,6 +1039,339 @@ export function describeRepositoryContract(name: string, options: ContractOption
     })
 
     /* ---------------------------------------------------------- provenance */
+
+    /* ------------------------------------------------ adversarial coverage */
+
+    /*
+     * Everything below exists because the happy-path suite was green while
+     * three real divergences sat underneath it. Each group is one of the
+     * defects the Stage 2 review found, written so that it fails on the
+     * behaviour rather than on the implementation.
+     */
+
+    describe('null is not the same as absent (B1)', () => {
+      it('keeps fromState present and null on a creation event', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.events.append(event('e-1', { fromState: null, toState: 'intake' }))
+
+        const stored = (await repos.events.listForCase('case-1'))[0]!
+        // Both halves matter. `undefined` reads as "we do not know", and null
+        // is the recorded fact that there was no previous state.
+        expect(stored.fromState).toBeNull()
+        expect('fromState' in stored).toBe(true)
+      })
+
+      it('keeps a null selected revision on a decision', async () => {
+        // The CIO declining to take a position is a decision, not an absence.
+        const { setId } = await seedCase()
+        await repos.decisions.save({
+          caseId: 'case-1',
+          aggregateVersion: 2,
+          decidedAt: AT,
+          decidedByEmployeeId: f.ownerEmployeeId,
+          selectedRevisionId: null,
+          notSelectedRevisionIds: [],
+          rejectedRevisionIds: [],
+          evidenceSetId: setId,
+          governance: {
+            verification: 'verified',
+            unresolvedChallengeCount: 0,
+            compliance: 'not-required',
+            risk: 'not-required',
+          },
+          rationale: 'No position taken',
+          unresolvedDissent: [],
+          reconsiderationTriggers: [],
+        })
+
+        const stored = await repos.decisions.getForCase('case-1')
+        expect(stored!.selectedRevisionId).toBeNull()
+        expect('selectedRevisionId' in stored!).toBe(true)
+      })
+
+      it('leaves a genuinely absent optional absent', async () => {
+        // The other half of the distinction: `present()` exists for a reason.
+        await repos.cases.create(investmentCase())
+        await repos.events.append(
+          event('e-1', { fromState: 'intake', toState: 'research', ...actor }),
+        )
+        const stored = (await repos.events.listForCase('case-1'))[0]!
+        expect(stored.causationId).toBeUndefined()
+        expect('causationId' in stored).toBe(false)
+      })
+    })
+
+    describe('conflicting duplicates are refused (B2)', () => {
+      it('returns the stored claim for an identical replay', async () => {
+        await seedCase()
+        await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
+        const replay = await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
+        expect(replay.statement).toBe('The 10y is at 4.1%')
+      })
+
+      it('refuses a claim whose content changed under the same id', async () => {
+        await seedCase()
+        await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
+        await expect(
+          repos.claims.save(
+            claim('claim-1', { statement: 'Something else entirely' }),
+            'case-1',
+            'run-1',
+          ),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+
+      it('refuses a decision whose rationale changed under the same case', async () => {
+        const { setId } = await seedCase()
+        const base = decisionFor(setId)
+        await repos.decisions.save(base)
+        await expect(
+          repos.decisions.save({ ...base, rationale: 'A different reason' }),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+
+      it('refuses a stored result whose claims changed under the same key', async () => {
+        await seedCase()
+        const base = storedResult()
+        await repos.results.put(base)
+        await expect(
+          repos.results.put({ ...base, claims: [claim('claim-x')] }),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+
+      it('refuses an event whose facts changed under the same id', async () => {
+        // Append-only: the same id carrying different facts is a rewrite of
+        // history attempted through the one door meant to refuse it.
+        await repos.cases.create(investmentCase())
+        await repos.events.append(
+          event('e-1', { fromState: 'intake', toState: 'research', ...actor }),
+        )
+        await expect(
+          repos.events.append(
+            event('e-1', { fromState: 'intake', toState: 'aggregation', ...actor }),
+          ),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+
+      it('accepts an identical event replay', async () => {
+        await repos.cases.create(investmentCase())
+        const replayed = event('e-1', {
+          fromState: 'intake',
+          toState: 'research',
+          ...actor,
+        })
+        await repos.events.append(replayed)
+        await repos.events.append(replayed)
+        expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+      })
+    })
+
+    describe('run events accumulate (B3)', () => {
+      it('does not erase earlier events when a later save carries fewer', async () => {
+        const { setId } = await seedCase()
+        await repos.runs.save(
+          run('run-2', setId, {
+            events: [{ runId: 'run-2', at: AT, state: 'queued' }],
+          }),
+        )
+        await repos.runs.save(
+          run('run-2', setId, {
+            events: [{ runId: 'run-2', at: LATER, state: 'running' }],
+          }),
+        )
+
+        const stored = await repos.runs.get('run-2')
+        expect(stored!.events.map((entry) => entry.state)).toEqual(['queued', 'running'])
+      })
+
+      it('is idempotent for an identical event', async () => {
+        const { setId } = await seedCase()
+        const events = [{ runId: 'run-3', at: AT, state: 'queued' as const }]
+        await repos.runs.save(run('run-3', setId, { events }))
+        await repos.runs.save(run('run-3', setId, { events }))
+
+        expect((await repos.runs.get('run-3'))!.events).toHaveLength(1)
+      })
+
+      it('refuses the same instant and state recorded with a different reason', async () => {
+        const { setId } = await seedCase()
+        await repos.runs.save(
+          run('run-4', setId, {
+            events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'first' }],
+          }),
+        )
+        await expect(
+          repos.runs.save(
+            run('run-4', setId, {
+              events: [{ runId: 'run-4', at: AT, state: 'queued', reason: 'second' }],
+            }),
+          ),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+    })
+
+    /*
+     * B4 — atomicity of a multi-statement write — is asserted in
+     * `adapter.pg.test.ts` rather than here.
+     *
+     * Not an exemption: the property is real and tested. It is simply not
+     * SHARED. The in-memory store writes each aggregate with a single map
+     * assignment, so it has no partial state to leave behind and no foreign
+     * key to fail on halfway. Only the adapter that decomposes one logical
+     * write into several statements can be asked whether those statements are
+     * atomic, and forcing a shared version would mean branching an assertion
+     * on which store was running.
+     *
+     * What IS shared is the observable guarantee both stores make: a failed
+     * `withTransaction` leaves nothing behind, asserted above.
+     */
+
+    describe('reads are one coherent snapshot (H1)', () => {
+      it('never returns a case assembled from two different moments', async () => {
+        /*
+         * A case and its participants are separate statements. Read outside a
+         * transaction on a pool they could observe different moments and
+         * assemble a state that never existed.
+         */
+        await repos.cases.create(investmentCase())
+        const reads = await Promise.all([
+          repos.cases.get('case-1'),
+          repos.cases.get('case-1'),
+          repos.cases.get('case-1'),
+        ])
+        for (const value of reads) {
+          expect(value!.participatingDepartmentIds).toEqual([f.departmentId])
+        }
+      })
+    })
+
+    describe('a verification citation keeps its content hash (H2)', () => {
+      it('round-trips the exact evidence reference', async () => {
+        const { setId, observationId } = await seedCase()
+        await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
+        await repos.reviews.saveVerification(
+          verification('case', {
+            status: 'correction-required',
+            findings: [
+              {
+                kind: 'revised-evidence',
+                claimId: 'claim-1',
+                detail: 'the yield moved after this was cited',
+                blocking: true,
+                evidence: { setId, observationId, contentHash: 'the-hash-at-citation' },
+              },
+            ],
+          }),
+        )
+
+        const stored = (await repos.reviews.verificationsForCase('case-1'))[0]!
+        // An empty hash would make revision undetectable, which is the one
+        // thing the hash exists for.
+        expect(stored.findings[0]!.evidence).toEqual({
+          setId,
+          observationId,
+          contentHash: 'the-hash-at-citation',
+        })
+      })
+    })
+
+    describe('actors are never invented (H3)', () => {
+      it('refuses to construct a case movement that names no actor', () => {
+        /*
+         * Refused at the earliest point rather than papered over at the latest.
+         * The adapter used to fill a missing actor with an empty string, which
+         * reads as an employee; the domain now declines to build the event at
+         * all, migration 0012's CHECK backs it, and the mappers raise
+         * `MalformedRowError` for rows that predate both.
+         */
+        expect(() => event('e-1', { fromState: 'intake', toState: 'research' })).toThrow(
+          /names no actor/,
+        )
+      })
+
+      it('does not treat a creation event as a movement', async () => {
+        // A creation has no previous state, so it is not a transition — and
+        // `CaseTransition.from` is required, so including it would mean
+        // inventing a stage the case was never in.
+        await repos.cases.create(investmentCase())
+        await repos.events.append(event('e-1', { fromState: null, toState: 'intake' }))
+
+        expect((await repos.cases.get('case-1'))!.transitions).toEqual([])
+        expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+      })
+    })
+
+    describe('playbook assignment identity (H5)', () => {
+      it('refuses a second assignment for the same case and playbook entry', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.assignments.save(
+          assignment('a-macro', { playbookEntryKey: 'macro-analysis' }),
+        )
+        await expect(
+          repos.assignments.save(
+            assignment('a-macro-again', { playbookEntryKey: 'macro-analysis' }),
+          ),
+        ).rejects.toBeInstanceOf(DuplicateRecordError)
+      })
+
+      it('permits several ad-hoc assignments on one case', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.assignments.save(assignment('a-1'))
+        await repos.assignments.save(assignment('a-2'))
+        expect(await repos.assignments.listForCase('case-1')).toHaveLength(2)
+      })
+
+      it('round-trips the playbook entry key', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.assignments.save(
+          assignment('a-macro', { playbookEntryKey: 'macro-analysis' }),
+        )
+        expect((await repos.assignments.get('a-macro'))!.playbookEntryKey).toBe(
+          'macro-analysis',
+        )
+      })
+
+      it('lets the same entry key be reused on a different case', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.cases.create(investmentCase({ id: 'case-2' }))
+        await repos.assignments.save(
+          assignment('a-1', { playbookEntryKey: 'macro-analysis' }),
+        )
+        await expect(
+          repos.assignments.save(
+            assignment('a-2', { caseId: 'case-2', playbookEntryKey: 'macro-analysis' }),
+          ),
+        ).resolves.toBeDefined()
+      })
+    })
+
+    describe('the selected revision has one home (H6)', () => {
+      it('does not list the selected revision as an alternative', async () => {
+        const { setId } = await seedCase()
+        await repos.theses.save(thesis({ thesisId: 'th-sell', revisionId: 'rev-sell' }))
+        await repos.decisions.save(
+          decisionFor(setId, { notSelectedRevisionIds: ['rev-sell'] }),
+        )
+
+        const stored = await repos.decisions.getForCase('case-1')
+        expect(stored!.selectedRevisionId).toBe('rev-1')
+        expect(stored!.notSelectedRevisionIds).toEqual(['rev-sell'])
+        expect(stored!.rejectedRevisionIds).toEqual([])
+        // The selected revision appears in exactly one place.
+        expect(stored!.notSelectedRevisionIds).not.toContain('rev-1')
+        expect(stored!.rejectedRevisionIds).not.toContain('rev-1')
+      })
+    })
+
+    describe('methods survive being destructured', () => {
+      it('works when a repository method is taken as a value', async () => {
+        // The adapters must not differ in whether `this` is required.
+        const { create } = repos.cases
+        const { get } = repos.cases
+        await create(investmentCase())
+        expect((await get('case-1'))!.id).toBe('case-1')
+      })
+    })
 
     describe('provenance', () => {
       it('reports which implementation and which domain contract', async () => {

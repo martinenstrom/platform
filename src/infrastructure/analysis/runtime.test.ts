@@ -15,6 +15,7 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  ConflictingRecordError,
   type AnalysisRepositories,
 } from '~/application/analysis/repositories'
 import {
@@ -605,6 +606,11 @@ describe('repositories', () => {
       caseId: 'case-1',
       fromState: 'intake',
       toState: 'research',
+      // A case movement names its actor. The domain refuses to build one
+      // without: `CaseTransition` requires both, and the adapter used to fill
+      // the gap with an empty string.
+      actorEmployeeId: 'research-director',
+      actorDepartmentId: 'research-office',
       occurredAt: NOW.toISOString(),
       correlationId: 'c1',
       aggregateVersion: 2,
@@ -645,9 +651,13 @@ describe('repositories', () => {
       reconsiderationTriggers: [],
     }
     await repos.decisions.save(decision)
-    const replay = await repos.decisions.save({ ...decision, rationale: 'changed' })
-    // A decision that has been communicated is not silently rewritten.
-    expect(replay.rationale).toBe('x')
+    // A decision that has been communicated is not rewritten — and an attempt
+    // to rewrite it is reported rather than absorbed.
+    await expect(
+      repos.decisions.save({ ...decision, rationale: 'changed' }),
+    ).rejects.toBeInstanceOf(ConflictingRecordError)
+
+    expect((await repos.decisions.getForCase('case-1'))?.rationale).toBe('x')
   })
 
   it('treats an evidence set as immutable', async () => {

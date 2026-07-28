@@ -22,6 +22,7 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  ConflictingRecordError,
   TransactionClosedError,
   type AnalysisRepositories,
   type CaseRepository,
@@ -391,14 +392,27 @@ describe('claims are stored beside their run', () => {
     expect(await repos.claims.listForCase('case-1')).toHaveLength(1)
   })
 
-  it('is write-once', async () => {
+  it('is write-once, and says so rather than swallowing the change', async () => {
+    /*
+     * A cited claim must not change underneath the citation — and the caller
+     * must be TOLD, not quietly handed the old one. Returning the stored claim
+     * silently was the Stage 2 divergence: PostgreSQL raised and the
+     * authoritative in-memory store did not, so a dual write would have
+     * disagreed about whether anything was wrong.
+     */
     await repos.claims.save(claim, 'case-1', 'run-1')
-    const replay = await repos.claims.save(
-      { ...claim, statement: 'changed' },
-      'case-1',
-      'run-1',
+    await expect(
+      repos.claims.save({ ...claim, statement: 'changed' }, 'case-1', 'run-1'),
+    ).rejects.toBeInstanceOf(ConflictingRecordError)
+
+    expect((await repos.claims.get('claim-1'))?.statement).toBe(
+      'The ECB has held since June.',
     )
-    // A cited claim must not change underneath the citation.
+  })
+
+  it('accepts an identical replay', async () => {
+    await repos.claims.save(claim, 'case-1', 'run-1')
+    const replay = await repos.claims.save(claim, 'case-1', 'run-1')
     expect(replay.statement).toBe('The ECB has held since June.')
   })
 })

@@ -752,24 +752,35 @@ describe('the decision record', () => {
     ).rejects.toThrow(/violates foreign key/)
   })
 
-  it('refuses two selected revisions on one decision', async () => {
+  it('has nowhere to record a second selected revision', async () => {
+    // Migration 0012 removed the `selected` relation entirely: the selected
+    // revision lives in one place, the column a foreign key already protects.
     const caseId = await insertCase()
     const first = await insertRevision(caseId)
-    const second = await insertRevision(caseId)
     await insertDecision(caseId, first)
 
-    await sql.query(
-      `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
-       VALUES ($1, $2, 'selected')`,
-      [caseId, first],
-    )
     await expect(
       sql.query(
         `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
          VALUES ($1, $2, 'selected')`,
-        [caseId, second],
+        [caseId, first],
       ),
-    ).rejects.toThrow(/decision_revisions_one_selected/)
+    ).rejects.toThrow(/decision_revisions_relation_known/)
+  })
+
+  it('refuses to list the selected revision as an alternative to itself', async () => {
+    const caseId = await insertCase()
+    const selected = await insertRevision(caseId)
+    await insertDecision(caseId, selected)
+
+    await sql.query('BEGIN')
+    await sql.query(
+      `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
+       VALUES ($1, $2, 'not-selected')`,
+      [caseId, selected],
+    )
+    await expect(sql.query('COMMIT')).rejects.toThrow(/selected revision/)
+    await sql.query('ROLLBACK').catch(() => {})
   })
 })
 
@@ -786,7 +797,10 @@ describe('append-only and write-once records', () => {
          VALUES ($1, 'case', $2, 'system', 'review', 'blocked', now(), 'corr', 2)`,
         [id('event'), caseId],
       ),
-    ).rejects.toThrow(/transition_events_stall_has_reason/)
+      // Two CHECKs reject this row — no reason, and no actor. PostgreSQL
+      // reports whichever it evaluates first, and which one speaks is not the
+      // property under test.
+    ).rejects.toThrow(/violates check constraint/)
   })
 
   it('refuses an event that corrects itself', async () => {
