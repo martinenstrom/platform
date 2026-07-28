@@ -65,6 +65,8 @@ interface ProbeInput {
 const probe: CommandDefinition<ProbeInput, InvestmentCase> = {
   type: 'ProbeCommand',
   versionPolicy: 'refuses-expected-version',
+  reasonPolicy: 'optional',
+  category: 'workflow',
   mandate: () => ({ kind: 'any-employee' }),
   scope: (input) => ({ caseId: input.caseId }),
   payload: (input) => ({ question: input.question }),
@@ -115,7 +117,7 @@ describe('the runtime refuses to start when it cannot do its job', () => {
 
   it('names both versions so the mismatch is actionable', async () => {
     await expect(build({ expectedSchemaVersion: '9999' })).rejects.toThrow(
-      /expects schema version 9999.*is at 0013/s,
+      /expects schema version 9999.*is at 0014/s,
     )
   })
 
@@ -156,8 +158,8 @@ describe('storage provenance', () => {
     const container = await build()
 
     expect(container.provenance.buildId).toBe('test-build')
-    expect(container.provenance.schemaVersion).toBe('0013')
-    expect(container.provenance.commandContractVersion).toBe('1')
+    expect(container.provenance.schemaVersion).toBe('0014')
+    expect(container.provenance.commandContractVersion).toBe('2')
     // Derived: nobody types this, so it cannot drift from what it describes.
     expect(container.provenance.adapterVersion).toMatch(/^[0-9a-f]{16}$/)
     expect(container.provenance.provenanceId).toMatch(/^[0-9a-f]{64}$/)
@@ -168,7 +170,7 @@ describe('storage provenance', () => {
     )
     expect(rows[0]).toMatchObject({
       build_id: 'test-build',
-      command_contract_version: '1',
+      command_contract_version: '2',
     })
   })
 

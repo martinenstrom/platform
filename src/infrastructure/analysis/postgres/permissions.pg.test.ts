@@ -40,7 +40,7 @@ beforeAll(async () => {
        (id, adapter_id, adapter_version, build_id, query_catalog_hash,
         schema_version, domain_contract_version, command_contract_version,
         first_seen_at)
-     VALUES ($1, 'postgres', 'v', 'test', 'catalog', '0013', '2', '1', now())`,
+     VALUES ($1, 'postgres', 'v', 'test', 'catalog', '0014', '3', '2', now())`,
     [provenanceId],
   )
 })
@@ -294,10 +294,10 @@ describe('only the fields that legitimately move may be updated', () => {
     await app.query(
       `INSERT INTO analysis.thesis_revisions
          (revision_id, thesis_id, revision_number, case_id, statement, position,
-          lifecycle, invalidation_criteria, proposed_by_department_id,
-          proposed_by_employee_id, proposed_at)
+          lifecycle, invalidation_criteria, implications,
+          proposed_by_department_id, proposed_by_employee_id, proposed_at)
        VALUES ($1, $2, 1, $3, 'The policy path is mispriced', 'buy', 'proposed',
-               'The curve reprices above 4%', 'global-macro', 'macro-head', now())`,
+               'The curve reprices above 4%', '{}', 'global-macro', 'macro-head', now())`,
       [revisionId, id('thesis'), caseId],
     )
     await expect(

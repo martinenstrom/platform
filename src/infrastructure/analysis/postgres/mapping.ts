@@ -21,6 +21,7 @@
 import {
   buildAssignment,
   buildChallenge,
+  buildRequirementResolution,
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
@@ -38,6 +39,8 @@ import {
   type EvidenceItem,
   type EvidenceRef,
   type EvidenceSet,
+  type RequirementResolution,
+  type RoleFunction,
   type InvestmentCase,
   type InvestmentThesis,
   type ReviewScope,
@@ -62,6 +65,7 @@ import type {
   DecisionRow,
   EvidenceItemRow,
   EvidenceSetRow,
+  RequirementResolutionRow,
   ReviewRow,
   RunEventRow,
   RunRow,
@@ -170,6 +174,8 @@ export function toCase(
       participatingDepartmentIds: [...participants],
       transitions: movements,
       closedAt: row.closed_at,
+      playbookId: row.playbook_id,
+      playbookVersion: row.playbook_version,
     }) as InvestmentCase,
     'cases',
   )
@@ -200,6 +206,7 @@ export function toThesis(
           proposedByDepartmentId: row.proposed_by_department_id,
           proposedByEmployeeId: row.proposed_by_employee_id,
           proposedAt: row.proposed_at,
+          implications: row.implications as InvestmentThesis['implications'],
           supportingClaimIds: of('supporting'),
           opposingClaimIds: of('opposing'),
           citedByClaimIds: of('cites'),
@@ -651,5 +658,45 @@ export function toStoredResult(row: AgentResultRow): StoredResult {
       inputs: row.inputs,
     } as StoredResult,
     'results',
+  )
+}
+
+/* ------------------------------------------------ requirement resolutions */
+
+/**
+ * A recorded evaluation of a conditional playbook entry.
+ *
+ * Through `buildRequirementResolution`, not around it — a row with a blank
+ * reason or a system evaluator fails here rather than entering the domain as a
+ * plausible governance record.
+ */
+export function toRequirementResolution(
+  row: RequirementResolutionRow,
+): RequirementResolution {
+  return seal(
+    build('requirement resolution', 'requirements', () =>
+      buildRequirementResolution({
+        caseId: row.case_id,
+        playbookEntryKey: row.playbook_entry_key,
+        revisionId: row.revision_id,
+        state: row.state as RequirementResolution['state'],
+        ruleId: row.rule_id,
+        ruleVersion: row.rule_version,
+        reason: row.reason,
+        evaluatedAt: row.evaluated_at,
+        evaluatedBy: {
+          kind: 'employee',
+          employeeId: row.evaluated_by_employee_id,
+          roleId: row.evaluated_by_role_id,
+          roleFunction: row.evaluated_by_role_function as RoleFunction,
+          departmentId: row.evaluated_by_department_id,
+          departmentIsGovernance: row.evaluated_by_department_is_governance,
+          departmentHandles: row.evaluated_by_department_handles ?? [],
+          authentication: 'system-asserted',
+          organizationSeedVersion: row.organization_seed_version,
+        },
+      }),
+    ),
+    'requirements',
   )
 }

@@ -41,6 +41,12 @@ import {
 } from './evidenceRepositories'
 import { COMMAND_SQL, createCommandLog } from './commandLog'
 import {
+  PLAYBOOK_SQL,
+  REQUIREMENT_SQL,
+  createPlaybookRepository,
+  createRequirementRepository,
+} from './playbookRepositories'
+import {
   DECISION_SQL,
   EVENT_SQL,
   REVIEW_SQL,
@@ -102,6 +108,8 @@ const CATALOGS = [
   REVIEW_SQL,
   DECISION_SQL,
   EVENT_SQL,
+  PLAYBOOK_SQL,
+  REQUIREMENT_SQL,
 ]
 
 export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
@@ -172,6 +180,8 @@ export function createPostgresRepositories(
     decisions: createDecisionRepository(scope, context, tenantId),
     results: createResultStore(scope, context),
     commands: createCommandLog(scope, context, tenantId),
+    playbooks: createPlaybookRepository(scope, context),
+    requirements: createRequirementRepository(scope, context, tenantId),
   })
 
   /*

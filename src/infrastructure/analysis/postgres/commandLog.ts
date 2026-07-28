@@ -12,6 +12,7 @@
 
 import {
   CommandPayloadConflictError,
+  type CommandCategory,
   type CommandIntent,
   type CommandLog,
   type CommandOutcome,
@@ -36,6 +37,8 @@ interface CommandRow {
   command_id: string
   command_type: string
   command_contract_version: string
+  category: string | null
+  reason: string | null
   payload_hash: string
   case_id: string | null
   thesis_revision_id: string | null
@@ -70,7 +73,8 @@ interface OutcomeRow {
 }
 
 const COMMAND_COLUMNS = `
-  command_id, command_type, command_contract_version, payload_hash,
+  command_id, command_type, command_contract_version, category, reason,
+  payload_hash,
   case_id, thesis_revision_id, expected_version,
   actor_kind, actor_employee_id, actor_role_id, actor_role_function,
   actor_department_id, actor_department_is_governance, actor_department_handles,
@@ -92,6 +96,7 @@ export const COMMAND_SQL = catalog({
 
   record: `INSERT INTO analysis.commands
              (command_id, tenant_id, command_type, command_contract_version,
+              category, reason,
               payload_hash, case_id, thesis_revision_id, expected_version,
               actor_kind, actor_employee_id, actor_role_id, actor_role_function,
               actor_department_id, actor_department_is_governance,
@@ -100,7 +105,7 @@ export const COMMAND_SQL = catalog({
               authorization_basis, initiator_kind, initiator_id, correlation_id,
               occurred_at, received_at, provenance_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                   $18,$19,$20,$21,$22,$23,$24,$25,$26)
+                   $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
            ON CONFLICT (command_id, tenant_id) DO NOTHING`,
 
   /*
@@ -231,6 +236,13 @@ export function createCommandLog(
           commandId: row.command_id,
           commandType: row.command_type,
           commandContractVersion: row.command_contract_version,
+          /*
+           * A version-1 record carries no category, and is read as the
+           * version-1 record it is. Substituting a plausible default would
+           * make the ledger describe a declaration nobody made.
+           */
+          ...(row.category ? { category: row.category as CommandCategory } : {}),
+          ...(row.reason ? { reason: row.reason } : {}),
           payloadHash: row.payload_hash,
           ...(row.case_id ? { caseId: row.case_id } : {}),
           ...(row.thesis_revision_id ? { thesisRevisionId: row.thesis_revision_id } : {}),
@@ -304,6 +316,8 @@ export function createCommandLog(
           tenantId,
           intent.commandType,
           intent.commandContractVersion,
+          intent.category,
+          intent.reason ?? null,
           intent.payloadHash,
           intent.caseId ?? null,
           intent.thesisRevisionId ?? null,

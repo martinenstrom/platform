@@ -37,7 +37,9 @@ import {
 } from '../commandLog'
 import {
   COMMAND_CONTRACT_VERSION,
+  CommandCategoryMismatchError,
   CommandRejectedError,
+  categoryMatchesMandate,
   commandPayloadHash,
   resultFromLedger,
   type CommandEnvelope,
@@ -69,11 +71,12 @@ export async function runCommand<Input, Result>(
 ): Promise<CommandResult<Result>> {
   const { repositories, organization, provenance } = deps
 
-  /* ------------------------------------------------ the version declaration */
+  /* ---------------------------------------------------- the declarations */
 
-  const versionRejection = checkVersionPolicy(definition, envelope)
-  if (versionRejection) {
-    return recordRejection(definition, input, envelope, deps, null, versionRejection)
+  const declarationRejection =
+    checkVersionPolicy(definition, envelope) ?? checkReasonPolicy(definition, envelope)
+  if (declarationRejection) {
+    return recordRejection(definition, input, envelope, deps, null, declarationRejection)
   }
 
   /* --------------------------------------------------------- the actor */
@@ -98,6 +101,21 @@ export async function runCommand<Input, Result>(
   /* ---------------------------------------------------------- the mandate */
 
   const mandate = definition.mandate(input)
+
+  /*
+   * The category is checked against the mandate BEFORE anything is written.
+   * A mislabelled institutional act in an immutable ledger is worse than a
+   * failed request, and this is a programming error rather than something a
+   * caller did — so it throws rather than rejecting.
+   */
+  if (!categoryMatchesMandate(definition.category, mandate)) {
+    throw new CommandCategoryMismatchError(
+      definition.type,
+      definition.category,
+      mandate.kind,
+    )
+  }
+
   const decision = authorize(organization, actor, mandate)
   if (!decision.authorized) {
     return recordRejection(definition, input, envelope, deps, actor, {
@@ -109,12 +127,14 @@ export async function runCommand<Input, Result>(
   /* -------------------------------------------------------- prior identity */
 
   const scope = definition.scope(input)
+  const reason = normalizedReason(envelope)
   const payloadHash = commandPayloadHash({
     commandType: definition.type,
     caseId: scope.caseId,
     thesisRevisionId: scope.thesisRevisionId,
     expectedVersion: envelope.expectedVersion,
     accountableEmployeeId: actor.employeeId,
+    ...(reason ? { reason } : {}),
     payload: definition.payload(input),
   })
 
@@ -146,6 +166,7 @@ export async function runCommand<Input, Result>(
     commandId: envelope.commandId,
     commandType: definition.type,
     commandContractVersion: COMMAND_CONTRACT_VERSION,
+    category: definition.category,
     payloadHash,
     ...(scope.caseId ? { caseId: scope.caseId } : {}),
     ...(scope.thesisRevisionId ? { thesisRevisionId: scope.thesisRevisionId } : {}),
@@ -156,6 +177,7 @@ export async function runCommand<Input, Result>(
     mandate,
     authorizationBasis: decision.basis,
     initiator: envelope.initiator,
+    ...(reason ? { reason } : {}),
     correlationId: envelope.correlationId,
     occurredAt: envelope.occurredAt,
     receivedAt: deps.now(),
@@ -287,6 +309,44 @@ function checkVersionPolicy<I, R>(
   return null
 }
 
+/**
+ * The reason as it will be stored: trimmed, or absent.
+ *
+ * A whitespace-only reason is not a reason, and normalizing here means the
+ * policy check, the payload hash and the stored row all agree on that.
+ */
+function normalizedReason(envelope: CommandEnvelope): string | undefined {
+  const trimmed = envelope.reason?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function checkReasonPolicy<I, R>(
+  definition: CommandDefinition<I, R>,
+  envelope: CommandEnvelope,
+): DomainRejection | null {
+  const reason = normalizedReason(envelope)
+
+  if (definition.reasonPolicy === 'required' && !reason) {
+    return {
+      code: 'invariant-violated',
+      detail:
+        `"${definition.type}" reverses or materially redirects institutional ` +
+        `work and requires a reason. A blank or whitespace-only reason is not ` +
+        `a reason.`,
+    }
+  }
+  if (definition.reasonPolicy === 'forbidden' && reason) {
+    return {
+      code: 'invariant-violated',
+      detail:
+        `"${definition.type}" is a technical operation with no institutional ` +
+        `effect and must not carry a free-form reason. Storing one would ` +
+        `create unreviewed prose on a record nobody audits.`,
+    }
+  }
+  return null
+}
+
 async function findExisting(
   repositories: AnalysisRepositories,
   commandId: string,
@@ -319,16 +379,19 @@ async function recordRejection<I, R>(
   }
 
   const scope = definition.scope(input)
+  const reason = normalizedReason(envelope)
   const intent: CommandIntent = {
     commandId: envelope.commandId,
     commandType: definition.type,
     commandContractVersion: COMMAND_CONTRACT_VERSION,
+    category: definition.category,
     payloadHash: commandPayloadHash({
       commandType: definition.type,
       caseId: scope.caseId,
       thesisRevisionId: scope.thesisRevisionId,
       expectedVersion: envelope.expectedVersion,
       accountableEmployeeId: actor.employeeId,
+      ...(reason ? { reason } : {}),
       payload: definition.payload(input),
     }),
     ...(scope.caseId ? { caseId: scope.caseId } : {}),
@@ -341,6 +404,7 @@ async function recordRejection<I, R>(
     // A refusal has no authorizing basis; the reason is on the outcome.
     authorizationBasis: 'employee-of-the-firm',
     initiator: envelope.initiator,
+    ...(reason ? { reason } : {}),
     correlationId: envelope.correlationId,
     occurredAt: envelope.occurredAt,
     receivedAt: deps.now(),

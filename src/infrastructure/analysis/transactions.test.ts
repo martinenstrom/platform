@@ -44,7 +44,8 @@ const NOW = '2026-07-28T09:00:00.000Z'
 const commandIntent = (over: Partial<CommandIntent> = {}): CommandIntent => ({
   commandId: 'cmd-1',
   commandType: 'ProbeCommand',
-  commandContractVersion: '1',
+  commandContractVersion: '2',
+  category: 'workflow',
   payloadHash: 'hash-a',
   actor: {
     kind: 'employee',

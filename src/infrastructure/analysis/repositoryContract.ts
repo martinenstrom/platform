@@ -14,7 +14,7 @@
  * resolved rather than accommodated.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildAssignment,
   buildClaim,
@@ -44,6 +44,13 @@ import {
   CommandPayloadConflictError,
   type CommandIntent,
 } from '~/application/analysis/commandLog'
+import {
+  RISK_REVIEW_WHEN_IMPLEMENTABLE,
+  requirementStatusFor,
+  type ActorSnapshot,
+  type RequirementResolution,
+} from '~/domain/analysis'
+import { playbookContentHash, type CasePlaybook } from '~/application/analysis/playbooks'
 import { isDeeplyFrozen } from './seal'
 
 export interface ContractFixtures {
@@ -74,6 +81,19 @@ export function describeRepositoryContract(name: string, options: ContractOption
       repos = await options.create()
     })
 
+    /*
+     * Released after every test, not at the end of the file.
+     *
+     * `destroy` was declared and never called: each test's pool stayed open
+     * until `afterAll`, and the suite only passed because pools open
+     * connections lazily. Adding the C1B cases pushed it past
+     * `max_connections`, which is the good version of this bug — the bad
+     * version is a production leak nobody notices until traffic arrives.
+     */
+    afterEach(async () => {
+      await options.destroy?.(repos)
+    })
+
     /* ------------------------------------------------------------ fixtures */
 
     const investmentCase = (over: Partial<InvestmentCase> = {}): InvestmentCase => ({
@@ -95,6 +115,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         revisionId: 'rev-1',
         revisionNumber: 1,
         caseId: 'case-1',
+        implications: [],
         statement: 'The policy path is mispriced',
         position: 'buy',
         proposedByDepartmentId: f.departmentId,
@@ -737,7 +758,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
       const intent = (over: Partial<CommandIntent> = {}): CommandIntent => ({
         commandId: 'cmd-1',
         commandType: 'ProbeCommand',
-        commandContractVersion: '1',
+        commandContractVersion: '2',
+        category: 'workflow',
         payloadHash: 'hash-a',
         actor: {
           kind: 'employee',
@@ -1482,6 +1504,212 @@ export function describeRepositoryContract(name: string, options: ContractOption
       })
     })
 
+    /* ---------------------------------------------------- playbook registry */
+
+    describe('playbook versions', () => {
+      const playbook = (over: Partial<CasePlaybook> = {}): CasePlaybook => ({
+        id: 'contract-playbook',
+        version: '1',
+        caseKind: 'macro',
+        name: 'Contract playbook',
+        entries: [
+          {
+            key: 'primary',
+            departmentId: f.departmentId,
+            brief: 'Primary analysis',
+            blockedBy: [],
+            optionalInputs: [],
+            requirement: 'required',
+            priority: 10,
+          },
+          {
+            key: 'supporting',
+            departmentId: f.departmentId,
+            brief: 'Supporting analysis',
+            blockedBy: [],
+            optionalInputs: ['primary'],
+            requirement: 'optional',
+            priority: 5,
+          },
+          {
+            key: 'gate',
+            departmentId: f.governanceDepartmentId,
+            brief: 'Governance gate',
+            blockedBy: ['primary'],
+            optionalInputs: ['supporting'],
+            requirement: 'conditional',
+            conditionalRule: {
+              ruleId: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleId,
+              ruleVersion: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleVersion,
+            },
+            priority: 1,
+          },
+        ],
+        ...over,
+      })
+
+      it('round-trips entries, both edge kinds and the rule reference', async () => {
+        await repos.playbooks.register(playbook())
+        const stored = await repos.playbooks.get('contract-playbook', '1')
+
+        expect(stored).not.toBeNull()
+        const gate = stored!.entries.find((e) => e.key === 'gate')!
+        expect(gate.blockedBy).toEqual(['primary'])
+        expect(gate.optionalInputs).toEqual(['supporting'])
+        expect(gate.requirement).toBe('conditional')
+        expect(gate.conditionalRule?.ruleVersion).toBe('1')
+      })
+
+      it('orders entries by priority descending, then key', async () => {
+        await repos.playbooks.register(playbook())
+        const stored = await repos.playbooks.get('contract-playbook', '1')
+        expect(stored!.entries.map((e) => e.key)).toEqual([
+          'primary',
+          'supporting',
+          'gate',
+        ])
+      })
+
+      it('returns the stored version on an identical re-registration', async () => {
+        const first = await repos.playbooks.register(playbook())
+        const second = await repos.playbooks.register(playbook())
+        expect(playbookContentHash(second)).toBe(playbookContentHash(first))
+      })
+
+      it('refuses one version carrying two different workflows', async () => {
+        await repos.playbooks.register(playbook())
+        const edited = playbook({
+          entries: playbook().entries.filter((e) => e.key !== 'gate'),
+        })
+        await expect(repos.playbooks.register(edited)).rejects.toBeInstanceOf(
+          ConflictingRecordError,
+        )
+      })
+
+      it('keeps two versions of one playbook side by side', async () => {
+        await repos.playbooks.register(playbook())
+        await repos.playbooks.register(playbook({ version: '2' }))
+
+        expect(await repos.playbooks.get('contract-playbook', '1')).not.toBeNull()
+        expect(await repos.playbooks.get('contract-playbook', '2')).not.toBeNull()
+      })
+
+      it('returns null for a version that was never registered', async () => {
+        expect(await repos.playbooks.get('contract-playbook', '9')).toBeNull()
+      })
+
+      it('returns deeply frozen playbooks', async () => {
+        await repos.playbooks.register(playbook())
+        const stored = await repos.playbooks.get('contract-playbook', '1')
+        expect(isDeeplyFrozen(stored)).toBe(true)
+      })
+    })
+
+    /* ----------------------------------------------- requirement resolutions */
+
+    describe('requirement resolutions', () => {
+      const evaluator = (): ActorSnapshot => ({
+        kind: 'employee',
+        employeeId: f.governanceEmployeeId,
+        roleId: 'governance-role',
+        roleFunction: 'governance',
+        departmentId: f.governanceDepartmentId,
+        departmentIsGovernance: true,
+        departmentHandles: ['verification'],
+        authentication: 'system-asserted',
+        organizationSeedVersion: 'seed',
+      })
+
+      const resolution = (
+        over: Partial<RequirementResolution> = {},
+      ): RequirementResolution => ({
+        caseId: 'case-1',
+        playbookEntryKey: 'gate',
+        revisionId: 'rev-1',
+        state: 'required',
+        ruleId: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleId,
+        ruleVersion: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleVersion,
+        reason: 'The revision declares implementation implications.',
+        evaluatedAt: AT,
+        evaluatedBy: evaluator(),
+        ...over,
+      })
+
+      beforeEach(async () => {
+        await repos.cases.create(investmentCase())
+        await repos.theses.save(thesis())
+      })
+
+      it('stores a resolution scoped to an exact revision', async () => {
+        const provenance = await repos.provenance()
+        await repos.requirements.save(resolution(), provenance)
+
+        const stored = await repos.requirements.listForCase('case-1')
+        expect(stored).toHaveLength(1)
+        expect(stored[0]!.revisionId).toBe('rev-1')
+        expect(stored[0]!.state).toBe('required')
+        expect(stored[0]!.evaluatedBy.employeeId).toBe(f.governanceEmployeeId)
+      })
+
+      it('records not-required explicitly rather than as an absence', async () => {
+        const provenance = await repos.provenance()
+        await repos.requirements.save(resolution({ state: 'not-required' }), provenance)
+
+        const stored = await repos.requirements.listForCase('case-1')
+        expect(stored[0]!.state).toBe('not-required')
+        // A recorded no and an absence are different facts, and stay different.
+        expect(requirementStatusFor('gate', 'rev-1', stored).state).toBe('not-required')
+        expect(requirementStatusFor('other', 'rev-1', stored).state).toBe('unresolved')
+      })
+
+      it('replays an identical evaluation recorded at a different instant', async () => {
+        const provenance = await repos.provenance()
+        await repos.requirements.save(resolution(), provenance)
+        await repos.requirements.save(resolution({ evaluatedAt: LATER }), provenance)
+        expect(await repos.requirements.listForCase('case-1')).toHaveLength(1)
+      })
+
+      it('refuses a contradictory second evaluation of the same revision', async () => {
+        const provenance = await repos.provenance()
+        await repos.requirements.save(resolution(), provenance)
+        await expect(
+          repos.requirements.save(resolution({ state: 'not-required' }), provenance),
+        ).rejects.toBeInstanceOf(ConflictingRecordError)
+      })
+
+      it('orders by entry key, then revision', async () => {
+        const provenance = await repos.provenance()
+        await repos.theses.save(
+          thesis({
+            revisionId: 'rev-2',
+            revisionNumber: 2,
+            supersedesRevisionId: 'rev-1',
+            revisionReason: 'new evidence',
+          }),
+        )
+        await repos.requirements.save(resolution({ revisionId: 'rev-2' }), provenance)
+        await repos.requirements.save(resolution(), provenance)
+        await repos.requirements.save(
+          resolution({ playbookEntryKey: 'a-gate' }),
+          provenance,
+        )
+
+        const stored = await repos.requirements.listForCase('case-1')
+        expect(stored.map((r) => r.playbookEntryKey + '|' + r.revisionId)).toEqual([
+          'a-gate|rev-1',
+          'gate|rev-1',
+          'gate|rev-2',
+        ])
+      })
+
+      it('returns deeply frozen resolutions', async () => {
+        const provenance = await repos.provenance()
+        await repos.requirements.save(resolution(), provenance)
+        const stored = await repos.requirements.listForCase('case-1')
+        expect(isDeeplyFrozen(stored[0])).toBe(true)
+      })
+    })
+
     describe('methods survive being destructured', () => {
       it('works when a repository method is taken as a value', async () => {
         // The adapters must not differ in whether `this` is required.
@@ -1497,7 +1725,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('2')
+        expect(provenance.domainContractVersion).toBe('3')
       })
     })
   })

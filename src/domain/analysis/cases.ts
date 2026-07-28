@@ -143,6 +143,47 @@ export interface InvestmentCase {
   transitions: readonly CaseTransition[]
   /** Set when the case reaches a terminal stage. */
   closedAt?: string
+  /**
+   * The exact playbook version that created this case's workflow.
+   *
+   * Absent while the case sits in `intake`: a case may be received before
+   * anyone has decided how to work it. Set once, by `pinPlaybook`, and never
+   * changed — a case runs to completion under the version it started on, even
+   * after a better version exists.
+   */
+  playbookId?: string
+  playbookVersion?: string
+}
+
+/**
+ * Binds a case to the workflow version that will produce its assignments.
+ *
+ * Refuses a second pin rather than accepting the latest one. Re-pinning would
+ * rewrite which workflow the case's existing assignments came from, and the
+ * assignments themselves carry entry keys that only mean something relative to
+ * a version. The database enforces the same rule in migration 0014, so this is
+ * a fast, legible failure rather than the only one.
+ */
+export function pinPlaybook(
+  investmentCase: InvestmentCase,
+  playbookId: string,
+  playbookVersion: string,
+): InvestmentCase {
+  if (investmentCase.playbookId) {
+    if (
+      investmentCase.playbookId === playbookId &&
+      investmentCase.playbookVersion === playbookVersion
+    ) {
+      // The same pin. A retry, not a change.
+      return investmentCase
+    }
+    throw new Error(
+      `Case "${investmentCase.id}" already runs under ` +
+        `${investmentCase.playbookId}@${investmentCase.playbookVersion}. A case ` +
+        `runs to completion on the version it was instantiated from.`,
+    )
+  }
+  return Object.freeze({ ...investmentCase, playbookId, playbookVersion })
 }
 
 /* -------------------------------------------------------------- transitions */

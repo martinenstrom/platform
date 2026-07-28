@@ -14,7 +14,12 @@ import {
   type Mandate,
 } from '~/domain/analysis'
 import type { StorageError, StorageProvenance } from '../repositories'
-import type { CommandOutcome, LedgerEntry, RejectionCode } from '../commandLog'
+import type {
+  CommandCategory,
+  CommandOutcome,
+  LedgerEntry,
+  RejectionCode,
+} from '../commandLog'
 
 /**
  * The command contract version.
@@ -24,10 +29,16 @@ import type { CommandOutcome, LedgerEntry, RejectionCode } from '../commandLog'
  * a stored command means. Recorded in provenance, so an audit can tell which
  * contract produced a ledger entry.
  *
+ * A stored command keeps the version it was written under. Reading a
+ * version-1 record as though it were version 2 would attribute a reason and a
+ * category to a command that was issued before either existed.
+ *
  * History:
  *   1  Phase C1A — the foundation
+ *   2  Phase C1B — command reason and category; conditional requirements
+ *      resolve explicitly rather than being recomputed
  */
-export const COMMAND_CONTRACT_VERSION = '1'
+export const COMMAND_CONTRACT_VERSION = '2'
 
 /**
  * How the payload hash is computed.
@@ -51,6 +62,15 @@ export interface CommandEnvelope {
    * Enforced in both directions from the command's declaration.
    */
   expectedVersion?: number
+  /**
+   * Why this was issued, as opposed to what it did.
+   *
+   * Governed by the command's `reasonPolicy` and enforced in all three
+   * directions. Part of the payload identity: two requests differing only in
+   * their reason are two different institutional records, and a genuine retry
+   * carries the same envelope, so nothing legitimate is broken by counting it.
+   */
+  reason?: string
 }
 
 /* ----------------------------------------------------------------- result */
@@ -142,6 +162,7 @@ export function commandPayloadHash(input: {
   thesisRevisionId?: string
   expectedVersion?: number
   accountableEmployeeId: string | null
+  reason?: string
   payload: unknown
 }): string {
   return stableHashHex(
@@ -153,9 +174,57 @@ export function commandPayloadHash(input: {
       thesisRevisionId: input.thesisRevisionId ?? null,
       expectedVersion: input.expectedVersion ?? null,
       accountable: input.accountableEmployeeId,
+      reason: input.reason ?? null,
       payload: input.payload,
     }),
   )
+}
+
+/* ------------------------------------------------- category versus mandate */
+
+/**
+ * Whether a declared category can be true of a command with this mandate.
+ *
+ * Two taxonomies describing one act will disagree eventually, so this is the
+ * rule that stops them. The mandate is the authority the command ran under and
+ * is decided by `authorize`; the category is a declaration. Where the mandate
+ * implies a category, the declaration must match it — and, just as important,
+ * a command whose mandate is *not* a governance verdict may not file itself as
+ * governance.
+ */
+export function categoryMatchesMandate(
+  category: CommandCategory,
+  mandate: Mandate,
+): boolean {
+  switch (mandate.kind) {
+    case 'governance-verdict':
+      return category === 'governance'
+    case 'chief-decision':
+      return category === 'decision'
+    case 'system-operation':
+      return category === 'system'
+    default:
+      // Analysis versus workflow is a genuine judgement the definition makes.
+      // The reserved three are not available to it.
+      return category === 'analysis' || category === 'workflow'
+  }
+}
+
+/**
+ * Thrown when a command declares a category its mandate cannot support.
+ *
+ * A programming error rather than a rejection: the command never reaches the
+ * ledger, because a mislabelled institutional act is worse than a failed one.
+ */
+export class CommandCategoryMismatchError extends Error {
+  constructor(commandType: string, category: CommandCategory, mandateKind: string) {
+    super(
+      `Command "${commandType}" declares category "${category}" but runs under ` +
+        `mandate "${mandateKind}", which cannot support it. The ledger must not ` +
+        `contain an act filed as something it was not authorised as.`,
+    )
+    this.name = 'CommandCategoryMismatchError'
+  }
 }
 
 /* ------------------------------------------------------ replaying a result */

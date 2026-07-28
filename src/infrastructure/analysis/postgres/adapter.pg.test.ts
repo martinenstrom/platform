@@ -18,6 +18,7 @@ import {
   StoragePermissionError,
   type AnalysisRepositories,
 } from '~/application/analysis/repositories'
+import type { CommandIntent } from '~/application/analysis/commandLog'
 import {
   buildAssignment,
   buildClaim,
@@ -74,10 +75,11 @@ const investmentCase = (over: Partial<InvestmentCase> = {}): InvestmentCase => (
 })
 
 /** A ledger intent, for the concurrency and isolation tests. */
-const probeIntent = () => ({
+const probeIntent = (): CommandIntent => ({
   commandId: 'cmd-probe',
   commandType: 'ProbeCommand',
-  commandContractVersion: '1',
+  commandContractVersion: '2',
+  category: 'workflow',
   payloadHash: 'hash-a',
   caseId: undefined,
   actor: {
@@ -652,7 +654,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0013')
+    expect(provenance.schemaVersion).toBe('0014')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

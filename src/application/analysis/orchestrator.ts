@@ -140,13 +140,13 @@ export async function runPlaybook(
       state: 'blocked',
       claims: [],
       startedAt: context.now().toISOString(),
-      failureReason: `blocked by an upstream failure in ${entry.dependsOn.join(', ')}`,
+      failureReason: `blocked by an upstream failure in ${entry.blockedBy.join(', ')}`,
     })
   }
 
   const blockedKeys = blocked.map((e) => e.key)
   const missingRequired = playbook.entries
-    .filter((e) => e.required && !completed.has(e.key))
+    .filter((e) => e.requirement === 'required' && !completed.has(e.key))
     .map((e) => e.key)
 
   return {
@@ -167,10 +167,22 @@ async function runEntry(
 ): Promise<StageOutcome> {
   const startedAt = context.now().toISOString()
 
-  // Only declared dependencies. Never everything produced so far.
+  /*
+   * Only declared edges. Never everything produced so far.
+   *
+   * Blocking dependencies are always present by the time an entry runs.
+   * Optional inputs are included only when they actually completed — an
+   * absent one is left out rather than passed as an empty list, so the
+   * contributor can tell "the quant desk found nothing" from "the quant desk
+   * did not contribute".
+   */
   const inputs: Record<string, readonly AgentClaim[]> = {}
-  for (const dependency of entry.dependsOn) {
+  for (const dependency of entry.blockedBy) {
     inputs[dependency] = claimsByKey.get(dependency) ?? []
+  }
+  for (const optional of entry.optionalInputs) {
+    const claims = claimsByKey.get(optional)
+    if (claims) inputs[optional] = claims
   }
 
   const request: ContributionRequest = {

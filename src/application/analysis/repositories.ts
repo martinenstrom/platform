@@ -37,12 +37,14 @@ import type {
   EvidenceSet,
   InvestmentCase,
   InvestmentThesis,
+  RequirementResolution,
   RiskReview,
   TransitionEvent,
   VerificationReview,
 } from '~/domain/analysis'
 import type { ResultStore } from './resultStore'
 import type { CommandLog } from './commandLog'
+import type { CasePlaybook } from './playbooks'
 
 /**
  * PHASE B LIMITATION, recorded where an implementer will see it.
@@ -454,6 +456,52 @@ export interface DecisionRepository {
   save(decision: CaseDecision): Promise<CaseDecision>
 }
 
+/**
+ * Registered playbook versions.
+ *
+ * Append-only by design and by grant. A version a case has pinned can never be
+ * edited, so improving a workflow means registering a new version beside the
+ * old one and leaving cases in flight on the one they started under.
+ */
+export interface PlaybookRepository {
+  /**
+   * Registers a version, or returns the identical one already registered.
+   *
+   * Idempotent on `(id, version)` **when the content matches**. The same
+   * version carrying different entries throws `ConflictingRecordError`: a
+   * deployment that edited a playbook without bumping its version would
+   * otherwise give two cases different workflows under one name, and only the
+   * order they started in would say which.
+   */
+  register(playbook: CasePlaybook): Promise<CasePlaybook>
+  /** Entries ordered by `priority` descending, then `key`. */
+  get(playbookId: string, version: string): Promise<CasePlaybook | null>
+}
+
+/**
+ * Recorded evaluations of conditional playbook entries.
+ *
+ * Write-once and revision-scoped. Absence means *not yet evaluated*; an
+ * explicit `not-required` row means the firm looked and decided. See
+ * `domain/analysis/requirements` for why this is stored rather than
+ * recomputed on read.
+ */
+export interface RequirementRepository {
+  /**
+   * Idempotent on `(caseId, playbookEntryKey, revisionId)`.
+   *
+   * A deterministic rule cannot legitimately produce two answers for one
+   * triple, so a second write with different content is a real disagreement
+   * and throws `ConflictingRecordError`.
+   */
+  save(
+    resolution: RequirementResolution,
+    provenance: StorageProvenance,
+  ): Promise<RequirementResolution>
+  /** Ordered by `playbookEntryKey`, then `revisionId`. */
+  listForCase(caseId: string): Promise<RequirementResolution[]>
+}
+
 /* --------------------------------------------------------- command ledger */
 
 /*
@@ -493,6 +541,8 @@ export interface AnalysisRepositories {
   decisions: DecisionRepository
   results: ResultStore
   commands: CommandLog
+  playbooks: PlaybookRepository
+  requirements: RequirementRepository
 
   /**
    * Runs `operation` inside one transaction.

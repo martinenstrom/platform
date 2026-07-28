@@ -45,6 +45,7 @@ export interface ThesisRevisionRow {
   lifecycle: string
   invalidation_criteria: string
   horizon: string | null
+  implications: string[]
   proposed_by_department_id: string
   proposed_by_employee_id: string
   proposed_at: string
@@ -261,4 +262,50 @@ export interface IdempotencyKeyRow {
   command_type: string
   result_ref: string
   created_at: string
+}
+
+/* ------------------------------------------------------------- playbooks */
+
+export interface PlaybookVersionRow {
+  playbook_id: string
+  version: string
+  content_hash: string
+  case_kind: string
+  name: string
+}
+
+export interface PlaybookEntryRow {
+  entry_key: string
+  department_id: string
+  brief: string
+  requirement: string
+  priority: number
+  discipline_tag: string | null
+  conditional_rule_id: string | null
+  conditional_rule_version: string | null
+}
+
+export interface PlaybookEntryDependencyRow {
+  entry_key: string
+  depends_on: string
+  kind: string
+}
+
+export interface RequirementResolutionRow {
+  case_id: string
+  playbook_entry_key: string
+  revision_id: string
+  state: string
+  rule_id: string
+  rule_version: string
+  reason: string
+  evaluated_at: string
+  evaluated_by_employee_id: string
+  evaluated_by_role_id: string
+  evaluated_by_role_function: string
+  evaluated_by_department_id: string
+  evaluated_by_department_is_governance: boolean
+  evaluated_by_department_handles: string[]
+  evaluated_by_authentication: string
+  organization_seed_version: string
 }

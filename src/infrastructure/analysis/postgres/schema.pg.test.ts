@@ -83,10 +83,10 @@ async function insertRevision(
   await sql.query(
     `INSERT INTO analysis.thesis_revisions
        (revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
-        statement, position, lifecycle, invalidation_criteria,
+        statement, position, lifecycle, invalidation_criteria, implications,
         proposed_by_department_id, proposed_by_employee_id, proposed_at, revision_reason)
      VALUES ($1, $2, $3, $4, $5, 'The policy path is mispriced', 'buy', $6,
-             'The curve reprices above 4%', 'global-macro', 'macro-head', now(), $7)`,
+             'The curve reprices above 4%', '{}', 'global-macro', 'macro-head', now(), $7)`,
     [
       revisionId,
       overrides.thesisId ?? id('thesis'),
@@ -387,9 +387,9 @@ describe('thesis lineage', () => {
       sql.query(
         `INSERT INTO analysis.thesis_revisions
            (revision_id, thesis_id, revision_number, case_id, statement, position,
-            lifecycle, invalidation_criteria, proposed_by_department_id,
-            proposed_by_employee_id, proposed_at)
-         VALUES ($1, $2, 1, $3, 's', 'buy', 'proposed', '   ',
+            lifecycle, invalidation_criteria, implications,
+            proposed_by_department_id, proposed_by_employee_id, proposed_at)
+         VALUES ($1, $2, 1, $3, 's', 'buy', 'proposed', '   ', '{}',
                  'global-macro', 'macro-head', now())`,
         [id('rev'), id('thesis'), caseId],
       ),

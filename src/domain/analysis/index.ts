@@ -23,6 +23,7 @@ export * from './claims'
 export * from './review'
 export * from './contributions'
 export * from './authority'
+export * from './requirements'
 
 /**
  * The version of the analysis domain contracts.
@@ -35,5 +36,7 @@ export * from './authority'
  * History:
  *   1  Phase A/B contracts
  *   2  storage stage 1.5 — reviews became revision-scoped
+ *   3  Phase C1B — a revision declares its investment implications, and
+ *      conditional requirements resolve against an exact revision
  */
-export const DOMAIN_CONTRACT_VERSION = '2'
+export const DOMAIN_CONTRACT_VERSION = '3'

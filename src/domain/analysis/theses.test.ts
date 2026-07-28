@@ -35,6 +35,7 @@ const thesis = (over: Partial<InvestmentThesis> = {}): InvestmentThesis =>
     revisionId: 'rev-1',
     revisionNumber: 1,
     caseId: 'case-1',
+    implications: [],
     statement: 'Novo Nordisk is undervalued on 2027 earnings power.',
     position: 'buy',
     proposedByDepartmentId: 'equity-research',

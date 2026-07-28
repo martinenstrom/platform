@@ -42,6 +42,7 @@ import {
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
+  type RequirementResolution,
   type RunEvent,
   type ReviewAttribution,
   type ReviewScope,
@@ -62,6 +63,8 @@ import {
   type DecisionRepository,
   type EventRepository,
   type EvidenceRepository,
+  type PlaybookRepository,
+  type RequirementRepository,
   type ReviewRepository,
   type RunRepository,
   type ThesisRepository,
@@ -78,11 +81,14 @@ import {
   claimSemanticKey,
   decisionSemanticKey,
   evidenceSetSemanticKey,
+  requirementResolutionIdentity,
+  requirementResolutionSemanticKey,
   resultSemanticKey,
   runEventIdentity,
   runEventSemanticKey,
   transitionEventSemanticKey,
 } from '~/application/analysis/writeOnce'
+import { playbookContentHash, type CasePlaybook } from '~/application/analysis/playbooks'
 import { COMMAND_CONTRACT_VERSION } from '~/application/analysis/commands/envelope'
 import { seal } from './seal'
 
@@ -108,6 +114,8 @@ interface Store {
   decisions: Map<string, CaseDecision>
   results: Map<string, StoredResult>
   commands: Map<string, { intent: CommandIntent; outcomes: CommandOutcome[] }>
+  playbooks: Map<string, CasePlaybook>
+  requirements: Map<string, RequirementResolution>
 }
 
 function emptyStore(): Store {
@@ -127,6 +135,8 @@ function emptyStore(): Store {
     decisions: new Map(),
     results: new Map(),
     commands: new Map(),
+    playbooks: new Map(),
+    requirements: new Map(),
   }
 }
 
@@ -159,6 +169,8 @@ function snapshot(store: Store): Store {
     decisions: new Map(store.decisions),
     results: new Map(store.results),
     commands: new Map(store.commands),
+    playbooks: new Map(store.playbooks),
+    requirements: new Map(store.requirements),
   }
 }
 
@@ -178,6 +190,8 @@ function restore(target: Store, from: Store): void {
   target.decisions = from.decisions
   target.results = from.results
   target.commands = from.commands
+  target.playbooks = from.playbooks
+  target.requirements = from.requirements
 }
 
 /** A transaction's liveness, shared by every repository scoped to it. */
@@ -802,6 +816,107 @@ function commandLog(store: Store, scope: Scope): CommandLog {
   }
 }
 
+/**
+ * Registered playbook versions.
+ *
+ * Keyed on `(id, version)` and compared by content hash, so registering "v1"
+ * twice with different entries conflicts rather than silently giving two cases
+ * different workflows under one name.
+ */
+function playbookRepository(store: Store, scope: Scope): PlaybookRepository {
+  const key = (id: string, version: string) => `${id}|${version}`
+
+  return {
+    async register(playbook) {
+      guard(scope, 'playbooks.register')
+      seal(playbook, 'playbooks')
+
+      const existing = store.playbooks.get(key(playbook.id, playbook.version))
+      if (existing) {
+        if (playbookContentHash(existing) !== playbookContentHash(playbook)) {
+          throw new ConflictingRecordError(
+            'Playbook version',
+            key(playbook.id, playbook.version),
+            'playbooks.register',
+          )
+        }
+        return existing
+      }
+
+      store.playbooks.set(key(playbook.id, playbook.version), playbook)
+      return playbook
+    },
+
+    async get(playbookId, version) {
+      guard(scope, 'playbooks.get')
+      const found = store.playbooks.get(key(playbookId, version))
+      if (!found) return null
+      /*
+       * Sorted into the order PostgreSQL returns — priority descending, then
+       * key — and re-sealed. Sorting allocates a fresh array and a fresh
+       * wrapper, and an unsealed one would breach the invariant that no
+       * mutable structure reaches application code. The parity suite found
+       * this rather than a reviewer.
+       */
+      return seal(
+        {
+          ...found,
+          entries: [...found.entries].sort(
+            (a, b) => b.priority - a.priority || byString(a.key, b.key),
+          ),
+        },
+        'playbooks',
+      )
+    },
+  }
+}
+
+/**
+ * Recorded evaluations of conditional entries.
+ *
+ * Write-once on `(caseId, entryKey, revisionId)`. The semantic key excludes
+ * `evaluatedAt`, so a replay of the same evaluation is a replay rather than a
+ * disagreement — see `writeOnce.ts`.
+ */
+function requirementRepository(store: Store, scope: Scope): RequirementRepository {
+  return {
+    async save(resolution) {
+      guard(scope, 'requirements.save')
+      seal(resolution, 'requirements')
+
+      const identity = requirementResolutionIdentity(resolution)
+      const existing = store.requirements.get(identity)
+      if (existing) {
+        if (
+          requirementResolutionSemanticKey(existing) !==
+          requirementResolutionSemanticKey(resolution)
+        ) {
+          throw new ConflictingRecordError(
+            'Requirement resolution',
+            identity,
+            'requirements.save',
+          )
+        }
+        return existing
+      }
+
+      store.requirements.set(identity, resolution)
+      return resolution
+    },
+
+    async listForCase(caseId) {
+      guard(scope, 'requirements.listForCase')
+      return [...store.requirements.values()]
+        .filter((resolution) => resolution.caseId === caseId)
+        .sort(
+          (a, b) =>
+            byString(a.playbookEntryKey, b.playbookEntryKey) ||
+            byString(a.revisionId, b.revisionId),
+        )
+    },
+  }
+}
+
 function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepositories {
   return {
     cases: caseRepository(store, scope),
@@ -815,6 +930,8 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     decisions: decisionRepository(store, scope),
     results: resultStore(store, scope),
     commands: commandLog(store, scope),
+    playbooks: playbookRepository(store, scope),
+    requirements: requirementRepository(store, scope),
   }
 }
 

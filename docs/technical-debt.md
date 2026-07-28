@@ -557,6 +557,72 @@ commands. The ledger schema already carries what references them.
 
 ---
 
+## TD-29 · Conditional requirements have no command that resolves them
+
+**Incurred:** Phase C1B. **Severity:** medium. **Blocks:** the Macro workflow
+reaching a decision.
+
+The model is complete: a conditional entry names a versioned rule, a resolution
+is scoped to an exact revision, and `not-required` is recorded rather than
+inferred from absence. `ResolveConditionalRequirement` is already declared in
+`REASON_REQUIRED_COMMANDS`.
+
+**What is missing is the command itself.** Nothing in C1B writes a resolution,
+so every conditional entry stays `unresolved` — which is the correct state, and
+also a state no case can currently leave.
+
+**Preferred resolution:** the command lands in C1C beside the contribution and
+aggregation commands, because the rule reads a revision's declared implications
+and there are no aggregated revisions until then. Its reason policy is already
+`required`: excusing Risk Review is exactly the kind of act that owes an
+explanation.
+
+---
+
+## TD-30 · Command ids and event ids are supplied by the caller
+
+**Incurred:** Phase C1B. **Severity:** medium. **Blocks:** nothing today;
+blocks a public API.
+
+`OpenInvestmentCase` takes `creationEventId`, and `InstantiatePlaybook` takes
+`assignmentIdPrefix` and `eventIdPrefix`. Generating them inside the handler
+would make a retry write a second set of events, so the caller must supply
+stable ones — that part is right.
+
+**What is not right is that nothing constrains them.** A caller can pass a
+prefix that collides with another case's, and the only protection is the
+uniqueness of the ids themselves. Inside the orchestrator this is fine, because
+one code path derives them. It stops being fine the moment a command is issued
+from a route.
+
+**Preferred resolution:** derive the prefixes from the command id, which is
+already required to be stable across retries and unique across commands. That
+makes collision impossible rather than merely unlikely, and removes three
+fields from the input. Worth doing when the first command becomes reachable
+from outside the runtime.
+
+---
+
+## TD-31 · The playbook is chosen by the caller, not routed to
+
+**Incurred:** Phase C1B. **Severity:** low. **Blocks:** nothing.
+
+`InstantiatePlaybook` receives a whole `CasePlaybook` object and validates that
+its `caseKind` matches the case. The intended long-run shape is the opposite:
+the case's subject kind selects the playbook, the way a discipline selects a
+department, so that a new kind of case is data rather than a decision at the
+call site.
+
+`COMPILED_PLAYBOOKS` exists and holds exactly one entry, which is why this has
+not bitten yet.
+
+**Preferred resolution:** replace the input with `(playbookId, version)` and
+resolve against `COMPILED_PLAYBOOKS`, once there is a second playbook to
+choose between. Passing the object through is a one-playbook convenience that
+would become a routing decision scattered across call sites.
+
+---
+
 ## TD-22 · The organization is not temporally versioned
 
 **Incurred:** storage stage 1. **Severity:** low. **Blocks:** nothing known.

@@ -84,12 +84,19 @@ export const CASE_SQL = catalog({
                     ON CONFLICT DO NOTHING`,
 
   /*
-   * Only the three columns `finos_app` holds an UPDATE grant for. A blanket
-   * SET would be denied — and could rewrite the question the case was opened
-   * to answer, which is what the case IS.
+   * Only the columns `finos_app` holds an UPDATE grant for. A blanket SET
+   * would be denied — and could rewrite the question the case was opened to
+   * answer, which is what the case IS.
+   *
+   * The playbook pin joined that list in 0014, because `intake` is a legal
+   * resting state and the workflow is chosen after the case exists. It is
+   * guarded by a trigger rather than by absence: a pinned case can never be
+   * re-pinned, so the version its assignments came from cannot be rewritten.
    */
-  save: `UPDATE analysis.cases SET stage = $2, version = $3, closed_at = $4
-         WHERE id = $1 AND version = $5
+  save: `UPDATE analysis.cases
+            SET stage = $2, version = $3, closed_at = $4,
+                playbook_id = $6, playbook_version = $7
+          WHERE id = $1 AND version = $5
          RETURNING version`,
 
   currentVersion: `SELECT version FROM analysis.cases WHERE id = $1`,
@@ -212,6 +219,8 @@ export function createCaseRepository(
             investmentCase.version,
             investmentCase.closedAt ?? null,
             expectedVersion,
+            investmentCase.playbookId ?? null,
+            investmentCase.playbookVersion ?? null,
           ],
         )
 
@@ -242,7 +251,7 @@ export function createCaseRepository(
 
 const REVISION_COLUMNS = `
   revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
-  statement, position, lifecycle, invalidation_criteria, horizon,
+  statement, position, lifecycle, invalidation_criteria, horizon, implications,
   proposed_by_department_id, proposed_by_employee_id,
   ${ts('proposed_at')}, ${ts('revised_at')}, revision_reason
 `
@@ -266,9 +275,9 @@ export const THESIS_SQL = catalog({
   save: `INSERT INTO analysis.thesis_revisions
            (revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
             statement, position, lifecycle, invalidation_criteria, horizon,
-            proposed_by_department_id, proposed_by_employee_id, proposed_at,
-            revised_at, revision_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            implications, proposed_by_department_id, proposed_by_employee_id,
+            proposed_at, revised_at, revision_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          ON CONFLICT (revision_id) DO UPDATE SET lifecycle = EXCLUDED.lifecycle`,
 
   saveLinks: `INSERT INTO analysis.thesis_claim_links (revision_id, claim_id, relation)
@@ -336,6 +345,7 @@ export function createThesisRepository(
           revision.lifecycle,
           revision.invalidationCriteria,
           revision.horizon ?? null,
+          [...revision.implications],
           revision.proposedByDepartmentId,
           revision.proposedByEmployeeId,
           revision.proposedAt,

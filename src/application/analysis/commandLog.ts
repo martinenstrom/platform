@@ -33,7 +33,21 @@ import type { StorageProvenance } from './repositories'
 export interface CommandIntent {
   commandId: string
   commandType: string
+  /**
+   * The contract in force when this was written.
+   *
+   * Stored per command rather than assumed, so a version-1 record is read as
+   * version 1 forever. Reinterpreting old records under a newer contract is
+   * how a ledger starts describing things that never happened.
+   */
   commandContractVersion: string
+  /**
+   * What kind of institutional act this was.
+   *
+   * Cross-checked against the mandate, so the ledger cannot contain a routine
+   * workflow movement filed as governance.
+   */
+  category: CommandCategory
 
   /**
    * Deterministic hash of the semantic input.
@@ -56,12 +70,49 @@ export interface CommandIntent {
   /** Who set it in motion, which is not who is accountable for it. */
   initiator: CommandInitiator
 
+  /**
+   * Why it was issued, when the command's policy asks for one.
+   *
+   * Sensitive institutional content: persisted and exposed to authorized
+   * audit reads, and **never** placed in a metric label, a routine log line or
+   * a generic exception message. A blocking reason can name a person, a
+   * counterparty or an unpublished finding.
+   */
+  reason?: string
+
   correlationId: string
   /** Domain time, from the Clock. */
   occurredAt: string
   /** When the runtime received it. */
   receivedAt: string
 }
+
+/**
+ * What kind of institutional act a command is.
+ *
+ * A closed set, kept small on purpose. Its value is that "show me every
+ * governance action on this case" is one predicate rather than a list of
+ * command types that grows every time someone adds one.
+ */
+export type CommandCategory =
+  /** Produces analysis: claims, evidence, a thesis. */
+  | 'analysis'
+  /** Moves work: opens, assigns, routes, transitions. */
+  | 'workflow'
+  /** A control function issuing a verdict. */
+  | 'governance'
+  /** The organization committing to a position. */
+  | 'decision'
+  /** Technical operation with no institutional effect. */
+  | 'system'
+
+export const COMMAND_CATEGORIES: readonly CommandCategory[] = [
+  'analysis',
+  'workflow',
+  'governance',
+  'decision',
+  'system',
+] as const
 
 /** Bounded machine-readable codes. Never free text, never a metric label. */
 export type RejectionCode =

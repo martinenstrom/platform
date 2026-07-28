@@ -106,6 +106,8 @@ const investmentCase = (input: ProbeInput): InvestmentCase => ({
 const probe: CommandDefinition<ProbeInput, InvestmentCase> = {
   type: 'ProbeCommand',
   versionPolicy: 'refuses-expected-version',
+  reasonPolicy: 'optional',
+  category: 'workflow',
   mandate: () => ({ kind: 'any-employee' }),
   scope: (input) => ({ caseId: input.caseId }),
   payload: (input) => ({ question: input.question }),
@@ -295,6 +297,8 @@ describe('a rejected command', () => {
     const chiefOnly: CommandDefinition<ProbeInput, InvestmentCase> = {
       ...probe,
       type: 'ChiefProbeCommand',
+      // A chief-decision mandate can only be filed as a decision.
+      category: 'decision',
       mandate: () => ({ kind: 'chief-decision' }),
     }
 
@@ -313,6 +317,8 @@ describe('a rejected command', () => {
     const chiefOnly: CommandDefinition<ProbeInput, InvestmentCase> = {
       ...probe,
       type: 'ChiefProbeCommand',
+      // A chief-decision mandate can only be filed as a decision.
+      category: 'decision',
       mandate: () => ({ kind: 'chief-decision' }),
     }
 

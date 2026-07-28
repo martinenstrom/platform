@@ -29,6 +29,7 @@ import type {
   AgentClaim,
   CaseDecision,
   EvidenceSet,
+  RequirementResolution,
   RunEvent,
   TransitionEvent,
 } from '~/domain/analysis'
@@ -157,5 +158,38 @@ export function runEventSemanticKey(event: RunEvent): string {
     at: event.at,
     state: event.state,
     reason: event.reason ?? null,
+  })
+}
+
+/**
+ * One evaluation of a conditional requirement.
+ *
+ * Identity is `(caseId, playbookEntryKey, revisionId)` — the exact revision,
+ * never the lineage.
+ *
+ * `evaluatedAt` is **excluded**, and that exclusion is the interesting part. A
+ * deterministic rule applied to a fixed revision produces one answer, so two
+ * writes differing only in their timestamp are the same evaluation replayed
+ * and must not conflict. Two writes differing in `state`, `reason`, the rule
+ * version or the evaluator are a genuine disagreement about whether a
+ * governance gate applied — which is exactly the thing that must never be
+ * settled by whichever write happened to arrive second.
+ */
+export function requirementResolutionIdentity(resolution: RequirementResolution): string {
+  return `${resolution.caseId}|${resolution.playbookEntryKey}|${resolution.revisionId}`
+}
+
+export function requirementResolutionSemanticKey(
+  resolution: RequirementResolution,
+): string {
+  return canonicalJson({
+    caseId: resolution.caseId,
+    playbookEntryKey: resolution.playbookEntryKey,
+    revisionId: resolution.revisionId,
+    state: resolution.state,
+    ruleId: resolution.ruleId,
+    ruleVersion: resolution.ruleVersion,
+    reason: resolution.reason,
+    evaluatedBy: resolution.evaluatedBy.employeeId,
   })
 }

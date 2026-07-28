@@ -51,6 +51,44 @@ export const EQUITY_POSITIONS = [
   'avoid',
 ] as const
 
+/**
+ * What a thesis would mean if the firm acted on it.
+ *
+ * Declared as **structured flags rather than inferred from the statement**, and
+ * that choice is the whole point of the type. Whether Risk Review is required
+ * turns on this, and a rule that scanned the prose for words like "hedge"
+ * would be a rule whose outcome depended on how a sentence happened to be
+ * phrased — non-deterministic in practice and impossible to audit years later.
+ *
+ * The list is closed, so a new kind of implication is a deliberate contract
+ * change rather than a new adjective in someone's paragraph.
+ */
+export type InvestmentImplication =
+  /** An explicit recommendation to act. */
+  | 'actionable-recommendation'
+  /** Changes what the firm should hold, and in what proportion. */
+  | 'asset-allocation'
+  | 'position-sizing'
+  | 'hedging'
+  | 'leverage'
+  /** Entering or exiting would move the market the firm trades in. */
+  | 'liquidity-impact'
+  /** Changes the risk profile of the portfolio as a whole. */
+  | 'portfolio-risk'
+  /** Any other decision that could later lead to implementation. */
+  | 'implementation-path'
+
+export const INVESTMENT_IMPLICATIONS: readonly InvestmentImplication[] = [
+  'actionable-recommendation',
+  'asset-allocation',
+  'position-sizing',
+  'hedging',
+  'leverage',
+  'liquidity-impact',
+  'portfolio-risk',
+  'implementation-path',
+] as const
+
 export interface InvestmentThesis {
   /** Lineage. Stable across every revision of this argument. */
   thesisId: ThesisId
@@ -91,6 +129,17 @@ export interface InvestmentThesis {
    */
   invalidationCriteria: string
   horizon?: string
+  /**
+   * What acting on this thesis would imply.
+   *
+   * **Required, and empty is a declaration rather than a default.** Purely
+   * descriptive analysis — "the ECB holds through Q2" with nothing the firm is
+   * asked to do about it — carries an empty list, and that empty list is what
+   * a conditional Risk Review resolves `not-required` against. An optional
+   * field would let the absence of thought look identical to the presence of a
+   * decision, which is exactly the ambiguity Risk exists to catch.
+   */
+  implications: readonly InvestmentImplication[]
 }
 
 export function buildThesis(thesis: InvestmentThesis): InvestmentThesis {
@@ -123,11 +172,27 @@ export function buildThesis(thesis: InvestmentThesis): InvestmentThesis {
         `supporting claims`,
     )
   }
+  const unknown = thesis.implications.filter(
+    (implication) => !INVESTMENT_IMPLICATIONS.includes(implication),
+  )
+  if (unknown.length > 0) {
+    throw new Error(
+      `Thesis revision "${thesis.revisionId}" declares unknown implications ` +
+        `${unknown.join(', ')}. The list is closed so that the conditional ` +
+        `Risk rule reads a fixed vocabulary.`,
+    )
+  }
+
   return Object.freeze({
     ...thesis,
     supportingClaimIds: Object.freeze([...thesis.supportingClaimIds]),
     opposingClaimIds: Object.freeze([...thesis.opposingClaimIds]),
     citedByClaimIds: Object.freeze([...thesis.citedByClaimIds]),
+    // Sorted and de-duplicated, so two identical declarations hash identically
+    // and a resolution recorded against one applies to the other.
+    implications: Object.freeze(
+      [...new Set(thesis.implications)].sort((a, b) => a.localeCompare(b)),
+    ),
   })
 }
 
@@ -141,6 +206,12 @@ export interface ThesisRevisionInput {
   horizon?: string
   supportingClaimIds?: readonly ClaimId[]
   opposingClaimIds?: readonly ClaimId[]
+  /**
+   * Changing these changes whether Risk Review is required, so a revision that
+   * alters them reopens the conditional gate rather than inheriting the
+   * previous revision's resolution — see `requirements.ts`.
+   */
+  implications?: readonly InvestmentImplication[]
 }
 
 /**

@@ -77,6 +77,7 @@ const thesis = (): InvestmentThesis =>
     revisionId: 'rev-1',
     revisionNumber: 1,
     caseId: 'case-1',
+    implications: [],
     statement: 'The policy path is mispriced',
     position: 'buy',
     proposedByDepartmentId: 'global-macro',
@@ -295,7 +296,8 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
     {
       commandId: 'cmd-1',
       commandType: 'ProbeCommand',
-      commandContractVersion: '1',
+      commandContractVersion: '2',
+      category: 'workflow',
       payloadHash: 'hash-a',
       actor: {
         kind: 'employee',

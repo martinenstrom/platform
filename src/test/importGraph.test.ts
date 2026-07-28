@@ -74,6 +74,8 @@ function codeOnly(source: string): string {
 const FILES: SourceFile[] = listFiles(SRC).map(parse)
 
 const inLayer = (file: SourceFile, prefix: string) => file.path.startsWith(prefix)
+/** The file's source, for rules about content rather than imports. */
+const sourceOf = (file: SourceFile) => readFileSync(join(SRC, file.path), 'utf8')
 const isTest = (file: SourceFile) => /\.test\.tsx?$/.test(file.path)
 
 /** Resolves a `~/x` alias to a layer-relative path; returns null for packages. */
@@ -956,17 +958,94 @@ describe('Phase C1A — the command foundation', () => {
     expect(offenders).toEqual([])
   })
 
-  it('ships no production command in C1A', () => {
-    // The foundation is exercised by a test-only probe. A real workflow command
-    // deserves its own gate rather than arriving as a side effect of this one.
+  it('ships exactly the approved commands', () => {
+    /*
+     * C1B adds the first three production commands. Pinned rather than
+     * counted, so a fourth arriving without a gate fails here — a command is
+     * an institutional act, and the set of acts the firm can perform is not
+     * something that should grow quietly.
+     */
     const handlers = FILES.filter(
       (f) => inLayer(f, 'application/analysis/commands/') && !isTest(f),
     ).map((f) => f.path.split('/').pop())
     expect(handlers?.sort()).toEqual([
       'definition.ts',
       'envelope.ts',
+      'instantiatePlaybook.ts',
+      'openInvestmentCase.ts',
+      'proposeThesis.ts',
+      'registry.ts',
       'resolveCommand.ts',
       'runCommand.ts',
     ])
+  })
+})
+
+describe('Phase C1B — case and playbook commands', () => {
+  it('keeps the conditional-requirement rules in the domain', () => {
+    // Whether a governance gate applies is an institutional rule, not a
+    // storage concern and not a UI concern.
+    const file = FILES.find((f) => f.path.endsWith('domain/analysis/requirements.ts'))
+    expect(file).toBeDefined()
+  })
+
+  it('never recomputes a stored requirement resolution on read', () => {
+    /*
+     * The one thing this model cannot survive. Re-evaluating the rule when the
+     * headquarters loads would let historical eligibility drift as the thesis
+     * or the rule changes, which is the whole reason resolutions are stored.
+     */
+    const readers = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        f.path.includes('/analysis/') &&
+        sourceOf(f).includes('evaluateRequirement('),
+    ).map((f) => f.path)
+
+    // Produced in exactly one place, and consumed by commands — never by a
+    // repository or a projection.
+    for (const path of readers) {
+      expect(path).not.toMatch(/infrastructure\//)
+      expect(path).not.toMatch(/presentation\//)
+    }
+  })
+
+  it('keeps requirement levels out of the presentation layer', () => {
+    /*
+     * How much a stage is needed is a workflow rule that belongs to the
+     * playbook, and whether a conditional one applies belongs to a recorded
+     * evaluation. A component declaring either would be a third source of
+     * truth that renders correctly and means nothing.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        f.path.startsWith('presentation/') &&
+        /requirement:\s*'(required|optional|conditional)'/.test(sourceOf(f)),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('imports no LLM, model client or agent runtime', () => {
+    /*
+     * C2 remains blocked: nothing in C1B may reach a model.
+     *
+     * Tested against IMPORTS rather than text. The parity suite carries a
+     * provenance fixture whose provider happens to be named 'anthropic', and a
+     * rule that could not tell a recorded string from a dependency would have
+     * to be either wrong or disabled.
+     */
+    const clients = /^(@anthropic-ai\/|openai$|openai\/|@ai-sdk\/|langchain|llamaindex)/
+    const offenders = FILES.filter((f) =>
+      f.imports.some((specifier) => clients.test(specifier)),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the macro playbook out of the presentation layer', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        f.path.includes('presentation/') && sourceOf(f).includes('MACRO_REGIME_PLAYBOOK'),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
   })
 })
