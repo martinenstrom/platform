@@ -26,6 +26,7 @@ import { runCommand, type CommandDeps } from '~/application/analysis/commands/ru
 import {
   deriveAssignmentId,
   deriveClaimId,
+  deriveRevisionId,
   deriveRunId,
 } from '~/application/analysis/commands/eventIdentity'
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
@@ -256,6 +257,7 @@ describe('RecordContribution', () => {
     const stored = await repositories.results.get(
       resultKey({
         evidenceSetId: evidenceSet.id,
+        caseId: 'case-1',
         executionIdentity: executionIdentityKey(run!.execution.identity),
         agentContractVersion: run!.agentContractVersion,
         outputSchemaVersion: run!.outputSchemaVersion,
@@ -642,7 +644,6 @@ describe('a result that arrives after the world moved on', () => {
       {
         caseId: 'case-1',
         thesisId: 'thesis-1',
-        revisionId: 'rev-1',
         statement: 'The ECB cuts in March',
         position: 'directional',
         invalidationCriteria: 'Core inflation above 3% in February',
@@ -653,6 +654,7 @@ describe('a result that arrives after the world moved on', () => {
       deps,
     )
 
+    const revisionId = deriveRevisionId('cmd-thesis', 'thesis-1')
     const quantId = deriveAssignmentId('cmd-inst', 'quant-validation')
     await runCommand(
       startAgentRun(organization),
@@ -660,7 +662,7 @@ describe('a result that arrives after the world moved on', () => {
         caseId: 'case-1',
         assignmentId: quantId,
         departmentId: 'quant-technical',
-        revisionId: 'rev-1',
+        revisionId,
         evidenceSetId: evidenceSet.id,
         ...RUN_DECLARATION,
       },
@@ -673,7 +675,7 @@ describe('a result that arrives after the world moved on', () => {
 
     // The firm replaces the argument while the desk is working. C1C-3 builds
     // the command that does this; the state it produces is what matters here.
-    const revision = await repositories.theses.get('rev-1')
+    const revision = await repositories.theses.get(revisionId)
     await repositories.theses.save({ ...revision!, lifecycle: 'superseded' })
 
     const late = await runCommand(

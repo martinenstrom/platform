@@ -119,6 +119,10 @@ export function describeRepositoryContract(name: string, options: ContractOption
         thesisId: 'th-buy',
         revisionId: 'rev-1',
         revisionNumber: 1,
+        // Only revision 1 is an initial proposal, and revision 1 is nothing
+        // else — so the default follows the number the fixture asks for.
+        revisionCause:
+          (over.revisionNumber ?? 1) === 1 ? 'initial-proposal' : 'correction',
         caseId: 'case-1',
         implications: [],
         statement: 'The policy path is mispriced',
@@ -266,6 +270,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
       providerKind: 'recorded',
       inputs: {
         evidenceSetId: 'set-1',
+        caseId: 'case-1',
         executionIdentity: 'model|p|1|ph|anthropic|m|mh',
         agentContractVersion: '1',
         outputSchemaVersion: '1',
@@ -1045,6 +1050,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
           providerKind: 'recorded',
           inputs: {
             evidenceSetId: 'set-1',
+            caseId: 'case-1',
             executionIdentity: 'model|p|1|ph|anthropic|m|mh',
             agentContractVersion: '1',
             outputSchemaVersion: '1',
@@ -1666,6 +1672,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         ruleId: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleId,
         ruleVersion: RISK_REVIEW_WHEN_IMPLEMENTABLE.ruleVersion,
         reason: 'The revision declares implementation implications.',
+        inputHash: 'hash-of-the-normalized-implications',
         evaluatedAt: AT,
         evaluatedBy: evaluator(),
         ...over,
@@ -1761,7 +1768,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('5')
+        expect(provenance.domainContractVersion).toBe('6')
       })
     })
   })

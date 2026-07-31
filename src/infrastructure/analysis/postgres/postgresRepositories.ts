@@ -39,6 +39,7 @@ import {
   createEvidenceRepository,
   createResultStore,
 } from './evidenceRepositories'
+import { AGGREGATION_SQL, createAggregationRepository } from './aggregationRepositories'
 import { COMMAND_SQL, createCommandLog } from './commandLog'
 import {
   PLAYBOOK_SQL,
@@ -110,6 +111,7 @@ const CATALOGS = [
   EVENT_SQL,
   PLAYBOOK_SQL,
   REQUIREMENT_SQL,
+  AGGREGATION_SQL,
 ]
 
 export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
@@ -182,6 +184,7 @@ export function createPostgresRepositories(
     commands: createCommandLog(scope, context, tenantId),
     playbooks: createPlaybookRepository(scope, context),
     requirements: createRequirementRepository(scope, context, tenantId),
+    aggregations: createAggregationRepository(scope, context, tenantId),
   })
 
   /*

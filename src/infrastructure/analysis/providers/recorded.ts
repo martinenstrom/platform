@@ -143,7 +143,10 @@ export function keyForRecording(
   recording: RecordedContribution,
   extra: Pick<
     ResultKeyInputs,
-    'canonicalizationVersion' | 'agentImplementationVersion' | 'playbookVersion'
+    | 'caseId'
+    | 'canonicalizationVersion'
+    | 'agentImplementationVersion'
+    | 'playbookVersion'
   >,
 ): string {
   return resultKey({

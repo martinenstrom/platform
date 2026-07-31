@@ -481,6 +481,8 @@ export function evaluateRevisionEligibility(
     lifecycle: ThesisLifecycleState
     /** Required playbook contributions for this revision that have not landed. */
     missingRequiredContributions?: readonly string[]
+    /** Claims the manager retained as decision-critical unresolved disagreement. */
+    blockingDisagreements?: readonly string[]
   }>,
   caseId: CaseId,
   reviews: CaseReviews,
@@ -493,6 +495,7 @@ export function evaluateRevisionEligibility(
       lifecycle: revision.lifecycle,
       blockers: governanceBlockers(gate),
       missingRequiredContributions: revision.missingRequiredContributions ?? [],
+      blockingDisagreements: revision.blockingDisagreements ?? [],
     })
   })
 }

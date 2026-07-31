@@ -120,6 +120,13 @@ export type BlockerKind =
   | 'risk-rejected'
   | 'unresolved-risk-escalation'
   | 'missing-required-contribution'
+  /**
+   * A disagreement the manager could not resolve, at a level that decides the
+   * answer. Distinct from `unresolved-challenge`, which is the Devil's
+   * Advocate's formal objection: this one comes from two desks disagreeing and
+   * a manager saying so rather than picking a side.
+   */
+  | 'decision-critical-disagreement'
   | 'unresolved-citation'
 
 export interface Blocker {
@@ -137,6 +144,14 @@ export interface ThesisGateInputs {
   blockers: readonly Blocker[]
   /** Required playbook contributions that have not completed. */
   missingRequiredContributions: readonly string[]
+  /**
+   * Claims the manager retained as decision-critical unresolved disagreement.
+   *
+   * Supplied by the application layer from the aggregation record, like
+   * contribution state — the aggregation records what it found; eligibility is
+   * decided here, in the one place that decides it.
+   */
+  blockingDisagreements?: readonly string[]
 }
 
 /**
@@ -168,6 +183,11 @@ export function evaluateThesisEligibility(
       kind: 'missing-required-contribution',
       detail: `required contribution from ${departmentId} has not completed`,
       owningDepartmentId: departmentId,
+      severity: 'blocks-decision',
+    })),
+    ...(inputs.blockingDisagreements ?? []).map((claimId): Blocker => ({
+      kind: 'decision-critical-disagreement',
+      detail: `claim ${claimId} is an unresolved disagreement the manager judged decision-critical`,
       severity: 'blocks-decision',
     })),
   ]

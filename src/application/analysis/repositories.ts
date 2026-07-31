@@ -37,6 +37,7 @@ import type {
   EvidenceSet,
   InvestmentCase,
   InvestmentThesis,
+  ManagerAggregation,
   RequirementResolution,
   RiskReview,
   TransitionEvent,
@@ -508,6 +509,30 @@ export interface RequirementRepository {
   listForCase(caseId: string): Promise<RequirementResolution[]>
 }
 
+/**
+ * Manager aggregations — how a conclusion was reached.
+ *
+ * Write-once and append-only by design and by grant. An aggregation is a
+ * judgement at a moment; a changed judgement is a new aggregation producing a
+ * new revision, for the same reason a changed thesis is a new revision.
+ */
+export interface AggregationRepository {
+  get(aggregationId: string): Promise<ManagerAggregation | null>
+  /** The one that produced a revision, where a manager produced it. */
+  forRevision(revisionId: string): Promise<ManagerAggregation | null>
+  /** Ordered by `aggregatedAt`, then `id`. */
+  listForCase(caseId: string): Promise<ManagerAggregation[]>
+  /**
+   * Idempotent on `id`. A second write with different content throws
+   * `ConflictingRecordError`: a synthesis nobody can reproduce is worse than a
+   * failed write.
+   */
+  save(
+    aggregation: ManagerAggregation,
+    provenance: StorageProvenance,
+  ): Promise<ManagerAggregation>
+}
+
 /* --------------------------------------------------------- command ledger */
 
 /*
@@ -549,6 +574,7 @@ export interface AnalysisRepositories {
   commands: CommandLog
   playbooks: PlaybookRepository
   requirements: RequirementRepository
+  aggregations: AggregationRepository
 
   /**
    * Runs `operation` inside one transaction.

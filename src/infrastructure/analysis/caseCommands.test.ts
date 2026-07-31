@@ -40,6 +40,7 @@ import { productionCommands } from '~/application/analysis/commands/registry'
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
+import { deriveRevisionId } from '~/application/analysis/commands/eventIdentity'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import {
   missingOptionalInputs,
@@ -239,7 +240,6 @@ const instantiateInput = (over: Record<string, unknown> = {}) => ({
 const proposeInput = (over: Record<string, unknown> = {}) => ({
   caseId: 'case-1',
   thesisId: 'th-1',
-  revisionId: 'rev-1',
   statement: 'The ECB holds through Q2.',
   position: 'hold',
   invalidationCriteria: 'Core inflation prints below 2.0% for two months.',
@@ -273,11 +273,14 @@ describe('command declarations', () => {
 
   it('registers exactly the approved commands', () => {
     expect(commands.map((c) => c.type).sort()).toEqual([
+      'AggregateManagerConclusion',
       'FailAgentRun',
       'InstantiatePlaybook',
       'OpenInvestmentCase',
       'ProposeThesis',
       'RecordContribution',
+      'ResolveConditionalRequirement',
+      'ReviseThesis',
       'StartAgentRun',
     ])
   })
@@ -296,9 +299,18 @@ describe('command declarations', () => {
     }
   })
 
-  it('never files ordinary workflow movement as governance or decision', () => {
+  it('files each command as the kind of act its mandate can support', () => {
+    /*
+     * The cross-check `runCommand` performs, asserted over the registry: a
+     * governance category requires a governance verdict, and ordinary forward
+     * motion cannot claim to be one. `ResolveConditionalRequirement` is the
+     * first governance command — deciding whether a gate applies is a control
+     * function's verdict, not workflow.
+     */
     for (const command of commands) {
-      expect(['analysis', 'workflow']).toContain(command.category)
+      const governance = command.category === 'governance'
+      expect(governance).toBe(command.type === 'ResolveConditionalRequirement')
+      expect(['analysis', 'workflow', 'governance']).toContain(command.category)
     }
   })
 })
@@ -983,7 +995,9 @@ describe('ProposeThesis', () => {
     const result = await propose({ implications: ['position-sizing'] })
     expect(result.outcome).toBe('committed')
 
-    const stored = await repositories.theses.get('rev-1')
+    // The id is derived from the command, not supplied by the caller — the
+    // last caller-chosen identity in the command layer went in C1C-3.
+    const stored = await repositories.theses.get(deriveRevisionId('cmd-thesis', 'th-1'))
     expect(stored?.revisionNumber).toBe(1)
     expect(stored?.implications).toEqual(['position-sizing'])
     expect(stored?.supersedesRevisionId).toBeUndefined()
@@ -991,7 +1005,7 @@ describe('ProposeThesis', () => {
 
   it('leaves the revision proposed, not verified or eligible', async () => {
     await propose()
-    const stored = await repositories.theses.get('rev-1')
+    const stored = await repositories.theses.get(deriveRevisionId('cmd-thesis', 'th-1'))
 
     // No gate has been passed by proposing an argument.
     expect(stored?.lifecycle).toBe('proposed')
@@ -1025,12 +1039,14 @@ describe('ProposeThesis', () => {
     })
   })
 
-  it('refuses a revision id already used by another lineage', async () => {
+  it('refuses a second first revision of one lineage', async () => {
+    // Derived ids cannot collide across lineages any more, so what is left to
+    // refuse is a lineage being started twice.
     await propose()
-    const result = await propose({ thesisId: 'th-2' }, { commandId: 'cmd-thesis-2' })
+    const result = await propose({}, { commandId: 'cmd-thesis-2' })
     expect(result).toMatchObject({
       outcome: 'rejected',
-      rejection: { code: 'invariant-violated' },
+      rejection: { code: 'illegal-prior-state' },
     })
   })
 
@@ -1038,7 +1054,9 @@ describe('ProposeThesis', () => {
     await propose()
     const entry = await repositories.commands.find('cmd-thesis')
 
-    expect(entry?.intent.thesisRevisionId).toBe('rev-1')
+    // The revision id is derived, so the ledger scope names the case and the
+    // command's own identity carries the rest.
+    expect(entry?.intent.caseId).toBe('case-1')
     expect(entry?.intent.category).toBe('analysis')
     expect(entry?.intent.mandate).toMatchObject({
       kind: 'department-contribution',

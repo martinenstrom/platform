@@ -70,6 +70,15 @@ export interface CommandContext {
   correlationId: string
   expectedVersion?: number
   /**
+   * Why the command was issued, normalized as it will be stored.
+   *
+   * Present so a handler can put the caller's stated reason onto the record it
+   * writes — a revision's `revisionReason` is the envelope reason, and reading
+   * it from anywhere else would let the ledger and the revision disagree about
+   * why the firm changed its mind.
+   */
+  reason?: string
+  /**
    * Which code is reading and writing.
    *
    * Handed to handlers because some records carry a provenance foreign key of

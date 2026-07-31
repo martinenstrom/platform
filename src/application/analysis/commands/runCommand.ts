@@ -195,6 +195,7 @@ export async function runCommand<Input, Result>(
           occurredAt: envelope.occurredAt,
           correlationId: envelope.correlationId,
           provenance,
+          ...(reason ? { reason } : {}),
           ...(envelope.expectedVersion !== undefined
             ? { expectedVersion: envelope.expectedVersion }
             : {}),

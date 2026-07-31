@@ -286,13 +286,13 @@ export const REQUIREMENT_SQL = catalog({
    */
   save: `INSERT INTO analysis.requirement_resolutions
            (case_id, tenant_id, playbook_entry_key, revision_id, state,
-            rule_id, rule_version, reason, evaluated_at,
+            rule_id, rule_version, reason, input_hash, evaluated_at,
             evaluated_by_employee_id, evaluated_by_role_id,
             evaluated_by_role_function, evaluated_by_department_id,
             evaluated_by_department_is_governance,
             evaluated_by_department_handles, evaluated_by_authentication,
             organization_seed_version, provenance_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT (case_id, playbook_entry_key, revision_id) DO NOTHING`,
 })
 
@@ -355,6 +355,7 @@ export function createRequirementRepository(
           resolution.ruleId,
           resolution.ruleVersion,
           resolution.reason,
+          resolution.inputHash,
           resolution.evaluatedAt,
           resolution.evaluatedBy.employeeId,
           resolution.evaluatedBy.roleId,

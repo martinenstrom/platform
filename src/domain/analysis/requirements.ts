@@ -36,7 +36,9 @@
  * argument reopens the gate without anyone having to remember to.
  */
 
+import { stableHashHex } from '~/domain/shared/hash'
 import type { CaseId } from './cases'
+import { canonicalJson } from './identity'
 import type { ActorSnapshot } from './authority'
 import type { InvestmentImplication, RevisionId } from './theses'
 
@@ -197,6 +199,16 @@ export interface RequirementResolution {
   ruleId: string
   ruleVersion: string
   reason: string
+  /**
+   * Hash of the exact, normalized input the rule ran on.
+   *
+   * Makes a stored resolution independently checkable: re-hash the revision's
+   * declared implications and compare, without having to re-run a rule version
+   * that may since have been superseded. Without it, "was this resolution
+   * computed from the revision it names" is answerable only by trusting the
+   * row.
+   */
+  inputHash: string
   evaluatedAt: string
   /** Snapshotted, for the same reason command actors are. */
   evaluatedBy: ActorSnapshot
@@ -257,6 +269,21 @@ export function requirementStatusFor(
  * The only place a resolution is produced, so the recorded `ruleId`,
  * `ruleVersion` and `reason` cannot drift from the rule that actually ran.
  */
+/**
+ * The canonical serialization of a rule's input.
+ *
+ * Sorted and de-duplicated, so two identical declarations hash identically —
+ * `buildThesis` already normalizes `implications` the same way, and the two
+ * must agree or the stored hash would not match a re-derivation.
+ */
+export function requirementInputHash(input: RequirementRuleInput): string {
+  return stableHashHex(
+    canonicalJson({
+      implications: [...new Set(input.implications)].sort((a, b) => a.localeCompare(b)),
+    }),
+  )
+}
+
 export function evaluateRequirement(
   rule: ConditionalRequirementRule,
   input: {
@@ -268,7 +295,8 @@ export function evaluateRequirement(
     evaluatedBy: ActorSnapshot
   },
 ): RequirementResolution {
-  const outcome = rule.evaluate({ implications: input.implications })
+  const ruleInput = { implications: input.implications }
+  const outcome = rule.evaluate(ruleInput)
   return buildRequirementResolution({
     caseId: input.caseId,
     playbookEntryKey: input.playbookEntryKey,
@@ -277,6 +305,7 @@ export function evaluateRequirement(
     ruleId: rule.ruleId,
     ruleVersion: rule.ruleVersion,
     reason: outcome.reason,
+    inputHash: requirementInputHash(ruleInput),
     evaluatedAt: input.evaluatedAt,
     evaluatedBy: input.evaluatedBy,
   })

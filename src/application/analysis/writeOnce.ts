@@ -29,6 +29,7 @@ import type {
   AgentClaim,
   CaseDecision,
   EvidenceSet,
+  ManagerAggregation,
   RequirementResolution,
   RunEvent,
   TransitionEvent,
@@ -118,6 +119,36 @@ export function resultSemanticKey(result: StoredResult): string {
     // firm knows, and returning either one silently would settle it by luck.
     providerKind: result.providerKind,
     inputs: result.inputs,
+  })
+}
+
+/**
+ * A manager aggregation. All of it.
+ *
+ * Every field is semantic: the input scope, the disposition of each claim, the
+ * materiality of each disagreement and the rationale are the record. Two
+ * aggregations under one id differing anywhere are two different accounts of
+ * how the firm reached a position, and returning either one silently would
+ * settle that by luck.
+ */
+export function managerAggregationSemanticKey(aggregation: ManagerAggregation): string {
+  return canonicalJson({
+    id: aggregation.id,
+    caseId: aggregation.caseId,
+    thesisId: aggregation.thesisId,
+    sourceRevisionId: aggregation.sourceRevisionId,
+    producedRevisionId: aggregation.producedRevisionId,
+    managerEmployeeId: aggregation.managerEmployeeId,
+    departmentId: aggregation.departmentId,
+    aggregatedAt: aggregation.aggregatedAt,
+    rationale: aggregation.rationale,
+    inputs: [...aggregation.inputs].map((input) => canonicalJson(input)).sort(),
+    dispositions: [...aggregation.dispositions]
+      .map((record) => canonicalJson(record))
+      .sort(),
+    optionalInputs: [...aggregation.optionalInputs]
+      .map((record) => canonicalJson(record))
+      .sort(),
   })
 }
 

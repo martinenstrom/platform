@@ -89,6 +89,37 @@ export const INVESTMENT_IMPLICATIONS: readonly InvestmentImplication[] = [
   'implementation-path',
 ] as const
 
+/**
+ * Why a revision exists, as a bounded category beside the free-text reason.
+ *
+ * The prose says what happened; the cause makes "how often does governance
+ * send a thesis back" answerable without reading paragraphs.
+ * `manager-aggregation` is reserved to `AggregateManagerConclusion`, so no
+ * other command can file itself as a managerial synthesis.
+ */
+export type RevisionCause =
+  | 'initial-proposal'
+  | 'manager-aggregation'
+  | 'new-evidence'
+  | 'correction'
+  | 'governance-finding'
+  | 'changed-assumption'
+  | 'resolved-challenge'
+  | 'changed-implications'
+  | 'revised-invalidation-criteria'
+
+export const REVISION_CAUSES: readonly RevisionCause[] = [
+  'initial-proposal',
+  'manager-aggregation',
+  'new-evidence',
+  'correction',
+  'governance-finding',
+  'changed-assumption',
+  'resolved-challenge',
+  'changed-implications',
+  'revised-invalidation-criteria',
+] as const
+
 export interface InvestmentThesis {
   /** Lineage. Stable across every revision of this argument. */
   thesisId: ThesisId
@@ -101,6 +132,8 @@ export interface InvestmentThesis {
   revisedAt?: string
   /** Why it was revised. Required on any revision after the first. */
   revisionReason?: string
+  /** The bounded category beside the reason. Present on every revision. */
+  revisionCause: RevisionCause
 
   caseId: CaseId
   statement: string
@@ -120,6 +153,17 @@ export interface InvestmentThesis {
   opposingClaimIds: readonly ClaimId[]
   /** Anything citing this exact revision. Contributes to sealing. */
   citedByClaimIds: readonly ClaimId[]
+
+  /**
+   * The managerial synthesis that produced this revision, where one did.
+   *
+   * A reference rather than the record: the revision is the firm's position and
+   * has to read as one. How the manager got there — which contributions were in
+   * scope, what happened to every claim, what was missing — is one hop away in
+   * `ManagerAggregation`, so the conclusion stays distinguishable from its
+   * construction history.
+   */
+  aggregationId?: string
 
   lifecycle: ThesisLifecycleState
   /**
@@ -172,6 +216,21 @@ export function buildThesis(thesis: InvestmentThesis): InvestmentThesis {
         `supporting claims`,
     )
   }
+  if (!REVISION_CAUSES.includes(thesis.revisionCause)) {
+    throw new Error(
+      `Revision "${thesis.revisionId}" declares cause "${thesis.revisionCause}", ` +
+        `which is not one the firm recognises. The list is closed so that "why ` +
+        `did this change" stays countable rather than readable.`,
+    )
+  }
+  if ((thesis.revisionCause === 'initial-proposal') !== (thesis.revisionNumber === 1)) {
+    throw new Error(
+      `Revision ${thesis.revisionNumber} of "${thesis.thesisId}" declares cause ` +
+        `"${thesis.revisionCause}". Only revision 1 is an initial proposal, and ` +
+        `revision 1 is nothing else.`,
+    )
+  }
+
   const unknown = thesis.implications.filter(
     (implication) => !INVESTMENT_IMPLICATIONS.includes(implication),
   )
@@ -224,7 +283,7 @@ export interface ThesisRevisionInput {
 export function reviseThesis(
   current: InvestmentThesis,
   changes: ThesisRevisionInput,
-  meta: { revisionId: RevisionId; reason: string; at: string },
+  meta: { revisionId: RevisionId; reason: string; at: string; cause: RevisionCause },
 ): { superseded: InvestmentThesis; revision: InvestmentThesis } {
   if (!meta.reason.trim()) {
     throw new Error(`Revising "${current.thesisId}" requires a reason`)
@@ -244,6 +303,7 @@ export function reviseThesis(
     supersedesRevisionId: current.revisionId,
     revisedAt: meta.at,
     revisionReason: meta.reason,
+    revisionCause: meta.cause,
     // A new argument has been reviewed by nobody and cited by nothing.
     lifecycle: 'under-analysis',
     citedByClaimIds: [],

@@ -24,6 +24,7 @@ import {
   buildRequirementResolution,
   buildClaim,
   buildEvidenceSet,
+  buildManagerAggregation,
   buildRunRecord,
   buildThesis,
   buildTransitionEvent,
@@ -39,8 +40,13 @@ import {
   type DevilsAdvocateReview,
   type EvidenceItem,
   type EvidenceRef,
+  type AggregationInput,
+  type ClaimDispositionRecord,
+  type DisagreementMateriality,
   type EvidenceSet,
   type ExecutionIdentity,
+  type ManagerAggregation,
+  type OptionalInputRecord,
   type ProviderKind,
   type RunUsage,
   type RequirementResolution,
@@ -60,6 +66,10 @@ import type { StoredResult } from '~/application/analysis/resultStore'
 import { seal } from '../seal'
 import type {
   AgentResultRow,
+  AggregationClaimDispositionRow,
+  AggregationInputRow,
+  AggregationOptionalInputRow,
+  AggregationRow,
   AssignmentRow,
   CaseRow,
   ChallengeEvidenceRow,
@@ -205,6 +215,7 @@ export function toThesis(
           supersedesRevisionId: row.supersedes_revision_id,
           revisedAt: row.revised_at,
           revisionReason: row.revision_reason,
+          revisionCause: row.revision_cause as InvestmentThesis['revisionCause'],
           caseId: row.case_id,
           statement: row.statement,
           position: row.position,
@@ -216,6 +227,7 @@ export function toThesis(
           opposingClaimIds: of('opposing'),
           citedByClaimIds: of('cites'),
           lifecycle: row.lifecycle,
+          aggregationId: row.aggregation_id,
           invalidationCriteria: row.invalidation_criteria,
           horizon: row.horizon,
         }) as InvestmentThesis,
@@ -794,6 +806,93 @@ export function toStoredResult(row: AgentResultRow): StoredResult {
   )
 }
 
+/* -------------------------------------------------------- aggregations */
+
+/**
+ * A manager aggregation and its three child collections.
+ *
+ * Everything goes through `buildManagerAggregation`, which re-checks the rules
+ * the database also enforces — a row edited by hand into a shape the domain
+ * refuses fails here rather than entering the application as a synthesis that
+ * lost a claim.
+ *
+ * The claims in scope are reconstructed from the stored dispositions rather
+ * than re-read from the runs: what the manager DID consider is what the record
+ * says, and reading the runs now would let a late contribution change what a
+ * committed aggregation claims to have covered.
+ */
+export function toManagerAggregation(
+  row: AggregationRow,
+  inputs: readonly AggregationInputRow[],
+  dispositions: readonly AggregationClaimDispositionRow[],
+  optionalInputs: readonly AggregationOptionalInputRow[],
+): ManagerAggregation {
+  const records: ClaimDispositionRecord[] = dispositions.map(
+    (record) =>
+      present({
+        claimId: record.claim_id,
+        runId: record.run_id,
+        disposition: record.disposition as ClaimDispositionRecord['disposition'],
+        explanation: record.explanation,
+        supersededByClaimId: record.superseded_by_claim_id,
+        materiality: record.materiality as DisagreementMateriality | null,
+        escalationRequired: record.escalation_required,
+        blocksEligibility: record.blocks_eligibility,
+        downgradedFrom: record.downgraded_from as DisagreementMateriality | null,
+      }) as unknown as ClaimDispositionRecord,
+  )
+
+  return seal(
+    build('manager aggregation', 'aggregations', () =>
+      buildManagerAggregation(
+        {
+          id: row.id,
+          caseId: row.case_id,
+          thesisId: row.thesis_id,
+          sourceRevisionId: row.source_revision_id,
+          producedRevisionId: row.produced_revision_id,
+          managerEmployeeId: row.manager_employee_id,
+          departmentId: row.department_id,
+          aggregatedAt: row.aggregated_at,
+          rationale: row.rationale,
+          inputs: inputs.map((input) => ({
+            runId: input.run_id,
+            playbookEntryKey: input.playbook_entry_key,
+            requirementLevel:
+              input.requirement_level as AggregationInput['requirementLevel'],
+          })),
+          dispositions: records,
+          optionalInputs: optionalInputs.map(
+            (record) =>
+              present({
+                playbookEntryKey: record.playbook_entry_key,
+                availability: record.availability as OptionalInputRecord['availability'],
+                runId: record.run_id,
+                scope: record.scope as OptionalInputRecord['scope'] | null,
+                materiallyRelevant: record.materially_relevant,
+                explanation: record.explanation,
+              }) as unknown as OptionalInputRecord,
+          ),
+        },
+        {
+          claimsInScope: records.map((record) => ({
+            claimId: record.claimId,
+            runId: record.runId,
+            /*
+             * Not re-derived from the claim: a claim adopted as supporting
+             * cannot have opposed the thesis, because the builder refused that
+             * combination on the way in. Re-reading it would make a stored
+             * aggregation unreadable if the claim were later cited elsewhere.
+             */
+            opposesThisThesis: false,
+          })),
+        },
+      ),
+    ),
+    'aggregations',
+  )
+}
+
 /* ------------------------------------------------ requirement resolutions */
 
 /**
@@ -816,6 +915,7 @@ export function toRequirementResolution(
         ruleId: row.rule_id,
         ruleVersion: row.rule_version,
         reason: row.reason,
+        inputHash: row.input_hash,
         evaluatedAt: row.evaluated_at,
         evaluatedBy: {
           kind: 'employee',

@@ -108,3 +108,24 @@ export function deriveRunId(commandId: string, assignmentId: string): string {
 export function deriveClaimId(commandId: string, providerClaimId: string): string {
   return derive('clm', { commandId, recordType: 'claim', entityId: providerClaimId })
 }
+
+/**
+ * The identity of a thesis revision a command mints.
+ *
+ * One command mints one revision of one lineage, so the lineage is the entity.
+ * A retry of the same command therefore addresses the same revision instead of
+ * minting revision *n+2* from revision *n* — which is the failure a
+ * caller-supplied id made possible right up until C1C-3 removed it.
+ */
+export function deriveRevisionId(commandId: string, thesisId: string): string {
+  return derive('rev', { commandId, recordType: 'revision', entityId: thesisId })
+}
+
+/** The identity of the managerial synthesis that produced a revision. */
+export function deriveAggregationId(commandId: string, sourceRevisionId: string): string {
+  return derive('agg', {
+    commandId,
+    recordType: 'aggregation',
+    entityId: sourceRevisionId,
+  })
+}

@@ -27,7 +27,21 @@ import type { RevisionId, ThesisId, ThesisLifecycleState } from './index'
 export type EventId = string
 
 /** What kind of thing moved. */
-export type TransitionSubject = 'case' | 'thesis' | 'assignment' | 'run' | 'review'
+export type TransitionSubject =
+  | 'case'
+  | 'thesis'
+  | 'assignment'
+  | 'run'
+  /** A governance verdict was recorded. */
+  | 'review'
+  /**
+   * A conditional gate was decided for an exact revision.
+   *
+   * Its own subject rather than a `review`: nobody reviewed anything. The firm
+   * decided whether a review is owed at all, which is a different institutional
+   * act and the one the floor should show when Risk says "not required".
+   */
+  | 'requirement'
 
 /**
  * One recorded state change.

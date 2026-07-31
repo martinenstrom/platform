@@ -18,24 +18,26 @@
  * issue.
  */
 
-import {
-  buildThesis,
-  thesisEvent,
-  type InvestmentThesis,
-  type InvestmentImplication,
-  type Organization,
-  type ThesisPosition,
+import type {
+  InvestmentThesis,
+  InvestmentImplication,
+  Organization,
+  ThesisPosition,
 } from '~/domain/analysis'
-import { deriveEventId } from './eventIdentity'
+import { mintRevision } from '../revisions'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
 export interface ProposeThesisInput {
   caseId: string
-  /** Lineage key, stable across every future revision of this argument. */
+  /**
+   * Lineage key, stable across every future revision of this argument.
+   *
+   * The revision id is NOT supplied: it derives from the command, like every
+   * other identity since C1C-1. A caller-chosen one was the last place two
+   * arguments could collide under a name nothing constrained.
+   */
   thesisId: string
-  /** This specific version. */
-  revisionId: string
   statement: string
   position: ThesisPosition
   /** Required. A thesis that cannot be wrong is a preference. */
@@ -71,7 +73,7 @@ export function proposeThesis(
       kind: 'department-contribution',
       departmentId: input.proposedByDepartmentId,
     }),
-    scope: (input) => ({ caseId: input.caseId, thesisRevisionId: input.revisionId }),
+    scope: (input) => ({ caseId: input.caseId }),
     payload: (input) => ({
       thesisId: input.thesisId,
       statement: input.statement,
@@ -101,75 +103,32 @@ export function proposeThesis(
       }
 
       /*
-       * A revision id identifies one argument. If it already exists carrying a
-       * different lineage, this is not a replay — it is two arguments wearing
-       * one identity, and the store's write-once rule would surface it as a
-       * conflict anyway. Catching it here names it precisely.
+       * `prior: null` is the first-revision case rather than a separate path.
+       * Everything else — numbering, identity, lineage validation, the event —
+       * is the same operation `AggregateManagerConclusion` and `ReviseThesis`
+       * use, so the three cannot drift apart on what a revision is.
        */
-      const existing = await repositories.theses.get(input.revisionId)
-      if (existing && existing.thesisId !== input.thesisId) {
-        reject(
-          'invariant-violated',
-          `Revision "${input.revisionId}" already belongs to lineage ` +
-            `"${existing.thesisId}".`,
-        )
-      }
-
-      let revision: InvestmentThesis
-      try {
-        revision = buildThesis({
-          thesisId: input.thesisId,
-          revisionId: input.revisionId,
-          revisionNumber: 1,
-          caseId: input.caseId,
+      const revision = await mintRevision(repositories, context, {
+        caseId: input.caseId,
+        thesisId: input.thesisId,
+        prior: null,
+        changes: {
           statement: input.statement,
           position: input.position,
-          proposedByDepartmentId: input.proposedByDepartmentId,
-          proposedByEmployeeId: context.actor.employeeId!,
-          proposedAt: context.occurredAt,
-          supportingClaimIds: [],
-          opposingClaimIds: [],
-          citedByClaimIds: [],
-          /*
-           * `proposed`, not `under-analysis`. Nobody has reviewed it, nothing
-           * cites it, and no gate has been passed.
-           */
-          lifecycle: 'proposed',
           invalidationCriteria: input.invalidationCriteria,
           ...(input.horizon ? { horizon: input.horizon } : {}),
           implications: input.implications,
-        })
-      } catch (error) {
-        // `buildThesis` refuses a thesis with no invalidation criteria.
-        reject(
-          'invariant-violated',
-          error instanceof Error ? error.message : String(error),
-        )
-      }
+        },
+        cause: 'initial-proposal',
+        proposedByDepartmentId: input.proposedByDepartmentId,
+        /*
+         * `proposed`, not `under-analysis`. Nobody has reviewed it, nothing
+         * cites it, and no gate has been passed.
+         */
+        lifecycle: 'proposed',
+      })
 
-      const saved = await repositories.theses.save(revision)
-
-      await repositories.events.append(
-        thesisEvent({
-          eventId: deriveEventId({
-            commandId: context.commandId,
-            recordType: 'thesis-proposed',
-            entityId: input.revisionId,
-          }),
-          caseId: input.caseId,
-          thesisId: input.thesisId,
-          revisionId: input.revisionId,
-          from: null,
-          to: 'proposed',
-          actorEmployeeId: context.actor.employeeId ?? undefined,
-          actorDepartmentId: input.proposedByDepartmentId,
-          occurredAt: context.occurredAt,
-          correlationId: context.correlationId,
-          aggregateVersion: investmentCase.version,
-        }),
-      )
-
-      return { value: saved, resultKind: 'revision', resultRef: saved.revisionId }
+      return { value: revision, resultKind: 'revision', resultRef: revision.revisionId }
     },
 
     async rehydrate(repositories, resultRef) {

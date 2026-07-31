@@ -71,9 +71,12 @@ async function insertRevision(
     `INSERT INTO analysis.thesis_revisions
        (revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
         statement, position, lifecycle, invalidation_criteria, implications,
-        proposed_by_department_id, proposed_by_employee_id, proposed_at, revision_reason)
+        proposed_by_department_id, proposed_by_employee_id, proposed_at,
+        revision_reason, revision_cause)
      VALUES ($1, $2, $3, $4, $5, 'The policy path is mispriced', 'buy', 'proposed',
-             'The curve reprices above 4%', '{}', 'global-macro', 'macro-head', now(), $6)`,
+             'The curve reprices above 4%', '{}', 'global-macro', 'macro-head',
+             now(), $6,
+             CASE WHEN $3::int = 1 THEN 'initial-proposal' ELSE 'correction' END)`,
     [
       revisionId,
       thesisId,

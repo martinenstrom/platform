@@ -349,6 +349,7 @@ describe('recorded contributions', () => {
 describe('the result store is exact-match only', () => {
   const inputs = {
     evidenceSetId: 'set-1',
+    caseId: 'case-1',
     executionIdentity: executionIdentityKey({
       kind: 'model',
       prompt: { id: 'macro', version: '3', contentHash: 'ph' },

@@ -77,6 +77,7 @@ const thesis = (): InvestmentThesis =>
     thesisId: 'thesis-1',
     revisionId: 'rev-1',
     revisionNumber: 1,
+    revisionCause: 'initial-proposal',
     caseId: 'case-1',
     implications: [],
     statement: 'The policy path is mispriced',
@@ -280,6 +281,7 @@ const result = (): StoredResult => ({
   providerKind: 'recorded',
   inputs: {
     evidenceSetId: 'set-1',
+    caseId: 'case-1',
     executionIdentity: 'model|p|1|ph|anthropic|m|mh',
     agentContractVersion: '1',
     outputSchemaVersion: '1',

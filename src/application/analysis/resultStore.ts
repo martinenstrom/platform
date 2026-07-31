@@ -41,6 +41,20 @@ export const CANONICALIZATION_VERSION = '1'
  * result with the prompt untouched.
  */
 export interface ResultKeyInputs {
+  /**
+   * The case whose desk produced it.
+   *
+   * Part of the key because a stored result carries CLAIM RECORDS, and a claim
+   * id belongs to one case's run — C1C-2 made those ids derive from the command
+   * that stored them. Two cases reasoning over one evidence set would otherwise
+   * collide under a single key with different claim ids, and the write-once
+   * store would report a conflict that is not one.
+   *
+   * The cost is that reuse is per-case. Genuine cross-case reuse would have to
+   * re-mint claim identities for the borrowing case rather than replay another
+   * case's records, which is a larger change than a cache key — see TD-37.
+   */
+  caseId: string
   evidenceSetId: string
   /**
    * What produced it, canonicalized by `executionIdentityKey`.
@@ -64,6 +78,7 @@ export interface ResultKeyInputs {
 export function resultKey(inputs: ResultKeyInputs): string {
   return stableHashHex(
     [
+      inputs.caseId,
       inputs.departmentId,
       inputs.evidenceSetId,
       inputs.executionIdentity,

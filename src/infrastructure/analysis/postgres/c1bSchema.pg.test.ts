@@ -70,9 +70,11 @@ async function insertRevision(caseId: string) {
     `INSERT INTO analysis.thesis_revisions
        (revision_id, thesis_id, revision_number, case_id, statement, position,
         lifecycle, invalidation_criteria, implications,
-        proposed_by_department_id, proposed_by_employee_id, proposed_at)
+        proposed_by_department_id, proposed_by_employee_id, proposed_at,
+        revision_cause)
      VALUES ($1, $2, 1, $3, 'The ECB holds', 'hold', 'proposed',
-             'Core inflation below 2%', '{}', 'global-macro', 'macro-head', now())`,
+             'Core inflation below 2%', '{}', 'global-macro', 'macro-head', now(),
+             'initial-proposal')`,
     [revisionId, id('thesis'), caseId],
   )
   return revisionId
@@ -104,13 +106,13 @@ async function insertResolution(
   await sql.query(
     `INSERT INTO analysis.requirement_resolutions
        (case_id, tenant_id, playbook_entry_key, revision_id, state,
-        rule_id, rule_version, reason, evaluated_at,
+        rule_id, rule_version, reason, input_hash, evaluated_at,
         evaluated_by_employee_id, evaluated_by_role_id, evaluated_by_role_function,
         evaluated_by_department_id, evaluated_by_department_is_governance,
         evaluated_by_department_handles, evaluated_by_authentication,
         organization_seed_version, provenance_id)
      VALUES ($1, 'system', $2, $3, $4, 'risk-review-when-implementable', '1', $5,
-             now(), 'research-director', 'research-director', 'manager',
+             'hash-of-implications', now(), 'research-director', 'research-director', 'manager',
              'research-office', false, ARRAY['aggregation'], 'system-asserted',
              '1', $6)`,
     [
@@ -217,14 +219,14 @@ describe('a recorded requirement resolution', () => {
       sql.query(
         `INSERT INTO analysis.requirement_resolutions
            (case_id, tenant_id, playbook_entry_key, revision_id, state,
-            rule_id, rule_version, reason, evaluated_at,
+            rule_id, rule_version, reason, input_hash, evaluated_at,
             evaluated_by_employee_id, evaluated_by_role_id,
             evaluated_by_role_function, evaluated_by_department_id,
             evaluated_by_department_is_governance,
             evaluated_by_department_handles, evaluated_by_authentication,
             organization_seed_version, provenance_id)
          VALUES ($1, 'system', 'risk-review', $2, 'required', 'r', '1', 'why',
-                 now(), 'research-director', 'research-director', 'manager',
+                 'hash', now(), 'research-director', 'research-director', 'manager',
                  'research-office', false, ARRAY['aggregation'], 'authenticated',
                  '1', $3)`,
         [caseId, revisionId, provenanceId],
@@ -547,9 +549,10 @@ describe('a thesis revision’s declared implications', () => {
       `INSERT INTO analysis.thesis_revisions
          (revision_id, thesis_id, revision_number, case_id, statement, position,
           lifecycle, invalidation_criteria, implications,
-          proposed_by_department_id, proposed_by_employee_id, proposed_at)
+          proposed_by_department_id, proposed_by_employee_id, proposed_at,
+            revision_cause)
        VALUES ($1, $2, 1, $3, 's', 'buy', 'proposed', 'crit',
-               ARRAY['hedging','position-sizing'], 'global-macro', 'macro-head', now())`,
+               ARRAY['hedging','position-sizing'], 'global-macro', 'macro-head', now(), 'initial-proposal')`,
       [revisionId, id('thesis'), caseId],
     )
 
@@ -567,9 +570,10 @@ describe('a thesis revision’s declared implications', () => {
         `INSERT INTO analysis.thesis_revisions
            (revision_id, thesis_id, revision_number, case_id, statement, position,
             lifecycle, invalidation_criteria, implications,
-            proposed_by_department_id, proposed_by_employee_id, proposed_at)
+            proposed_by_department_id, proposed_by_employee_id, proposed_at,
+            revision_cause)
          VALUES ($1, $2, 1, $3, 's', 'buy', 'proposed', 'crit',
-                 ARRAY['vibes'], 'global-macro', 'macro-head', now())`,
+                 ARRAY['vibes'], 'global-macro', 'macro-head', now(), 'initial-proposal')`,
         [id('rev'), id('thesis'), caseId],
       ),
     ).rejects.toThrow(/thesis_revisions_implications_known/)

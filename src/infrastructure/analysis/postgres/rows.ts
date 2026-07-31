@@ -51,6 +51,10 @@ export interface ThesisRevisionRow {
   proposed_at: string
   revised_at: string | null
   revision_reason: string | null
+  /** The bounded category beside the reason. */
+  revision_cause: string
+  /** The managerial synthesis that produced it, where one did. */
+  aggregation_id: string | null
 }
 
 export interface ThesisClaimLinkRow {
@@ -280,6 +284,51 @@ export interface AgentResultRow {
   provider_kind: string | null
 }
 
+/* ---------------------------------------------------------- aggregations */
+
+export interface AggregationRow {
+  id: string
+  case_id: string
+  thesis_id: string
+  source_revision_id: string
+  produced_revision_id: string
+  manager_employee_id: string
+  department_id: string
+  rationale: string
+  aggregated_at: string
+}
+
+export interface AggregationInputRow {
+  aggregation_id: string
+  run_id: string
+  playbook_entry_key: string
+  requirement_level: string
+}
+
+export interface AggregationClaimDispositionRow {
+  aggregation_id: string
+  claim_id: string
+  run_id: string
+  disposition: string
+  explanation: string | null
+  superseded_by_claim_id: string | null
+  /** Present exactly for `retained-unresolved`. */
+  materiality: string | null
+  escalation_required: boolean | null
+  blocks_eligibility: boolean | null
+  downgraded_from: string | null
+}
+
+export interface AggregationOptionalInputRow {
+  aggregation_id: string
+  playbook_entry_key: string
+  availability: string
+  run_id: string | null
+  scope: string | null
+  materially_relevant: boolean
+  explanation: string | null
+}
+
 export interface IdempotencyKeyRow {
   key: string
   command_type: string
@@ -322,6 +371,8 @@ export interface RequirementResolutionRow {
   rule_id: string
   rule_version: string
   reason: string
+  /** Hash of the normalized rule input, so the evaluation stays checkable. */
+  input_hash: string
   evaluated_at: string
   evaluated_by_employee_id: string
   evaluated_by_role_id: string

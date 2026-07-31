@@ -18,7 +18,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import type { CommandEnvelope } from '~/application/analysis/commands/envelope'
 import { runCommand, type CommandDeps } from '~/application/analysis/commands/runCommand'
-import { deriveAssignmentId } from '~/application/analysis/commands/eventIdentity'
+import {
+  deriveAssignmentId,
+  deriveRevisionId,
+} from '~/application/analysis/commands/eventIdentity'
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
@@ -390,7 +393,6 @@ describe('when the thesis moves while a desk is working', () => {
       {
         caseId: 'case-1',
         thesisId: 'thesis-1',
-        revisionId: 'rev-1',
         statement: 'The ECB cuts in March',
         position: 'directional',
         invalidationCriteria: 'Core inflation above 3% in February',
@@ -404,7 +406,7 @@ describe('when the thesis moves while a desk is working', () => {
     // The revision is current when the work starts and is replaced while it
     // runs, which is the only way this can happen for real.
     const result = await run(createStubContributionProvider(), {
-      revisionId: 'rev-1',
+      revisionId: deriveRevisionId('cmd-thesis', 'thesis-1'),
       revisionIsCurrent: () => false,
     })
 

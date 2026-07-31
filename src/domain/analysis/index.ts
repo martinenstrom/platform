@@ -24,6 +24,7 @@ export * from './review'
 export * from './contributions'
 export * from './authority'
 export * from './requirements'
+export * from './aggregation'
 
 /**
  * The version of the analysis domain contracts.
@@ -45,5 +46,9 @@ export * from './requirements'
  *      as one of three states rather than a nullable amount. Both change what
  *      a stored run MEANS: a null cost used to be readable as free, and a
  *      model reference used to be readable as a model having run.
+ *   6  Phase C1C-3 — a manager aggregation is a first-class record, a revision
+ *      points at the one that produced it, unresolved disagreement carries
+ *      materiality that can block the CIO, and a requirement resolution hashes
+ *      the input it was computed from
  */
-export const DOMAIN_CONTRACT_VERSION = '5'
+export const DOMAIN_CONTRACT_VERSION = '6'

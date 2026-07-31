@@ -968,6 +968,7 @@ describe('Phase C1A — the command foundation', () => {
       (f) => inLayer(f, 'application/analysis/commands/') && !isTest(f),
     ).map((f) => f.path.split('/').pop())
     expect(handlers?.sort()).toEqual([
+      'aggregateManagerConclusion.ts',
       'definition.ts',
       'envelope.ts',
       'eventIdentity.ts',
@@ -978,6 +979,8 @@ describe('Phase C1A — the command foundation', () => {
       'recordContribution.ts',
       'registry.ts',
       'resolveCommand.ts',
+      'resolveConditionalRequirement.ts',
+      'reviseThesis.ts',
       'runCommand.ts',
       'startAgentRun.ts',
     ])
@@ -1182,6 +1185,168 @@ describe('Phase C1C-2 — contribution', () => {
         f.imports.some((specifier) => specifier.includes('contributionPort')),
     ).map((f) => f.path)
     expect(callers).toEqual([])
+  })
+})
+
+describe('Phase C1C-3 — aggregation and revision minting', () => {
+  it('mints revisions in exactly one place', () => {
+    /*
+     * Three commands produce revisions. The rules about lineage, numbering and
+     * supersession fail silently when duplicated — a revision superseding the
+     * wrong predecessor reads exactly like one superseding the right one — so
+     * only `revisions.ts` may call the domain's minting builders.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        !f.path.startsWith('domain/') &&
+        !f.path.endsWith('application/analysis/revisions.ts') &&
+        !f.path.endsWith('postgres/mapping.ts') &&
+        /(buildThesis|reviseThesis)\s*\(/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('routes every revision-producing command through mintRevision', () => {
+    for (const handler of [
+      'proposeThesis.ts',
+      'aggregateManagerConclusion.ts',
+      'reviseThesis.ts',
+    ]) {
+      const file = FILES.find((f) => f.path.endsWith(`commands/${handler}`))
+      expect(file).toBeDefined()
+      expect(file!.imports).toContain('../revisions')
+    }
+  })
+
+  it('lets no command handler import another command handler', () => {
+    /*
+     * One handler is one transaction. Composing them would put two ledger
+     * entries where the caller believes there is one, which is why the shared
+     * work is an operation rather than a fourth command.
+     */
+    const handlers = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        ![
+          'definition.ts',
+          'envelope.ts',
+          'registry.ts',
+          'runCommand.ts',
+          'resolveCommand.ts',
+          'eventIdentity.ts',
+        ].some((infrastructure) => f.path.endsWith(infrastructure)),
+    )
+    const commandModules = new Set(
+      FILES.filter((f) => inLayer(f, 'application/analysis/commands/')).map((f) =>
+        f.path.split('/').pop()!.replace(/\.ts$/, ''),
+      ),
+    )
+    const shared = new Set([
+      'definition',
+      'envelope',
+      'eventIdentity',
+      'runCommand',
+      'resolveCommand',
+      'registry',
+    ])
+
+    const offenders: string[] = []
+    for (const handler of handlers) {
+      for (const specifier of handler.imports) {
+        const name = specifier.replace(/^\.\//, '')
+        if (commandModules.has(name) && !shared.has(name)) {
+          offenders.push(`${handler.path} → ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('decides eligibility in one place, and never in a handler', () => {
+    // The aggregation records facts. Whether a revision reaches the CIO is
+    // `evaluateRevisionEligibility`'s decision, and a handler reimplementing a
+    // blocking rule is how two answers to one question appear.
+    const offenders = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/commands/') &&
+        !isTest(f) &&
+        /evaluateRevisionEligibility|evaluateThesisEligibility/.test(
+          codeOnly(sourceOf(f)),
+        ),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('derives the eligibility effect of a disagreement in one function', () => {
+    const offenders = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        !f.path.endsWith('domain/analysis/aggregation.ts') &&
+        /blocksEligibility:\s*(true|false)/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('reads the Risk rule nowhere but the domain', () => {
+    // A second implementation of "does Risk apply" is a second answer.
+    const offenders = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        !f.path.startsWith('domain/analysis/') &&
+        /RISK_REVIEW_WHEN_IMPLEMENTABLE\.evaluate/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('offers no way to supply a conditional outcome', () => {
+    /*
+     * TD-29's closing property. The command computes the result, so its input
+     * has no field a caller could use to state one — stronger than accepting
+     * an answer and rejecting it when it disagrees.
+     */
+    const file = FILES.find((f) =>
+      f.path.endsWith('commands/resolveConditionalRequirement.ts'),
+    )
+    expect(file).toBeDefined()
+    const input = codeOnly(sourceOf(file!)).split('export function')[0]!
+    expect(input).not.toMatch(/(required|outcome|state)\s*[?]?:/)
+  })
+
+  it('keeps aggregation query fields out of jsonb', () => {
+    /*
+     * "Which claims did the manager set aside, and why" is the question the
+     * CIO asks before selecting a thesis. Behind a document it is a scan and a
+     * parse, so claim ids, dispositions, materiality and scope are columns.
+     */
+    const migration = readFileSync(
+      join(SRC, '..', 'db', 'migrations', '0018_manager_aggregations.sql'),
+      'utf8',
+    )
+    for (const column of [
+      'claim_id',
+      'disposition',
+      'materiality',
+      'blocks_eligibility',
+      'scope',
+      'run_id',
+    ]) {
+      // A column declaration, not a mention: `<name> text` or `<name> boolean`.
+      expect(
+        new RegExp(`${column} +(text|boolean)`).test(migration),
+        `${column} is not a column`,
+      ).toBe(true)
+    }
+    /*
+     * And no jsonb at all in this migration — read past the comments, which
+     * mention it precisely because the choice was deliberate. The manager's
+     * rationale is the only document-shaped field, and it is `text`.
+     */
+    const statements = migration
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/--[^\n]*/g, ' ')
+    expect(statements).not.toMatch(/jsonb/)
   })
 })
 

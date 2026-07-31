@@ -574,25 +574,24 @@ commands. The ledger schema already carries what references them.
 
 ---
 
-## TD-29 · Conditional requirements have no command that resolves them
+## TD-29 · Conditional requirements have no command that resolves them — CLOSED in C1C-3
 
-**Incurred:** Phase C1B. **Severity:** medium. **Blocks:** the Macro workflow
-reaching a decision.
+**Incurred:** Phase C1B. **Closed:** Phase C1C-3.
 
-The model is complete: a conditional entry names a versioned rule, a resolution
-is scoped to an exact revision, and `not-required` is recorded rather than
-inferred from absence. `ResolveConditionalRequirement` is already declared in
-`REASON_REQUIRED_COMMANDS`.
+`RequirementResolution` existed and nothing could write one, so every
+conditional gate was permanently unresolved and the distinction between "Risk
+was skipped" and "Risk was forgotten" was unreachable in practice.
 
-**What is missing is the command itself.** Nothing in C1B writes a resolution,
-so every conditional entry stays `unresolved` — which is the correct state, and
-also a state no case can currently leave.
+`ResolveConditionalRequirement` closes it, and takes **no outcome**. The result
+comes from `evaluateRequirement()` over the revision's declared implications —
+the only producer of a resolution — so a caller cannot supply an answer at all,
+which is stronger than accepting one and rejecting a disagreement. Only a
+department that HANDLES the entry's discipline may be accountable; an
+orchestrator may initiate and never author.
 
-**Preferred resolution:** the command lands in C1C beside the contribution and
-aggregation commands, because the rule reads a revision's declared implications
-and there are no aggregated revisions until then. Its reason policy is already
-`required`: excusing Risk Review is exactly the kind of act that owes an
-explanation.
+A resolution now carries `inputHash`, a hash of the normalized rule input, so
+"was this computed from the revision it names" is checkable years later without
+re-running a rule version that may since have been superseded.
 
 ---
 
@@ -678,11 +677,11 @@ model identity to every reader downstream, however honest the intent was.
 **What landed.** A run states its execution identity as one of three shapes,
 and the provider kind decides which are legal:
 
-| identity      | carries                                     | permitted for       |
-| ------------- | ------------------------------------------- | ------------------- |
-| `model`       | prompt ref and model ref, both complete     | `live`, `recorded`  |
-| `unavailable` | `not-captured-by-recording` and a recording | `recorded`          |
-| `scenario`    | scenario id and stub build version          | `stub`              |
+| identity      | carries                                     | permitted for      |
+| ------------- | ------------------------------------------- | ------------------ |
+| `model`       | prompt ref and model ref, both complete     | `live`, `recorded` |
+| `unavailable` | `not-captured-by-recording` and a recording | `recorded`         |
+| `scenario`    | scenario id and stub build version          | `stub`             |
 
 Enforced three times over: the union gives a stub nowhere to put a model at
 compile time, `buildRunRecord` refuses an identity its provider kind cannot
@@ -715,10 +714,10 @@ null reads as free.
 
 **What landed.** A run reports its usage as one of three states:
 
-| state            | means                                       | permitted for      |
-| ---------------- | ------------------------------------------- | ------------------ |
-| `not-applicable` | there was nothing to spend                  | `recorded`, `stub` |
-| `not-reported`   | real work whose provider did not say        | `live`             |
+| state            | means                                        | permitted for      |
+| ---------------- | -------------------------------------------- | ------------------ |
+| `not-applicable` | there was nothing to spend                   | `recorded`, `stub` |
+| `not-reported`   | real work whose provider did not say         | `live`             |
 | `measured`       | a measurement, **and zero is a measurement** | `live`, `recorded` |
 
 `measured` requires every part of the measurement, in both directions: amounts
@@ -738,6 +737,65 @@ runtime that cannot measure spend cannot refuse work it cannot afford, and the
 representation is only half of that. The half that landed is the half the
 enforcement will read: it can now tell "this cost nothing" from "nobody
 measured this", which a nullable column could not.
+
+---
+
+## TD-35 · No exceptional-aggregation override
+
+**Incurred:** Phase C1C-3. **Severity:** low. **Blocks:** nothing today.
+
+`AggregateManagerConclusion` refuses an incomplete required workflow, so a case
+whose required desk cannot deliver stalls until a person acts — and the only act
+available is outside the system.
+
+That is the correct failure. Minting a manager's conclusion from work that never
+arrived and labelling it blocked afterwards would put a conclusion in the record
+that nobody drew.
+
+**Preferred resolution:** an explicit governance or manager command with its own
+mandate, a required reason and its own ledger entry — never a flag on
+aggregation. Deliberately deferred until a real case needs it, because an
+override built before anyone has been stopped by the rule is an override
+designed against an imagined obstacle.
+
+---
+
+## TD-36 · The aggregation record has no read model
+
+**Incurred:** Phase C1C-3. **Severity:** medium. **Blocks:** nothing yet.
+
+`ManagerAggregation` stores which contributions were considered, what happened
+to every claim, which perspectives were missing and which disagreements were
+escalated. Nothing renders any of it.
+
+That is exactly what the CIO needs before selecting a thesis: which material
+claims were not adopted, and why. Every field is a queryable column rather than
+a document precisely so the projection is a join and not a parse.
+
+**Preferred resolution:** C1D projects it beside the revision it produced.
+
+---
+
+## TD-37 · Stored results are reusable only within one case
+
+**Incurred:** Phase C1C-2, surfaced by C1C-3. **Severity:** low.
+**Blocks:** cross-case reuse of expensive analysis.
+
+`ResultKeyInputs` gained `caseId`, so a stored result is reusable only by the
+case that produced it. The reason is C1C-2's: a stored result carries CLAIM
+RECORDS, and a claim id derives from the command that stored it. Two cases
+reasoning over one evidence set would otherwise collide under a single key with
+different claim ids, and the write-once store would report a conflict that is
+not one — which is exactly what happened while building C1C-3's fixtures.
+
+The cost is real: the point of the store is that expensive analysis is not
+repeated, and a live provider re-running an identical macro read for a second
+case is spend the firm did not need.
+
+**Preferred resolution:** store the claims WITHOUT identities and re-mint them
+for the borrowing case on reuse, so the result is content rather than records.
+That is a larger change than a cache key and it belongs with C2, where the
+saving is money rather than milliseconds.
 
 ---
 

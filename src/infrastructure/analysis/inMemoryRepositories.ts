@@ -42,6 +42,7 @@ import {
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
+  type ManagerAggregation,
   type RequirementResolution,
   type RunEvent,
   type ReviewAttribution,
@@ -56,6 +57,7 @@ import {
   DuplicateRecordError,
   MalformedRowError,
   TransactionClosedError,
+  type AggregationRepository,
   type AnalysisRepositories,
   type AssignmentRepository,
   type CaseRepository,
@@ -81,6 +83,7 @@ import {
   claimSemanticKey,
   decisionSemanticKey,
   evidenceSetSemanticKey,
+  managerAggregationSemanticKey,
   requirementResolutionIdentity,
   requirementResolutionSemanticKey,
   resultSemanticKey,
@@ -116,6 +119,7 @@ interface Store {
   commands: Map<string, { intent: CommandIntent; outcomes: CommandOutcome[] }>
   playbooks: Map<string, CasePlaybook>
   requirements: Map<string, RequirementResolution>
+  aggregations: Map<string, ManagerAggregation>
 }
 
 function emptyStore(): Store {
@@ -137,6 +141,7 @@ function emptyStore(): Store {
     commands: new Map(),
     playbooks: new Map(),
     requirements: new Map(),
+    aggregations: new Map(),
   }
 }
 
@@ -171,6 +176,7 @@ function snapshot(store: Store): Store {
     commands: new Map(store.commands),
     playbooks: new Map(store.playbooks),
     requirements: new Map(store.requirements),
+    aggregations: new Map(store.aggregations),
   }
 }
 
@@ -192,6 +198,7 @@ function restore(target: Store, from: Store): void {
   target.commands = from.commands
   target.playbooks = from.playbooks
   target.requirements = from.requirements
+  target.aggregations = from.aggregations
 }
 
 /** A transaction's liveness, shared by every repository scoped to it. */
@@ -934,6 +941,62 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     commands: commandLog(store, scope),
     playbooks: playbookRepository(store, scope),
     requirements: requirementRepository(store, scope),
+    aggregations: aggregationRepository(store, scope),
+  }
+}
+
+/**
+ * Manager aggregations.
+ *
+ * Write-once on `id`, which derives from the command — so a replay returns the
+ * stored synthesis and a genuinely different one under the same id is a
+ * disagreement rather than an overwrite.
+ */
+function aggregationRepository(store: Store, scope: Scope): AggregationRepository {
+  return {
+    async get(aggregationId) {
+      guard(scope, 'aggregations.get')
+      return store.aggregations.get(aggregationId) ?? null
+    },
+
+    async forRevision(revisionId) {
+      guard(scope, 'aggregations.forRevision')
+      return (
+        [...store.aggregations.values()].find(
+          (aggregation) => aggregation.producedRevisionId === revisionId,
+        ) ?? null
+      )
+    },
+
+    async listForCase(caseId) {
+      guard(scope, 'aggregations.listForCase')
+      return [...store.aggregations.values()]
+        .filter((aggregation) => aggregation.caseId === caseId)
+        .sort((a, b) => byString(a.aggregatedAt, b.aggregatedAt) || byString(a.id, b.id))
+    },
+
+    async save(aggregation, _provenance) {
+      guard(scope, 'aggregations.save')
+      seal(aggregation, 'aggregations')
+
+      const existing = store.aggregations.get(aggregation.id)
+      if (existing) {
+        if (
+          managerAggregationSemanticKey(existing) !==
+          managerAggregationSemanticKey(aggregation)
+        ) {
+          throw new ConflictingRecordError(
+            'Manager aggregation',
+            aggregation.id,
+            'aggregations.save',
+          )
+        }
+        return existing
+      }
+
+      store.aggregations.set(aggregation.id, aggregation)
+      return aggregation
+    },
   }
 }
 

@@ -272,6 +272,7 @@ export function recordContribution(
        * work that never completed.
        */
       const inputs = {
+        caseId: run.caseId,
         evidenceSetId: run.evidenceSetId,
         executionIdentity: executionIdentityKey(run.execution.identity),
         agentContractVersion: run.agentContractVersion,

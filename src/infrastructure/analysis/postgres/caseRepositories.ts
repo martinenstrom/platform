@@ -253,7 +253,8 @@ const REVISION_COLUMNS = `
   revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
   statement, position, lifecycle, invalidation_criteria, horizon, implications,
   proposed_by_department_id, proposed_by_employee_id,
-  ${ts('proposed_at')}, ${ts('revised_at')}, revision_reason
+  ${ts('proposed_at')}, ${ts('revised_at')}, revision_reason, aggregation_id,
+  revision_cause
 `
 
 export const THESIS_SQL = catalog({
@@ -276,8 +277,9 @@ export const THESIS_SQL = catalog({
            (revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
             statement, position, lifecycle, invalidation_criteria, horizon,
             implications, proposed_by_department_id, proposed_by_employee_id,
-            proposed_at, revised_at, revision_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            proposed_at, revised_at, revision_reason, aggregation_id,
+            revision_cause)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          ON CONFLICT (revision_id) DO UPDATE SET lifecycle = EXCLUDED.lifecycle`,
 
   saveLinks: `INSERT INTO analysis.thesis_claim_links (revision_id, claim_id, relation)
@@ -351,6 +353,8 @@ export function createThesisRepository(
           revision.proposedAt,
           revision.revisedAt ?? null,
           revision.revisionReason ?? null,
+          revision.aggregationId ?? null,
+          revision.revisionCause,
         ])
 
         for (const [relation, ids] of [

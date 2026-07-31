@@ -70,6 +70,7 @@ describe('a clean database reaches the expected schema', () => {
       '0015',
       '0016',
       '0017',
+      '0018',
     ])
   })
 
@@ -85,6 +86,10 @@ describe('a clean database reaches the expected schema', () => {
     // table is a failing test rather than a silently missing capability.
     expect(tables).toEqual([
       'agent_results',
+      'aggregation_claim_dispositions',
+      'aggregation_inputs',
+      'aggregation_optional_inputs',
+      'aggregations',
       'assignments',
       'case_decisions',
       'case_participants',

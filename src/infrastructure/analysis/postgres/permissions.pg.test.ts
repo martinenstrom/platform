@@ -295,9 +295,11 @@ describe('only the fields that legitimately move may be updated', () => {
       `INSERT INTO analysis.thesis_revisions
          (revision_id, thesis_id, revision_number, case_id, statement, position,
           lifecycle, invalidation_criteria, implications,
-          proposed_by_department_id, proposed_by_employee_id, proposed_at)
+          proposed_by_department_id, proposed_by_employee_id, proposed_at,
+          revision_cause)
        VALUES ($1, $2, 1, $3, 'The policy path is mispriced', 'buy', 'proposed',
-               'The curve reprices above 4%', '{}', 'global-macro', 'macro-head', now())`,
+               'The curve reprices above 4%', '{}', 'global-macro', 'macro-head',
+               now(), 'initial-proposal')`,
       [revisionId, id('thesis'), caseId],
     )
     await expect(

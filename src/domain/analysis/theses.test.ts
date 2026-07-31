@@ -34,6 +34,7 @@ const thesis = (over: Partial<InvestmentThesis> = {}): InvestmentThesis =>
     thesisId: 'th-buy',
     revisionId: 'rev-1',
     revisionNumber: 1,
+    revisionCause: (over.revisionNumber ?? 1) === 1 ? 'initial-proposal' : 'correction',
     caseId: 'case-1',
     implications: [],
     statement: 'Novo Nordisk is undervalued on 2027 earnings power.',
@@ -99,7 +100,12 @@ describe('revision lineage', () => {
     const { superseded, revision } = reviseThesis(
       first,
       { statement: 'Undervalued, but only on the 2028 ramp.' },
-      { revisionId: 'rev-2', reason: 'Q2 filing contradicted the margin path', at: 'T2' },
+      {
+        cause: 'new-evidence',
+        revisionId: 'rev-2',
+        reason: 'Q2 filing contradicted the margin path',
+        at: 'T2',
+      },
     )
     expect(superseded.lifecycle).toBe('superseded')
     expect(revision.revisionNumber).toBe(2)
@@ -112,7 +118,7 @@ describe('revision lineage', () => {
     const { revision } = reviseThesis(
       thesis({ lifecycle: 'verified', citedByClaimIds: ['claim-7'] }),
       {},
-      { revisionId: 'rev-2', reason: 'new evidence', at: 'T2' },
+      { cause: 'new-evidence', revisionId: 'rev-2', reason: 'new evidence', at: 'T2' },
     )
     expect(revision.lifecycle).toBe('under-analysis')
     expect(revision.citedByClaimIds).toEqual([])
@@ -124,6 +130,7 @@ describe('revision lineage', () => {
         thesis({ lifecycle: 'superseded' }),
         {},
         {
+          cause: 'correction',
           revisionId: 'rev-3',
           reason: 'x',
           at: 'T3',
@@ -134,7 +141,11 @@ describe('revision lineage', () => {
 
   it('requires a reason', () => {
     expect(() =>
-      reviseThesis(first, {}, { revisionId: 'rev-2', reason: '  ', at: 'T2' }),
+      reviseThesis(
+        first,
+        {},
+        { cause: 'new-evidence', revisionId: 'rev-2', reason: '  ', at: 'T2' },
+      ),
     ).toThrow(/requires a reason/)
   })
 
