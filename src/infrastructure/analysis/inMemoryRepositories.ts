@@ -721,7 +721,9 @@ function resultStore(store: Store, scope: Scope): ResultStore {
       guard(scope, 'results.get')
       return store.results.get(key) ?? null
     },
-    async put(result) {
+    // Provenance is a PostgreSQL foreign key; this store has no rows to point
+    // at, and inventing a table to hold one would be modelling the adapter.
+    async put(result, _provenance) {
       guard(scope, 'results.put')
       seal(result, 'results')
       // Write-once. The key covers every semantic input, so a differing result

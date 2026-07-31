@@ -40,6 +40,7 @@ import {
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import type { StoredResult } from '~/application/analysis/resultStore'
+import { modelOf } from '~/domain/analysis'
 import { createInMemoryRepositories } from './inMemoryRepositories'
 import { isDeeplyFrozen, MutableValueError, seal } from './seal'
 
@@ -126,13 +127,7 @@ const run = (): AgentRunRecord =>
     employeeId: 'macro-head',
     agentContractVersion: '1',
     outputSchemaVersion: '1',
-    prompt: { id: 'p', version: '1', contentHash: 'ph' },
-    model: {
-      id: 'm',
-      provider: 'anthropic',
-      parameters: { temperature: 0 },
-      parametersHash: 'mh',
-    },
+    usage: { state: 'not-applicable' },
     evidenceSetId: 'set-1',
     state: 'running',
     execution: {
@@ -142,6 +137,16 @@ const run = (): AgentRunRecord =>
       providerId: 'recorded-macro',
       providerVersion: '1',
       providerKind: 'recorded',
+      identity: {
+        kind: 'model',
+        prompt: { id: 'p', version: '1', contentHash: 'ph' },
+        model: {
+          id: 'm',
+          provider: 'anthropic',
+          parameters: {},
+          parametersHash: 'mh',
+        },
+      },
     },
     missingOptionalInputs: [],
 
@@ -272,13 +277,10 @@ const result = (): StoredResult => ({
   key: 'result-1',
   claims: [claim()],
   storedAt: NOW,
+  providerKind: 'recorded',
   inputs: {
     evidenceSetId: 'set-1',
-    promptId: 'p',
-    promptVersion: '1',
-    promptContentHash: 'ph',
-    modelId: 'm',
-    modelParametersHash: 'mh',
+    executionIdentity: 'model|p|1|ph|anthropic|m|mh',
     agentContractVersion: '1',
     outputSchemaVersion: '1',
     canonicalizationVersion: '1',
@@ -301,7 +303,7 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
   await repos.reviews.saveRisk(risk())
   await repos.events.append(event())
   await repos.decisions.save(decision())
-  await repos.results.put(result())
+  await repos.results.put(result(), await repos.provenance())
   await repos.commands.record(
     {
       commandId: 'cmd-1',
@@ -469,7 +471,9 @@ describe('a stored entity cannot be mutated after insertion', () => {
     await repos.runs.save(mine, await repos.provenance())
 
     expect(() => {
-      ;(mine.model.parameters as Record<string, number>).temperature = 1
+      ;(
+        modelOf(mine.execution.identity)!.parameters as Record<string, number>
+      ).temperature = 1
     }).toThrow(TypeError)
   })
 

@@ -151,8 +151,7 @@ async function seedRun(): Promise<string> {
       employeeId: 'macro-head',
       agentContractVersion: '1',
       outputSchemaVersion: '1',
-      prompt: { id: 'p', version: '1', contentHash: 'h' },
-      model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'h' },
+      usage: { state: 'not-applicable' },
       evidenceSetId: set.id,
       execution: {
         playbookId: 'macro-regime',
@@ -161,6 +160,16 @@ async function seedRun(): Promise<string> {
         providerId: 'recorded-macro',
         providerVersion: '1',
         providerKind: 'recorded',
+        identity: {
+          kind: 'model',
+          prompt: { id: 'p', version: '1', contentHash: 'ph' },
+          model: {
+            id: 'm',
+            provider: 'anthropic',
+            parameters: {},
+            parametersHash: 'mh',
+          },
+        },
       },
       missingOptionalInputs: [],
       state: 'running',
@@ -324,8 +333,7 @@ describe('what the adapter checks on the way out', () => {
         employeeId: 'macro-head',
         agentContractVersion: '1',
         outputSchemaVersion: '1',
-        prompt: { id: 'p', version: '1', contentHash: 'ph' },
-        model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
+        usage: { state: 'not-applicable' },
         evidenceSetId: set.id,
         execution: {
           playbookId: 'macro-regime',
@@ -334,6 +342,16 @@ describe('what the adapter checks on the way out', () => {
           providerId: 'recorded-macro',
           providerVersion: '1',
           providerKind: 'recorded',
+          identity: {
+            kind: 'model',
+            prompt: { id: 'p', version: '1', contentHash: 'ph' },
+            model: {
+              id: 'm',
+              provider: 'anthropic',
+              parameters: {},
+              parametersHash: 'mh',
+            },
+          },
         },
         missingOptionalInputs: [],
         state: 'running',
@@ -360,26 +378,31 @@ describe('what the adapter checks on the way out', () => {
       key: 'result-1',
       claims: [],
       storedAt: AT,
+      providerKind: 'recorded' as const,
       inputs: { departmentId: 'global-macro' } as never,
     }
-    await repos.results.put(result)
+    const provenance = await repos.provenance()
+    await repos.results.put(result, provenance)
 
     await expect(
-      repos.results.put({
-        ...result,
-        claims: [
-          buildClaim({
-            id: 'claim-1',
-            type: 'observation',
-            statement: 'x',
-            status: 'insufficient-evidence',
-            evidenceRefs: [],
-            contradictingEvidenceRefs: [],
-            confidence: { level: 'high', basis: [] },
-            temporalScope: { asOf: AT },
-          }),
-        ],
-      }),
+      repos.results.put(
+        {
+          ...result,
+          claims: [
+            buildClaim({
+              id: 'claim-1',
+              type: 'observation',
+              statement: 'x',
+              status: 'insufficient-evidence',
+              evidenceRefs: [],
+              contradictingEvidenceRefs: [],
+              confidence: { level: 'high', basis: [] },
+              temporalScope: { asOf: AT },
+            }),
+          ],
+        },
+        provenance,
+      ),
     ).rejects.toBeInstanceOf(ConflictingRecordError)
   })
 })
@@ -679,7 +702,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0015')
+    expect(provenance.schemaVersion).toBe('0017')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

@@ -16,13 +16,25 @@
  */
 
 import { stableHashHex } from '~/domain/shared/hash'
-import type { AgentClaim } from '~/domain/analysis'
+import type { AgentClaim, ProviderKind } from '~/domain/analysis'
+import type { StorageProvenance } from './repositories'
+
+/**
+ * How evidence is serialized for hashing.
+ *
+ * Part of the result key because it has to be: if canonicalization changes,
+ * two identical evidence sets can hash differently, and a result stored under
+ * the old scheme would look reusable under the new one. A constant rather than
+ * a caller's argument, because there is one canonicalization at a time and a
+ * caller free to name its own could store a result under a scheme that never
+ * existed.
+ */
+export const CANONICALIZATION_VERSION = '1'
 
 /**
  * Everything that can change what an agent would produce.
  *
- * Nine components, and each is here because changing it alone changes the
- * output. `canonicalizationVersion` covers how we serialize evidence for
+ * Each is here because changing it alone changes the output. `canonicalizationVersion` covers how we serialize evidence for
  * hashing: if that changes, two identical evidence sets could hash differently
  * and a stale result would look fresh. `agentImplementationVersion` covers the
  * code around the prompt — parsing, validation, retries — which can change the
@@ -30,11 +42,16 @@ import type { AgentClaim } from '~/domain/analysis'
  */
 export interface ResultKeyInputs {
   evidenceSetId: string
-  promptId: string
-  promptVersion: string
-  promptContentHash: string
-  modelId: string
-  modelParametersHash: string
+  /**
+   * What produced it, canonicalized by `executionIdentityKey`.
+   *
+   * One field rather than five, because what identifies an execution depends
+   * on what kind of thing ran: a prompt and a model for a live call, a
+   * scenario and a build for a stub. Five model-shaped fields would force
+   * every producer to have a model, which is the confusion the identity union
+   * exists to end.
+   */
+  executionIdentity: string
   agentContractVersion: string
   outputSchemaVersion: string
   canonicalizationVersion: string
@@ -49,11 +66,7 @@ export function resultKey(inputs: ResultKeyInputs): string {
     [
       inputs.departmentId,
       inputs.evidenceSetId,
-      inputs.promptId,
-      inputs.promptVersion,
-      inputs.promptContentHash,
-      inputs.modelId,
-      inputs.modelParametersHash,
+      inputs.executionIdentity,
       inputs.agentContractVersion,
       inputs.outputSchemaVersion,
       inputs.canonicalizationVersion,
@@ -67,6 +80,16 @@ export interface StoredResult {
   key: string
   claims: readonly AgentClaim[]
   storedAt: string
+  /**
+   * What produced it.
+   *
+   * Carried on the result rather than only on the run, so a stored result is
+   * traceable to its producer without joining back through a run that may
+   * since have been superseded. Reused analysis is still analysis: the moment
+   * a fixture replay and a live contribution become indistinguishable here,
+   * every consumer downstream inherits the confusion.
+   */
+  providerKind: ProviderKind
   /** Kept so a stored result can be explained without recomputing the key. */
   inputs: ResultKeyInputs
 }
@@ -79,6 +102,10 @@ export interface ResultStore {
    * overwriting: the key covers every semantic input, so a differing result
    * under the same key means something is wrong and silently replacing the
    * first would hide it.
+   *
+   * Takes provenance for the same reason `runs.save` does: the row records
+   * which code wrote it, beside the `providerKind` that records what decided
+   * its content.
    */
-  put(result: StoredResult): Promise<StoredResult>
+  put(result: StoredResult, provenance: StorageProvenance): Promise<StoredResult>
 }

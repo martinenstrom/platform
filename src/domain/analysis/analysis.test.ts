@@ -874,8 +874,7 @@ describe('run records and the activity feed', () => {
     employeeId: 'macro-analyst',
     agentContractVersion: '1.0.0',
     outputSchemaVersion: '1.0.0',
-    prompt: { id: 'macro', version: '3', contentHash: 'ph' },
-    model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'mh' },
+    usage: { state: 'not-applicable' },
     evidenceSetId: 'set-1',
     state: 'completed',
     startedAt: '2026-07-27T09:00:00.000Z',
@@ -887,6 +886,16 @@ describe('run records and the activity feed', () => {
       providerId: 'recorded-macro',
       providerVersion: '1',
       providerKind: 'recorded',
+      identity: {
+        kind: 'model',
+        prompt: { id: 'p', version: '1', contentHash: 'ph' },
+        model: {
+          id: 'm',
+          provider: 'anthropic',
+          parameters: {},
+          parametersHash: 'mh',
+        },
+      },
     },
     missingOptionalInputs: [],
     events: [{ runId: 'run-1', at: '2026-07-27T09:00:00.000Z', state: 'running' }],
@@ -894,14 +903,18 @@ describe('run records and the activity feed', () => {
   })
 
   it('keys a cache on every input that can change the output', () => {
-    const key = runCacheKey(run)
+    const key = runCacheKey({ ...run, identity: run.execution.identity })
     expect(key).toContain('set-1')
     expect(key).toContain('ph')
     expect(key).toContain('mh')
     // A different model configuration must not hit the same entry.
     const other = runCacheKey({
       ...run,
-      model: { ...run.model, parametersHash: 'different' },
+      identity: {
+        kind: 'model',
+        prompt: { id: 'macro', version: '3', contentHash: 'ph' },
+        model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'different' },
+      },
     })
     expect(other).not.toBe(key)
   })

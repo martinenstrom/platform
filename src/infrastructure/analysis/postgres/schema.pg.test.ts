@@ -151,14 +151,16 @@ async function insertRun(caseId: string) {
   await sql.query(
     `INSERT INTO analysis.runs
        (id, case_id, tenant_id, assignment_id, department_id, employee_id, state,
-        agent_contract_version, output_schema_version, prompt_id, prompt_version,
+        agent_contract_version, output_schema_version,
+        identity_kind, prompt_id, prompt_version,
         prompt_content_hash, model_id, model_provider, model_parameters_hash,
-        evidence_set_id, started_at,
+        usage_state, evidence_set_id, started_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
         provenance_id)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', 'running',
-             '1', '1', 'p', '1', 'ph', 'm', 'anthropic', 'mh', $4, now(),
+             '1', '1', 'model', 'p', '1', 'ph', 'm', 'anthropic', 'mh',
+             'not-applicable', $4, now(),
              'schema-test', '1', 'entry',
              'recorded-provider', '1', 'recorded', '{}', 'schema-test-prov')`,
     [runId, caseId, assignmentId, await insertEvidenceSet()],
@@ -862,12 +864,15 @@ describe('append-only and write-once records', () => {
   })
 
   it('refuses a duplicate content-addressed result key', async () => {
+    // A stored result names what produced it, so the fixture has to as well.
+    await seedExecutionRefs()
     const key = id('result')
     const insert = () =>
       sql.query(
-        `INSERT INTO analysis.agent_results (key, claims, stored_at, inputs)
-         VALUES ($1, '[]'::jsonb, now(), '{}'::jsonb)`,
-        [key],
+        `INSERT INTO analysis.agent_results
+           (key, claims, stored_at, inputs, provider_kind, provenance_id)
+         VALUES ($1, '[]'::jsonb, now(), '{}'::jsonb, 'recorded', $2)`,
+        [key, 'schema-test-prov'],
       )
     await insert()
     await expect(insert()).rejects.toThrow(/duplicate key/)

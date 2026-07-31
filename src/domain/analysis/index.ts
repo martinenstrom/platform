@@ -40,5 +40,10 @@ export * from './requirements'
  *      conditional requirements resolve against an exact revision
  *   4  Phase C1C — runs carry execution provenance, failures are a bounded
  *      category rather than free text, and an assignment can be failed
+ *   5  Phase C1C-2 — a run states its execution identity as one of three
+ *      shapes rather than always a prompt and a model, and what it consumed
+ *      as one of three states rather than a nullable amount. Both change what
+ *      a stored run MEANS: a null cost used to be readable as free, and a
+ *      model reference used to be readable as a model having run.
  */
-export const DOMAIN_CONTRACT_VERSION = '4'
+export const DOMAIN_CONTRACT_VERSION = '5'

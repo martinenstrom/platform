@@ -38,8 +38,21 @@ import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
-/** The states a failing run may land in. Not a free choice. */
-const FAILURE_STATES: readonly RunState[] = ['failed', 'timed-out', 'cancelled']
+/**
+ * The states a run that produced no contribution may land in.
+ *
+ * `superseded` is here even though nothing failed: the work reasoned over a
+ * thesis the firm has since replaced, so it cannot complete, and the run has to
+ * settle as something. `revision-superseded` already exists in the category
+ * vocabulary for exactly this, and leaving the run running would show a desk
+ * working on an argument that no longer exists.
+ */
+const FAILURE_STATES: readonly RunState[] = [
+  'failed',
+  'timed-out',
+  'cancelled',
+  'superseded',
+]
 
 export interface FailAgentRunInput {
   caseId: string
@@ -160,18 +173,28 @@ export function failAgentRun(
 
       /*
        * Retryable work goes back to the queue; non-retryable work stops as
-       * `failed`. `cancelled` is not used here — a provider failure is not the
-       * organization withdrawing the work, and conflating them would attribute
-       * a managerial decision to an outage.
+       * `failed`. `cancelled` is not used for a failure — a provider failure is
+       * not the organization withdrawing the work, and conflating them would
+       * attribute a managerial decision to an outage.
+       *
+       * A superseded run is the one case where `cancelled` is the honest
+       * answer: the desk did nothing wrong, and the firm moved the thesis out
+       * from under it. Recording that as `failed` would put a provider fault on
+       * a department that had none.
        */
       const assignment = await repositories.assignments.get(run.assignmentId)
       if (assignment) {
-        const nextStatus = input.retryable ? 'queued' : 'failed'
+        const nextStatus =
+          targetState === 'superseded'
+            ? 'cancelled'
+            : input.retryable
+              ? 'queued'
+              : 'failed'
         await repositories.assignments.save(
           buildAssignment({
             ...assignment,
             status: nextStatus,
-            ...(input.retryable ? {} : { completedAt: context.occurredAt }),
+            ...(nextStatus === 'queued' ? {} : { completedAt: context.occurredAt }),
           }),
         )
 

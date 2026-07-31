@@ -128,8 +128,7 @@ const runWith = (setId: string, events: number) =>
     employeeId: 'macro-head',
     agentContractVersion: '1',
     outputSchemaVersion: '1',
-    prompt: { id: 'p', version: '1', contentHash: 'ph' },
-    model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
+    usage: { state: 'not-applicable' },
     evidenceSetId: setId,
     execution: {
       playbookId: 'macro-regime',
@@ -138,6 +137,16 @@ const runWith = (setId: string, events: number) =>
       providerId: 'recorded-macro',
       providerVersion: '1',
       providerKind: 'recorded',
+      identity: {
+        kind: 'model',
+        prompt: { id: 'p', version: '1', contentHash: 'ph' },
+        model: {
+          id: 'm',
+          provider: 'anthropic',
+          parameters: {},
+          parametersHash: 'mh',
+        },
+      },
     },
     missingOptionalInputs: [],
     state: 'running',

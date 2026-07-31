@@ -960,10 +960,9 @@ describe('Phase C1A — the command foundation', () => {
 
   it('ships exactly the approved commands', () => {
     /*
-     * C1B adds the first three production commands. Pinned rather than
-     * counted, so a fourth arriving without a gate fails here — a command is
-     * an institutional act, and the set of acts the firm can perform is not
-     * something that should grow quietly.
+     * Pinned rather than counted, so a command arriving without a gate fails
+     * here — a command is an institutional act, and the set of acts the firm
+     * can perform is not something that should grow quietly.
      */
     const handlers = FILES.filter(
       (f) => inLayer(f, 'application/analysis/commands/') && !isTest(f),
@@ -976,6 +975,7 @@ describe('Phase C1A — the command foundation', () => {
       'instantiatePlaybook.ts',
       'openInvestmentCase.ts',
       'proposeThesis.ts',
+      'recordContribution.ts',
       'registry.ts',
       'resolveCommand.ts',
       'runCommand.ts',
@@ -1058,9 +1058,11 @@ describe('Phase C1C-1 — the external-work boundary', () => {
   })
 
   it('ships no live contribution provider', () => {
-    // C2 remains blocked: recorded and stub only.
+    // C2 remains blocked: recorded and stub only. Read through `codeOnly`, so
+    // the rule can be documented beside the code it governs rather than being
+    // tripped by the sentence explaining it.
     const offenders = FILES.filter(
-      (f) => !isTest(f) && /providerKind:\s*'live'/.test(sourceOf(f)),
+      (f) => !isTest(f) && /providerKind:\s*'live'/.test(codeOnly(sourceOf(f))),
     ).map((f) => f.path)
     expect(offenders).toEqual([])
   })
@@ -1076,6 +1078,110 @@ describe('Phase C1C-1 — the external-work boundary', () => {
       (f) => !isTest(f) && /failureReason/.test(codeOnly(sourceOf(f))),
     ).map((f) => f.path)
     expect(offenders).toEqual([])
+  })
+})
+
+describe('Phase C1C-2 — contribution', () => {
+  const providers = 'infrastructure/analysis/providers/'
+
+  it('ships exactly the approved contribution providers', () => {
+    /*
+     * Two, and neither is a model. A third file appearing here means a
+     * provider landed without the phase gate that C2 is waiting on — the same
+     * control the market-data adapters are under, for the same reason.
+     */
+    const adapters = FILES.filter((f) => inLayer(f, providers) && !isTest(f))
+      .map((f) => f.path)
+      .sort()
+    expect(adapters).toEqual([
+      'infrastructure/analysis/providers/index.ts',
+      'infrastructure/analysis/providers/recorded.ts',
+      'infrastructure/analysis/providers/stub.ts',
+    ])
+  })
+
+  it('lets no provider declare itself live', () => {
+    // C2 remains blocked. A provider states its own kind, so this is the one
+    // place a fixture could claim to be work the firm stands behind.
+    const offenders = FILES.filter(
+      (f) => inLayer(f, providers) && /kind:\s*'live'/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('gives the stub no way to name a model', () => {
+    /*
+     * TD-32, as a rule rather than a hope. The stub declares a scenario; if it
+     * could reach `PromptRef` or `ModelRef` it could describe itself as a model
+     * execution again, and a placeholder in a field named `model` is a real
+     * model identity to every reader downstream.
+     */
+    const stub = FILES.find((f) => f.path.endsWith('providers/stub.ts'))
+    expect(stub).toBeDefined()
+    const source = codeOnly(sourceOf(stub!))
+    expect(source).not.toMatch(/\bPromptRef\b|\bModelRef\b/)
+    expect(source).not.toMatch(/\bmodel\s*:/)
+  })
+
+  it('lets nothing express usage as a nullable amount', () => {
+    /*
+     * TD-33. `null` had to mean three things — nothing to spend, nothing
+     * reported, nobody looked — and the ambiguity falls on the expensive side,
+     * because null reads as free. The state is what carries the meaning now.
+     */
+    const offenders = FILES.filter(
+      (f) =>
+        !isTest(f) &&
+        f.path.includes('/analysis/') &&
+        /usage:\s*null|cost\?:\s*RunCost/.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps claim identity out of the provider’s hands', () => {
+    /*
+     * A provider names its own claims — a fixture is written before it is
+     * replayed, and a counterclaim has to say what it contests. Those names
+     * are local to one contribution: `RecordContribution` translates them
+     * through `deriveClaimId`, and a handler storing `claim.id` unchanged
+     * would let two replays of one fixture collide.
+     */
+    const handler = FILES.find((f) => f.path.endsWith('commands/recordContribution.ts'))
+    expect(handler).toBeDefined()
+    expect(handler!.imports).toContain('./eventIdentity')
+    expect(codeOnly(sourceOf(handler!))).toMatch(/id:\s*deriveClaimId\(/)
+  })
+
+  it('validates a contribution outside the handler that stores it', () => {
+    // What a defect IS and what to DO about it are different decisions. Kept
+    // apart so each rule is testable without a case, a run and a transaction
+    // around it.
+    const validation = FILES.find((f) =>
+      f.path.endsWith('application/analysis/contributionValidation.ts'),
+    )
+    expect(validation).toBeDefined()
+    const offenders = violations([validation!], (specifier) => {
+      const layer = toLayerPath(specifier)
+      return layer?.startsWith('infrastructure/') ?? false
+    })
+    expect(offenders).toEqual([])
+  })
+
+  it('sequences the provider from one place only', () => {
+    /*
+     * The orchestrator holds the provider. Nothing else in the application
+     * layer may call one: a second sequencer would be a second opinion about
+     * when a transaction is open, and the boundary would hold in one of them.
+     */
+    const callers = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/') &&
+        !isTest(f) &&
+        !f.path.endsWith('orchestrator.ts') &&
+        !f.path.endsWith('contributionPort.ts') &&
+        f.imports.some((specifier) => specifier.includes('contributionPort')),
+    ).map((f) => f.path)
+    expect(callers).toEqual([])
   })
 })
 

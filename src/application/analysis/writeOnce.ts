@@ -113,6 +113,10 @@ export function resultSemanticKey(result: StoredResult): string {
   return canonicalJson({
     key: result.key,
     claims: result.claims.map(claimSemanticKey).sort(),
+    // Part of the identity, not a label on it: the same key holding a fixture
+    // replay and a live contribution is a real disagreement about what the
+    // firm knows, and returning either one silently would settle it by luck.
+    providerKind: result.providerKind,
     inputs: result.inputs,
   })
 }

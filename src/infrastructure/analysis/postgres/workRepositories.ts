@@ -23,7 +23,14 @@ import {
   runEventIdentity,
   runEventSemanticKey,
 } from '~/application/analysis/writeOnce'
-import type { AgentClaim, AgentRunRecord, RunEvent } from '~/domain/analysis'
+import {
+  measuredCost,
+  modelOf,
+  promptOf,
+  type AgentClaim,
+  type AgentRunRecord,
+  type RunEvent,
+} from '~/domain/analysis'
 import { groupBy } from './caseRepositories'
 import { ensureProvenance } from './provenance'
 import { toAssignment, toClaim, toRun, toRunEvent } from './mapping'
@@ -302,14 +309,17 @@ export function createClaimRepository(
 
 const RUN_COLUMNS = `
   id, case_id, tenant_id, assignment_id, department_id, employee_id, revision_id,
-  state, obsolete, agent_contract_version, output_schema_version, prompt_id,
+  state, obsolete, agent_contract_version, output_schema_version,
+  identity_kind, prompt_id,
   prompt_version, prompt_content_hash, model_id, model_provider,
-  model_parameters_hash, model_parameters, evidence_set_id,
+  model_parameters_hash, model_parameters,
+  scenario_id, stub_version, identity_unavailable_reason, recording_id,
+  evidence_set_id,
   ${ts('started_at')}, ${ts('completed_at')},
   failure_category, failure_retryable, failure_attempt, ${ts('failed_at')},
   playbook_id, playbook_version, playbook_entry_key,
   provider_id, provider_version, provider_kind, missing_optional_inputs,
-  input_tokens, output_tokens, cost_minor_units, currency
+  usage_state, input_tokens, output_tokens, cost_minor_units, currency
 `
 
 export const RUN_SQL = catalog({
@@ -328,17 +338,19 @@ export const RUN_SQL = catalog({
   save: `INSERT INTO analysis.runs
            (id, case_id, tenant_id, assignment_id, department_id, employee_id,
             revision_id, state, obsolete, agent_contract_version,
-            output_schema_version, prompt_id, prompt_version, prompt_content_hash,
+            output_schema_version, identity_kind,
+            prompt_id, prompt_version, prompt_content_hash,
             model_id, model_provider, model_parameters_hash, model_parameters,
+            scenario_id, stub_version, identity_unavailable_reason, recording_id,
             evidence_set_id, started_at, completed_at,
             failure_category, failure_retryable, failure_attempt, failed_at,
             playbook_id, playbook_version, playbook_entry_key,
             provider_id, provider_version, provider_kind, missing_optional_inputs,
             provenance_id,
-            input_tokens, output_tokens, cost_minor_units, currency)
+            usage_state, input_tokens, output_tokens, cost_minor_units, currency)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                  $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
-                 $34,$35,$36,$37)
+                 $34,$35,$36,$37,$38,$39,$40,$41,$42,$43)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
@@ -347,6 +359,7 @@ export const RUN_SQL = catalog({
            failure_retryable = EXCLUDED.failure_retryable,
            failure_attempt = EXCLUDED.failure_attempt,
            failed_at = EXCLUDED.failed_at,
+           usage_state = EXCLUDED.usage_state,
            input_tokens = EXCLUDED.input_tokens,
            output_tokens = EXCLUDED.output_tokens,
            cost_minor_units = EXCLUDED.cost_minor_units,
@@ -464,6 +477,16 @@ export function createRunRepository(
          */
         await ensureProvenance(client, context, provenance, record.startedAt)
 
+        /*
+         * A model reference is written only where a model produced the work.
+         * The identity union is what makes that decidable here rather than a
+         * convention every caller has to remember.
+         */
+        const identity = record.execution.identity
+        const prompt = promptOf(identity)
+        const model = modelOf(identity)
+        const cost = measuredCost(record.usage)
+
         await run(client, context, 'runs.save', RUN_SQL.save, [
           record.id,
           record.caseId,
@@ -476,13 +499,18 @@ export function createRunRepository(
           record.obsolete ?? false,
           record.agentContractVersion,
           record.outputSchemaVersion,
-          record.prompt.id,
-          record.prompt.version,
-          record.prompt.contentHash,
-          record.model.id,
-          record.model.provider,
-          record.model.parametersHash,
-          JSON.stringify(record.model.parameters),
+          record.execution.identity.kind,
+          prompt?.id ?? null,
+          prompt?.version ?? null,
+          prompt?.contentHash ?? null,
+          model?.id ?? null,
+          model?.provider ?? null,
+          model?.parametersHash ?? null,
+          model ? JSON.stringify(model.parameters) : null,
+          identity.kind === 'scenario' ? identity.scenarioId : null,
+          identity.kind === 'scenario' ? identity.stubVersion : null,
+          identity.kind === 'unavailable' ? identity.reason : null,
+          identity.kind === 'unavailable' ? identity.recordingId : null,
           record.evidenceSetId,
           record.startedAt,
           record.completedAt ?? null,
@@ -498,10 +526,11 @@ export function createRunRepository(
           record.execution.providerKind,
           [...record.missingOptionalInputs],
           provenance.provenanceId,
-          record.cost?.inputTokens ?? null,
-          record.cost?.outputTokens ?? null,
-          record.cost?.costMinorUnits ?? null,
-          record.cost?.currency ?? null,
+          record.usage.state,
+          cost?.inputTokens ?? null,
+          cost?.outputTokens ?? null,
+          cost?.costMinorUnits ?? null,
+          cost?.currency ?? null,
         ])
 
         if (record.events.length > 0) {

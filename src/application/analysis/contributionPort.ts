@@ -12,7 +12,13 @@
  * ship.
  */
 
-import type { AgentClaim, ModelRef, PromptRef, RunState } from '~/domain/analysis'
+import type {
+  AgentClaim,
+  ExecutionIdentity,
+  ProviderKind,
+  RunState,
+  RunUsage,
+} from '~/domain/analysis'
 
 /** What a department is asked to do. */
 export interface ContributionRequest {
@@ -54,12 +60,23 @@ export const PHASE_B_BUDGET: ContributionBudget = Object.freeze({
 
 export interface ContributionResult {
   claims: readonly AgentClaim[]
-  prompt: PromptRef
-  model: ModelRef
+  /*
+   * The prompt and model are deliberately absent: they were DECLARED before
+   * execution and are already on the run. Restating them here would let a
+   * provider report having used something other than what it said it would,
+   * and the record would quietly take the second answer.
+   */
   agentContractVersion: string
   outputSchemaVersion: string
-  /** Reported by the provider; `null` where nothing was measured. */
-  usage: { inputTokens: number; outputTokens: number; costMinorUnits: number } | null
+  /**
+   * What it consumed, in one of three states.
+   *
+   * Never a nullable number. A replay reports `not-applicable` — it spent
+   * nothing — and a live provider that did not tell us reports `not-reported`,
+   * which is a different fact from spending zero. `measured` carries a currency
+   * alongside the amount, because an amount without one is not a cost.
+   */
+  usage: RunUsage
   /**
    * States the provider passed through, so the run's event log reflects what
    * actually happened rather than a synthetic start-and-finish pair.
@@ -67,7 +84,46 @@ export interface ContributionResult {
   observedStates: readonly RunState[]
 }
 
+/**
+ * What a provider will use, stated before it runs.
+ *
+ * The run record declares its four version axes at `StartAgentRun`, which
+ * commits before any provider executes. Something therefore has to know them
+ * in advance, and the provider is the only honest place: a recorded one reads
+ * them off its fixture, and a live one knows its prompt and model
+ * configuration before it sends anything.
+ *
+ * The alternative — recording what came back — would make the axes a
+ * description of the answer rather than of the question, and a provider that
+ * silently switched models mid-flight would leave no trace of having done so.
+ */
+export interface ContributionDeclaration {
+  agentContractVersion: string
+  outputSchemaVersion: string
+  /**
+   * What will run, in the shape the provider's kind permits.
+   *
+   * A stub declares a scenario; a live provider declares its prompt and model.
+   * The provider states it because the provider is the only thing that knows —
+   * and stating it here means a stub cannot acquire a model reference by
+   * passing through a field that has one.
+   */
+  identity: ExecutionIdentity
+}
+
 export interface ContributionProvider {
   readonly id: string
+  /** The provider's own implementation version. Part of the run's provenance. */
+  readonly version: string
+  /**
+   * What kind of producer this is.
+   *
+   * Declared by the provider rather than chosen by the caller: a fixture must
+   * not be able to enter the record as live work because whoever wired it up
+   * passed the wrong string.
+   */
+  readonly kind: ProviderKind
+  /** Known before execution, and recorded before execution. */
+  declare(request: ContributionRequest): ContributionDeclaration
   contribute(request: ContributionRequest): Promise<ContributionResult>
 }

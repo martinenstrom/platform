@@ -91,6 +91,8 @@ async function insertRun(
     providerKind: string | null
     entryKey: string
     failure: string | null
+    identityKind: string
+    usageState: string
   }> = {},
 ) {
   const runId = id('run')
@@ -99,15 +101,27 @@ async function insertRun(
   await sql.query(
     `INSERT INTO analysis.runs
        (id, case_id, tenant_id, assignment_id, department_id, employee_id, state,
-        agent_contract_version, output_schema_version, prompt_id, prompt_version,
+        agent_contract_version, output_schema_version,
+        identity_kind, prompt_id, prompt_version,
         prompt_content_hash, model_id, model_provider, model_parameters_hash,
-        evidence_set_id, started_at, completed_at,
+        scenario_id, stub_version, identity_unavailable_reason,
+        usage_state, evidence_set_id, started_at, completed_at,
         failure_category, failure_retryable, failure_attempt, failed_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
         provenance_id)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', $4,
-             '1', '1', 'p', '1', 'ph', 'm', 'recorded', 'mh', $5, now(),
+             '1', '1', $9::text,
+             CASE WHEN $9::text = 'model' THEN 'p' END,
+             CASE WHEN $9::text = 'model' THEN '1' END,
+             CASE WHEN $9::text = 'model' THEN 'ph' END,
+             CASE WHEN $9::text = 'model' THEN 'm' END,
+             CASE WHEN $9::text = 'model' THEN 'anthropic' END,
+             CASE WHEN $9::text = 'model' THEN 'mh' END,
+             CASE WHEN $9::text = 'scenario' THEN 'success' END,
+             CASE WHEN $9::text = 'scenario' THEN '1' END,
+             CASE WHEN $9::text = 'unavailable' THEN 'not-captured-by-recording' END,
+             $10::text, $5, now(),
              CASE WHEN $4::text = 'completed' THEN now() ELSE NULL END,
              $6::text,
              CASE WHEN $6::text IS NULL THEN NULL ELSE true END,
@@ -124,6 +138,8 @@ async function insertRun(
       failure,
       over.entryKey ?? 'entry',
       over.providerKind === undefined ? 'recorded' : over.providerKind,
+      over.identityKind ?? 'model',
+      over.usageState ?? 'not-applicable',
     ],
   )
   return runId

@@ -9,14 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  authorize,
-  buildRole,
-  isRunTerminal,
-  resolveActor,
-  type Organization,
-  type RoleFunction,
-} from '~/domain/analysis'
+import { authorize, isRunTerminal, resolveActor } from '~/domain/analysis'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import type { CommandEnvelope } from '~/application/analysis/commands/envelope'
 import { runCommand, type CommandDeps } from '~/application/analysis/commands/runCommand'
@@ -40,116 +33,14 @@ import { failAgentRun } from '~/application/analysis/commands/failAgentRun'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { playbookContentHash } from '~/application/analysis/playbooks'
 import { createInMemoryRepositories } from './inMemoryRepositories'
+import { TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
 
 const AT = '2026-07-28T09:00:00.000Z'
 const LATER = '2026-07-28T11:00:00.000Z'
-const SEED = 'seed-1'
+const SEED = TEST_SEED_VERSION
 
-/* ------------------------------------------------------------ organization */
-
-const role = (id: string, fn: RoleFunction) =>
-  buildRole({
-    id,
-    title: id,
-    function: fn,
-    responsibilities: [],
-    canBlockPublication: fn === 'governance',
-  })
-
-const department = (id: string, manager: string, handles: string[], gov = false) => ({
-  id,
-  name: id,
-  managerEmployeeId: manager,
-  handles,
-  isGovernance: gov,
-})
-
-const organization: Organization = {
-  id: 'firm',
-  name: 'Firm',
-  chiefEmployeeId: 'cio',
-  roles: [
-    role('chief-investment-officer', 'executive'),
-    role('manager', 'manager'),
-    role('specialist', 'specialist'),
-    role('governance', 'governance'),
-  ],
-  departments: [
-    department('executive', 'cio', []),
-    department('research-office', 'research-director', ['aggregation']),
-    department('global-macro', 'macro-head', ['macro', 'rates']),
-    department('quant-technical', 'quant-head', ['quant']),
-    department('verification', 'verification-head', ['verification'], true),
-    department('devils-advocate', 'devils-advocate-head', ['challenge'], true),
-    department('risk', 'chief-risk-officer', ['risk'], true),
-  ],
-  teams: [],
-  employees: [
-    {
-      id: 'cio',
-      displayName: 'CIO',
-      roleId: 'chief-investment-officer',
-      departmentId: 'executive',
-      seniority: 'chief',
-    },
-    {
-      id: 'research-director',
-      displayName: 'Research Director',
-      roleId: 'manager',
-      departmentId: 'research-office',
-      reportsTo: 'cio',
-      seniority: 'head',
-    },
-    {
-      id: 'macro-head',
-      displayName: 'Macro Head',
-      roleId: 'manager',
-      departmentId: 'global-macro',
-      reportsTo: 'cio',
-      seniority: 'head',
-    },
-    {
-      id: 'macro-analyst',
-      displayName: 'Macro Analyst',
-      roleId: 'specialist',
-      departmentId: 'global-macro',
-      reportsTo: 'macro-head',
-      seniority: 'analyst',
-    },
-    {
-      id: 'quant-head',
-      displayName: 'Quant Head',
-      roleId: 'manager',
-      departmentId: 'quant-technical',
-      reportsTo: 'cio',
-      seniority: 'head',
-    },
-    {
-      id: 'verification-head',
-      displayName: 'Verification Head',
-      roleId: 'governance',
-      departmentId: 'verification',
-      reportsTo: 'cio',
-      seniority: 'head',
-    },
-    {
-      id: 'devils-advocate-head',
-      displayName: "Devil's Advocate Head",
-      roleId: 'governance',
-      departmentId: 'devils-advocate',
-      reportsTo: 'cio',
-      seniority: 'head',
-    },
-    {
-      id: 'chief-risk-officer',
-      displayName: 'CRO',
-      roleId: 'governance',
-      departmentId: 'risk',
-      reportsTo: 'cio',
-      seniority: 'chief',
-    },
-  ],
-}
+/** The seeded firm these commands are authorized against. */
+const organization = TEST_ORGANIZATION
 
 /* ------------------------------------------------------------- the harness */
 
@@ -225,8 +116,11 @@ const startInput = (assignmentId: string, over: Record<string, unknown> = {}) =>
   providerKind: 'recorded' as const,
   agentContractVersion: '1',
   outputSchemaVersion: '1',
-  prompt: { id: 'macro-brief', version: '1', contentHash: 'ph' },
-  model: { id: 'replay', provider: 'recorded', parameters: {}, parametersHash: 'mh' },
+  identity: {
+    kind: 'model' as const,
+    prompt: { id: 'macro-brief', version: '1', contentHash: 'ph' },
+    model: { id: 'sonnet', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
+  },
   evidenceSetId,
   ...over,
 })
@@ -392,6 +286,18 @@ describe('StartAgentRun', () => {
       providerId: 'recorded-macro',
       providerVersion: '1',
       providerKind: 'recorded',
+      // A replay whose artifact captured what produced it keeps that model.
+      // `providerKind` is what stops it reading as live work.
+      identity: {
+        kind: 'model',
+        prompt: { id: 'macro-brief', version: '1', contentHash: 'ph' },
+        model: {
+          id: 'sonnet',
+          provider: 'anthropic',
+          parameters: {},
+          parametersHash: 'mh',
+        },
+      },
     })
   })
 

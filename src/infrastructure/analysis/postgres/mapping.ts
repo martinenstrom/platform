@@ -27,6 +27,7 @@ import {
   buildRunRecord,
   buildThesis,
   buildTransitionEvent,
+  PROVIDER_KINDS,
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
@@ -39,7 +40,9 @@ import {
   type EvidenceItem,
   type EvidenceRef,
   type EvidenceSet,
+  type ExecutionIdentity,
   type ProviderKind,
+  type RunUsage,
   type RequirementResolution,
   type RoleFunction,
   type RunFailureCategory,
@@ -316,20 +319,123 @@ export function toRunEvent(row: RunEventRow): RunEvent {
   }) as RunEvent
 }
 
+/**
+ * Rebuilds the execution identity, refusing a row that cannot make one.
+ *
+ * The database enforces the same shapes through CHECK constraints; this is the
+ * second wall. A row edited by hand into `identity_kind = 'model'` with no
+ * model columns fails here rather than entering the domain as a run that
+ * claims a model nobody can name.
+ */
+function toExecutionIdentity(row: RunRow): ExecutionIdentity {
+  switch (row.identity_kind) {
+    case 'model':
+      if (!row.prompt_id || !row.model_id) {
+        throw new MalformedRowError(
+          'run',
+          'identity_kind is "model" without a prompt and a model',
+          'runs.get',
+        )
+      }
+      return {
+        kind: 'model',
+        prompt: {
+          id: row.prompt_id,
+          version: row.prompt_version!,
+          contentHash: row.prompt_content_hash!,
+        },
+        model: {
+          id: row.model_id,
+          provider: row.model_provider!,
+          parameters: (row.model_parameters ?? {}) as Record<string, string>,
+          parametersHash: row.model_parameters_hash!,
+        },
+      }
+    case 'scenario':
+      if (!row.scenario_id || !row.stub_version) {
+        throw new MalformedRowError(
+          'run',
+          'identity_kind is "scenario" without a scenario and a stub version',
+          'runs.get',
+        )
+      }
+      return {
+        kind: 'scenario',
+        scenarioId: row.scenario_id,
+        stubVersion: row.stub_version,
+      }
+    case 'unavailable':
+      if (row.identity_unavailable_reason !== 'not-captured-by-recording') {
+        throw new MalformedRowError(
+          'run',
+          `identity_kind is "unavailable" with reason ` +
+            `"${row.identity_unavailable_reason}"`,
+          'runs.get',
+        )
+      }
+      return {
+        kind: 'unavailable',
+        reason: 'not-captured-by-recording',
+        recordingId: row.recording_id ?? '',
+      }
+    default:
+      throw new MalformedRowError(
+        'run',
+        `unknown identity_kind "${row.identity_kind}"`,
+        'runs.get',
+      )
+  }
+}
+
+/**
+ * Rebuilds what the run consumed.
+ *
+ * `measured` requires every part of the measurement, so a half-written cost
+ * cannot read as a complete one — and a missing state cannot quietly become
+ * "free", which is what a bare nullable column did.
+ */
+function toRunUsage(row: RunRow): RunUsage {
+  switch (row.usage_state) {
+    case 'not-applicable':
+      return { state: 'not-applicable' }
+    case 'not-reported':
+      return { state: 'not-reported' }
+    case 'measured':
+      if (
+        row.input_tokens === null ||
+        row.output_tokens === null ||
+        row.cost_minor_units === null ||
+        row.currency === null
+      ) {
+        throw new MalformedRowError(
+          'run',
+          'usage_state is "measured" but is not',
+          'runs.get',
+        )
+      }
+      return {
+        state: 'measured',
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+        costMinorUnits: row.cost_minor_units,
+        currency: row.currency,
+      }
+    default:
+      throw new MalformedRowError(
+        'run',
+        `unknown usage_state "${row.usage_state}"`,
+        'runs.get',
+      )
+  }
+}
+
 export function toRun(
   row: RunRow,
   events: readonly RunEventRow[],
   claims: readonly AgentClaim[],
 ): AgentRunRecord {
-  const cost =
-    row.cost_minor_units === null
-      ? null
-      : {
-          inputTokens: row.input_tokens ?? 0,
-          outputTokens: row.output_tokens ?? 0,
-          costMinorUnits: row.cost_minor_units,
-          currency: row.currency!,
-        }
+  const identity = toExecutionIdentity(row)
+  const usage = toRunUsage(row)
 
   return seal(
     build('run', 'runs', () =>
@@ -342,17 +448,6 @@ export function toRun(
           employeeId: row.employee_id,
           agentContractVersion: row.agent_contract_version,
           outputSchemaVersion: row.output_schema_version,
-          prompt: {
-            id: row.prompt_id,
-            version: row.prompt_version,
-            contentHash: row.prompt_content_hash,
-          },
-          model: {
-            id: row.model_id,
-            provider: row.model_provider,
-            parameters: (row.model_parameters ?? {}) as Record<string, string>,
-            parametersHash: row.model_parameters_hash,
-          },
           evidenceSetId: row.evidence_set_id,
           state: row.state,
           revisionId: row.revision_id,
@@ -360,7 +455,7 @@ export function toRun(
           completedAt: row.completed_at,
           events: events.map(toRunEvent),
           claims: [...claims],
-          cost,
+          usage,
           ...(row.failure_category
             ? {
                 failure: {
@@ -379,6 +474,7 @@ export function toRun(
             providerId: row.provider_id,
             providerVersion: row.provider_version,
             providerKind: row.provider_kind as ProviderKind,
+            identity,
           },
           obsolete: row.obsolete ? true : null,
         }) as unknown as AgentRunRecord,
@@ -670,11 +766,28 @@ export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
 /* ---------------------------------------------------------------- results */
 
 export function toStoredResult(row: AgentResultRow): StoredResult {
+  /*
+   * A result that cannot say what produced it does not enter the domain.
+   *
+   * The column is nullable because 0015 added it to a table that already
+   * existed; nothing has ever written a row without it, and a null here means
+   * a row was written by hand or by an older build. Reading it as though the
+   * provider were merely unknown would let a fixture replay be reused as
+   * analysis the firm stands behind.
+   */
+  if (!PROVIDER_KINDS.includes(row.provider_kind as ProviderKind)) {
+    throw new MalformedRowError(
+      'agent result',
+      `provider_kind is "${row.provider_kind}"`,
+      'results.get',
+    )
+  }
   return seal(
     {
       key: row.key,
       claims: expectArray(row.claims, 'agent result', 'claims'),
       storedAt: row.stored_at,
+      providerKind: row.provider_kind as ProviderKind,
       inputs: row.inputs,
     } as StoredResult,
     'results',

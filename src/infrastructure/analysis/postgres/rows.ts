@@ -89,14 +89,23 @@ export interface RunRow {
   state: string
   obsolete: boolean
   agent_contract_version: string
+  /** 'model' | 'unavailable' | 'scenario'. Decides which columns below apply. */
+  identity_kind: string
   output_schema_version: string
-  prompt_id: string
-  prompt_version: string
-  prompt_content_hash: string
-  model_id: string
-  model_provider: string
-  model_parameters_hash: string
+  // Present only for `identity_kind = 'model'` — nothing else has a model.
+  prompt_id: string | null
+  prompt_version: string | null
+  prompt_content_hash: string | null
+  model_id: string | null
+  model_provider: string | null
+  model_parameters_hash: string | null
   model_parameters: unknown
+  // Present only for `identity_kind = 'scenario'`.
+  scenario_id: string | null
+  stub_version: string | null
+  // Present only for `identity_kind = 'unavailable'`.
+  identity_unavailable_reason: string | null
+  recording_id: string | null
   evidence_set_id: string
   started_at: string
   completed_at: string | null
@@ -111,6 +120,8 @@ export interface RunRow {
   provider_version: string
   provider_kind: string
   missing_optional_inputs: string[]
+  /** 'not-applicable' | 'not-reported' | 'measured'. */
+  usage_state: string
   input_tokens: number | null
   output_tokens: number | null
   cost_minor_units: number | null
@@ -265,6 +276,8 @@ export interface AgentResultRow {
   claims: unknown
   stored_at: string
   inputs: unknown
+  /** What decided the content, beside the provenance of what wrote the row. */
+  provider_kind: string | null
 }
 
 export interface IdempotencyKeyRow {

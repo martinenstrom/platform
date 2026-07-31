@@ -49,6 +49,97 @@ export interface ModelRef {
   parametersHash: string
 }
 
+/* ------------------------------------------------------- execution identity */
+
+/**
+ * What actually ran, expressed so that a stub cannot pretend to be a model.
+ *
+ * The columns were `prompt_*` and `model_*`, NOT NULL, from a design where
+ * every run came from a model. A deterministic stub has neither, so it filled
+ * them with placeholders — and a placeholder in a field named `model_provider`
+ * is a real model identity to every reader downstream, however honest the
+ * intent was. The rule this union exists to make structural: **nothing may
+ * carry a model reference unless a model produced it.**
+ *
+ * Three shapes, and the provider kind decides which are legal:
+ *
+ * | provider kind | permitted identities        |
+ * | ------------- | --------------------------- |
+ * | `live`        | `model`                     |
+ * | `recorded`    | `model`, `unavailable`      |
+ * | `stub`        | `scenario`                  |
+ *
+ * `recorded` takes both because a recording either captured what produced it
+ * or did not. Where it did, that is the true model and must be preserved —
+ * overwriting it with a placeholder would destroy the provenance the recording
+ * exists for. Where it did not, the honest answer is that it is unavailable,
+ * which is a fact and not a gap to fill.
+ */
+export type ExecutionIdentity =
+  /** A model produced this, and here is exactly which. */
+  | { kind: 'model'; prompt: PromptRef; model: ModelRef }
+  /**
+   * A replay whose artifact did not capture what produced it.
+   *
+   * Stated rather than left empty, because "we do not know" and "there was
+   * nothing to know" are different facts about a contribution.
+   */
+  | { kind: 'unavailable'; reason: 'not-captured-by-recording'; recordingId: string }
+  /** Synthetic output. There is no model and no prompt, and there was none. */
+  | { kind: 'scenario'; scenarioId: string; stubVersion: string }
+
+/** Which identities each kind of producer may present. */
+const IDENTITIES_BY_PROVIDER: Readonly<
+  Record<ProviderKind, readonly ExecutionIdentity['kind'][]>
+> = Object.freeze({
+  live: ['model'],
+  recorded: ['model', 'unavailable'],
+  stub: ['scenario'],
+})
+
+export function identityPermitted(
+  providerKind: ProviderKind,
+  identity: ExecutionIdentity,
+): boolean {
+  return IDENTITIES_BY_PROVIDER[providerKind].includes(identity.kind)
+}
+
+/**
+ * The identity as a cache coordinate.
+ *
+ * Every field that can change the output, and nothing else. A stub keys on its
+ * scenario and its build; an unavailable recording keys on the recording,
+ * which is the only thing that determines what it replays.
+ */
+export function executionIdentityKey(identity: ExecutionIdentity): string {
+  switch (identity.kind) {
+    case 'model':
+      return [
+        'model',
+        identity.prompt.id,
+        identity.prompt.version,
+        identity.prompt.contentHash,
+        identity.model.provider,
+        identity.model.id,
+        identity.model.parametersHash,
+      ].join('|')
+    case 'unavailable':
+      return ['unavailable', identity.reason, identity.recordingId].join('|')
+    case 'scenario':
+      return ['scenario', identity.scenarioId, identity.stubVersion].join('|')
+  }
+}
+
+/** The model reference, where one legitimately exists. */
+export function modelOf(identity: ExecutionIdentity): ModelRef | null {
+  return identity.kind === 'model' ? identity.model : null
+}
+
+/** The prompt reference, where one legitimately exists. */
+export function promptOf(identity: ExecutionIdentity): PromptRef | null {
+  return identity.kind === 'model' ? identity.prompt : null
+}
+
 /* --------------------------------------------------------------- run record */
 
 /**
@@ -192,13 +283,55 @@ export interface RunFailure {
   at: string
 }
 
-/** Cost accounting. Defined in Phase A, populated when a live provider exists. */
+/** Cost accounting. Minor currency units throughout, to avoid float drift. */
 export interface RunCost {
   inputTokens: number
   outputTokens: number
-  /** Minor currency units, to avoid float drift on money. */
   costMinorUnits: number
   currency: string
+}
+
+/**
+ * What a run consumed, in three states rather than a nullable number.
+ *
+ * A nullable column cannot distinguish the three things that are actually
+ * true of different runs, and the ambiguity falls on the side that costs
+ * money: `null` reads as free.
+ *
+ *   not-applicable  there was nothing to spend — a replay, a stub
+ *   not-reported    real work whose provider did not tell us what it cost
+ *   measured        a measurement, and **zero is a measurement**
+ *
+ * The third line is the one that needs saying. Once the state carries the
+ * meaning, `costMinorUnits: 0` is a provider reporting that this call was
+ * free, which is a different fact from a provider that said nothing — and
+ * budget enforcement in C2 has to treat them differently or it will authorize
+ * spend against unknowns.
+ */
+export type RunUsage =
+  | { state: 'not-applicable' }
+  | { state: 'not-reported' }
+  | ({ state: 'measured' } & RunCost)
+
+/** Which usage states each kind of producer may report. */
+const USAGE_BY_PROVIDER: Readonly<Record<ProviderKind, readonly RunUsage['state'][]>> =
+  Object.freeze({
+    // A live call always consumed something; the question is whether anyone
+    // measured it. `not-applicable` would be a claim that it was free.
+    live: ['measured', 'not-reported'],
+    // A replay consumes nothing now. Where the artifact captured what the
+    // original cost, that measurement is worth keeping.
+    recorded: ['not-applicable', 'measured'],
+    stub: ['not-applicable'],
+  })
+
+export function usagePermitted(providerKind: ProviderKind, usage: RunUsage): boolean {
+  return USAGE_BY_PROVIDER[providerKind].includes(usage.state)
+}
+
+/** The measurement, where one exists. */
+export function measuredCost(usage: RunUsage): RunCost | null {
+  return usage.state === 'measured' ? usage : null
 }
 
 /**
@@ -235,6 +368,15 @@ export interface ExecutionProvenance {
   providerId: string
   providerVersion: string
   providerKind: ProviderKind
+  /**
+   * What ran, in a form the provider kind constrains.
+   *
+   * Beside `providerKind` rather than at the top of the record, so the two can
+   * be checked against each other in one place: a stub carrying a model
+   * reference is not a run to be interpreted carefully, it is a run that must
+   * not exist.
+   */
+  identity: ExecutionIdentity
 }
 
 export interface AgentRunRecord {
@@ -245,11 +387,14 @@ export interface AgentRunRecord {
   departmentId: DepartmentId
   employeeId: EmployeeId
 
-  /** Four independent version axes. */
+  /**
+   * The two version axes every producer has.
+   *
+   * The other two — prompt and model — live on `execution.identity`, because
+   * only a producer that used a model has them at all.
+   */
   agentContractVersion: string
   outputSchemaVersion: string
-  prompt: PromptRef
-  model: ModelRef
 
   /** What it reasoned over. Content-addressed, so replay is exact. */
   evidenceSetId: string
@@ -263,7 +408,11 @@ export interface AgentRunRecord {
   events: readonly RunEvent[]
 
   claims: readonly AgentClaim[]
-  cost?: RunCost
+  /**
+   * What it consumed. Required, because "we did not record this" is one of the
+   * states rather than the absence of all of them.
+   */
+  usage: RunUsage
   /** Present when the run failed, timed out, was blocked or cancelled. */
   failure?: RunFailure
   /**
@@ -307,25 +456,40 @@ export function runCacheKey(run: {
   departmentId: DepartmentId
   agentContractVersion: string
   outputSchemaVersion: string
-  prompt: PromptRef
-  model: ModelRef
+  identity: ExecutionIdentity
   evidenceSetId: string
 }): string {
   return [
     run.departmentId,
     run.agentContractVersion,
     run.outputSchemaVersion,
-    run.prompt.id,
-    run.prompt.version,
-    run.prompt.contentHash,
-    run.model.provider,
-    run.model.id,
-    run.model.parametersHash,
+    executionIdentityKey(run.identity),
     run.evidenceSetId,
   ].join('|')
 }
 
 export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
+  /*
+   * The illegal combination, refused by construction rather than by review: a
+   * stub presenting a model, or a live run that cannot say which model ran.
+   * Both are records that would read as something they are not, and a record
+   * that misdescribes what produced it is worse than no record.
+   */
+  if (!identityPermitted(record.execution.providerKind, record.execution.identity)) {
+    throw new Error(
+      `Run "${record.id}" is ${record.execution.providerKind} work presenting a ` +
+        `"${record.execution.identity.kind}" identity. A stub has no model and a ` +
+        `live run must name the one it used.`,
+    )
+  }
+  if (!usagePermitted(record.execution.providerKind, record.usage)) {
+    throw new Error(
+      `Run "${record.id}" is ${record.execution.providerKind} work reporting ` +
+        `"${record.usage.state}" usage. A replay and a stub spend nothing; a live ` +
+        `call spends something, measured or not.`,
+    )
+  }
+
   const needsReason: readonly RunState[] = ['failed', 'timed-out', 'blocked', 'cancelled']
   if (needsReason.includes(record.state) && !record.failure) {
     throw new Error(`Run "${record.id}" is ${record.state} without a failure record`)
@@ -347,7 +511,10 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
     events: Object.freeze([...record.events]),
     claims: Object.freeze([...record.claims]),
     missingOptionalInputs: Object.freeze([...record.missingOptionalInputs]),
-    execution: Object.freeze({ ...record.execution }),
+    execution: Object.freeze({
+      ...record.execution,
+      identity: Object.freeze({ ...record.execution.identity }),
+    }),
   })
 }
 

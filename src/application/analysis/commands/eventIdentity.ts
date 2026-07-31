@@ -88,3 +88,23 @@ export function deriveAssignmentId(commandId: string, playbookEntryKey: string):
 export function deriveRunId(commandId: string, assignmentId: string): string {
   return derive('run', { commandId, recordType: 'run', entityId: assignmentId })
 }
+
+/**
+ * The identity of a claim a contribution records.
+ *
+ * The provider names its own claims — it has to, because a counterclaim says
+ * which claim it contests and a fixture is written before it is replayed. Those
+ * names are local to one contribution and carry none of the guarantees a stored
+ * identity needs: replay the same recording on two cases and both would assert
+ * `claim-1`, which is either a collision or a silent merge depending on which
+ * store you ask.
+ *
+ * So the provider's name is an INPUT to the identity rather than the identity.
+ * `RecordContribution` translates every intra-contribution reference through
+ * this same function, which keeps a counterclaim pointing at the claim it was
+ * written to contest while making the stored ids unique per command and stable
+ * across a retry.
+ */
+export function deriveClaimId(commandId: string, providerClaimId: string): string {
+  return derive('clm', { commandId, recordType: 'claim', entityId: providerClaimId })
+}

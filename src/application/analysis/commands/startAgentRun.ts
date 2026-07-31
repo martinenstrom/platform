@@ -28,9 +28,8 @@ import {
   buildRunRecord,
   isRunTerminal,
   type AgentRunRecord,
-  type ModelRef,
+  type ExecutionIdentity,
   type Organization,
-  type PromptRef,
   type ProviderKind,
 } from '~/domain/analysis'
 import { buildTransitionEvent } from '~/domain/analysis'
@@ -61,8 +60,12 @@ export interface StartAgentRunInput {
 
   agentContractVersion: string
   outputSchemaVersion: string
-  prompt: PromptRef
-  model: ModelRef
+  /**
+   * What will run: a prompt and a model, a scenario, or an explicit
+   * unavailability. Cross-checked against `providerKind` by `buildRunRecord`,
+   * so a stub cannot start a run carrying a model reference.
+   */
+  identity: ExecutionIdentity
   evidenceSetId: string
 }
 
@@ -91,8 +94,7 @@ export function startAgentRun(
       providerKind: input.providerKind,
       agentContractVersion: input.agentContractVersion,
       outputSchemaVersion: input.outputSchemaVersion,
-      prompt: input.prompt,
-      model: input.model,
+      identity: input.identity,
       evidenceSetId: input.evidenceSetId,
     }),
 
@@ -242,10 +244,14 @@ export function startAgentRun(
         employeeId,
         agentContractVersion: input.agentContractVersion,
         outputSchemaVersion: input.outputSchemaVersion,
-        prompt: input.prompt,
-        model: input.model,
         evidenceSetId: input.evidenceSetId,
         state: 'running',
+        /*
+         * A run that has not produced anything has consumed nothing yet, and
+         * for a replay or a stub it never will. `RecordContribution` replaces
+         * this with what the provider reported.
+         */
+        usage: { state: 'not-applicable' },
         ...(input.revisionId ? { revisionId: input.revisionId } : {}),
         startedAt: context.occurredAt,
         events: [{ runId, at: context.occurredAt, state: 'running' }],
@@ -258,6 +264,7 @@ export function startAgentRun(
           providerId: input.providerId,
           providerVersion: input.providerVersion,
           providerKind: input.providerKind,
+          identity: input.identity,
         },
       })
 

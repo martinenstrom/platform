@@ -4,6 +4,25 @@
  * Runs a case's playbook: independent departments concurrently, dependent ones
  * in order, each isolated and each with a deadline.
  *
+ * ## It writes nothing
+ *
+ * This module holds the provider and sequences commands. It has no repository,
+ * no transaction and no store — asserted by a fitness rule, because a direct
+ * write from here would be an institutional effect with no command, no actor
+ * and no ledger entry behind it. Every durable act is `runCommand`:
+ *
+ * ```
+ * StartAgentRun          commits    (run: → running, assignment → active)
+ *    ↓
+ * provider.contribute()  outside any transaction, may be slow or fail
+ *    ↓
+ * RecordContribution | FailAgentRun    commits
+ * ```
+ *
+ * The middle step is why the other two are separate commands. A PostgreSQL
+ * transaction must never be open while something remote is happening, so the
+ * boundary is three durable acts rather than one long one.
+ *
  * ## What is deliberately absent
  *
  * There is no shared accumulating context. Each department receives **only the
@@ -23,7 +42,12 @@
 
 import { isolate } from '~/application/shared/isolate'
 import { withDeadline } from '~/application/shared/deadline'
-import type { AgentClaim, RunFailureCategory, RunState } from '~/domain/analysis'
+import type {
+  AgentClaim,
+  AgentRunRecord,
+  RunFailureCategory,
+  RunState,
+} from '~/domain/analysis'
 import {
   blockedEntries,
   readyEntries,
@@ -31,6 +55,14 @@ import {
   type PlaybookEntry,
 } from './playbooks'
 import type { ContributionProvider, ContributionRequest } from './contributionPort'
+import { runCommand, type CommandDeps } from './commands/runCommand'
+import { startAgentRun } from './commands/startAgentRun'
+import { recordContribution } from './commands/recordContribution'
+import { failAgentRun } from './commands/failAgentRun'
+// The rejection code comes through the command envelope rather than from the
+// ledger module directly: the orchestrator's only durable surface is
+// `runCommand`, and a fitness rule keeps it that way.
+import type { CommandEnvelope, DomainRejection } from './commands/envelope'
 
 export interface OrchestrationOptions {
   /** Per-contribution deadline. */
@@ -50,12 +82,20 @@ export interface StageOutcome {
   /**
    * Why it stopped, from the closed vocabulary.
    *
-   * Was `failureReason: string`, and the timeout branch put
-   * `error.message` — raw provider text — straight into it. A bounded category
-   * cannot carry a response body, a prompt or an evidence excerpt into the
-   * logs and read models this record flows through.
+   * Was `failureReason: string`, and the timeout branch put `error.message` —
+   * raw provider text — straight into it. A bounded category cannot carry a
+   * response body, a prompt or an evidence excerpt into the logs and read
+   * models this record flows through.
    */
   failureCategory?: RunFailureCategory
+  /**
+   * Set when a command refused rather than a provider failing.
+   *
+   * The two are different facts and were previously indistinguishable: an
+   * entry the firm would not start and an entry whose provider fell over both
+   * came back as "failed". A refusal is the organization working correctly.
+   */
+  rejection?: DomainRejection['code']
   /** True when the target revision was superseded while this was in flight. */
   obsolete?: boolean
 }
@@ -69,6 +109,9 @@ export interface OrchestrationResult {
   missingRequired: readonly string[]
 }
 
+/** The three durable acts one entry can perform. */
+export type OrchestrationAct = 'start' | 'record' | 'fail'
+
 export interface OrchestrationContext {
   caseId: string
   evidenceSetId: string
@@ -77,14 +120,31 @@ export interface OrchestrationContext {
   /** Assignment id per playbook entry key. */
   assignmentIdFor: (entryKey: string) => string
   employeeIdFor: (departmentId: string) => string
+  /**
+   * The command id for one act on one entry.
+   *
+   * Supplied rather than generated here, and required to be deterministic: it
+   * is what makes the whole orchestration replayable. Re-running a playbook
+   * with the same ids resolves each command from the ledger instead of
+   * starting a second run, which is the property that lets a crashed
+   * orchestration be resumed rather than restarted.
+   */
+  commandIdFor: (entryKey: string, act: OrchestrationAct) => string
+  correlationId: string
+  /** Recorded as the initiator on every command this module issues. */
+  orchestratorId: string
   now: () => Date
   /**
    * Whether the target revision is still current.
    *
    * Checked AFTER each contribution returns, not only before it starts: a
    * revision can be superseded while a department is mid-flight, and the
-   * result must then be marked obsolete rather than attached to an argument
-   * that never saw it.
+   * result must then be settled as superseded rather than attached to an
+   * argument that never saw it.
+   *
+   * Advisory only — `RecordContribution` checks the stored revision itself and
+   * refuses regardless. This exists so the run is settled with the right
+   * category instead of being refused for a reason the caller has to guess.
    */
   revisionIsCurrent: () => boolean
 }
@@ -102,6 +162,7 @@ export async function runPlaybook(
   provider: ContributionProvider,
   context: OrchestrationContext,
   options: OrchestrationOptions,
+  deps: CommandDeps,
 ): Promise<OrchestrationResult> {
   const outcomes: StageOutcome[] = []
   const completed = new Set<string>()
@@ -119,7 +180,7 @@ export async function runPlaybook(
       .slice(0, options.maxConcurrency)
 
     const results = await Promise.all(
-      wave.map((entry) => runEntry(entry, provider, context, options, claimsByKey)),
+      wave.map((entry) => runEntry(entry, provider, context, options, deps, claimsByKey)),
     )
 
     for (const outcome of results) {
@@ -136,7 +197,10 @@ export async function runPlaybook(
   /*
    * Anything still unaccounted for could not run because something upstream
    * failed. Recorded as blocked with the reason, never as a failure it did not
-   * have.
+   * have — and never written to a run, because no run exists: `StartAgentRun`
+   * refuses an entry whose blocking dependencies have not completed, so the
+   * block is a consequence of the graph rather than rows that can disagree
+   * with it.
    */
   const blocked = blockedEntries(playbook, [...failed]).filter(
     (entry) => !completed.has(entry.key) && !failed.has(entry.key),
@@ -166,23 +230,38 @@ export async function runPlaybook(
   }
 }
 
+/* ------------------------------------------------------------------ one entry */
+
 async function runEntry(
   entry: PlaybookEntry,
   provider: ContributionProvider,
   context: OrchestrationContext,
   options: OrchestrationOptions,
+  deps: CommandDeps,
   claimsByKey: Map<string, readonly AgentClaim[]>,
 ): Promise<StageOutcome> {
   const startedAt = context.now().toISOString()
+  const departmentId = entry.departmentId
+  const employeeId = context.employeeIdFor(departmentId)
+  const assignmentId = context.assignmentIdFor(entry.key)
+
+  const stage = (over: Partial<StageOutcome>): StageOutcome => ({
+    entryKey: entry.key,
+    departmentId,
+    state: 'failed',
+    claims: [],
+    startedAt,
+    ...over,
+  })
 
   /*
    * Only declared edges. Never everything produced so far.
    *
    * Blocking dependencies are always present by the time an entry runs.
-   * Optional inputs are included only when they actually completed — an
-   * absent one is left out rather than passed as an empty list, so the
-   * contributor can tell "the quant desk found nothing" from "the quant desk
-   * did not contribute".
+   * Optional inputs are included only when they actually completed — an absent
+   * one is left out rather than passed as an empty list, so the contributor can
+   * tell "the quant desk found nothing" from "the quant desk did not
+   * contribute".
    */
   const inputs: Record<string, readonly AgentClaim[]> = {}
   for (const dependency of entry.blockedBy) {
@@ -195,9 +274,9 @@ async function runEntry(
 
   const request: ContributionRequest = {
     caseId: context.caseId,
-    assignmentId: context.assignmentIdFor(entry.key),
-    departmentId: entry.departmentId,
-    employeeId: context.employeeIdFor(entry.departmentId),
+    assignmentId,
+    departmentId,
+    employeeId,
     ...(context.revisionId ? { revisionId: context.revisionId } : {}),
     brief: entry.brief,
     evidenceSetId: context.evidenceSetId,
@@ -211,12 +290,72 @@ async function runEntry(
     signal: options.signal ?? new AbortController().signal,
   }
 
+  const envelope = (act: OrchestrationAct, reason?: string): CommandEnvelope => ({
+    commandId: context.commandIdFor(entry.key, act),
+    correlationId: context.correlationId,
+    actor: { kind: 'employee', employeeId },
+    // Who set it in motion, which is not who is accountable for it.
+    initiator: { kind: 'orchestrator', orchestratorId: context.orchestratorId },
+    occurredAt: context.now().toISOString(),
+    ...(reason ? { reason } : {}),
+  })
+
+  /* ------------------------------------------------------------- act one */
+
+  /*
+   * What the provider WILL use, recorded before it uses it. Asking afterwards
+   * would make the run's version axes a description of the answer rather than
+   * of the question.
+   */
+  const declaration = provider.declare(request)
+
+  const started = await runCommand(
+    startAgentRun(deps.organization),
+    {
+      caseId: context.caseId,
+      assignmentId,
+      departmentId,
+      ...(context.revisionId ? { revisionId: context.revisionId } : {}),
+      providerId: provider.id,
+      providerVersion: provider.version,
+      providerKind: provider.kind,
+      agentContractVersion: declaration.agentContractVersion,
+      outputSchemaVersion: declaration.outputSchemaVersion,
+      identity: declaration.identity,
+      evidenceSetId: context.evidenceSetId,
+    },
+    envelope('start'),
+    deps,
+  )
+
+  if (started.outcome !== 'committed') {
+    /*
+     * Nothing started, so there is nothing to fail. An entry the firm refused
+     * to start is reported as blocked with the refusal's code — a rejection is
+     * the organization working correctly, and reporting it as a provider
+     * failure would send someone looking at the wrong system.
+     */
+    return stage({
+      state: 'blocked',
+      failureCategory: 'upstream-failed',
+      ...(started.outcome === 'rejected' ? { rejection: started.rejection.code } : {}),
+      completedAt: context.now().toISOString(),
+    })
+  }
+
+  const run: AgentRunRecord = started.value
+
+  /* ------------------------------------------------------------- act two */
+
   /*
    * `isolate` and `withDeadline` are reused because the semantics genuinely
    * match — one unit failing must not take the others down, and a reader must
    * not wait indefinitely. What is NOT reused is the market-data envelope: a
    * contribution is not an observation, and forcing it into `Envelope` would
    * give it a provenance and a staleness it does not have.
+   *
+   * No transaction is open here. That is the whole reason this sits between
+   * two commands rather than inside one.
    */
   const settled = await withDeadline(
     `contribution:${entry.key}`,
@@ -228,44 +367,163 @@ async function runEntry(
     { budgetMs: options.stageDeadlineMs },
   )
 
+  /* ----------------------------------------------------------- act three */
+
   if (settled.state !== 'ok') {
     const timedOut = settled.state === 'error' && settled.error.code === 'timeout'
-    return {
-      entryKey: entry.key,
-      departmentId: entry.departmentId,
+    const category: RunFailureCategory = timedOut ? 'provider-timeout' : 'provider-error'
+    await settle(entry, context, deps, run.id, departmentId, {
+      category,
       state: timedOut ? 'timed-out' : 'failed',
-      claims: [],
-      startedAt,
+      // A timeout may be transient; an error the provider chose to return is
+      // not, and returning the work to the queue would repeat it forever.
+      retryable: timedOut,
+    })
+    return stage({
+      state: timedOut ? 'timed-out' : 'failed',
+      failureCategory: category,
       completedAt: context.now().toISOString(),
-      failureCategory: timedOut ? 'provider-timeout' : 'provider-error',
-    }
+    })
   }
 
   /*
    * Checked after the fact: the revision may have been superseded while this
-   * ran. A late result stays attached to the revision it targeted, flagged
-   * obsolete, rather than being reattached to an argument built on different
+   * ran. The result stays attached to the revision it targeted, settled as
+   * superseded, rather than being reattached to an argument built on different
    * assumptions.
    */
   if (context.revisionId && !context.revisionIsCurrent()) {
-    return {
-      entryKey: entry.key,
-      departmentId: entry.departmentId,
+    await settle(entry, context, deps, run.id, departmentId, {
+      category: 'revision-superseded',
+      state: 'superseded',
+      retryable: false,
+    })
+    return stage({
       state: 'superseded',
       claims: settled.data.claims,
-      startedAt,
-      completedAt: context.now().toISOString(),
       obsolete: true,
       failureCategory: 'revision-superseded',
-    }
+      completedAt: context.now().toISOString(),
+    })
   }
 
-  return {
-    entryKey: entry.key,
-    departmentId: entry.departmentId,
-    state: 'completed',
-    claims: settled.data.claims,
-    startedAt,
-    completedAt: context.now().toISOString(),
+  /*
+   * A provider that answered against a different contract than it declared has
+   * not answered the question that was asked. Caught here rather than stored,
+   * because the run's version axes are what a cached result and an audit both
+   * key on.
+   */
+  if (
+    settled.data.agentContractVersion !== declaration.agentContractVersion ||
+    settled.data.outputSchemaVersion !== declaration.outputSchemaVersion
+  ) {
+    await settle(entry, context, deps, run.id, departmentId, {
+      category: 'schema-violation',
+      state: 'failed',
+      retryable: false,
+    })
+    return stage({
+      failureCategory: 'schema-violation',
+      completedAt: context.now().toISOString(),
+    })
   }
+
+  const recorded = await runCommand(
+    recordContribution(deps.organization),
+    {
+      caseId: context.caseId,
+      runId: run.id,
+      departmentId,
+      claims: settled.data.claims,
+      observedStates: settled.data.observedStates,
+      // Passed through exactly as reported. The orchestrator has no basis for
+      // converting one usage state into another.
+      usage: settled.data.usage,
+    },
+    envelope('record'),
+    deps,
+  )
+
+  if (recorded.outcome !== 'committed') {
+    /*
+     * The firm refused what came back. The run is still running, so it is
+     * settled explicitly — an unsettled run is a department that appears to be
+     * working forever.
+     */
+    const category: RunFailureCategory =
+      recorded.outcome === 'rejected' && recorded.rejection.code === 'invariant-violated'
+        ? 'malformed-output'
+        : 'internal-error'
+    await settle(entry, context, deps, run.id, departmentId, {
+      category,
+      state: 'failed',
+      retryable: false,
+    })
+    return stage({
+      failureCategory: category,
+      ...(recorded.outcome === 'rejected' ? { rejection: recorded.rejection.code } : {}),
+      completedAt: context.now().toISOString(),
+    })
+  }
+
+  return stage({
+    state: 'completed',
+    // The stored claims, with the identities the firm gave them — not the
+    // provider's own ids, which are local to one contribution.
+    claims: recorded.value.claims,
+    completedAt: recorded.value.completedAt ?? context.now().toISOString(),
+  })
+}
+
+/**
+ * Why work stopped, in the firm's words.
+ *
+ * `FailAgentRun` requires a reason, and the reason must not be the provider's
+ * own text — it flows into logs and read models. These are fixed sentences
+ * keyed by a bounded category, so nothing a provider returns can reach them.
+ */
+const FAILURE_REASONS: Readonly<Record<RunFailureCategory, string>> = Object.freeze({
+  'provider-unavailable': 'The provider could not be reached.',
+  'provider-timeout': 'The provider did not answer within the deadline.',
+  'provider-error': 'The provider answered with an error.',
+  'malformed-output': 'The contribution was not admissible and was refused.',
+  'schema-violation': 'The provider answered against a contract it did not declare.',
+  'budget-exhausted': 'A budget was exhausted before the work finished.',
+  'evidence-unavailable': 'The evidence this work needed could not be resolved.',
+  'upstream-failed': 'A dependency failed, so this could never have run.',
+  'cancelled-by-organization': 'The organization withdrew this work.',
+  'revision-superseded': 'The thesis revision was superseded while this was in flight.',
+  'internal-error': 'The runtime could not complete this work.',
+})
+
+/** Settles a started run that will not produce a contribution. */
+async function settle(
+  entry: PlaybookEntry,
+  context: OrchestrationContext,
+  deps: CommandDeps,
+  runId: string,
+  departmentId: string,
+  failure: { category: RunFailureCategory; state: RunState; retryable: boolean },
+): Promise<void> {
+  await runCommand(
+    failAgentRun(deps.organization),
+    {
+      caseId: context.caseId,
+      runId,
+      departmentId,
+      category: failure.category,
+      retryable: failure.retryable,
+      attempt: 1,
+      state: failure.state,
+    },
+    {
+      commandId: context.commandIdFor(entry.key, 'fail'),
+      correlationId: context.correlationId,
+      actor: { kind: 'employee', employeeId: context.employeeIdFor(departmentId) },
+      initiator: { kind: 'orchestrator', orchestratorId: context.orchestratorId },
+      occurredAt: context.now().toISOString(),
+      reason: FAILURE_REASONS[failure.category],
+    },
+    deps,
+  )
 }

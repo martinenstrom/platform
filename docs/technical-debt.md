@@ -666,41 +666,120 @@ would become a routing decision scattered across call sites.
 
 ---
 
-## TD-32 · A stub or recorded run still declares a prompt and a model
+## TD-32 · A stub or recorded run still declares a prompt and a model — CLOSED in C1C-2
 
-**Incurred:** Phase C1C-1. **Severity:** low. **Blocks:** nothing.
+**Incurred:** Phase C1C-1. **Closed:** Phase C1C-2, migration 0017.
 
-`runs.prompt_*` and `runs.model_*` are NOT NULL, dating from a design where
-every run came from a model. A deterministic stub has neither, so it supplies
-placeholder values — `model_provider = 'recorded'` and similar.
+`runs.prompt_*` and `runs.model_*` were NOT NULL, from a design in which every
+run came from a model. A deterministic stub has neither, so it filled them with
+placeholders — and a placeholder in a column named `model_provider` IS a real
+model identity to every reader downstream, however honest the intent was.
 
-This is honest today only because `provider_kind` sits beside it and says
-`recorded` or `stub`. It would stop being honest if a read model showed the
-model reference without the kind.
+**What landed.** A run states its execution identity as one of three shapes,
+and the provider kind decides which are legal:
 
-**Preferred resolution:** either make the prompt and model columns nullable and
-require them only when `provider_kind = 'live'`, or add a CHECK that a
-non-live run's model provider is one of the reserved placeholder values. The
-second is cheaper and catches the real mistake. Worth doing in C1C-2, when
-recorded providers actually populate these.
+| identity      | carries                                     | permitted for       |
+| ------------- | ------------------------------------------- | ------------------- |
+| `model`       | prompt ref and model ref, both complete     | `live`, `recorded`  |
+| `unavailable` | `not-captured-by-recording` and a recording | `recorded`          |
+| `scenario`    | scenario id and stub build version          | `stub`              |
+
+Enforced three times over: the union gives a stub nowhere to put a model at
+compile time, `buildRunRecord` refuses an identity its provider kind cannot
+present, and `runs_identity_matches_provider` plus the three completeness
+constraints refuse the same rows in the database. The mapper refuses to read a
+row whose columns and `identity_kind` disagree, so a hand-edited row fails
+rather than entering the domain as a run claiming a model nobody can name.
+
+**Recorded work deliberately keeps a real model where it has one.** A recording
+replays a contribution a real model produced; that model is the true one, and
+overwriting it with a placeholder would destroy the provenance the recording
+exists to preserve. `provider_kind = 'recorded'` is what keeps the replay
+distinguishable from live work, and it is NOT NULL.
+
+**What remains, and it is not this debt:** a future producer with no model at
+all — a human contribution, a deterministic calculator — would need a fourth
+shape. Adding one is a small union member and a CHECK; it is not worth
+speculating about the shape before such a producer exists.
 
 ---
 
-## TD-33 · Run cost and token fields are still unmeasured
+## TD-33 · Run cost and token fields are still unmeasured — REPRESENTATION CLOSED in C1C-2, ENFORCEMENT OPEN
 
-**Incurred:** Phase A, unchanged by C1C-1. **Severity:** low.
-**Blocks:** live budget enforcement.
+**Incurred:** Phase A. **Severity:** low. **Blocks:** live budget enforcement.
 
-`input_tokens`, `output_tokens`, `cost_minor_units` and `currency` remain null
-for every run, and null means **not measured** rather than free — the semantics
-the port has carried since Phase A.
+`input_tokens`, `output_tokens`, `cost_minor_units` and `currency` were
+nullable, and null had to carry three different meanings: nothing to measure,
+nothing reported, or nobody looked. The ambiguity fell on the expensive side —
+null reads as free.
 
-Recorded and stub providers have nothing to report, so this stays true through
-C1C. It becomes a real gap the moment a live provider exists, because a runtime
-that cannot measure spend cannot refuse work it cannot afford.
+**What landed.** A run reports its usage as one of three states:
 
-**Preferred resolution:** populate from the provider's usage report in C1C-2,
-and add the refusal path in C2 where a budget can actually be exceeded.
+| state            | means                                       | permitted for      |
+| ---------------- | ------------------------------------------- | ------------------ |
+| `not-applicable` | there was nothing to spend                  | `recorded`, `stub` |
+| `not-reported`   | real work whose provider did not say        | `live`             |
+| `measured`       | a measurement, **and zero is a measurement** | `live`, `recorded` |
+
+`measured` requires every part of the measurement, in both directions: amounts
+without the state would be invisible, and the state without amounts would be a
+measurement nobody took. A recorded run may keep a measurement its artifact
+captured; a stub may not, because there was never anything to measure; a live
+call may not report `not-applicable`, because it always consumed something.
+Enforced by `usagePermitted` in the domain and by
+`runs_usage_matches_provider` and `runs_usage_measurement_complete` in the
+database, and the mapper refuses a half-written measurement on the way out.
+
+Recorded and stub providers still measure nothing, so every run in C1C reports
+`not-applicable`. That is now the honest state rather than an ambiguous null.
+
+**What remains — the reason this stays open:** the refusal path in C2. A
+runtime that cannot measure spend cannot refuse work it cannot afford, and the
+representation is only half of that. The half that landed is the half the
+enforcement will read: it can now tell "this cost nothing" from "nobody
+measured this", which a nullable column could not.
+
+---
+
+## TD-34 · An abandoned run has no recovery path
+
+**Incurred:** Phase C1C-2. **Severity:** medium.
+**Blocks:** running the orchestrator anywhere it can be interrupted.
+
+The external-work boundary is three durable acts: `StartAgentRun` commits, the
+provider runs outside any transaction, and `RecordContribution` or
+`FailAgentRun` commits. The middle step is deliberately not covered by a
+transaction — that is the point of the design — which means a process that dies
+during it leaves a run `running` and an assignment `active` with nothing left
+to settle them.
+
+**What is already handled, and is not this debt.** A provider that hangs while
+the orchestrator is alive is bounded: `withDeadline` ends the wait and the
+orchestrator issues `FailAgentRun` with `provider-timeout`, retryable, which
+returns the assignment to its queue. That path is tested. A provider that
+returns nothing to say — the stub's `silent` outcome — is not abandonment
+either: it answered, with no claims, and `RecordContribution` refuses it as
+`malformed-output`. Both are settled runs.
+
+**The gap** is narrower and real: nothing detects a run left `running` by a
+process that is no longer there. There is no lease, no heartbeat and no
+sweeper, so after a restart the run stays `running` forever, the assignment
+stays `active`, and the one-active-run index means the desk cannot be given the
+work again.
+
+**Preferred resolution.** A run carries a lease — `started_at` plus a bounded
+`deadline_at` written by `StartAgentRun` — and a recovery worker settles every
+run whose lease expired as `failed` with `internal-error`, retryable, so the
+assignment returns to its queue. The lease belongs on the row rather than in
+the orchestrator, because the whole point is that the orchestrator may be gone.
+
+**Why deferred rather than built now.** The recovery worker is a scheduled
+process, and nothing schedules anything in this runtime yet — C1C has no
+process model, no leader election and no place for a periodic job to live. C1D
+puts the headquarters on a server that runs continuously, which is the first
+context where a sweeper is a component rather than a script. Until then the
+orchestrator is invoked in-process and a crash loses a development run, not
+institutional work.
 
 ---
 

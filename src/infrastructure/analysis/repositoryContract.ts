@@ -22,6 +22,7 @@ import {
   buildRunRecord,
   buildThesis,
   buildTransitionEvent,
+  modelOf,
   observationRef,
   type AgentClaim,
   type CaseDecision,
@@ -176,13 +177,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         employeeId: f.ownerEmployeeId,
         agentContractVersion: '1',
         outputSchemaVersion: '1',
-        prompt: { id: 'p', version: '1', contentHash: 'ph' },
-        model: {
-          id: 'm',
-          provider: 'anthropic',
-          parameters: { temperature: 0 },
-          parametersHash: 'mh',
-        },
+        usage: { state: 'not-applicable' },
         evidenceSetId: setId,
         state: 'running',
         execution: {
@@ -192,6 +187,18 @@ export function describeRepositoryContract(name: string, options: ContractOption
           providerId: 'recorded-provider',
           providerVersion: '1',
           providerKind: 'recorded',
+          identity: {
+            kind: 'model',
+            prompt: { id: 'p', version: '1', contentHash: 'ph' },
+            model: {
+              id: 'm',
+              provider: 'anthropic',
+              // Round-tripped through jsonb, so a parameter that changes the
+              // output has to survive the trip intact.
+              parameters: { temperature: 0 },
+              parametersHash: 'mh',
+            },
+          },
         },
         missingOptionalInputs: [],
         startedAt: AT,
@@ -256,13 +263,10 @@ export function describeRepositoryContract(name: string, options: ContractOption
       key: 'result-1',
       claims: [],
       storedAt: AT,
+      providerKind: 'recorded',
       inputs: {
         evidenceSetId: 'set-1',
-        promptId: 'p',
-        promptVersion: '1',
-        promptContentHash: 'ph',
-        modelId: 'm',
-        modelParametersHash: 'mh',
+        executionIdentity: 'model|p|1|ph|anthropic|m|mh',
         agentContractVersion: '1',
         outputSchemaVersion: '1',
         canonicalizationVersion: '1',
@@ -474,7 +478,9 @@ export function describeRepositoryContract(name: string, options: ContractOption
 
         const stored = await repos.runs.get('run-1')
         expect(stored?.evidenceSetId).toBe(setId)
-        expect(stored?.model.parameters).toEqual({ temperature: 0 })
+        expect(modelOf(stored!.execution.identity)?.parameters).toEqual({
+          temperature: 0,
+        })
         expect(stored?.events.map((entry) => entry.state)).toEqual(['running'])
         expect(stored?.claims.map((entry) => entry.id)).toEqual(['claim-1'])
       })
@@ -1036,13 +1042,10 @@ export function describeRepositoryContract(name: string, options: ContractOption
           key: 'result-1',
           claims: [],
           storedAt: AT,
+          providerKind: 'recorded',
           inputs: {
             evidenceSetId: 'set-1',
-            promptId: 'p',
-            promptVersion: '1',
-            promptContentHash: 'ph',
-            modelId: 'm',
-            modelParametersHash: 'mh',
+            executionIdentity: 'model|p|1|ph|anthropic|m|mh',
             agentContractVersion: '1',
             outputSchemaVersion: '1',
             canonicalizationVersion: '1',
@@ -1050,8 +1053,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
             departmentId: f.departmentId,
           },
         }
-        await repos.results.put(result)
-        const replay = await repos.results.put(result)
+        await repos.results.put(result, await repos.provenance())
+        const replay = await repos.results.put(result, await repos.provenance())
 
         expect(replay.key).toBe('result-1')
         expect(replay.storedAt).toBe(AT)
@@ -1353,9 +1356,10 @@ export function describeRepositoryContract(name: string, options: ContractOption
       it('refuses a stored result whose claims changed under the same key', async () => {
         await seedCase()
         const base = storedResult()
-        await repos.results.put(base)
+        const provenance = await repos.provenance()
+        await repos.results.put(base, provenance)
         await expect(
-          repos.results.put({ ...base, claims: [claim('claim-x')] }),
+          repos.results.put({ ...base, claims: [claim('claim-x')] }, provenance),
         ).rejects.toBeInstanceOf(ConflictingRecordError)
       })
 
@@ -1757,7 +1761,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('4')
+        expect(provenance.domainContractVersion).toBe('5')
       })
     })
   })

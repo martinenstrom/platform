@@ -1,12 +1,14 @@
 /**
- * The Phase B runtime.
+ * The runtime's pieces: the playbook graph, recorded replay, the result store
+ * and the repositories.
  *
- * No model, no network. The recorded and stub providers go through exactly the
- * same orchestration, isolation, deadline and persistence code a live provider
- * will, which is the only reason these tests say anything about the real path.
+ * Orchestration itself moved to `orchestration.test.ts` when the orchestrator
+ * stopped writing through repositories and became a command caller — it now
+ * needs the whole command stack around it, and a test that gave it less would
+ * be exercising a shape that no longer ships.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   buildTransitionEvent,
   transitionCase,
@@ -24,18 +26,14 @@ import {
   validatePlaybook,
   type CasePlaybook,
 } from '~/application/analysis/playbooks'
-import {
-  runPlaybook,
-  type OrchestrationContext,
-} from '~/application/analysis/orchestrator'
 import { resultKey } from '~/application/analysis/resultStore'
+import { executionIdentityKey } from '~/domain/analysis'
 import { createInMemoryRepositories } from './inMemoryRepositories'
+import { createInMemoryResultStore } from './inMemoryResultStore'
 import {
-  createInMemoryResultStore,
   createRecordedContributionProvider,
-  createStubContributionProvider,
   type RecordedContribution,
-} from './recordedContributions'
+} from './providers'
 
 /* ------------------------------------------------------------------ fixtures */
 
@@ -112,18 +110,6 @@ const validationContext = {
   knownDepartmentIds: ['macro', 'news', 'equity-research', 'quant', 'risk'],
   handlesByDepartment: {},
 }
-
-const context = (over: Partial<OrchestrationContext> = {}): OrchestrationContext => ({
-  caseId: 'case-1',
-  evidenceSetId: 'set-1',
-  assignmentIdFor: (key) => `a-${key}`,
-  employeeIdFor: (department) => `${department}-analyst`,
-  now: () => NOW,
-  revisionIsCurrent: () => true,
-  ...over,
-})
-
-const options = { stageDeadlineMs: 1000, maxConcurrency: 4 }
 
 /* ------------------------------------------------------------------ playbook */
 
@@ -305,152 +291,6 @@ describe('playbook validation', () => {
   })
 })
 
-/* ------------------------------------------------------------ orchestration */
-
-describe('orchestration', () => {
-  it('runs the whole graph with a stub provider', async () => {
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider(),
-      context(),
-      options,
-    )
-    expect([...result.completedKeys].sort()).toEqual([
-      'equity',
-      'macro',
-      'news',
-      'quant',
-      'risk',
-    ])
-    expect(result.missingRequired).toEqual([])
-  })
-
-  it('runs independent departments in the same wave', async () => {
-    let inFlight = 0
-    let peak = 0
-    const provider = {
-      id: 'counting',
-      async contribute() {
-        inFlight += 1
-        peak = Math.max(peak, inFlight)
-        await Promise.resolve()
-        inFlight -= 1
-        return {
-          claims: [],
-          prompt: { id: 'p', version: '1', contentHash: 'h' },
-          model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'mh' },
-          agentContractVersion: '1',
-          outputSchemaVersion: '1',
-          usage: null,
-          observedStates: ['running', 'completed'] as const,
-        }
-      },
-    }
-    await runPlaybook(playbook, provider, context(), options)
-    // macro and news have no dependencies and must not be serialised.
-    expect(peak).toBeGreaterThan(1)
-  })
-
-  it('passes only declared dependency outputs downstream', async () => {
-    const seen: Array<Record<string, unknown>> = []
-    const provider = {
-      id: 'spy',
-      async contribute(request: {
-        inputs: Record<string, unknown>
-        departmentId: string
-      }) {
-        if (request.departmentId === 'equity-research') seen.push(request.inputs)
-        return {
-          claims: [],
-          prompt: { id: 'p', version: '1', contentHash: 'h' },
-          model: { id: 'm', provider: 'x', parameters: {}, parametersHash: 'mh' },
-          agentContractVersion: '1',
-          outputSchemaVersion: '1',
-          usage: null,
-          observedStates: ['completed'] as const,
-        }
-      },
-    }
-    await runPlaybook(playbook, provider as never, context(), options)
-    // Equity declared only `macro`. It must not receive `news`.
-    expect(Object.keys(seen[0] ?? {})).toEqual(['macro'])
-  })
-
-  it('blocks downstream work without erasing unrelated completed work', async () => {
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider({ failFor: ['macro'] }),
-      context(),
-      options,
-    )
-    // News is independent of macro and still completed.
-    expect(result.completedKeys).toContain('news')
-    expect(result.failedKeys).toContain('macro')
-    // Downstream is blocked, not failed — it never ran.
-    expect([...result.blockedKeys].sort()).toEqual(['equity', 'quant', 'risk'])
-    const blocked = result.outcomes.find((o) => o.entryKey === 'equity')
-    expect(blocked?.state).toBe('blocked')
-    expect(blocked?.failureCategory).toBe('upstream-failed')
-  })
-
-  it('reports a failed required contribution as missing', async () => {
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider({ failFor: ['macro'] }),
-      context(),
-      options,
-    )
-    expect(result.missingRequired).toContain('macro')
-  })
-
-  it('does not block the case when an optional contribution fails', async () => {
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider({ failFor: ['news'] }),
-      context(),
-      options,
-    )
-    // News is optional. Everything else still completed, and the case is not
-    // missing anything required.
-    expect(result.missingRequired).toEqual([])
-    expect(result.completedKeys).toContain('risk')
-    // But the failure is visible — optional is not the same as irrelevant.
-    expect(result.failedKeys).toContain('news')
-  })
-
-  it('times a hung contribution out rather than waiting', async () => {
-    vi.useFakeTimers()
-    try {
-      const pending = runPlaybook(
-        playbook,
-        createStubContributionProvider({ hangFor: ['macro'] }),
-        context(),
-        { stageDeadlineMs: 500, maxConcurrency: 4 },
-      )
-      await vi.advanceTimersByTimeAsync(600)
-      const result = await pending
-      const macro = result.outcomes.find((o) => o.entryKey === 'macro')
-      expect(macro?.state).toBe('timed-out')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('marks a late result obsolete instead of attaching it to the new revision', async () => {
-    // The work reasoned over assumptions the newer revision does not share.
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider(),
-      context({ revisionId: 'rev-1', revisionIsCurrent: () => false }),
-      options,
-    )
-    const macro = result.outcomes.find((o) => o.entryKey === 'macro')
-    expect(macro?.state).toBe('superseded')
-    expect(macro?.obsolete).toBe(true)
-    expect(result.completedKeys).not.toContain('macro')
-  })
-})
-
 /* ------------------------------------------------------ recorded replay */
 
 describe('recorded contributions', () => {
@@ -459,11 +299,12 @@ describe('recorded contributions', () => {
     evidenceSetId: 'set-1',
     agentContractVersion: '1.0.0',
     outputSchemaVersion: '1.0.0',
-    prompt: { id: 'macro', version: '3', contentHash: 'ph' },
-    model: { id: 'm', provider: 'p', parameters: {}, parametersHash: 'mh' },
+    captured: {
+      prompt: { id: 'macro', version: '3', contentHash: 'ph' },
+      model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
+    },
     claims: [],
     observedStates: ['running', 'completed'],
-    usage: null,
   }
 
   it('replays deterministically', async () => {
@@ -508,11 +349,11 @@ describe('recorded contributions', () => {
 describe('the result store is exact-match only', () => {
   const inputs = {
     evidenceSetId: 'set-1',
-    promptId: 'macro',
-    promptVersion: '3',
-    promptContentHash: 'ph',
-    modelId: 'm',
-    modelParametersHash: 'mh',
+    executionIdentity: executionIdentityKey({
+      kind: 'model',
+      prompt: { id: 'macro', version: '3', contentHash: 'ph' },
+      model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
+    }),
     agentContractVersion: '1',
     outputSchemaVersion: '1',
     canonicalizationVersion: '1',
@@ -526,8 +367,7 @@ describe('the result store is exact-match only', () => {
 
   it.each([
     'evidenceSetId',
-    'promptVersion',
-    'modelParametersHash',
+    'executionIdentity',
     'agentContractVersion',
     'outputSchemaVersion',
     'canonicalizationVersion',
@@ -543,8 +383,10 @@ describe('the result store is exact-match only', () => {
   it('writes once and never overwrites', async () => {
     const store = createInMemoryResultStore()
     const key = resultKey(inputs)
-    await store.put({ key, claims: [], storedAt: 'T1', inputs })
-    const second = await store.put({ key, claims: [], storedAt: 'T2', inputs })
+    const provenance = await createInMemoryRepositories().provenance()
+    const stored = { key, claims: [], providerKind: 'recorded' as const, inputs }
+    await store.put({ ...stored, storedAt: 'T1' }, provenance)
+    const second = await store.put({ ...stored, storedAt: 'T2' }, provenance)
     // A differing result under the same key means something is wrong;
     // overwriting would hide it.
     expect(second.storedAt).toBe('T1')
@@ -686,19 +528,5 @@ describe('repositories', () => {
     await repos.evidence.save(set)
     const again = await repos.evidence.save({ ...set, assembledAt: 'LATER' })
     expect(again.assembledAt).toBe('T')
-  })
-})
-
-/* --------------------------------------------------------- no LLM required */
-
-describe('the runtime needs no model and no network', () => {
-  it('runs a whole playbook offline', async () => {
-    const result = await runPlaybook(
-      playbook,
-      createStubContributionProvider(),
-      context(),
-      options,
-    )
-    expect(result.outcomes).toHaveLength(5)
   })
 })

@@ -17,6 +17,7 @@ import { openInvestmentCase } from './openInvestmentCase'
 import { instantiatePlaybook } from './instantiatePlaybook'
 import { proposeThesis } from './proposeThesis'
 import { startAgentRun } from './startAgentRun'
+import { recordContribution } from './recordContribution'
 import { failAgentRun } from './failAgentRun'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a heterogeneous list of
@@ -33,6 +34,7 @@ export function productionCommands(
     instantiatePlaybook(organization),
     proposeThesis(organization),
     startAgentRun(organization),
+    recordContribution(organization),
     failAgentRun(organization),
   ]
 }

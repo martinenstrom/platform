@@ -277,6 +277,7 @@ describe('command declarations', () => {
       'InstantiatePlaybook',
       'OpenInvestmentCase',
       'ProposeThesis',
+      'RecordContribution',
       'StartAgentRun',
     ])
   })

@@ -21,6 +21,7 @@ import {
   resultSemanticKey,
 } from '~/application/analysis/writeOnce'
 import { toEvidenceSet, toStoredResult } from './mapping'
+import { ensureProvenance } from './provenance'
 import type { AgentResultRow, EvidenceItemRow, EvidenceSetRow } from './rows'
 import { catalog, one, run, ts, type Queryable, type SqlContext } from './sql'
 import { singleStatement, unitOfWork, type Scope } from './transaction'
@@ -134,11 +135,12 @@ export function createEvidenceRepository(
 /* ----------------------------------------------------------------- results */
 
 export const RESULT_SQL = catalog({
-  get: `SELECT key, claims, ${ts('stored_at')}, inputs
+  get: `SELECT key, claims, ${ts('stored_at')}, inputs, provider_kind
         FROM analysis.agent_results WHERE key = $1`,
 
-  save: `INSERT INTO analysis.agent_results (key, claims, stored_at, inputs)
-         VALUES ($1, $2, $3, $4)
+  save: `INSERT INTO analysis.agent_results
+             (key, claims, stored_at, inputs, provider_kind, provenance_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (key) DO NOTHING`,
 })
 
@@ -156,7 +158,7 @@ export function createResultStore(scope: Scope, context: SqlContext): ResultStor
       return read(singleStatement(scope, 'results.get'), key, 'results.get')
     },
 
-    put: (result) =>
+    put: (result, provenance) =>
       unitOfWork(scope, 'results.put', async (client) => {
         const existing = await read(client, result.key, 'results.put')
         if (existing) {
@@ -171,11 +173,17 @@ export function createResultStore(scope: Scope, context: SqlContext): ResultStor
           return existing
         }
 
+        // The provenance row first, for the same reason a run needs it: the
+        // foreign key is what makes "which code wrote this" answerable.
+        await ensureProvenance(client, context, provenance, result.storedAt)
+
         await run(client, context, 'results.put', RESULT_SQL.save, [
           result.key,
           JSON.stringify(result.claims),
           result.storedAt,
           JSON.stringify(result.inputs),
+          result.providerKind,
+          provenance.provenanceId,
         ])
         return (await read(client, result.key, 'results.put'))!
       }),
