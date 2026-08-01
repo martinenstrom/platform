@@ -799,6 +799,94 @@ saving is money rather than milliseconds.
 
 ---
 
+## TD-38 · The fitness suite was reasoning about a partial import graph — CLOSED
+
+**Incurred:** Phase 0, discovered in the C1C-3 fitness-integrity follow-up.
+**Severity:** was high. **Blocked:** every conclusion drawn from an import rule.
+
+Three defects in the scanner, none of which could report itself.
+
+**Eleven regexes contained a literal backspace byte** where `\b` was meant. A
+backspace is a valid regex atom matching a byte no source file contains, so
+each of those rules matched nothing and passed. It renders as nothing in an
+editor and survives review and diff. Six predate this session; the C1C-3 report
+described all eleven as repaired, and nine were still there — the repair had
+been reported without being verified, which is the same failure one level up.
+Two more were in `markets.test.ts` and a dashboard test. Among the disabled:
+_performs no outbound fetch outside the market-data layer_, _stores no prose
+activity in the domain_, _mints revisions in exactly one place_, and _offers no
+way to supply a conditional outcome_.
+
+**The import pattern forbade a newline** between `import` and `from`
+(`[^'"\n]*?`), so every multi-line import was invisible — **203 of 1583
+specifiers, across 143 of 344 files**. Prettier wraps long import lists, so the
+blind spot covered the codebase's dominant style. Every import-based rule was
+therefore reasoning about 87% of the graph, and "nothing imports X" meant
+"nothing imports X on one line".
+
+**`codeOnly` stripped strings with a regex** that could not tell a comment's
+apostrophe from an opening quote. A comment containing "the manager's" swallowed
+everything to the next quote, real code included, leaving later rules in that
+file looking satisfied.
+
+**Resolution.** `src/test/fitness/sources.ts` parses every file once with
+TypeScript's own parser: imports from the AST with their bound names, comment
+and literal blanking from the parser's own trivia, offsets preserved so failures
+still name a line. The six load-bearing rules the C1C-3 review named are objects
+in `fitness/rules.ts`, and `fitness/ruleIntegrity.test.ts` requires each to fail
+on a planted violation and to pass a benign near-miss — a rule cannot enter the
+registry without both. A guard scans every source for literal control characters
+and proves itself against one. The `states`/`because` fields are required to be
+non-trivial: a rule nobody can explain is a rule nobody can correctly relax.
+
+**What the live rules found immediately:** a generated sentence in
+`waitingChains` (below), a NUL byte in `provenance.ts` whose comment claimed it
+had been spelled out, and `container.ts` constructing the PostgreSQL adapter
+against a rule written when nothing wired it.
+
+---
+
+## TD-39 · Fitness rules outside the registry are still unproved
+
+**Incurred:** the C1C-3 follow-up. **Severity:** medium. **Blocks:** nothing.
+
+Six rules are now proved to fail on a planted violation. The roughly sixty
+phase gates left in `importGraph.test.ts` are not: pinned provider lists, frozen
+inventories, and single-file assertions. They no longer share the two scanning
+defects above — they read the same parsed model — but nothing demonstrates that
+any individual one still detects what it was written to detect.
+
+They were left because they are a different kind of rule. A pinned list fails
+loudly when the list changes, and a frozen inventory is checked by its own
+`toEqual`; the class that failed silently is the source-scanning class, which is
+what the registry now holds.
+
+**Preferred resolution:** move a phase gate into the registry whenever its phase
+is still live and its property is load-bearing, rather than converting sixty
+rules at once. C1C-4 adds three eligibility rules; those go in the registry with
+fixtures from the start.
+
+---
+
+## TD-40 · The domain composed one activity sentence — CLOSED
+
+**Incurred:** AI Phase A. **Severity:** medium. **Blocked:** the activity feed's
+integrity claim.
+
+`waitingChains` in `domain/analysis/work.ts` returned `description: string`,
+built as `` `waiting on ${departmentId}` `` — English, composed in the domain,
+on its way to being rendered as headquarters activity. The rule forbidding
+exactly this had been checking two files with two expressions, both disabled by
+a backspace byte, and neither covered `work.ts`.
+
+It returns a `WaitBasis` union now: `assignment`, `missing-assignment` or
+`evidence`. The presentation layer phrases these. The authored field on
+`waitingOn` was renamed `description` → `evidenceSought`, so the one string left
+is what a person wrote rather than what the system composed; the column keeps
+its name, so no migration was needed.
+
+---
+
 ## TD-34 · An abandoned run has no recovery path
 
 **Incurred:** Phase C1C-2. **Severity:** medium.

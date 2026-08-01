@@ -100,7 +100,7 @@ const assignment = () =>
     departmentId: 'global-macro',
     brief: 'Regime read',
     status: 'waiting',
-    waitingOn: { kind: 'evidence', description: 'the September print' },
+    waitingOn: { kind: 'evidence', evidenceSought: 'the September print' },
     createdAt: NOW,
     priority: 5,
   })
@@ -451,7 +451,7 @@ describe('a stored entity cannot be mutated after insertion', () => {
     await repos.assignments.save(mine)
 
     expect(() => {
-      ;(mine.waitingOn as { description: string }).description = 'something else'
+      ;(mine.waitingOn as { evidenceSought: string }).evidenceSought = 'something else'
     }).toThrow(TypeError)
   })
 

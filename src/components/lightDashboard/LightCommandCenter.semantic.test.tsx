@@ -204,7 +204,7 @@ describe('units', () => {
     expect(text).toContain('+0,00 bp')
     expect(text).toContain('−0,04 bp')
     // Percentage POINTS was the old, wrong unit for this column.
-    expect(/[0-9]\s?pp/.test(text)).toBe(false)
+    expect(/[0-9]\s?pp\b/.test(text)).toBe(false)
   })
 
   it('carries explicit units on every instrument it displays', async () => {

@@ -1,56 +1,55 @@
 /**
- * Architectural fitness tests (T3 + T4).
+ * Architectural fitness tests (T3 + T4) — the phase gates.
  *
  * These make the dependency rules in `docs/data-architecture.md` executable
  * rather than aspirational. Without them, "the UI never imports a concrete
  * provider" is a comment that decays the first time someone is in a hurry.
  *
- * Deliberately a source-text scan rather than a full AST parse: it needs to be
- * fast, dependency-free, and obvious enough that a failure points straight at
- * the offending line.
+ * Two things moved out of this file.
+ *
+ * The six load-bearing rules named in the C1C-3 review now live in
+ * `fitness/rules.ts` as objects, so `fitness/ruleIntegrity.test.ts` can point
+ * each one at a file that breaks it and require it to fail. Every rule here had
+ * only ever been run against a tree that complied, which is how eleven of them
+ * carrying a literal backspace byte where `\b` was meant passed for months.
+ *
+ * And the scanning itself: imports and comment-blanking now come from
+ * `fitness/sources.ts`, which asks TypeScript's parser. The regexes that used
+ * to do it here could not tell a module specifier from a string that merely
+ * looked like one, so the planted-violation fixtures — whose entire purpose is
+ * to contain forbidden imports as text — read as real violations of six
+ * unrelated rules the moment they were added.
+ *
+ * What remains is the phase gates: pinned lists, frozen inventories, and
+ * assertions whose subject is one named file rather than a class of them.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve as resolvePath, sep } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join, resolve as resolvePath } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { analyseFixture, loadTree } from './fitness/sources'
 
 // Resolved from cwd rather than `import.meta.url`: under the jsdom
 // environment that URL is not a file: URL, so fileURLToPath would throw.
 const SRC = resolvePath(process.cwd(), 'src')
 
+const TREE = loadTree()
+
 interface SourceFile {
   /** Repo-relative, forward-slashed: 'domain/market/quote.ts'. */
   path: string
   imports: string[]
+  /** The names each import binds, keyed by specifier. */
+  bindings: ReadonlyMap<string, readonly string[]>
 }
 
-function listFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) {
-      listFiles(full, out)
-    } else if (/\.tsx?$/.test(entry) && !/\.d\.ts$/.test(entry)) {
-      out.push(full)
-    }
-  }
-  return out
-}
-
-const IMPORT_PATTERN =
-  /(?:^|\n)\s*(?:import|export)\s[^'"\n]*?from\s*['"]([^'"]+)['"]|(?:^|\n)\s*import\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
-
-function parse(fullPath: string): SourceFile {
-  const source = readFileSync(fullPath, 'utf8')
-  const imports: string[] = []
-  for (const match of source.matchAll(IMPORT_PATTERN)) {
-    const specifier = match[1] ?? match[2] ?? match[3]
-    if (specifier) imports.push(specifier)
-  }
-  return {
-    path: relative(SRC, fullPath).split(sep).join('/'),
-    imports,
-  }
-}
+const FILES: SourceFile[] = TREE.map((file) => ({
+  path: file.path,
+  imports: file.imports.map((reference) => reference.specifier),
+  bindings: new Map(
+    file.imports.map((reference) => [reference.specifier, reference.names]),
+  ),
+}))
 
 /**
  * Removes comments and string literals before a source-level scan.
@@ -58,25 +57,22 @@ function parse(fullPath: string): SourceFile {
  * Without this, a doc comment explaining "Date.now() is banned here" would
  * itself trip the ban — so the rule could never be documented beside the code
  * it governs.
+ *
+ * Parsed rather than stripped by regex. The old implementation replaced quoted
+ * spans with a pattern that could not tell a comment's apostrophe from an
+ * opening quote: everything after "the manager's" vanished, real code with it,
+ * and every later rule in that file looked satisfied.
  */
+const BLANKED = new Map(TREE.map((file) => [file.text, file.code]))
 function codeOnly(source: string): string {
-  const blockComment = /\/\*[\s\S]*?\*\//g
-  const lineComment = /\/\/[^\n]*/g
-  const singleQuoted = /'(?:[^'\\\n]|\\.)*'/g
-  const doubleQuoted = /"(?:[^"\\\n]|\\.)*"/g
-  return source
-    .replace(blockComment, ' ')
-    .replace(lineComment, ' ')
-    .replace(singleQuoted, "''")
-    .replace(doubleQuoted, '""')
+  return BLANKED.get(source) ?? analyseFixture('scan.tsx', source).code
 }
-
-const FILES: SourceFile[] = listFiles(SRC).map(parse)
 
 const inLayer = (file: SourceFile, prefix: string) => file.path.startsWith(prefix)
 /** The file's source, for rules about content rather than imports. */
 const sourceOf = (file: SourceFile) => readFileSync(join(SRC, file.path), 'utf8')
-const isTest = (file: SourceFile) => /\.test\.tsx?$/.test(file.path)
+const isTest = (file: SourceFile) =>
+  /\.test\.tsx?$/.test(file.path) || file.path.startsWith('test/')
 
 /** Resolves a `~/x` alias to a layer-relative path; returns null for packages. */
 function toLayerPath(specifier: string): string | null {
@@ -181,47 +177,14 @@ describe('T4 — dependency direction', () => {
     ).toEqual([])
   })
 
-  it('presentation never imports infrastructure except its published boundary', () => {
-    // The UI must not be able to name a concrete provider, an HTTP client, or
-    // anything that could carry an API key into the browser bundle.
-    //
-    // The single exception is `serverFns.ts`. That module IS the layer's
-    // published boundary: its whole purpose is to be the one client-reachable
-    // surface, and a `createServerFn` reference compiles to a network call
-    // rather than to the handler body. Importing it is importing a port, not
-    // an implementation — which is why a route loader may, and nothing else
-    // in the layer may.
-    const presentation = FILES.filter(
-      (f) =>
-        (inLayer(f, 'components/') ||
-          inLayer(f, 'routes/') ||
-          inLayer(f, 'presentation/')) &&
-        !isTest(f),
-    )
-    expect(presentation.length).toBeGreaterThan(0)
-    expect(
-      violations(presentation, (specifier) => {
-        const layerPath = toLayerPath(specifier)
-        if (layerPath === null) return false
-        if (!layerPath.startsWith('infrastructure/')) return false
-        return !layerPath.endsWith('/serverFns')
-      }),
-    ).toEqual([])
-  })
-
-  it('routes reach infrastructure only through a server function', () => {
-    // Guards the exception above: the boundary must stay a server-function
-    // module, so a future edit cannot quietly widen it into a direct import.
-    const routes = FILES.filter((f) => inLayer(f, 'routes/') && !isTest(f))
-    const infraImports = routes.flatMap((f) =>
-      f.imports
-        .map(toLayerPath)
-        .filter(
-          (path): path is string => path !== null && path.startsWith('infrastructure/'),
-        ),
-    )
-    expect(infraImports.every((path) => path.endsWith('/serverFns'))).toBe(true)
-  })
+  /*
+   * "The presentation layer names no infrastructure module except a published
+   * server-function boundary" is now `no-ui-import-of-infrastructure` in
+   * `fitness/rules.ts`, together with the analysis-runtime half that used to
+   * be asserted separately in the Phase B guards. The exception it grants —
+   * that a serverFns module really is built from server functions — is checked
+   * in `fitness/fitness.test.ts` rather than assumed.
+   */
 
   it('nothing outside the composition root imports a concrete provider', () => {
     // Wiring a provider is the composition root's job and nobody else's. Tests
@@ -331,19 +294,12 @@ describe('P11 — only approved providers are connected', () => {
     ])
   })
 
-  it('confines every outbound call to the shared http client', () => {
-    // One module owns the network. An adapter calling fetch directly would
-    // also bypass the network-disabled guard.
-    const offenders: string[] = []
-    for (const file of FILES) {
-      if (!file.path.startsWith('infrastructure/marketData/')) continue
-      if (isTest(file)) continue
-      if (file.path.endsWith('providers/httpClient.ts')) continue
-      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
-      if (/fetch\s*\(/.test(source)) offenders.push(`${file.path}: fetch()`)
-    }
-    expect(offenders).toEqual([])
-  })
+  /*
+   * "Only the shared http client performs an outbound network call" now lives
+   * in `fitness/rules.ts` as `no-outbound-network-outside-http-client`, where a
+   * planted violation proves it fires. The two versions that used to sit here
+   * were both disabled by a corrupt byte, and neither could have said so.
+   */
 
   it('keeps provider response types inside their adapter', () => {
     // The wire contract must never be exported: nothing downstream may depend
@@ -373,18 +329,6 @@ describe('P11 — only approved providers are connected', () => {
       if (/[?&](api[-_]?key|apikey|token|x_cg[\w-]*)=/i.test(source)) {
         offenders.push(file.path)
       }
-    }
-    expect(offenders).toEqual([])
-  })
-
-  it('performs no outbound fetch outside the market-data layer', () => {
-    const offenders: string[] = []
-    for (const file of FILES) {
-      if (!file.path.startsWith('infrastructure/marketData/')) continue
-      if (isTest(file)) continue
-      const source = codeOnly(readFileSync(join(SRC, file.path), 'utf8'))
-      if (/fetch\s*\(/.test(source)) offenders.push(`${file.path}: fetch()`)
-      if (/XMLHttpRequest/.test(source)) offenders.push(`${file.path}: XMLHttpRequest`)
     }
     expect(offenders).toEqual([])
   })
@@ -615,22 +559,14 @@ describe('AI Phase A guards — an organization, and no runtime', () => {
     expect(offenders).toEqual([])
   })
 
-  it('contains no LLM client anywhere', () => {
-    // Phase A defines contracts. The moment a model client appears, the
-    // determinism, cost and caching decisions have been made implicitly.
-    const offenders: string[] = []
-    for (const file of FILES) {
-      if (isTest(file)) continue
-      for (const specifier of file.imports) {
-        if (
-          /^(@anthropic-ai|openai|@openai|langchain|@langchain|ai)(\/|$)/.test(specifier)
-        ) {
-          offenders.push(`${file.path} imports ${specifier}`)
-        }
-      }
-    }
-    expect(offenders).toEqual([])
-  })
+  /*
+   * "Nothing imports a model client" was asserted three times, in three
+   * describes, with three different package patterns — three answers to one
+   * question, and the narrowest of them decided nothing. It is now
+   * `no-llm-dependency` in `fitness/rules.ts`, once, and covering tests too:
+   * a test importing an SDK means the dependency is installed and the C2
+   * decisions have already been made somewhere.
+   */
 
   /*
    * Phase A forbade `infrastructure/analysis` entirely. Phase B lifts that
@@ -702,49 +638,16 @@ describe('AI Phase B guards — the runtime respects its layers', () => {
     expect(offenders).toEqual([])
   })
 
-  it('keeps components and routes off the analysis runtime', () => {
-    const offenders = FILES.filter(
-      (f) =>
-        (f.path.startsWith('components/') || f.path.startsWith('routes/')) &&
-        f.imports.some(
-          (s) =>
-            s.startsWith('~/infrastructure/analysis') ||
-            s.startsWith('~/application/analysis'),
-        ),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
-  })
+  /* Both now in `fitness/rules.ts` — see the note in the Phase A guards. */
 
-  it('still contains no LLM client', () => {
-    // Phase B builds the runtime. The model arrives in Phase C, and not before.
-    const offenders: string[] = []
-    for (const file of FILES) {
-      if (isTest(file)) continue
-      for (const specifier of file.imports) {
-        if (
-          /^(@anthropic-ai|openai|@openai|langchain|@langchain|ai)(\/|$)/.test(specifier)
-        ) {
-          offenders.push(`${file.path} imports ${specifier}`)
-        }
-      }
-    }
-    expect(offenders).toEqual([])
-  })
-
-  it('stores no prose activity in the domain', () => {
-    /*
-     * The integrity mechanism behind the living-organization vision. Activity
-     * text is generated in the presentation layer from structured events; a
-     * domain field holding a sentence would let anything write "Macro Team is
-     * studying the Fed" with no work behind it.
-     */
-    const contributions = codeOnly(
-      readFileSync(join(SRC, 'domain/analysis/contributions.ts'), 'utf8'),
-    )
-    expect(contributions).not.toMatch(/activity\s*[?]?:\s*string/)
-    const events = codeOnly(readFileSync(join(SRC, 'domain/analysis/events.ts'), 'utf8'))
-    expect(events).not.toMatch(/description\s*[?]?:\s*string/)
-  })
+  /*
+   * "No domain record carries generated activity prose" is now
+   * `no-prose-activity-in-domain` in `fitness/rules.ts`. It checked two files
+   * with two expressions, both of which had been matching nothing since they
+   * were written; the replacement reads every declaration in `domain/analysis`
+   * from the AST, and found a generated sentence in `waitingChains` on its
+   * first live run.
+   */
 
   it('leaves the legacy investmentLetter prototype untouched by the runtime', () => {
     const offenders = FILES.filter(
@@ -824,16 +727,27 @@ describe('Storage stage 1 — the database stays on the server', () => {
   })
 })
 
-describe('Storage stage 2 — the adapter exists but is not wired', () => {
+describe('Storage — the adapter is reachable only from the composition root', () => {
   const postgres = 'infrastructure/analysis/postgres/'
 
-  it('is constructed by nothing outside its own directory and the tests', () => {
+  it('is constructed by nothing but the composition root and the tests', () => {
     /*
-     * Stage 2 builds the adapter and stops. Dual write is stage 3 and the read
-     * switch is stage 5; wiring it early would make "PostgreSQL is not
-     * authoritative yet" a claim rather than a fact.
+     * Written at stage 2, when the adapter existed and nothing wired it. It is
+     * wired now — `container.ts` is the analysis composition root and selects
+     * PostgreSQL as the only runtime store — so the property worth holding is
+     * the narrower one: selecting a store is the root's job and nobody else's.
+     *
+     * It was not restated when that changed because it could not fail. The old
+     * scanner's import pattern forbade a newline between `import` and `from`,
+     * so every multi-line import in the codebase was invisible to it — 203 of
+     * 1583, across 143 files — and this rule had never once seen the import it
+     * exists to find.
      */
-    const offenders = FILES.filter((file) => !isTest(file) && !inLayer(file, postgres))
+    const COMPOSITION_ROOT = 'infrastructure/analysis/container.ts'
+    const offenders = FILES.filter(
+      (file) =>
+        !isTest(file) && !inLayer(file, postgres) && file.path !== COMPOSITION_ROOT,
+    )
       .filter((file) => file.imports.some((s) => s.includes('postgresRepositories')))
       .map((file) => file.path)
     expect(offenders).toEqual([])
@@ -1004,47 +918,13 @@ describe('Phase C1C-1 — the external-work boundary', () => {
     expect(offenders).toEqual([])
   })
 
-  it('lets the orchestrator write nothing directly', () => {
-    /*
-     * The second. The orchestrator sequences commands and calls the provider
-     * between them; a direct repository write from there would be an
-     * institutional effect with no command, no actor and no ledger entry.
-     */
-    const orchestrator = FILES.find((f) =>
-      f.path.endsWith('application/analysis/orchestrator.ts'),
-    )
-    expect(orchestrator).toBeDefined()
-    const forbidden = orchestrator!.imports.filter(
-      (specifier) =>
-        specifier.includes('/repositories') || specifier.includes('/commandLog'),
-    )
-    expect(forbidden).toEqual([])
-  })
-
-  it('derives every record identity in one place', () => {
-    /*
-     * TD-30. A handler building an id by hand would be a second scheme, and
-     * two schemes eventually collide or diverge across a restart.
-     */
-    const offenders = FILES.filter(
-      (f) =>
-        inLayer(f, 'application/analysis/commands/') &&
-        !isTest(f) &&
-        !f.path.endsWith('eventIdentity.ts') &&
-        /eventId:\s*`/.test(sourceOf(f)),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
-  })
-
-  it('accepts no caller-supplied event or assignment identity', () => {
-    const offenders = FILES.filter(
-      (f) =>
-        inLayer(f, 'application/analysis/commands/') &&
-        !isTest(f) &&
-        /(eventIdPrefix|assignmentIdPrefix|creationEventId)/.test(codeOnly(sourceOf(f))),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
-  })
+  /*
+   * The second and third protections for D-C1C-4 now live in `fitness/rules.ts`
+   * as `orchestrator-writes-nothing-directly` and
+   * `no-caller-supplied-or-invented-identity`. Both read the AST rather than
+   * the text, so the identity rule covers concatenation and entropy as well as
+   * the template literal the old expression looked for.
+   */
 
   it('resolves playbooks only through the registry', () => {
     /*
@@ -1195,14 +1075,34 @@ describe('Phase C1C-3 — aggregation and revision minting', () => {
      * supersession fail silently when duplicated — a revision superseding the
      * wrong predecessor reads exactly like one superseding the right one — so
      * only `revisions.ts` may call the domain's minting builders.
+     *
+     * Resolved through the import binding rather than by name. `reviseThesis`
+     * is a domain builder AND a command factory, and the text scan this
+     * replaces could not tell them apart: it reported the command registry for
+     * calling its own handler, and would have reported a genuine second minting
+     * path in exactly the same words.
      */
+    const MAY_MINT = [
+      'application/analysis/revisions.ts',
+      // Rehydrates a stored revision rather than minting one; the builder is
+      // how a row becomes a domain record.
+      'infrastructure/analysis/postgres/mapping.ts',
+      // A shared test harness, run against both adapters. Not production code,
+      // and not covered by `isTest` because it holds no test of its own.
+      'infrastructure/analysis/repositoryContract.ts',
+    ]
+    const MINTING_BUILDERS = ['buildThesis', 'reviseThesis']
+
     const offenders = FILES.filter(
       (f) =>
         !isTest(f) &&
         !f.path.startsWith('domain/') &&
-        !f.path.endsWith('application/analysis/revisions.ts') &&
-        !f.path.endsWith('postgres/mapping.ts') &&
-        /(buildThesis|reviseThesis)\s*\(/.test(codeOnly(sourceOf(f))),
+        !MAY_MINT.includes(f.path) &&
+        [...f.bindings].some(
+          ([specifier, names]) =>
+            specifier.startsWith('~/domain/analysis') &&
+            names.some((name) => MINTING_BUILDERS.includes(name)),
+        ),
     ).map((f) => f.path)
     expect(offenders).toEqual([])
   })
@@ -1311,7 +1211,7 @@ describe('Phase C1C-3 — aggregation and revision minting', () => {
     )
     expect(file).toBeDefined()
     const input = codeOnly(sourceOf(file!)).split('export function')[0]!
-    expect(input).not.toMatch(/(required|outcome|state)\s*[?]?:/)
+    expect(input).not.toMatch(/\b(required|outcome|state)\s*[?]?:/)
   })
 
   it('keeps aggregation query fields out of jsonb', () => {
@@ -1390,22 +1290,6 @@ describe('Phase C1B — case and playbook commands', () => {
       (f) =>
         f.path.startsWith('presentation/') &&
         /requirement:\s*'(required|optional|conditional)'/.test(sourceOf(f)),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
-  })
-
-  it('imports no LLM, model client or agent runtime', () => {
-    /*
-     * C2 remains blocked: nothing in C1B may reach a model.
-     *
-     * Tested against IMPORTS rather than text. The parity suite carries a
-     * provenance fixture whose provider happens to be named 'anthropic', and a
-     * rule that could not tell a recorded string from a dependency would have
-     * to be either wrong or disabled.
-     */
-    const clients = /^(@anthropic-ai\/|openai$|openai\/|@ai-sdk\/|langchain|llamaindex)/
-    const offenders = FILES.filter((f) =>
-      f.imports.some((specifier) => clients.test(specifier)),
     ).map((f) => f.path)
     expect(offenders).toEqual([])
   })

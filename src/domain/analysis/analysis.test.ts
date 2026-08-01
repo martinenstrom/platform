@@ -379,7 +379,7 @@ describe('work queues', () => {
       assignment({
         id: 'c',
         status: 'waiting',
-        waitingOn: { kind: 'evidence', description: 'Q2 filing' },
+        waitingOn: { kind: 'evidence', evidenceSought: 'Q2 filing' },
       }),
     ])
     expect(workloadFor(queue)).toMatchObject({ active: 1, queued: 1, waiting: 1 })
@@ -404,7 +404,20 @@ describe('work queues', () => {
     })
     const chains = waitingChains([blocking, waiter])
     expect(chains).toHaveLength(1)
-    expect(chains[0]?.blockedBy?.id).toBe('macro-work')
+    // Structure, not a sentence: the UI phrases this, the domain identifies it.
+    expect(chains[0]?.basis).toEqual({ kind: 'assignment', blockedBy: blocking })
+  })
+
+  it('reports a broken chain as a missing assignment rather than as prose', () => {
+    const waiter = assignment({
+      id: 'equity-work',
+      status: 'waiting',
+      waitingOn: { kind: 'assignment', assignmentId: 'gone' },
+    })
+    expect(waitingChains([waiter])[0]?.basis).toEqual({
+      kind: 'missing-assignment',
+      assignmentId: 'gone',
+    })
   })
 })
 

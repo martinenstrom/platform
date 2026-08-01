@@ -148,7 +148,7 @@ export function createAssignmentRepository(
           assignment.completedAt ?? null,
           waitingOn?.kind ?? null,
           waitingOn?.kind === 'assignment' ? waitingOn.assignmentId : null,
-          waitingOn?.kind === 'evidence' ? waitingOn.description : null,
+          waitingOn?.kind === 'evidence' ? waitingOn.evidenceSought : null,
           assignment.returnedReason ?? null,
         ])
         const row = await one<AssignmentRow>(

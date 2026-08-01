@@ -465,7 +465,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.assignments.save(
           assignment('a-1', {
             status: 'waiting',
-            waitingOn: { kind: 'evidence', description: 'the September print' },
+            waitingOn: { kind: 'evidence', evidenceSought: 'the September print' },
           }),
         )
 
@@ -473,7 +473,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         expect(stored?.status).toBe('waiting')
         expect(stored?.waitingOn).toEqual({
           kind: 'evidence',
-          description: 'the September print',
+          evidenceSought: 'the September print',
         })
       })
 

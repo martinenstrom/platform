@@ -92,7 +92,7 @@ export interface Assignment {
    */
   waitingOn?:
     | { kind: 'assignment'; assignmentId: AssignmentId }
-    | { kind: 'evidence'; description: string }
+    | { kind: 'evidence'; evidenceSought: string }
   /** Why it came back. Required when `status` is `returned`. */
   returnedReason?: string
   /** Higher runs first within a department's queue. */
@@ -180,30 +180,48 @@ export function workloadFor(queue: WorkQueue): DepartmentWorkload {
   }
 }
 
+/** Why an assignment is waiting, structurally. */
+export type WaitBasis =
+  /** On another department's assignment, which is in the set. */
+  | { kind: 'assignment'; blockedBy: Assignment }
+  /** On an assignment that is not — a chain with a hole in it. */
+  | { kind: 'missing-assignment'; assignmentId: AssignmentId }
+  /** On evidence that does not exist yet, as whoever assigned it stated. */
+  | { kind: 'evidence'; evidenceSought: string }
+
 /**
  * Who is waiting on whom, across the whole firm.
  *
  * Answers the headquarters question "who is waiting for input" without the UI
  * traversing assignments itself.
+ *
+ * Returns structure, not sentences. It used to return a `description` reading
+ * `waiting on ${departmentId}` — English, composed in the domain, on its way to
+ * being rendered as headquarters activity. That is the one thing the activity
+ * feed may not be built from: a sentence assembled here is indistinguishable,
+ * downstream, from one an agent actually justified. The presentation layer
+ * phrases these; the domain says which case it is.
  */
 export function waitingChains(
   assignments: readonly Assignment[],
-): Array<{ waiter: Assignment; blockedBy: Assignment | null; description: string }> {
+): Array<{ waiter: Assignment; basis: WaitBasis }> {
   const byId = new Map(assignments.map((a) => [a.id, a]))
   return assignments
     .filter((a) => a.status === 'waiting' && a.waitingOn)
     .map((waiter) => {
       const on = waiter.waitingOn!
-      if (on.kind === 'assignment') {
-        const blockedBy = byId.get(on.assignmentId) ?? null
+      if (on.kind === 'evidence') {
         return {
           waiter,
-          blockedBy,
-          description: blockedBy
-            ? `waiting on ${blockedBy.departmentId}`
-            : `waiting on a missing assignment`,
+          basis: { kind: 'evidence' as const, evidenceSought: on.evidenceSought },
         }
       }
-      return { waiter, blockedBy: null, description: on.description }
+      const blockedBy = byId.get(on.assignmentId)
+      return {
+        waiter,
+        basis: blockedBy
+          ? { kind: 'assignment' as const, blockedBy }
+          : { kind: 'missing-assignment' as const, assignmentId: on.assignmentId },
+      }
     })
 }

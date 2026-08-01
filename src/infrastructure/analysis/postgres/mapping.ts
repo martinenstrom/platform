@@ -244,7 +244,7 @@ export function toAssignment(row: AssignmentRow): Assignment {
     row.waiting_on_kind === 'assignment'
       ? { kind: 'assignment' as const, assignmentId: row.waiting_on_assignment_id! }
       : row.waiting_on_kind === 'evidence'
-        ? { kind: 'evidence' as const, description: row.waiting_on_description! }
+        ? { kind: 'evidence' as const, evidenceSought: row.waiting_on_description! }
         : null
 
   return seal(

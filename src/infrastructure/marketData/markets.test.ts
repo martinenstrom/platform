@@ -313,7 +313,7 @@ describe('the Market Climate card', () => {
     ]) {
       expect(route).not.toContain(invented)
     }
-    expect(route).not.toMatch(/marketTrends/)
+    expect(route).not.toMatch(/\bmarketTrends\b/)
   })
 
   it('carries labels only — there is no value field to fill', async () => {
