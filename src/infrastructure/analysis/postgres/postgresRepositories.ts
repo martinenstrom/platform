@@ -72,6 +72,13 @@ import {
   createClaimRepository,
   createRunRepository,
 } from './workRepositories'
+import {
+  SUBMISSION_READ_SQL,
+  SUBMISSION_WRITE_SQL,
+  RETURN_READ_SQL,
+  RETURN_WRITE_SQL,
+  createSubmissionRepository,
+} from './submissionRepositories'
 
 /**
  * Identifies the implementation. The VERSION is derived, not written here —
@@ -80,7 +87,9 @@ import {
 const ADAPTER_ID = 'postgres'
 
 /**
- * The two ports B2 implements, declared so the tree compiles at B1.
+ * The one port B2B implements, declared so the tree compiles at B2A.
+ *
+ * @removeIn C1D-1B stage B2C — together with `assertRepositoriesComplete`.
  *
  * Deliberately a throw rather than a silent no-op or a partial implementation:
  * a stub that returned `null` would let a caller believe a case has no
@@ -133,6 +142,10 @@ const CATALOGS = [
   PLAYBOOK_SQL,
   REQUIREMENT_SQL,
   AGGREGATION_SQL,
+  SUBMISSION_READ_SQL,
+  SUBMISSION_WRITE_SQL,
+  RETURN_READ_SQL,
+  RETURN_WRITE_SQL,
 ]
 
 export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
@@ -205,7 +218,7 @@ export function createPostgresRepositories(
     playbooks: createPlaybookRepository(scope, context),
     requirements: createRequirementRepository(scope, context, tenantId),
     aggregations: createAggregationRepository(scope, context, tenantId),
-    submissions: notUntilB2('submissions') as TransactionalAnalysisRepositories['submissions'],
+    submissions: createSubmissionRepository(scope, context, tenantId),
     decisions: notUntilB2('decisions') as TransactionalAnalysisRepositories['decisions'],
   })
 

@@ -32,6 +32,7 @@ import {
   DOMAIN_CONTRACT_VERSION,
   playbookAssignmentIdentity,
   reviewIdentity,
+  validateSubmissionReferences,
   validateCaseDecision,
   validateCioReturn,
   validateCioSubmission,
@@ -41,6 +42,7 @@ import {
   type Assignment,
   type CaseDecision,
   type CaseTransition,
+  type ReferencedGovernance,
   type CioReturn,
   type CioSubmission,
   type ComplianceReview,
@@ -1095,6 +1097,65 @@ export function createInMemoryRepositories(): AnalysisRepositories {
   }
 }
 
+/**
+ * What the store knows about the artifacts a submission cites.
+ *
+ * Assembled from the maps this adapter already holds. PostgreSQL assembles the
+ * same shape from joins; the RULE that consumes it is shared, which is the
+ * point — a repository must not depend on every future caller getting the
+ * reference ownership right, and it must not have its own opinion about it
+ * either.
+ */
+function governanceFacts(store: Store): ReferencedGovernance {
+  const reviews = new Map<
+    string,
+    { caseId: string; revisionId: string | null; kind: string; challengeIds: readonly string[] }
+  >()
+
+  const record = (
+    kind: string,
+    list: ReadonlyArray<{
+      reviewId: string
+      caseId: string
+      scope: string
+      revisionId?: string
+      challenges?: ReadonlyArray<{ id: string }>
+    }>,
+  ) => {
+    for (const review of list) {
+      reviews.set(review.reviewId, {
+        caseId: review.caseId,
+        // A case-wide review applies to every revision of its case; only a
+        // revision-scoped one names an exact argument.
+        revisionId: review.scope === 'thesis-revision' ? (review.revisionId ?? null) : null,
+        kind,
+        challengeIds: (review.challenges ?? []).map((challenge) => challenge.id),
+      })
+    }
+  }
+
+  record('verification', store.verifications as never)
+  record('devils-advocate', store.challenges as never)
+  record('compliance', store.compliance as never)
+  record('risk', store.risk as never)
+
+  return {
+    reviews,
+    aggregations: new Map(
+      [...store.aggregations.values()].map((aggregation) => [
+        aggregation.id,
+        { caseId: aggregation.caseId, producedRevisionId: aggregation.producedRevisionId },
+      ]),
+    ),
+    runs: new Map(
+      [...store.runs.values()].map((run) => [run.id, { caseId: run.caseId }]),
+    ),
+    claims: new Map(
+      [...store.claims.values()].map((entry) => [entry.claim.id, { caseId: entry.caseId }]),
+    ),
+  }
+}
+
 /* --------------------------------------------- CIO submissions and returns */
 
 /**
@@ -1104,6 +1165,22 @@ export function createInMemoryRepositories(): AnalysisRepositories {
  * institution changes: it stops being a queue item when the CIO acts on it.
  */
 function submissionRepository(store: Store, scope: Scope): SubmissionRepository {
+  /**
+   * A stored submission, re-checked on the way out.
+   *
+   * A reference that was valid when written can stop being valid — nothing in
+   * this store prevents a review being replaced. Reading it back as a valid
+   * submission would launder that into the record, so hydration refuses it the
+   * same way the write did, and with the store's own error class.
+   */
+  const hydrated = (submission: CioSubmission, operation: string): CioSubmission => {
+    const problems = validateSubmissionReferences(submission, governanceFacts(store))
+    if (problems.length > 0) {
+      throw new MalformedRowError('CIO submission', problems[0]!.code, operation)
+    }
+    return submission
+  }
+
   const bySubmittedAt = (a: CioSubmission, b: CioSubmission) =>
     byString(a.submittedAt, b.submittedAt) || byString(a.id, b.id)
 
@@ -1113,7 +1190,8 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
   return {
     async get(submissionId) {
       guard(scope, 'submissions.get')
-      return store.submissions.get(submissionId) ?? null
+      const stored = store.submissions.get(submissionId)
+      return stored ? hydrated(stored, 'submissions.get') : null
     },
 
     async listForCase(caseId) {
@@ -1146,7 +1224,10 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
        * what refuses a submission carrying eligibility blockers — the invariant
        * with no column and therefore no database backstop.
        */
-      const problems = validateCioSubmission(submission)
+      const problems = [
+        ...validateCioSubmission(submission),
+        ...validateSubmissionReferences(submission, governanceFacts(store)),
+      ]
       if (problems.length > 0) {
         throw new InvariantViolationError(problems[0]!.code, 'submissions.save')
       }

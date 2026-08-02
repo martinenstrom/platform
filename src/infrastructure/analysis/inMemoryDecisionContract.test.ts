@@ -8,7 +8,14 @@
 
 import { createInMemoryRepositories } from './inMemoryRepositories'
 import { describeDecisionRepositoryContract } from './decisionRepositoryContract'
+import { seedDecisionGovernance } from './decisionSeed'
+import { IN_MEMORY_SEED_FIXTURES } from './decisionSeedFixtures'
 
 describeDecisionRepositoryContract('in-memory', {
   create: async () => createInMemoryRepositories(),
+  seed: (repositories, fixture) =>
+    seedDecisionGovernance(repositories, {
+      ...fixture,
+      fixtures: IN_MEMORY_SEED_FIXTURES,
+    }),
 })

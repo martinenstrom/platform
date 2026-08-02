@@ -39,7 +39,9 @@ import {
   eligibilityBasis,
   qualitativeTrigger,
   quantitativeTrigger,
+  riskIdFor,
   selectedDecision,
+  verificationIdFor,
 } from '~/domain/analysis/decisionFixtures'
 
 const roundTripSubmission = (submission = cioSubmission()) =>
@@ -65,12 +67,20 @@ describe('a submission survives the round trip', () => {
   it('keeps every optional review reference', () => {
     const basis = roundTripSubmission().basis
     expect(basis.verification).toEqual({
-      reviewId: 'review-v1',
+      reviewId: verificationIdFor('rev-1'),
       sequence: 1,
       status: 'verified',
     })
-    expect(basis.risk).toEqual({ reviewId: 'review-r1', sequence: 1, status: 'accepted' })
-    expect(basis.devilsAdvocate?.openChallengeIds).toEqual(['challenge-a', 'challenge-b'])
+    expect(basis.risk).toEqual({
+      reviewId: riskIdFor('rev-1'),
+      sequence: 1,
+      status: 'accepted',
+    })
+    // Byte order on read, whatever order the caller listed them in.
+    expect(basis.devilsAdvocate?.openChallengeIds).toEqual([
+      'challenge-a-rev-1',
+      'challenge-b-rev-1',
+    ])
   })
 
   it('keeps a basis with every optional field absent', () => {
@@ -97,11 +107,11 @@ describe('a submission survives the round trip', () => {
   it('keeps required work and disagreements individually', () => {
     const basis = roundTripSubmission().basis
     expect(basis.requiredWork).toEqual([
-      { playbookEntryKey: 'credit-check', runId: 'run-2' },
-      { playbookEntryKey: 'macro-scan', runId: 'run-1' },
+      { playbookEntryKey: 'credit-check', runId: 'run-2-rev-1' },
+      { playbookEntryKey: 'macro-scan', runId: 'run-1-rev-1' },
     ])
     expect(basis.materialDisagreements).toEqual([
-      { claimId: 'claim-1', materiality: 'material' },
+      { claimId: 'claim-rev-1', materiality: 'material' },
     ])
   })
 

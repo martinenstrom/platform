@@ -495,3 +495,228 @@ export function assertCioReturnWellFormed(cioReturn: CioReturn): void {
 export function assertCaseDecisionWellFormed(decision: CaseDecision): void {
   assertNone(validateCaseDecision(decision))
 }
+
+/* --------------------------------------------- referenced governance */
+
+/**
+ * What the store knows about the artifacts a submission's basis names.
+ *
+ * Supplied rather than looked up: the rule is the same for both adapters, but
+ * "read the reviews" means a Map lookup in one and a join in the other. Keeping
+ * the rule pure is what lets it be the same rule.
+ */
+export interface ReferencedGovernance {
+  /** Reviews by id. `revisionId` is null for a case-wide review. */
+  reviews: ReadonlyMap<
+    string,
+    {
+      caseId: string
+      revisionId: string | null
+      kind: string
+      /** The challenges recorded on this review. */
+      challengeIds: readonly string[]
+    }
+  >
+  /** Aggregations by id, and the revision each produced. */
+  aggregations: ReadonlyMap<string, { caseId: string; producedRevisionId: string }>
+  runs: ReadonlyMap<string, { caseId: string }>
+  claims: ReadonlyMap<string, { caseId: string }>
+}
+
+/**
+ * Every governance artifact a submission cites belongs to it.
+ *
+ * The failure this prevents is the one a foreign key cannot see. `reviews` is
+ * keyed on `id` alone, so the schema can prove a review EXISTS and can prove
+ * nothing about which revision it reviewed — meaning a submission could cite the
+ * verification of a sibling revision and every constraint in the database would
+ * be satisfied. The record would then say the firm verified something it did
+ * not.
+ *
+ * A repository is an institutional integrity boundary: it must not depend on
+ * every future caller getting this right. The commands check it too; this is
+ * what makes the check true regardless.
+ *
+ * **It validates references, not the gate.** Whether the verdicts add up to
+ * eligibility is the domain's question and stays there — this only asks whether
+ * the things cited are the things they claim to be.
+ */
+export function validateSubmissionReferences(
+  submission: CioSubmission,
+  governance: ReferencedGovernance,
+): readonly AggregateProblem[] {
+  const found: AggregateProblem[] = []
+  const basis = submission.basis
+
+  const checkReview = (
+    reviewId: string,
+    expectedKind: string,
+    label: string,
+  ): { challengeIds: readonly string[] } | null => {
+    const review = governance.reviews.get(reviewId)
+    if (!review) {
+      found.push(
+        problem(
+          'submission-review-missing',
+          `Submission "${submission.id}" cites ${label} review "${reviewId}", ` +
+            `which does not exist.`,
+        ),
+      )
+      return null
+    }
+    if (review.caseId !== submission.caseId) {
+      found.push(
+        problem(
+          'submission-review-wrong-case',
+          `Submission "${submission.id}" cites ${label} review "${reviewId}" from ` +
+            `case "${review.caseId}".`,
+        ),
+      )
+    }
+    /*
+     * A case-wide review legitimately applies to every revision of its case —
+     * that is what the scope means. Anything scoped to a DIFFERENT revision is
+     * a verdict about a different argument.
+     */
+    if (review.revisionId !== null && review.revisionId !== submission.revisionId) {
+      found.push(
+        problem(
+          'submission-review-wrong-revision',
+          `Submission "${submission.id}" targets revision ` +
+            `"${submission.revisionId}" and cites ${label} review "${reviewId}", ` +
+            `which reviewed "${review.revisionId}".`,
+        ),
+      )
+    }
+    if (review.kind !== expectedKind) {
+      found.push(
+        problem(
+          'submission-review-wrong-kind',
+          `Submission "${submission.id}" cites "${reviewId}" as its ${label} ` +
+            `review; it is a ${review.kind} review.`,
+        ),
+      )
+    }
+    return { challengeIds: review.challengeIds }
+  }
+
+  if (basis.verification) {
+    checkReview(basis.verification.reviewId, 'verification', 'the verification')
+  }
+
+  if (basis.devilsAdvocate) {
+    const review = checkReview(
+      basis.devilsAdvocate.reviewId,
+      'devils-advocate',
+      "the Devil's Advocate",
+    )
+    /*
+     * An open challenge belongs to the review that raised it. Checking
+     * membership rather than looking the challenge up separately is both
+     * cheaper and stricter: a challenge from another review would be a
+     * different reviewer's objection attributed to this one.
+     */
+    if (review) {
+      const known = new Set(review.challengeIds)
+      for (const challengeId of basis.devilsAdvocate.openChallengeIds) {
+        if (!known.has(challengeId)) {
+          found.push(
+            problem(
+              'submission-challenge-not-in-review',
+              `Submission "${submission.id}" lists challenge "${challengeId}" as ` +
+                `open, and it does not belong to the Devil's Advocate review it ` +
+                `cites.`,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  if (basis.risk) {
+    checkReview(basis.risk.reviewId, 'risk', 'the Risk')
+  }
+
+  if (basis.aggregationId !== null) {
+    const aggregation = governance.aggregations.get(basis.aggregationId)
+    if (!aggregation) {
+      found.push(
+        problem(
+          'submission-aggregation-missing',
+          `Submission "${submission.id}" cites aggregation ` +
+            `"${basis.aggregationId}", which does not exist.`,
+        ),
+      )
+    } else {
+      if (aggregation.caseId !== submission.caseId) {
+        found.push(
+          problem(
+            'submission-aggregation-wrong-case',
+            `Submission "${submission.id}" cites an aggregation from case ` +
+              `"${aggregation.caseId}".`,
+          ),
+        )
+      }
+      if (aggregation.producedRevisionId !== submission.revisionId) {
+        found.push(
+          problem(
+            'submission-aggregation-wrong-revision',
+            `Submission "${submission.id}" targets revision ` +
+              `"${submission.revisionId}" and cites the aggregation that produced ` +
+              `"${aggregation.producedRevisionId}".`,
+          ),
+        )
+      }
+    }
+  }
+
+  for (const work of basis.requiredWork) {
+    const run = governance.runs.get(work.runId)
+    if (!run) {
+      found.push(
+        problem(
+          'submission-run-missing',
+          `Submission "${submission.id}" cites run "${work.runId}", which does ` +
+            `not exist.`,
+        ),
+      )
+    } else if (run.caseId !== submission.caseId) {
+      found.push(
+        problem(
+          'submission-run-wrong-case',
+          `Submission "${submission.id}" cites run "${work.runId}" from case ` +
+            `"${run.caseId}".`,
+        ),
+      )
+    }
+  }
+
+  for (const disagreement of basis.materialDisagreements) {
+    const claim = governance.claims.get(disagreement.claimId)
+    if (!claim) {
+      found.push(
+        problem(
+          'submission-claim-missing',
+          `Submission "${submission.id}" cites claim "${disagreement.claimId}", ` +
+            `which does not exist.`,
+        ),
+      )
+    } else if (claim.caseId !== submission.caseId) {
+      found.push(
+        problem(
+          'submission-claim-wrong-case',
+          `Submission "${submission.id}" cites claim "${disagreement.claimId}" ` +
+            `from case "${claim.caseId}".`,
+        ),
+      )
+    }
+  }
+
+  /*
+   * Evidence sets are deliberately unchecked. They are content-addressed and
+   * belong to no case: the same observations assembled for two cases are one
+   * set by construction, so there is no ownership to verify.
+   */
+
+  return found
+}

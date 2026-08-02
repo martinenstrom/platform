@@ -29,8 +29,14 @@ import {
 import type { CaseDecision, CioReturn, CioSubmission } from '~/domain/analysis'
 import { isDeeplyFrozen } from './seal'
 import {
+  aggregationIdFor,
+  challengeIdsFor,
   cioReturn,
   cioSubmission,
+  claimIdFor,
+  devilsAdvocateIdFor,
+  riskIdFor,
+  runIdsFor,
   declinedDecision,
   deferredDecision,
   disclosedDissent,
@@ -38,6 +44,7 @@ import {
   qualitativeTrigger,
   quantitativeTrigger,
   selectedDecision,
+  verificationIdFor,
 } from '~/domain/analysis/decisionFixtures'
 
 export interface DecisionContractOptions {
@@ -51,22 +58,54 @@ export interface DecisionContractOptions {
    * revisions, the reviews and the evidence its foreign keys point at. Setup
    * only — no assertion consults it.
    */
-  seed?: (
+  seed: (
     repositories: AnalysisRepositories,
     fixture: { caseId: string; revisionIds: readonly string[] },
   ) => Promise<void>
+}
+
+/**
+ * Submissions and returns.
+ *
+ * A separate entry point from the decision half only so a stage that has
+ * finished one and not the other can run what exists. Both are invoked for
+ * every completed adapter, and neither body knows which adapter it is running
+ * against.
+ */
+export function describeSubmissionRepositoryContract(
+  name: string,
+  options: DecisionContractOptions,
+): void {
+  buildContract(name, options, { decisions: false })
 }
 
 export function describeDecisionRepositoryContract(
   name: string,
   options: DecisionContractOptions,
 ): void {
+  buildContract(name, options, { decisions: true })
+}
+
+function buildContract(
+  name: string,
+  options: DecisionContractOptions,
+  parts: { decisions: boolean },
+): void {
+  /*
+   * `describe`/`it` for a stage that has the decision repository, and their
+   * skipping counterparts for one that does not. Named rather than written
+   * inline: a parenthesised conditional at the start of a statement is parsed
+   * as a call on whatever the line above evaluated to.
+   */
+  const describeDecisions = parts.decisions ? describe : describe.skip
+  const whenDecisions = parts.decisions ? it : it.skip
+
   describe(`decision repository contract — ${name}`, () => {
     let repositories: AnalysisRepositories
 
     beforeEach(async () => {
       repositories = await options.create()
-      await options.seed?.(repositories, {
+      await options.seed(repositories, {
         caseId: 'case-1',
         revisionIds: ['rev-1', 'rev-2'],
       })
@@ -93,7 +132,7 @@ export function describeDecisionRepositoryContract(
 
         expect(read).not.toBeNull()
         expect(read?.basis.verification).toEqual({
-          reviewId: 'review-v1',
+          reviewId: verificationIdFor('rev-1'),
           sequence: 1,
           status: 'verified',
         })
@@ -240,6 +279,134 @@ export function describeDecisionRepositoryContract(
       })
     })
 
+    /* ------------------------------------- cross-revision and cross-case */
+
+    describe('a submission may only cite its own governance', () => {
+      /*
+       * The failure a foreign key cannot see. `reviews` is keyed on `id` alone,
+       * so the database can prove a review EXISTS and nothing about which
+       * revision it reviewed — a submission could cite a sibling revision's
+       * verification and every constraint would be satisfied, leaving a record
+       * that says the firm verified something it did not.
+       *
+       * The commands check this too. The repository checks it so the record is
+       * right regardless of which caller wrote it.
+       */
+      const citing = (basis: Partial<ReturnType<typeof eligibilityBasis>>) =>
+        repositories.submissions.save(
+          cioSubmission({ id: 'sub-wrong', basis: eligibilityBasis(basis) }),
+        )
+
+      it('refuses a verification review for another revision', async () => {
+        await expect(
+          citing({
+            verification: {
+              reviewId: verificationIdFor('rev-2'),
+              sequence: 1,
+              status: 'verified',
+            },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it("refuses a Devil's Advocate review for another revision", async () => {
+        await expect(
+          citing({
+            devilsAdvocate: {
+              reviewId: devilsAdvocateIdFor('rev-2'),
+              sequence: 1,
+              openChallengeIds: [],
+            },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses a Risk review for another revision', async () => {
+        await expect(
+          citing({
+            risk: { reviewId: riskIdFor('rev-2'), sequence: 1, status: 'accepted' },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses a challenge that belongs to another review', async () => {
+        await expect(
+          citing({
+            devilsAdvocate: {
+              reviewId: devilsAdvocateIdFor('rev-1'),
+              sequence: 1,
+              openChallengeIds: [challengeIdsFor('rev-2')[0]],
+            },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses an aggregation that produced another revision', async () => {
+        await expect(citing({ aggregationId: aggregationIdFor('rev-2') })).rejects.toThrow(
+          InvariantViolationError,
+        )
+      })
+
+      it('refuses a review that reviewed another case', async () => {
+        await options.seed(repositories, {
+          caseId: 'case-2',
+          revisionIds: ['rev-3', 'rev-4'],
+        })
+        await expect(
+          citing({
+            verification: {
+              reviewId: verificationIdFor('rev-3'),
+              sequence: 1,
+              status: 'verified',
+            },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses required work from another case', async () => {
+        await options.seed(repositories, {
+          caseId: 'case-2',
+          revisionIds: ['rev-3', 'rev-4'],
+        })
+        await expect(
+          citing({
+            requiredWork: [
+              { playbookEntryKey: 'macro-scan', runId: runIdsFor('rev-3')[0] },
+            ],
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses a disagreement about a claim from another case', async () => {
+        await options.seed(repositories, {
+          caseId: 'case-2',
+          revisionIds: ['rev-3', 'rev-4'],
+        })
+        await expect(
+          citing({
+            materialDisagreements: [
+              { claimId: claimIdFor('rev-3'), materiality: 'material' },
+            ],
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('refuses a review that does not exist at all', async () => {
+        await expect(
+          citing({
+            verification: { reviewId: 'review-nowhere', sequence: 1, status: 'verified' },
+          }),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      it('stores none of it', async () => {
+        await expect(
+          citing({ aggregationId: aggregationIdFor('rev-2') }),
+        ).rejects.toThrow()
+        expect(await repositories.submissions.get('sub-wrong')).toBeNull()
+      })
+    })
+
     /* ----------------------------------------------------------- returns */
 
     describe('returns', () => {
@@ -315,7 +482,7 @@ export function describeDecisionRepositoryContract(
 
     /* --------------------------------------------------------- decisions */
 
-    describe('decisions', () => {
+    describeDecisions('decisions', () => {
       const save = async (decision: CaseDecision) => {
         await seedSubmissions()
         return repositories.decisions.save(decision)
@@ -453,7 +620,7 @@ export function describeDecisionRepositoryContract(
 
     /* ------------------------------------------------------ supersession */
 
-    describe('supersession', () => {
+    describeDecisions('supersession', () => {
       const correction = (over: Partial<CaseDecision> = {}) =>
         selectedDecision({
           decisionId: 'dec-2',
@@ -510,9 +677,9 @@ export function describeDecisionRepositoryContract(
       })
 
       it('refuses a decision superseding one on another case', async () => {
-        await options.seed?.(repositories, {
+        await options.seed(repositories, {
           caseId: 'case-2',
-          revisionIds: ['rev-1', 'rev-2'],
+          revisionIds: ['rev-3', 'rev-4'],
         })
         await expect(
           repositories.decisions.save(
@@ -551,13 +718,17 @@ export function describeDecisionRepositoryContract(
     /* -------------------------------------------------------- immutability */
 
     describe('records cannot be changed through what they return', () => {
-      it('freezes a submission, a return and a decision on read', async () => {
+      it('freezes a submission and a return on read', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
-        await repositories.decisions.save(selectedDecision())
 
         expect(isDeeplyFrozen(await repositories.submissions.get('sub-2'))).toBe(true)
         expect(isDeeplyFrozen(await repositories.submissions.getReturn('ret-1'))).toBe(true)
+      })
+
+      whenDecisions('freezes a decision on read', async () => {
+        await seedSubmissions()
+        await repositories.decisions.save(selectedDecision())
         expect(isDeeplyFrozen(await repositories.decisions.get('dec-1'))).toBe(true)
       })
 
@@ -581,7 +752,7 @@ export function describeDecisionRepositoryContract(
         expect((await repositories.submissions.get('sub-1'))?.caseVersion).toBe(3)
       })
 
-      it('ignores a caller mutating what a read returned', async () => {
+      whenDecisions('ignores a caller mutating what a read returned', async () => {
         await seedSubmissions()
         await repositories.decisions.save(selectedDecision())
         const read = await repositories.decisions.get('dec-1')

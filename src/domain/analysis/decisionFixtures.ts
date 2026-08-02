@@ -8,6 +8,7 @@
  * failure the round-trip tests exist to catch.
  */
 
+import { buildEvidenceSet, observationRef } from './index'
 import type {
   ActorSnapshot,
   CaseDecision,
@@ -15,8 +16,23 @@ import type {
   CioSubmission,
   DisclosedDissent,
   EligibilityBasis,
+  EvidenceSet,
   ReconsiderationTrigger,
 } from './index'
+
+/**
+ * The storage provenance the seeded records were written under.
+ *
+ * A provenance id is content-addressed from the adapter's own coordinates, so
+ * it cannot be written down here — the in-memory store and PostgreSQL derive
+ * different ones, and hard-coding either would make a fixture that only works
+ * against one adapter. The seed publishes what its adapter reported.
+ */
+let seededProvenanceId = 'prov-1'
+export const setSeededProvenanceId = (id: string) => {
+  seededProvenanceId = id
+}
+export const getSeededProvenanceId = () => seededProvenanceId
 
 export const DECIDED_AT = '2026-07-28T13:00:00.000Z'
 export const SUBMITTED_AT = '2026-07-28T09:00:00.000Z'
@@ -44,30 +60,90 @@ export function cioActor(over: Partial<ActorSnapshot> = {}): ActorSnapshot {
  * pass against a sparse fixture. `blockers` is empty and must stay empty — a
  * valid submission has none, and the repositories refuse one that does.
  */
+/**
+ * Governance artifact ids, derived from the revision they belong to.
+ *
+ * Derived rather than fixed, because the repositories now verify that every
+ * cited review, aggregation and challenge belongs to the exact revision. A
+ * fixture with one shared `review-v1` would either fail everywhere or force the
+ * check to be weakened — and citing another revision's verdict is precisely the
+ * failure the check exists to catch, so the fixtures have to be able to express
+ * both the right case and the wrong one.
+ */
+export const verificationIdFor = (revisionId: string) => `review-v-${revisionId}`
+export const devilsAdvocateIdFor = (revisionId: string) => `review-d-${revisionId}`
+export const riskIdFor = (revisionId: string) => `review-r-${revisionId}`
+export const aggregationIdFor = (revisionId: string) => `agg-${revisionId}`
+export const challengeIdsFor = (revisionId: string) =>
+  [`challenge-b-${revisionId}`, `challenge-a-${revisionId}`] as const
+export const runIdsFor = (revisionId: string) =>
+  [`run-1-${revisionId}`, `run-2-${revisionId}`] as const
+export const claimIdFor = (revisionId: string) => `claim-${revisionId}`
+
+/**
+ * The evidence sets the seed creates, built here so both sides agree on the ids.
+ *
+ * An evidence set id is content-addressed, so it cannot be chosen — it falls out
+ * of the observations. Building them in one place and deriving the ids from the
+ * built objects is what lets a fixture cite a set the seed will actually have
+ * created, without either side hard-coding a hash.
+ */
+export function evidenceSetsFor(revisionId: string): readonly EvidenceSet[] {
+  return [1, 2].map((n) =>
+    buildEvidenceSet({
+      items: [
+        {
+          ref: observationRef(
+            {
+              subjectKind: 'series',
+              subject: `US${n}0Y`,
+              kind: 'yield',
+              observedAt: '2026-07-28T08:00:00.000Z',
+              sourceId: 'treasury',
+            },
+            { value: n },
+          ),
+          value: { value: n },
+        },
+      ],
+      assembledAt: '2026-07-28T08:00:00.000Z',
+      correlationId: `seed-${revisionId}`,
+    } as never),
+  )
+}
+
+export const evidenceSetIdsFor = (revisionId: string) =>
+  evidenceSetsFor(revisionId).map((set) => set.id)
+
 export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): EligibilityBasis {
+  const revisionId = over.revisionId ?? 'rev-1'
   return {
-    revisionId: 'rev-1',
+    revisionId,
     thesisId: 'thesis-1',
-    aggregationId: 'agg-1',
+    aggregationId: aggregationIdFor(revisionId),
     eligibilityPolicyVersion: '1',
     blockers: [],
-    verification: { reviewId: 'review-v1', sequence: 1, status: 'verified' },
-    devilsAdvocate: {
-      reviewId: 'review-d1',
+    verification: {
+      reviewId: verificationIdFor(revisionId),
       sequence: 1,
-      openChallengeIds: ['challenge-b', 'challenge-a'],
+      status: 'verified',
     },
-    risk: { reviewId: 'review-r1', sequence: 1, status: 'accepted' },
+    devilsAdvocate: {
+      reviewId: devilsAdvocateIdFor(revisionId),
+      sequence: 1,
+      openChallengeIds: [...challengeIdsFor(revisionId)],
+    },
+    risk: { reviewId: riskIdFor(revisionId), sequence: 1, status: 'accepted' },
     riskRequirement: 'required',
     riskRuleId: 'risk-rule-1',
     riskRuleVersion: '1',
     requiredWork: [
-      { playbookEntryKey: 'macro-scan', runId: 'run-1' },
-      { playbookEntryKey: 'credit-check', runId: 'run-2' },
+      { playbookEntryKey: 'macro-scan', runId: runIdsFor(revisionId)[0] },
+      { playbookEntryKey: 'credit-check', runId: runIdsFor(revisionId)[1] },
     ],
-    materialDisagreements: [{ claimId: 'claim-1', materiality: 'material' }],
-    evidenceSetIds: ['set-2', 'set-1'],
-    storageProvenanceId: 'prov-1',
+    materialDisagreements: [{ claimId: claimIdFor(revisionId), materiality: 'material' }],
+    evidenceSetIds: [...evidenceSetIdsFor(revisionId)].reverse(),
+    storageProvenanceId: seededProvenanceId,
     evaluatedAt: '2026-07-28T08:59:00.000Z',
     ...over,
   }
@@ -124,9 +200,9 @@ export function cioReturn(over: Partial<CioReturn> = {}): CioReturn {
 export function disclosedDissent(over: Partial<DisclosedDissent> = {}): DisclosedDissent {
   return {
     source: 'devils-advocate-challenge',
-    sourceId: 'challenge-a',
+    sourceId: 'challenge-a-rev-1',
     revisionId: 'rev-1',
-    claimId: 'claim-1',
+    claimId: claimIdFor('rev-1'),
     materiality: 'material',
     raisedByEmployeeId: 'challenger',
     raisedByDepartmentId: 'research-office',
