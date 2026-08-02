@@ -11,12 +11,12 @@
  * blanket `SET` — an owner-level run would pass statements production cannot
  * execute.
  *
- * The decision half is invoked once B2B implements it.
+ * Supersession is invoked once B2B-2 implements the correcting transaction.
  */
 
 import { afterAll, beforeAll } from 'vitest'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
-import { describeSubmissionRepositoryContract } from '../decisionRepositoryContract'
+import { describeDecisionPersistenceContract } from '../decisionRepositoryContract'
 import { seedDecisionGovernance } from '../decisionSeed'
 import { IN_MEMORY_SEED_FIXTURES } from '../decisionSeedFixtures'
 import {
@@ -40,7 +40,7 @@ afterAll(async () => {
   await db?.drop()
 })
 
-describeSubmissionRepositoryContract('postgres', {
+describeDecisionPersistenceContract('postgres', {
   async create() {
     await db.truncateAnalysisData()
     const repositories = createPostgresRepositories({ connectionString: appUrl })

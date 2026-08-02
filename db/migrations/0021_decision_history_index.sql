@@ -1,0 +1,38 @@
+-- The index the case timeline reads through.
+--
+-- `decisions.historyForCase` asks for every decision a case has held, oldest
+-- first:
+--
+--   SELECT ... FROM analysis.case_decisions
+--    WHERE case_id = $1
+--    ORDER BY decided_at, decision_id COLLATE "C"
+--
+-- Neither existing index can serve it, and for opposite reasons.
+--
+-- `case_decisions_one_live_per_case` is partial on `superseded_by_decision_id
+-- IS NULL`, so it indexes only live decisions -- it excludes exactly the
+-- superseded rows that history exists to return.
+--
+-- `case_decisions_recent_idx` leads with `tenant_id, decided_at`, so a lookup
+-- by `case_id` cannot use it as an access predicate at all; the planner would
+-- scan and filter.
+--
+-- Not partial: history means every decision, and a predicate here would
+-- reintroduce the gap the live index already has. The trailing `decision_id` is
+-- the unique tie-breaker the port's ordering guarantee requires, in byte order
+-- to match `COLLATE "C"` in the query and `byString` in the in-memory
+-- reference, so the read needs no sort.
+--
+-- Measured: at 240 decisions the planner still prefers a sequential scan; at
+-- 4,000 it takes this index. At ~400 cases a year that is roughly three to five
+-- years of operation, so the index matters in the medium term rather than
+-- immediately. It is added now because no existing index can serve the query at
+-- any volume, not because it changes today's plan.
+--
+-- The live-recent partial index is deliberately NOT added here. It stays
+-- TD-55: `case_decisions_recent_idx` already serves that query's tenant
+-- predicate and its full ordering, and live-ness is a filter that rejects a
+-- small minority of rows. Adding it now would be speculative.
+
+CREATE INDEX case_decisions_history_idx
+    ON analysis.case_decisions (case_id, decided_at, decision_id COLLATE "C");

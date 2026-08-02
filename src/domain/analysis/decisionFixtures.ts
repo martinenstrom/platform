@@ -115,6 +115,22 @@ export function evidenceSetsFor(revisionId: string): readonly EvidenceSet[] {
 export const evidenceSetIdsFor = (revisionId: string) =>
   evidenceSetsFor(revisionId).map((set) => set.id)
 
+/**
+ * References into the seeded sets, for dissent that cites its evidence.
+ *
+ * `decision_dissent_evidence` carries a composite foreign key to
+ * `evidence_items (evidence_set_id, observation_id)`, so a fixture citing an
+ * invented observation is a fixture that only works against the in-memory
+ * store.
+ */
+export function evidenceRefsFor(revisionId: string) {
+  return evidenceSetsFor(revisionId).map((set) => ({
+    setId: set.id,
+    observationId: set.items[0]!.ref.id,
+    contentHash: set.items[0]!.ref.contentHash,
+  }))
+}
+
 export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): EligibilityBasis {
   const revisionId = over.revisionId ?? 'rev-1'
   return {
@@ -204,13 +220,13 @@ export function disclosedDissent(over: Partial<DisclosedDissent> = {}): Disclose
     revisionId: 'rev-1',
     claimId: claimIdFor('rev-1'),
     materiality: 'material',
-    raisedByEmployeeId: 'challenger',
-    raisedByDepartmentId: 'research-office',
+    // Real seeded ids: the dissent columns are foreign keys.
+    raisedByEmployeeId: 'devils-advocate-head',
+    raisedByDepartmentId: 'devils-advocate',
     rationale: 'The credit impulse argument was never answered.',
-    evidence: [
-      { setId: 'set-1', observationId: 'obs-2', contentHash: 'hash-2' },
-      { setId: 'set-1', observationId: 'obs-1', contentHash: 'hash-1' },
-    ],
+    // Reversed, so the round-trip test proves the mapper canonicalises an
+    // order the store cannot preserve.
+    evidence: [...evidenceRefsFor('rev-1')].reverse(),
     whyNotBlocking: 'below-threshold',
     acknowledgement: 'Weighed and accepted; the position is sized for it.',
     dispositionAtDecision: 'accepted-as-risk',
@@ -269,7 +285,7 @@ export function selectedDecision(over: Partial<CaseDecision> = {}): CaseDecision
       consideredRevisionIds: ['rev-1', 'rev-2'],
     },
     submissionIds: ['sub-1', 'sub-2'],
-    evidenceSetId: 'set-1',
+    evidenceSetId: evidenceSetIdsFor('rev-1')[0]!,
     rationale: 'The disinflation path is better evidenced than the alternative.',
     unresolvedDissent: [disclosedDissent()],
     reconsiderationTriggers: [quantitativeTrigger(), qualitativeTrigger()],

@@ -12,7 +12,10 @@ import { Client } from 'pg'
 import {
   cioReturn,
   cioSubmission,
+  disclosedDissent,
   eligibilityBasis,
+  quantitativeTrigger,
+  selectedDecision,
 } from '~/domain/analysis/decisionFixtures'
 import type { StorageMetrics } from '~/application/analysis/storageObservability'
 import { InvariantViolationError } from '~/application/analysis/repositories'
@@ -302,5 +305,75 @@ describe('errors carry nothing institutional', () => {
     expect(message).not.toMatch(/INSERT|SELECT|UPDATE/i)
     expect(message).not.toContain('mispriced')
     expect(message).not.toMatch(/Key \(/)
+  })
+})
+
+/* ------------------------------------------------------- decision budgets */
+
+describe('decision statement counts do not grow with the data', () => {
+  /** A decision whose child collections all hold `size` entries. */
+  const wide = (id: string, size: number) =>
+    selectedDecision({
+      decisionId: id,
+      unresolvedDissent: Array.from({ length: size }, (_, index) =>
+        disclosedDissent({ sourceId: `challenge-${index}` }),
+      ),
+      reconsiderationTriggers: Array.from({ length: size }, (_, index) =>
+        quantitativeTrigger({ id: `trg-${index}` }),
+      ),
+    })
+
+  const seedSubmissions = async () => {
+    await repositories.submissions.save(cioSubmission())
+    await repositories.submissions.save(
+      cioSubmission({ id: 'sub-2', revisionId: 'rev-2', thesisId: 'thesis-2' }),
+    )
+  }
+
+  for (const size of [1, 25]) {
+    it(`save issues the same statements at ${size} child rows`, async () => {
+      await seedSubmissions()
+      counts.clear()
+      await repositories.decisions.save(wide(`dec-${size}`, size))
+      /*
+       * Replay probe, the submission check, the root, and four child tables.
+       * Seven, whether the decision carries one dissent entry or twenty-five.
+       */
+      expect(statementsFor('decisions.save')).toBe(7)
+    })
+
+    it(`get issues five statements at ${size} child rows`, async () => {
+      await seedSubmissions()
+      await repositories.decisions.save(wide(`dec-get-${size}`, size))
+      counts.clear()
+      await repositories.decisions.get(`dec-get-${size}`)
+      expect(statementsFor('decisions.get')).toBe(5)
+    })
+  }
+
+  it('reads the live decision, the history and the recent list in five each', async () => {
+    await seedSubmissions()
+    await repositories.decisions.save(selectedDecision())
+
+    counts.clear()
+    await repositories.decisions.getForCase('case-1')
+    expect(statementsFor('decisions.getForCase')).toBe(5)
+
+    counts.clear()
+    await repositories.decisions.historyForCase('case-1')
+    expect(statementsFor('decisions.historyForCase')).toBe(5)
+
+    counts.clear()
+    await repositories.decisions.listRecent(10)
+    expect(statementsFor('decisions.listRecent')).toBe(5)
+  })
+
+  it('writes nothing on an identical replay', async () => {
+    await seedSubmissions()
+    await repositories.decisions.save(selectedDecision())
+    counts.clear()
+    await repositories.decisions.save(selectedDecision())
+    // The probe and its four hydration reads. No insert.
+    expect(statementsFor('decisions.save')).toBe(5)
   })
 })

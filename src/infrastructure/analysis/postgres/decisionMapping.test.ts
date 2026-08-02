@@ -37,6 +37,7 @@ import {
   deferredDecision,
   disclosedDissent,
   eligibilityBasis,
+  evidenceRefsFor,
   qualitativeTrigger,
   quantitativeTrigger,
   riskIdFor,
@@ -219,12 +220,17 @@ describe('a decision survives the round trip', () => {
     ])
   })
 
-  it('keeps dissent evidence references exactly', () => {
+  it('keeps dissent evidence references exactly, in byte order', () => {
+    /*
+     * The fixture lists them reversed. `decision_dissent_evidence` has no
+     * ordinal — its key IS the reference — so the store cannot preserve caller
+     * order and the mapper imposes a deterministic one.
+     */
     const mapped = roundTripDecision()
-    expect(mapped.unresolvedDissent[0]?.evidence).toEqual([
-      { setId: 'set-1', observationId: 'obs-1', contentHash: 'hash-1' },
-      { setId: 'set-1', observationId: 'obs-2', contentHash: 'hash-2' },
-    ])
+    const expected = [...evidenceRefsFor('rev-1')].sort((left, right) =>
+      left.setId < right.setId ? -1 : left.setId > right.setId ? 1 : 0,
+    )
+    expect(mapped.unresolvedDissent[0]?.evidence).toEqual(expected)
   })
 
   it('keeps dissent order across more than one entry', () => {

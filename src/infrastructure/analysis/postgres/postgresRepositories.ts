@@ -79,38 +79,18 @@ import {
   RETURN_WRITE_SQL,
   createSubmissionRepository,
 } from './submissionRepositories'
+import {
+  DECISION_READ_SQL,
+  DECISION_HYDRATE_SQL,
+  DECISION_WRITE_SQL,
+  createDecisionRepository,
+} from './decisionRepositories'
 
 /**
  * Identifies the implementation. The VERSION is derived, not written here —
  * see `deriveAdapterVersion`.
  */
 const ADAPTER_ID = 'postgres'
-
-/**
- * The one port B2B implements, declared so the tree compiles at B2A.
- *
- * @removeIn C1D-1B stage B2C — together with `assertRepositoriesComplete`.
- *
- * Deliberately a throw rather than a silent no-op or a partial implementation:
- * a stub that returned `null` would let a caller believe a case has no
- * decision, and a partial one would be judged by the contract suite as though
- * it were finished. Nothing in the runtime constructs a submission or a
- * decision yet — the commands are C1D-1C through C1D-1E — so the only way to
- * reach this is to run ahead of the plan, and it says so.
- */
-const notUntilB2 = (port: string) =>
-  new Proxy(
-    {},
-    {
-      get: (_target, method) => () => {
-        throw new Error(
-          `${port}.${String(method)} is not implemented in the PostgreSQL ` +
-            `adapter yet. C1D-1B stage B2 builds it; the in-memory reference ` +
-            `and the shared contract suite exist as of B1.`,
-        )
-      },
-    },
-  )
 
 /**
  * The container's own statement.
@@ -146,6 +126,9 @@ const CATALOGS = [
   SUBMISSION_WRITE_SQL,
   RETURN_READ_SQL,
   RETURN_WRITE_SQL,
+  DECISION_READ_SQL,
+  DECISION_HYDRATE_SQL,
+  DECISION_WRITE_SQL,
 ]
 
 export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
@@ -219,7 +202,7 @@ export function createPostgresRepositories(
     requirements: createRequirementRepository(scope, context, tenantId),
     aggregations: createAggregationRepository(scope, context, tenantId),
     submissions: createSubmissionRepository(scope, context, tenantId),
-    decisions: notUntilB2('decisions') as TransactionalAnalysisRepositories['decisions'],
+    decisions: createDecisionRepository(scope, context, tenantId),
   })
 
   /*

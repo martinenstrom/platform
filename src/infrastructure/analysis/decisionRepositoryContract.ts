@@ -76,20 +76,34 @@ export function describeSubmissionRepositoryContract(
   name: string,
   options: DecisionContractOptions,
 ): void {
-  buildContract(name, options, { decisions: false })
+  buildContract(name, options, { decisions: false, supersession: false })
+}
+
+/**
+ * Decisions without supersession.
+ *
+ * The correcting-decision transaction needs the deferred foreign keys and the
+ * named constraint forcing, which arrive a stage later than the rest. A stage
+ * that has the one and not the other runs this.
+ */
+export function describeDecisionPersistenceContract(
+  name: string,
+  options: DecisionContractOptions,
+): void {
+  buildContract(name, options, { decisions: true, supersession: false })
 }
 
 export function describeDecisionRepositoryContract(
   name: string,
   options: DecisionContractOptions,
 ): void {
-  buildContract(name, options, { decisions: true })
+  buildContract(name, options, { decisions: true, supersession: true })
 }
 
 function buildContract(
   name: string,
   options: DecisionContractOptions,
-  parts: { decisions: boolean },
+  parts: { decisions: boolean; supersession: boolean },
 ): void {
   /*
    * `describe`/`it` for a stage that has the decision repository, and their
@@ -98,6 +112,7 @@ function buildContract(
    * as a call on whatever the line above evaluated to.
    */
   const describeDecisions = parts.decisions ? describe : describe.skip
+  const describeSupersession = parts.supersession ? describe : describe.skip
   const whenDecisions = parts.decisions ? it : it.skip
 
   describe(`decision repository contract — ${name}`, () => {
@@ -620,7 +635,7 @@ function buildContract(
 
     /* ------------------------------------------------------ supersession */
 
-    describeDecisions('supersession', () => {
+    describeSupersession('supersession', () => {
       const correction = (over: Partial<CaseDecision> = {}) =>
         selectedDecision({
           decisionId: 'dec-2',
