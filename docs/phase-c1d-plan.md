@@ -13,6 +13,10 @@ No LLM. No Agents UI migration. No publication, no portfolio execution.
 
 ---
 
+> **C1D-1 has been revised.** Sections 1-7 below are superseded for stage 1 by
+> [phase-c1d1-plan.md](phase-c1d1-plan.md), which folds in the design review.
+> The headquarters read model (C1D-2, sections 8-11) is unchanged.
+
 ## 0 · Staging
 
 Three stages, each reviewable on its own and each leaving the tree green.
