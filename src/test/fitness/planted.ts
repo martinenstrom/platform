@@ -689,6 +689,107 @@ export const PLANTED: readonly RuleFixtures[] = [
   },
 
   {
+    ruleId: 'no-pre-0020-decision-shape',
+    violations: [
+      {
+        path: 'infrastructure/analysis/postgres/rows.ts',
+        what: 'a row type carrying the dropped governance document',
+        source: `
+          export interface DecisionRow {
+            decision_id: string
+            rationale: string
+            governance: unknown
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/rows.ts',
+        what: 'the dropped dissent and trigger columns',
+        source: `
+          export interface CaseDecisionRow {
+            decision_id: string
+            unresolved_dissent: unknown
+            reconsideration_triggers: unknown
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/rows.ts',
+        what: 'a decision row keyed on the case',
+        source: `
+          export interface DecisionRevisionRow {
+            case_id: string
+            revision_id: string
+            relation: string
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/decisionRepositories.ts',
+        what: 'a statement against the dropped table',
+        source: `
+          export const SQL = {
+            revisions: \`SELECT revision_id, relation
+                        FROM analysis.decision_revisions WHERE case_id = $1\`,
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        /*
+         * The live table CONTAINS the dropped column name. A substring search
+         * flags this, and a rule that cries wolf gets weakened until it says
+         * nothing -- which is the failure mode this whole harness exists for.
+         */
+        path: 'infrastructure/analysis/postgres/decisionRepositories.ts',
+        what: 'the live reconsideration-trigger table, whose name contains a dropped one',
+        source: `
+          export const SQL = {
+            triggers: \`SELECT id, ordinal, policy_version
+                       FROM analysis.decision_reconsideration_triggers
+                       WHERE decision_id = ANY($1) ORDER BY ordinal\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/decisionRepositories.ts',
+        what: 'the live dissent table, whose name contains a dropped one',
+        source: `
+          export const SQL = {
+            dissent: \`SELECT decision_id, ordinal, materiality
+                      FROM analysis.decision_dissent WHERE decision_id = ANY($1)\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/mapping.ts',
+        what: 'the current camelCase domain field, which is not a column',
+        source: `
+          export interface Decided {
+            decisionId: string
+            reconsiderationTriggers: readonly string[]
+            unresolvedDissent: readonly string[]
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/rows.ts',
+        what: 'a child row legitimately keyed on the case beside the decision',
+        source: `
+          export interface DecisionSubmissionRow {
+            decision_id: string
+            submission_id: string
+            case_id: string
+            revision_id: string
+            relation: string
+          }
+        `,
+      },
+    ],
+  },
+
+  {
     ruleId: 'no-unrepresentable-characters-in-migrations',
     violations: [
       {

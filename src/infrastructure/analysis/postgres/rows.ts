@@ -270,24 +270,242 @@ export interface ChallengeEvidenceRow {
   content_hash: string
 }
 
-export interface DecisionRow {
+/* ------------------------------------------------------------- submissions */
+
+/**
+ * A revision put in front of the CIO, with its eligibility basis inline.
+ *
+ * The basis is columns rather than a document, and the four child tables below
+ * carry its collections. `blockers` has no column here and never will: a
+ * submission exists only where eligibility held, so the array is empty on every
+ * submission that can legitimately be stored, and the emptiness is a domain
+ * invariant rather than something the row shape records. See the C1D-1B plan §5.
+ */
+export interface CioSubmissionRow {
+  id: string
+  case_id: string
+  tenant_id: string
+  thesis_id: string
+  revision_id: string
+  submitted_by_department_id: string
+  submitted_by_employee_id: string
+  submitted_at: string
+  case_version: number
+  state: string
+
+  eligibility_policy_version: string
+  aggregation_id: string | null
+  verification_review_id: string | null
+  verification_sequence: number | null
+  verification_status: string | null
+  devils_advocate_review_id: string | null
+  devils_advocate_sequence: number | null
+  risk_review_id: string | null
+  risk_sequence: number | null
+  risk_status: string | null
+  risk_requirement: string
+  risk_rule_id: string | null
+  risk_rule_version: string | null
+  storage_provenance_id: string
+  evaluated_at: string
+}
+
+export interface SubmissionRequiredWorkRow {
+  submission_id: string
+  playbook_entry_key: string
+  run_id: string
+}
+
+export interface SubmissionDisagreementRow {
+  submission_id: string
+  claim_id: string
+  materiality: string
+}
+
+export interface SubmissionEvidenceRow {
+  submission_id: string
+  evidence_set_id: string
+}
+
+export interface SubmissionOpenChallengeRow {
+  submission_id: string
+  challenge_id: string
+}
+
+/* ----------------------------------------------------------------- returns */
+
+/**
+ * The CIO sending work back.
+ *
+ * Not a decision, and deliberately not stored through the decision repository:
+ * the material was not ready to be decided, which is a different statement from
+ * deciding to wait.
+ */
+export interface CioReturnRow {
+  id: string
+  submission_id: string
+  case_id: string
+  tenant_id: string
+  revision_id: string
+  returned_at: string
+  returned_by_employee_id: string
+  returned_by_role_id: string | null
+  returned_by_role_function: string | null
+  returned_by_department_id: string | null
+  returned_by_department_is_governance: boolean | null
+  returned_by_department_handles: string[]
+  organization_seed_version: string
+  authentication: string
+  authorization_basis: string
+  returned_for: string
+  reason: string
+  case_version: number
+}
+
+export interface CioReturnConcernRow {
+  return_id: string
+  ordinal: number
+  concern_kind: string
+  subject_kind: string
+  subject_id: string
+  detail: string
+}
+
+/* --------------------------------------------------------------- decisions */
+
+/**
+ * A completed institutional CIO outcome, keyed on the decision.
+ *
+ * Migration 0020 moved the key off `case_id`: a case holds a decision, then a
+ * correction superseding it, then a later reconsideration, and keying on the
+ * case forced the second to overwrite the first. At most one LIVE decision per
+ * case survives as a partial unique index, which is the property that mattered.
+ *
+ * The eligibility basis is deliberately absent — it lives on the submission,
+ * and a decision reaches it through `decision_submissions`.
+ */
+export interface CaseDecisionRow {
+  decision_id: string
   case_id: string
   tenant_id: string
   aggregate_version: number
   decided_at: string
   decided_by_employee_id: string
+  outcome_kind: string
   selected_revision_id: string | null
+  supersedes_decision_id: string | null
+  superseded_by_decision_id: string | null
   evidence_set_id: string
   rationale: string
-  governance: unknown
-  unresolved_dissent: unknown
-  reconsideration_triggers: unknown
+
+  decided_by_role_id: string | null
+  decided_by_role_function: string | null
+  decided_by_department_id: string | null
+  decided_by_department_is_governance: boolean | null
+  decided_by_department_handles: string[]
+  /*
+   * Not nullable, unlike the four above. The role and department of an actor
+   * can legitimately be unknown; how the runtime authenticated them and under
+   * what authority it let them decide cannot — a decision with no recorded
+   * authorization basis is the record failing at the one thing it is for.
+   */
+  organization_seed_version: string
+  authentication: string
+  authorization_basis: string
 }
 
-export interface DecisionRevisionRow {
+/**
+ * One considered revision and what the decision did about it.
+ *
+ * Replaces `decision_revisions`, which said less: this row names the submission
+ * as well, so the record can answer whether the ALTERNATIVES were eligible when
+ * they were passed over.
+ */
+export interface DecisionSubmissionRow {
+  decision_id: string
+  submission_id: string
   case_id: string
   revision_id: string
   relation: string
+}
+
+export interface DecisionDissentRow {
+  decision_id: string
+  ordinal: number
+  source: string
+  source_id: string
+  revision_id: string
+  claim_id: string | null
+  materiality: string
+  raised_by_employee_id: string | null
+  raised_by_department_id: string | null
+  rationale: string
+  why_not_blocking: string
+  acknowledgement: string | null
+  disposition: string
+}
+
+export interface DecisionDissentEvidenceRow {
+  decision_id: string
+  ordinal: number
+  evidence_set_id: string
+  observation_id: string
+  content_hash: string
+}
+
+export interface DecisionTriggerRow {
+  id: string
+  decision_id: string
+  ordinal: number
+  condition_type: string
+  subject_kind: string
+  subject_ref: string
+  comparator: string | null
+  threshold_amount: string | null
+  threshold_unit: string | null
+  threshold_currency: string | null
+  qualitative_condition: string | null
+  expected_source: string | null
+  rationale: string
+  created_by_employee_id: string
+  created_at: string
+  /** Per row, never inherited from a sibling. */
+  policy_version: string
+}
+
+/* ------------------------------------------------------- mapper input sets */
+
+/**
+ * Every row of one aggregate, as hydration receives them.
+ *
+ * The shape exists so a mapper takes ONE argument that either is or is not
+ * complete, rather than five positional arrays a caller can pass in the wrong
+ * order — two of the decision's children are `(decision_id, ordinal)`-keyed and
+ * would swap silently.
+ *
+ * Children arrive already filtered to their parent. A list read queries each
+ * child table once with `= ANY($1)` and groups in memory; it never issues one
+ * query per parent.
+ */
+export interface SubmissionRowSet {
+  submission: CioSubmissionRow
+  requiredWork: readonly SubmissionRequiredWorkRow[]
+  disagreements: readonly SubmissionDisagreementRow[]
+  evidence: readonly SubmissionEvidenceRow[]
+  openChallenges: readonly SubmissionOpenChallengeRow[]
+}
+
+export interface ReturnRowSet {
+  cioReturn: CioReturnRow
+  concerns: readonly CioReturnConcernRow[]
+}
+
+export interface DecisionRowSet {
+  decision: CaseDecisionRow
+  submissions: readonly DecisionSubmissionRow[]
+  dissent: readonly DecisionDissentRow[]
+  dissentEvidence: readonly DecisionDissentEvidenceRow[]
+  triggers: readonly DecisionTriggerRow[]
 }
 
 export interface TransitionEventRow {

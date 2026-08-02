@@ -669,6 +669,86 @@ const migrationCharacters: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 12 */
+
+/**
+ * The decision shape migration 0020 replaced.
+ *
+ * `DecisionRow` described `governance`, `unresolved_dissent` and
+ * `reconsideration_triggers` for a whole phase after the columns were dropped,
+ * and a case-keyed primary key after the key had moved. It compiled the entire
+ * time — TypeScript does not object to an unused exported type — so the only
+ * thing standing between it and a mapper written against it was that nobody
+ * happened to import it.
+ *
+ * ## Why word boundaries, and why the AST
+ *
+ * The current schema contains the dropped names as substrings.
+ * `decision_reconsideration_triggers` is a live table; `reconsideration_triggers`
+ * is a dropped column. `decision_dissent` is live; `unresolved_dissent` is
+ * dropped. A substring search flags both live tables, and the natural response
+ * to a rule that cries wolf is to weaken it until it says nothing.
+ */
+const DROPPED_DECISION_COLUMNS = new Set([
+  'governance',
+  'unresolved_dissent',
+  'reconsideration_triggers',
+])
+
+/** `\b` does not match after `_`, so this leaves the live tables alone. */
+const DROPPED_IN_SQL =
+  /\b(?:decision_revisions|unresolved_dissent|reconsideration_triggers)\b/
+
+const noPre0020DecisionShape: FitnessRule = {
+  id: 'no-pre-0020-decision-shape',
+  states: 'Nothing describes the decision schema that migration 0020 replaced.',
+  because:
+    'A row type outliving its table is a promise about the database that the ' +
+    'compiler cannot check and the database will not honour. The last one sat ' +
+    'here for a phase, and was harmless only by luck.',
+  selects: (file) => !file.isTest && file.path.startsWith('infrastructure/analysis/'),
+  detect(file) {
+    const found: string[] = []
+
+    for (const node of nodes(file)) {
+      /*
+       * A member named for a dropped column. Only row types use snake_case
+       * members, so this needs no name filter on the interface itself — and a
+       * filter would be the thing to forget when the next row type is added.
+       */
+      if (ts.isPropertySignature(node) || ts.isPropertyDeclaration(node)) {
+        const name = nameOf(node.name)
+        if (name !== null && DROPPED_DECISION_COLUMNS.has(name)) {
+          found.push(at(file, node, `declares the dropped column "${name}"`))
+        }
+      }
+
+      /*
+       * A decision row type keyed on the case. The key moved to `decision_id`
+       * so a case can hold a decision and the correction that supersedes it;
+       * anything still shaped around `case_id` alone cannot represent that.
+       */
+      if (ts.isInterfaceDeclaration(node) && /^Decision|Decision.*Row$/.test(node.name.text)) {
+        const members = node.members
+          .map((member) => nameOf(member.name))
+          .filter((name): name is string => name !== null)
+        if (members.includes('case_id') && !members.includes('decision_id')) {
+          found.push(at(file, node, `${node.name.text} is keyed on the case, not the decision`))
+        }
+      }
+
+      if (ts.isStringLiteralLike(node) || ts.isTemplateLiteral(node)) {
+        const text = node.getText(file.ast)
+        if (DROPPED_IN_SQL.test(text)) {
+          found.push(at(file, node, 'names a dropped table or column'))
+        }
+      }
+    }
+
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -687,6 +767,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noEligibilityInSql,
   noMemoryInDurableTests,
   migrationCharacters,
+  noPre0020DecisionShape,
 ]
 
 export function ruleById(id: string): FitnessRule {
