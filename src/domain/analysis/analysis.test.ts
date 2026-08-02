@@ -326,9 +326,23 @@ describe('cases move through the firm', () => {
     expect(canTransition('intake', 'decision')).toBe(false)
   })
 
-  it('publishes only from a decision', () => {
-    expect(canTransition('decision', 'published')).toBe(true)
+  it('publishes only from a completed decision', () => {
+    /*
+     * `decision` is now "awaiting the CIO", and publication follows a decision
+     * that was actually taken. Publishing straight out of the queue would
+     * publish work nobody decided on.
+     */
+    expect(canTransition('decided', 'published')).toBe(true)
+    expect(canTransition('decision', 'published')).toBe(false)
     expect(canTransition('review', 'published')).toBe(false)
+  })
+
+  it('separates awaiting the CIO from decided and deferred', () => {
+    expect(canTransition('decision', 'decided')).toBe(true)
+    expect(canTransition('decision', 'deferred')).toBe(true)
+    // Taken by no command in C1D-1: the reconsideration command is TD-50.
+    expect(canTransition('deferred', 'decision')).toBe(true)
+    expect(canTransition('decided', 'decision')).toBe(false)
   })
 
   it('requires a reason to block or return work', () => {

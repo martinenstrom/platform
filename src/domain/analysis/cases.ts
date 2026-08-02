@@ -61,13 +61,37 @@ export type CaseStage =
   | 'blocked'
   /** With the investment committee / CIO for decision. */
   | 'decision'
+  /**
+   * The CIO recorded a completed decision — a position taken, or every
+   * alternative declined.
+   *
+   * One structural terminal stage for both, deliberately. Which of the two it
+   * was is the live decision's `outcome`, and duplicating that into the stage
+   * would give the firm two places to look and two chances to disagree. The
+   * headquarters distinguishes them through case health, which reads the
+   * outcome.
+   */
+  | 'decided'
+  /**
+   * The CIO formally chose to wait.
+   *
+   * Its own stage rather than a variety of `decision`, because "nobody has
+   * looked at this yet" and "the CIO looked and decided to wait" are opposite
+   * institutional facts that would otherwise be indistinguishable from the
+   * floor.
+   */
+  | 'deferred'
   /** Decided and published. */
   | 'published'
   /** Closed without publication. */
   | 'withdrawn'
 
 /** Terminal stages. A case in one of these no longer occupies a queue. */
-export const TERMINAL_STAGES: readonly CaseStage[] = ['published', 'withdrawn'] as const
+export const TERMINAL_STAGES: readonly CaseStage[] = [
+  'decided',
+  'published',
+  'withdrawn',
+] as const
 
 export function isTerminal(stage: CaseStage): boolean {
   return TERMINAL_STAGES.includes(stage)
@@ -79,7 +103,12 @@ export function isTerminal(stage: CaseStage): boolean {
  * Written down rather than left to whoever calls the setter. The two that
  * matter most: nothing reaches `decision` except from `review`, so the CIO
  * cannot receive work that governance has not seen; and `published` is
- * reachable only from `decision`.
+ * reachable only from a completed decision.
+ *
+ * **`deferred -> decision` is legal and nothing takes it.** The reconsideration
+ * command is TD-50. Declaring it keeps this table a statement of what the firm
+ * permits rather than of what happens to be built, and a test asserts that no
+ * command performs it — so the gap stays visible instead of being assumed away.
  */
 const ALLOWED_TRANSITIONS: Readonly<Record<CaseStage, readonly CaseStage[]>> =
   Object.freeze({
@@ -89,7 +118,15 @@ const ALLOWED_TRANSITIONS: Readonly<Record<CaseStage, readonly CaseStage[]>> =
     review: ['decision', 'returned', 'blocked', 'withdrawn'],
     returned: ['research', 'aggregation', 'withdrawn'],
     blocked: ['research', 'aggregation', 'review', 'withdrawn'],
-    decision: ['published', 'returned', 'withdrawn'],
+    decision: ['decided', 'deferred', 'returned', 'blocked', 'withdrawn'],
+    /*
+     * A superseding decision does not move the case: it replaces the live
+     * decision while the stage stays `decided`, which is why there is no
+     * `decided -> decided`. Reopening a decided case is TD-50.
+     */
+    decided: ['published', 'withdrawn'],
+    /* Taken by nothing in C1D-1 — see the note above. */
+    deferred: ['decision', 'withdrawn'],
     published: [],
     withdrawn: [],
   })

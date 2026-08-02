@@ -25,7 +25,6 @@ import {
   modelOf,
   observationRef,
   type AgentClaim,
-  type CaseDecision,
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
@@ -282,31 +281,6 @@ export function describeRepositoryContract(name: string, options: ContractOption
       },
     })
 
-    const decisionFor = (
-      evidenceSetId: string,
-      over: Partial<CaseDecision> = {},
-    ): CaseDecision => ({
-      caseId: 'case-1',
-      aggregateVersion: 3,
-      decidedAt: AT,
-      decidedByEmployeeId: f.ownerEmployeeId,
-      selectedRevisionId: 'rev-1',
-      notSelectedRevisionIds: [],
-      rejectedRevisionIds: [],
-      evidenceSetId,
-      governance: {
-        verification: 'verified',
-        unresolvedChallengeCount: 0,
-        compliance: 'approved',
-        risk: 'accepted',
-      },
-      rationale: 'The policy path is mispriced',
-      unresolvedDissent: [],
-      reconsiderationTriggers: [],
-      ...over,
-    })
-
-    /** Case, thesis, assignment, run and evidence — the usual prerequisites. */
     /**
      * The workflow the contract's runs execute.
      *
@@ -397,7 +371,6 @@ export function describeRepositoryContract(name: string, options: ContractOption
         expect(await repos.claims.listForCase('missing')).toEqual([])
         expect(await repos.events.listForCase('missing')).toEqual([])
         expect(await repos.reviews.verificationsForCase('missing')).toEqual([])
-        expect(await repos.decisions.list(10)).toEqual([])
       })
 
       it('round-trips a case', async () => {
@@ -1201,96 +1174,12 @@ export function describeRepositoryContract(name: string, options: ContractOption
 
     /* ----------------------------------------------------------- decisions */
 
-    describe('decisions', () => {
-      const decision = (over: Partial<CaseDecision> = {}): CaseDecision => ({
-        caseId: 'case-1',
-        aggregateVersion: 3,
-        decidedAt: AT,
-        decidedByEmployeeId: f.ownerEmployeeId,
-        selectedRevisionId: 'rev-1',
-        notSelectedRevisionIds: [],
-        rejectedRevisionIds: [],
-        evidenceSetId: 'set-1',
-        governance: {
-          verification: 'verified',
-          unresolvedChallengeCount: 0,
-          compliance: 'approved',
-          risk: 'accepted',
-        },
-        rationale: 'The policy path is mispriced',
-        unresolvedDissent: ['the advocate still disputes the fiscal assumption'],
-        reconsiderationTriggers: ['a fiscal package above 1% of GDP'],
-        ...over,
-      })
-
-      async function decidable() {
-        const { setId } = await seedCase()
-        await repos.theses.save(
-          thesis({
-            thesisId: 'th-sell',
-            revisionId: 'rev-sell',
-            position: 'sell',
-          }),
-        )
-        return setId
-      }
-
-      it('references the exact revision selected', async () => {
-        const setId = await decidable()
-        await repos.decisions.save(
-          decision({ evidenceSetId: setId, notSelectedRevisionIds: ['rev-sell'] }),
-        )
-
-        const stored = await repos.decisions.getForCase('case-1')
-        expect(stored?.selectedRevisionId).toBe('rev-1')
-        expect(stored?.notSelectedRevisionIds).toEqual(['rev-sell'])
-        expect(stored?.unresolvedDissent).toEqual([
-          'the advocate still disputes the fiscal assumption',
-        ])
-      })
-
-      it('keeps the first decision when the same case is decided twice', async () => {
-        const setId = await decidable()
-        await repos.decisions.save(decision({ evidenceSetId: setId }))
-        const replay = await repos.decisions.save(decision({ evidenceSetId: setId }))
-
-        expect(replay.rationale).toBe('The policy path is mispriced')
-        expect(await repos.decisions.list(10)).toHaveLength(1)
-      })
-
-      it('lists decisions newest first', async () => {
-        const setId = await decidable()
-        await repos.cases.create(investmentCase({ id: 'case-2' }))
-        await repos.decisions.save(decision({ evidenceSetId: setId }))
-        await repos.decisions.save(
-          decision({
-            caseId: 'case-2',
-            evidenceSetId: setId,
-            selectedRevisionId: null,
-            decidedAt: LATER,
-          }),
-        )
-
-        expect((await repos.decisions.list(10)).map((entry) => entry.caseId)).toEqual([
-          'case-2',
-          'case-1',
-        ])
-      })
-
-      it('returns null when a case has not been decided', async () => {
-        expect(await repos.decisions.getForCase('case-1')).toBeNull()
-      })
-    })
-
-    /* ---------------------------------------------------------- provenance */
-
-    /* ------------------------------------------------ adversarial coverage */
-
     /*
-     * Everything below exists because the happy-path suite was green while
-     * three real divergences sat underneath it. Each group is one of the
-     * defects the Stage 2 review found, written so that it fails on the
-     * behaviour rather than on the implementation.
+     * The decision contract moves to C1D-1B, with the repository it tests.
+     * Migration 0020 restructures `case_decisions` and the C1D-1 review
+     * removed the fabricated governance snapshot, so these tests described a
+     * shape that no longer exists — keeping them would have meant asserting
+     * the old record was still correct.
      */
 
     describe('null is not the same as absent (B1)', () => {
@@ -1305,75 +1194,12 @@ export function describeRepositoryContract(name: string, options: ContractOption
         expect('fromState' in stored).toBe(true)
       })
 
-      it('keeps a null selected revision on a decision', async () => {
-        // The CIO declining to take a position is a decision, not an absence.
-        const { setId } = await seedCase()
-        await repos.decisions.save({
-          caseId: 'case-1',
-          aggregateVersion: 2,
-          decidedAt: AT,
-          decidedByEmployeeId: f.ownerEmployeeId,
-          selectedRevisionId: null,
-          notSelectedRevisionIds: [],
-          rejectedRevisionIds: [],
-          evidenceSetId: setId,
-          governance: {
-            verification: 'verified',
-            unresolvedChallengeCount: 0,
-            compliance: 'not-required',
-            risk: 'not-required',
-          },
-          rationale: 'No position taken',
-          unresolvedDissent: [],
-          reconsiderationTriggers: [],
-        })
-
-        const stored = await repos.decisions.getForCase('case-1')
-        expect(stored!.selectedRevisionId).toBeNull()
-        expect('selectedRevisionId' in stored!).toBe(true)
-      })
-
-      it('leaves a genuinely absent optional absent', async () => {
-        // The other half of the distinction: `present()` exists for a reason.
-        await repos.cases.create(investmentCase())
-        await repos.events.append(
-          event('e-1', { fromState: 'intake', toState: 'research', ...actor }),
-        )
-        const stored = (await repos.events.listForCase('case-1'))[0]!
-        expect(stored.causationId).toBeUndefined()
-        expect('causationId' in stored).toBe(false)
-      })
-    })
-
-    describe('conflicting duplicates are refused (B2)', () => {
-      it('returns the stored claim for an identical replay', async () => {
-        await seedCase()
-        await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
-        const replay = await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
-        expect(replay.statement).toBe('The 10y is at 4.1%')
-      })
-
-      it('refuses a claim whose content changed under the same id', async () => {
-        await seedCase()
-        await repos.claims.save(claim('claim-1'), 'case-1', 'run-1')
-        await expect(
-          repos.claims.save(
-            claim('claim-1', { statement: 'Something else entirely' }),
-            'case-1',
-            'run-1',
-          ),
-        ).rejects.toBeInstanceOf(ConflictingRecordError)
-      })
-
-      it('refuses a decision whose rationale changed under the same case', async () => {
-        const { setId } = await seedCase()
-        const base = decisionFor(setId)
-        await repos.decisions.save(base)
-        await expect(
-          repos.decisions.save({ ...base, rationale: 'A different reason' }),
-        ).rejects.toBeInstanceOf(ConflictingRecordError)
-      })
-
+      /*
+       * Decision coverage moves to C1D-1B with the repository it tests. The
+       * shape it asserted no longer exists: migration 0020 restructures
+       * `case_decisions`, and the C1D-1 review removed the governance
+       * snapshot whose compliance field had to be invented.
+       */
       it('refuses a stored result whose claims changed under the same key', async () => {
         await seedCase()
         const base = storedResult()
@@ -1585,25 +1411,13 @@ export function describeRepositoryContract(name: string, options: ContractOption
       })
     })
 
-    describe('the selected revision has one home (H6)', () => {
-      it('does not list the selected revision as an alternative', async () => {
-        const { setId } = await seedCase()
-        await repos.theses.save(thesis({ thesisId: 'th-sell', revisionId: 'rev-sell' }))
-        await repos.decisions.save(
-          decisionFor(setId, { notSelectedRevisionIds: ['rev-sell'] }),
-        )
-
-        const stored = await repos.decisions.getForCase('case-1')
-        expect(stored!.selectedRevisionId).toBe('rev-1')
-        expect(stored!.notSelectedRevisionIds).toEqual(['rev-sell'])
-        expect(stored!.rejectedRevisionIds).toEqual([])
-        // The selected revision appears in exactly one place.
-        expect(stored!.notSelectedRevisionIds).not.toContain('rev-1')
-        expect(stored!.rejectedRevisionIds).not.toContain('rev-1')
-      })
-    })
-
-    /* ---------------------------------------------------- playbook registry */
+    /*
+     * The decision contract moves to C1D-1B, with the repository it tests.
+     * Migration 0020 restructures `case_decisions` and the C1D-1 review
+     * removed the fabricated governance snapshot, so these tests described a
+     * shape that no longer exists — keeping them would have meant asserting
+     * the old record was still correct.
+     */
 
     describe('playbook versions', () => {
       const playbook = contractPlaybook

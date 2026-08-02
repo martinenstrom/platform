@@ -36,7 +36,6 @@ import {
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
-  type CaseDecision,
   type CaseTransition,
   type ComplianceReview,
   type DevilsAdvocateReview,
@@ -63,7 +62,6 @@ import {
   type AssignmentRepository,
   type CaseRepository,
   type ClaimRepository,
-  type DecisionRepository,
   type EventRepository,
   type EvidenceRepository,
   type PlaybookRepository,
@@ -82,7 +80,6 @@ import {
 } from '~/application/analysis/commandLog'
 import {
   claimSemanticKey,
-  decisionSemanticKey,
   evidenceSetSemanticKey,
   managerAggregationSemanticKey,
   requirementResolutionIdentity,
@@ -115,7 +112,6 @@ interface Store {
   risk: RiskReview[]
   events: TransitionEvent[]
   evidence: Map<string, EvidenceSet>
-  decisions: Map<string, CaseDecision>
   results: Map<string, StoredResult>
   commands: Map<string, { intent: CommandIntent; outcomes: CommandOutcome[] }>
   playbooks: Map<string, CasePlaybook>
@@ -137,7 +133,6 @@ function emptyStore(): Store {
     risk: [],
     events: [],
     evidence: new Map(),
-    decisions: new Map(),
     results: new Map(),
     commands: new Map(),
     playbooks: new Map(),
@@ -172,7 +167,6 @@ function snapshot(store: Store): Store {
     risk: [...store.risk],
     events: [...store.events],
     evidence: new Map(store.evidence),
-    decisions: new Map(store.decisions),
     results: new Map(store.results),
     commands: new Map(store.commands),
     playbooks: new Map(store.playbooks),
@@ -194,7 +188,6 @@ function restore(target: Store, from: Store): void {
   target.risk = from.risk
   target.events = from.events
   target.evidence = from.evidence
-  target.decisions = from.decisions
   target.results = from.results
   target.commands = from.commands
   target.playbooks = from.playbooks
@@ -728,42 +721,6 @@ function evidenceRepository(store: Store, scope: Scope): EvidenceRepository {
   }
 }
 
-function decisionRepository(store: Store, scope: Scope): DecisionRepository {
-  return {
-    async getForCase(caseId) {
-      guard(scope, 'decisions.getForCase')
-      return store.decisions.get(caseId) ?? null
-    },
-    async list(limit) {
-      guard(scope, 'decisions.list')
-      return [...store.decisions.values()]
-        .sort(
-          (a, b) => byString(b.decidedAt, a.decidedAt) || byString(a.caseId, b.caseId),
-        )
-        .slice(0, limit)
-    },
-    async save(decision) {
-      guard(scope, 'decisions.save')
-      seal(decision, 'decisions')
-      // One per case, and immutable once committed. A correction appends a new
-      // superseding decision rather than rewriting a communicated one.
-      const existing = store.decisions.get(decision.caseId)
-      if (existing) {
-        if (decisionSemanticKey(existing) !== decisionSemanticKey(decision)) {
-          throw new ConflictingRecordError(
-            'Case decision',
-            decision.caseId,
-            'decisions.save',
-          )
-        }
-        return existing
-      }
-      store.decisions.set(decision.caseId, decision)
-      return decision
-    },
-  }
-}
-
 function resultStore(store: Store, scope: Scope): ResultStore {
   return {
     async get(key) {
@@ -978,7 +935,6 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     reviews: reviewRepository(store, scope),
     events: eventRepository(store, scope),
     evidence: evidenceRepository(store, scope),
-    decisions: decisionRepository(store, scope),
     results: resultStore(store, scope),
     commands: commandLog(store, scope),
     playbooks: playbookRepository(store, scope),

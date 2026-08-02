@@ -152,21 +152,37 @@ export function managerAggregationSemanticKey(aggregation: ManagerAggregation): 
   })
 }
 
-/** A committed decision. All of it — this is the record that matters most. */
+/**
+ * A committed decision. All of it — this is the record that matters most.
+ *
+ * Keyed on the decision's content rather than its id, so a retry storing the
+ * same decision is idempotent and a *different* decision under the same derived
+ * id is two decisions wearing one name and fails. `supersedesDecisionId` is
+ * part of it: a correction is a different institutional act from the decision
+ * it corrects, even where everything else about them matches.
+ */
 export function decisionSemanticKey(decision: CaseDecision): string {
   return canonicalJson({
     caseId: decision.caseId,
     aggregateVersion: decision.aggregateVersion,
     decidedAt: decision.decidedAt,
     decidedByEmployeeId: decision.decidedByEmployeeId,
-    selectedRevisionId: decision.selectedRevisionId,
-    notSelected: sorted(decision.notSelectedRevisionIds),
-    rejected: sorted(decision.rejectedRevisionIds),
+    outcome: canonicalJson({
+      kind: decision.outcome.kind,
+      selectedRevisionId:
+        decision.outcome.kind === 'selected' ? decision.outcome.selectedRevisionId : null,
+      considered: sorted(decision.outcome.consideredRevisionIds),
+      declined:
+        decision.outcome.kind === 'declined'
+          ? sorted(decision.outcome.declinedRevisionIds)
+          : [],
+    }),
+    submissionIds: sorted(decision.submissionIds),
     evidenceSetId: decision.evidenceSetId,
-    governance: decision.governance,
     rationale: decision.rationale,
-    unresolvedDissent: sorted(decision.unresolvedDissent),
-    reconsiderationTriggers: sorted(decision.reconsiderationTriggers),
+    unresolvedDissent: sorted(decision.unresolvedDissent.map(canonicalJson)),
+    reconsiderationTriggers: sorted(decision.reconsiderationTriggers.map(canonicalJson)),
+    supersedesDecisionId: decision.supersedesDecisionId ?? null,
   })
 }
 

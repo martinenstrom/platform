@@ -17,7 +17,6 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
-  ConflictingRecordError,
   type AnalysisRepositories,
 } from '~/application/analysis/repositories'
 import {
@@ -487,35 +486,12 @@ describe('repositories', () => {
     expect(typeof repos.events.append).toBe('function')
   })
 
-  it('records one decision per case', async () => {
-    const decision = {
-      caseId: 'case-1',
-      aggregateVersion: 5,
-      decidedAt: 'T1',
-      decidedByEmployeeId: 'cio',
-      selectedRevisionId: 'rev-1',
-      notSelectedRevisionIds: [],
-      rejectedRevisionIds: [],
-      evidenceSetId: 'set-1',
-      governance: {
-        verification: 'verified' as const,
-        unresolvedChallengeCount: 0,
-        compliance: 'approved' as const,
-        risk: 'accepted' as const,
-      },
-      rationale: 'x',
-      unresolvedDissent: [],
-      reconsiderationTriggers: [],
-    }
-    await repos.decisions.save(decision)
-    // A decision that has been communicated is not rewritten — and an attempt
-    // to rewrite it is reported rather than absorbed.
-    await expect(
-      repos.decisions.save({ ...decision, rationale: 'changed' }),
-    ).rejects.toBeInstanceOf(ConflictingRecordError)
-
-    expect((await repos.decisions.getForCase('case-1'))?.rationale).toBe('x')
-  })
+  /*
+   * Decision coverage moves to C1D-1B with the repository it tests. The
+   * shape it asserted no longer exists: migration 0020 restructures
+   * `case_decisions`, and the C1D-1 review removed the governance
+   * snapshot whose compliance field had to be invented.
+   */
 
   it('treats an evidence set as immutable', async () => {
     const set = {

@@ -31,7 +31,6 @@ import type {
   AgentClaim,
   AgentRunRecord,
   Assignment,
-  CaseDecision,
   ComplianceReview,
   DevilsAdvocateReview,
   EvidenceSet,
@@ -481,18 +480,6 @@ export interface EvidenceRepository {
   save(set: EvidenceSet): Promise<EvidenceSet>
 }
 
-export interface DecisionRepository {
-  getForCase(caseId: string): Promise<CaseDecision | null>
-  /** Ordered by `decidedAt` descending, then `caseId`. */
-  list(limit: number): Promise<CaseDecision[]>
-  /**
-   * Idempotent on `caseId`: a case has at most one decision, and a committed
-   * decision is immutable. A correction appends a new superseding decision
-   * rather than rewriting this one.
-   */
-  save(decision: CaseDecision): Promise<CaseDecision>
-}
-
 /**
  * Registered playbook versions.
  *
@@ -599,7 +586,6 @@ export interface AnalysisRepositories {
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
-  decisions: DecisionRepository
   results: ResultStore
   commands: CommandLog
   playbooks: PlaybookRepository

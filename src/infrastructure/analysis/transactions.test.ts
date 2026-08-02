@@ -148,37 +148,12 @@ describe('aggregate creation is atomic', () => {
     expect(await repos.commands.find('cmd-1')).toBeNull()
   })
 
-  it('rolls back a partial decision', async () => {
-    // A CaseDecision is among the highest-value records. A half-written one
-    // must never become visible.
-    await repos.cases.create(investmentCase())
-    await expect(
-      repos.withTransaction(async (tx) => {
-        await tx.decisions.save({
-          caseId: 'case-1',
-          aggregateVersion: 3,
-          decidedAt: NOW,
-          decidedByEmployeeId: 'cio',
-          selectedRevisionId: 'rev-1',
-          notSelectedRevisionIds: [],
-          rejectedRevisionIds: [],
-          evidenceSetId: 'set-1',
-          governance: {
-            verification: 'verified',
-            unresolvedChallengeCount: 0,
-            compliance: 'approved',
-            risk: 'accepted',
-          },
-          rationale: 'x',
-          unresolvedDissent: [],
-          reconsiderationTriggers: [],
-        })
-        throw new Error('decision event failed to append')
-      }),
-    ).rejects.toThrow()
-
-    expect(await repos.decisions.getForCase('case-1')).toBeNull()
-  })
+  /*
+   * Decision coverage moves to C1D-1B with the repository it tests. The
+   * shape it asserted no longer exists: migration 0020 restructures
+   * `case_decisions`, and the C1D-1 review removed the governance
+   * snapshot whose compliance field had to be invented.
+   */
 
   it('preserves state committed before the failing transaction', async () => {
     await repos.cases.create(investmentCase())

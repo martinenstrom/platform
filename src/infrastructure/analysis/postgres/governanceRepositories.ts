@@ -30,14 +30,12 @@ import {
   ConcurrencyConflictError,
   ConflictingRecordError,
   DuplicateRecordError,
-  type DecisionRepository,
   type EventRepository,
   type ReviewRepository,
 } from '~/application/analysis/repositories'
 import { groupBy } from './caseRepositories'
 import {
   toCompliance,
-  toDecision,
   toDevilsAdvocate,
   toRisk,
   toTransitionEvent,
@@ -46,8 +44,6 @@ import {
 import type {
   ChallengeEvidenceRow,
   ChallengeRow,
-  DecisionRevisionRow,
-  DecisionRow,
   ReviewRow,
   TransitionEventRow,
   VerificationFindingRow,
@@ -55,10 +51,7 @@ import type {
   RiskLimitRow,
   VerificationClaimReviewedRow,
 } from './rows'
-import {
-  decisionSemanticKey,
-  transitionEventSemanticKey,
-} from '~/application/analysis/writeOnce'
+import { transitionEventSemanticKey } from '~/application/analysis/writeOnce'
 import { catalog, one, run, ts, type Queryable, type SqlContext } from './sql'
 import { singleStatement, unitOfWork, type Scope } from './transaction'
 
@@ -651,141 +644,6 @@ export function createReviewRepository(
             limits,
           ])
         }
-      }),
-  }
-}
-
-/* -------------------------------------------------------------- decisions */
-
-export const DECISION_SQL = catalog({
-  getForCase: `SELECT case_id, tenant_id, aggregate_version, ${ts('decided_at')},
-                      decided_by_employee_id, selected_revision_id, evidence_set_id,
-                      rationale, governance, unresolved_dissent, reconsideration_triggers
-               FROM analysis.case_decisions WHERE case_id = $1`,
-
-  list: `SELECT case_id, tenant_id, aggregate_version, ${ts('decided_at')},
-                decided_by_employee_id, selected_revision_id, evidence_set_id,
-                rationale, governance, unresolved_dissent, reconsideration_triggers
-         FROM analysis.case_decisions
-         ORDER BY decided_at DESC, case_id COLLATE "C"
-         LIMIT $1`,
-
-  revisions: `SELECT case_id, revision_id, relation FROM analysis.decision_revisions
-              WHERE case_id = ANY($1::text[])
-              ORDER BY case_id COLLATE "C", relation COLLATE "C", revision_id COLLATE "C"`,
-
-  // One per case, immutable once committed. A correction appends a superseding
-  // decision rather than rewriting one that has already been communicated.
-  save: `INSERT INTO analysis.case_decisions
-           (case_id, tenant_id, aggregate_version, decided_at, decided_by_employee_id,
-            selected_revision_id, evidence_set_id, rationale, governance,
-            unresolved_dissent, reconsideration_triggers)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT (case_id) DO NOTHING`,
-
-  saveRevisions: `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
-                  SELECT $1, r, rel
-                  FROM unnest($2::text[], $3::text[]) AS batch(r, rel)
-                  ON CONFLICT DO NOTHING`,
-})
-
-export function createDecisionRepository(
-  scope: Scope,
-  context: SqlContext,
-  tenantId: string,
-): DecisionRepository {
-  async function hydrate(client: Queryable, rows: DecisionRow[], operation: string) {
-    if (rows.length === 0) return []
-    const revisions = await run<DecisionRevisionRow>(
-      client,
-      context,
-      operation,
-      DECISION_SQL.revisions,
-      [rows.map((row) => row.case_id)],
-    )
-    const byCase = groupBy(revisions, (row) => row.case_id)
-    return rows.map((row) => toDecision(row, byCase.get(row.case_id) ?? []))
-  }
-
-  async function readOne(client: Queryable, caseId: string, operation: string) {
-    const row = await one<DecisionRow>(
-      client,
-      context,
-      operation,
-      DECISION_SQL.getForCase,
-      [caseId],
-    )
-    if (!row) return null
-    return (await hydrate(client, [row], operation))[0]!
-  }
-
-  return {
-    getForCase: (caseId) =>
-      unitOfWork(scope, 'decisions.getForCase', (client) =>
-        readOne(client, caseId, 'decisions.getForCase'),
-      ),
-
-    list: (limit) =>
-      unitOfWork(scope, 'decisions.list', async (client) => {
-        const rows = await run<DecisionRow>(
-          client,
-          context,
-          'decisions.list',
-          DECISION_SQL.list,
-          [limit],
-        )
-        return hydrate(client, rows, 'decisions.list')
-      }),
-
-    save: (decision) =>
-      unitOfWork(scope, 'decisions.save', async (client) => {
-        const existing = await readOne(client, decision.caseId, 'decisions.save')
-        if (existing) {
-          // The whole record, through the shared comparison — not two fields.
-          if (decisionSemanticKey(existing) !== decisionSemanticKey(decision)) {
-            throw new ConflictingRecordError(
-              'Case decision',
-              decision.caseId,
-              'decisions.save',
-            )
-          }
-          return existing
-        }
-
-        await run(client, context, 'decisions.save', DECISION_SQL.save, [
-          decision.caseId,
-          tenantId,
-          decision.aggregateVersion,
-          decision.decidedAt,
-          decision.decidedByEmployeeId,
-          decision.selectedRevisionId,
-          decision.evidenceSetId,
-          decision.rationale,
-          JSON.stringify(decision.governance),
-          JSON.stringify(decision.unresolvedDissent),
-          JSON.stringify(decision.reconsiderationTriggers),
-        ])
-
-        /*
-         * No `selected` row. The selected revision lives in one place — the
-         * column a foreign key already protects — and migration 0012 removed
-         * the second representation rather than trying to keep two in step.
-         */
-        const alternatives = [
-          ...decision.notSelectedRevisionIds.map((id) => ({
-            id,
-            relation: 'not-selected',
-          })),
-          ...decision.rejectedRevisionIds.map((id) => ({ id, relation: 'rejected' })),
-        ]
-        if (alternatives.length > 0) {
-          await run(client, context, 'decisions.save', DECISION_SQL.saveRevisions, [
-            decision.caseId,
-            alternatives.map((entry) => entry.id),
-            alternatives.map((entry) => entry.relation),
-          ])
-        }
-        return (await readOne(client, decision.caseId, 'decisions.save'))!
       }),
   }
 }

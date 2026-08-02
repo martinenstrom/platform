@@ -28,7 +28,6 @@ import {
   observationRef,
   type AgentClaim,
   type AgentRunRecord,
-  type CaseDecision,
   type ComplianceReview,
   type DevilsAdvocateReview,
   type EvidenceSet,
@@ -266,26 +265,6 @@ const event = (id = 'e-1'): TransitionEvent =>
     aggregateVersion: 1,
   })
 
-const decision = (): CaseDecision => ({
-  caseId: 'case-1',
-  aggregateVersion: 3,
-  decidedAt: NOW,
-  decidedByEmployeeId: 'cio',
-  selectedRevisionId: 'rev-1',
-  notSelectedRevisionIds: ['rev-2'],
-  rejectedRevisionIds: [],
-  evidenceSetId: 'set-1',
-  governance: {
-    verification: 'verified',
-    unresolvedChallengeCount: 0,
-    compliance: 'approved',
-    risk: 'accepted',
-  },
-  rationale: 'The policy path is mispriced',
-  unresolvedDissent: ['the advocate still disputes the fiscal assumption'],
-  reconsiderationTriggers: ['a fiscal package above 1% of GDP'],
-})
-
 const result = (): StoredResult => ({
   key: 'result-1',
   claims: [claim()],
@@ -316,7 +295,6 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
   await repos.reviews.saveCompliance(compliance())
   await repos.reviews.saveRisk(risk())
   await repos.events.append(event())
-  await repos.decisions.save(decision())
   await repos.results.put(result(), await repos.provenance())
   await repos.commands.record(
     {
@@ -361,7 +339,6 @@ async function readEverything(repos: AnalysisRepositories) {
     compliance: await repos.reviews.complianceForCase('case-1'),
     risk: await repos.reviews.riskForCase('case-1'),
     events: await repos.events.listForCase('case-1'),
-    decisions: await repos.decisions.getForCase('case-1'),
     result: await repos.results.get('result-1'),
     command: (await repos.commands.find('cmd-1'))?.intent ?? null,
   }
@@ -491,15 +468,10 @@ describe('a stored entity cannot be mutated after insertion', () => {
     }).toThrow(TypeError)
   })
 
-  it('refuses a write inside a decision’s governance snapshot', async () => {
-    const repos = createInMemoryRepositories()
-    const mine = decision()
-    await repos.decisions.save(mine)
-
-    expect(() => {
-      ;(mine.governance as { verification: string }).verification = 'blocked'
-    }).toThrow(TypeError)
-  })
+  /*
+   * Decision immutability moves to C1D-1B with the repository. The governance
+   * snapshot it probed was removed in the C1D-1 review.
+   */
 
   it('refuses a write inside a verification finding', async () => {
     const repos = createInMemoryRepositories()

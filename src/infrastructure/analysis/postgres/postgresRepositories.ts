@@ -48,10 +48,8 @@ import {
   createRequirementRepository,
 } from './playbookRepositories'
 import {
-  DECISION_SQL,
   EVENT_SQL,
   REVIEW_SQL,
-  createDecisionRepository,
   createEventRepository,
   createReviewRepository,
 } from './governanceRepositories'
@@ -107,7 +105,6 @@ const CATALOGS = [
   RESULT_SQL,
   COMMAND_SQL,
   REVIEW_SQL,
-  DECISION_SQL,
   EVENT_SQL,
   PLAYBOOK_SQL,
   REQUIREMENT_SQL,
@@ -179,7 +176,6 @@ export function createPostgresRepositories(
     reviews: createReviewRepository(scope, context, tenantId),
     events: createEventRepository(scope, context, tenantId),
     evidence: createEvidenceRepository(scope, context),
-    decisions: createDecisionRepository(scope, context, tenantId),
     results: createResultStore(scope, context),
     commands: createCommandLog(scope, context, tenantId),
     playbooks: createPlaybookRepository(scope, context),

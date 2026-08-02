@@ -32,7 +32,6 @@ import {
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
-  type CaseDecision,
   type CaseTransition,
   type Challenge,
   type ChallengeStatus,
@@ -78,8 +77,6 @@ import type {
   ChallengeRow,
   ClaimEvidenceRow,
   ClaimRow,
-  DecisionRevisionRow,
-  DecisionRow,
   EvidenceItemRow,
   EvidenceSetRow,
   RequirementResolutionRow,
@@ -755,44 +752,6 @@ export function toRisk(
 }
 
 /* -------------------------------------------------------------- decisions */
-
-export function toDecision(
-  row: DecisionRow,
-  revisions: readonly DecisionRevisionRow[],
-): CaseDecision {
-  const of = (relation: string) =>
-    revisions
-      .filter((entry) => entry.relation === relation)
-      .map((entry) => entry.revision_id)
-
-  return seal(
-    {
-      caseId: row.case_id,
-      aggregateVersion: row.aggregate_version,
-      decidedAt: row.decided_at,
-      decidedByEmployeeId: row.decided_by_employee_id,
-      selectedRevisionId: row.selected_revision_id,
-      notSelectedRevisionIds: of('not-selected'),
-      rejectedRevisionIds: of('rejected'),
-      evidenceSetId: row.evidence_set_id,
-      governance: row.governance as CaseDecision['governance'],
-      rationale: row.rationale,
-      unresolvedDissent: expectArray(
-        row.unresolved_dissent,
-        'decision',
-        'unresolved_dissent',
-      ),
-      reconsiderationTriggers: expectArray(
-        row.reconsideration_triggers,
-        'decision',
-        'reconsideration_triggers',
-      ),
-    } as CaseDecision,
-    'decisions',
-  )
-}
-
-/* ----------------------------------------------------------------- events */
 
 export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
   return seal(

@@ -427,42 +427,82 @@ describe('the CIO decision', () => {
   ): CaseDecision =>
     buildDecision(
       {
+        decisionId: 'dec-1',
+        decidedBy: {
+          kind: 'employee',
+          employeeId: 'cio',
+          roleId: 'role-cio',
+          roleFunction: 'executive',
+          departmentId: 'executive',
+          departmentIsGovernance: false,
+          departmentHandles: [],
+          authentication: 'system-asserted',
+          organizationSeedVersion: '1',
+        },
+        authorizationBasis: 'chief-decision',
         caseId: 'case-1',
         aggregateVersion: 7,
         decidedAt: '2026-07-27T16:00:00.000Z',
         decidedByEmployeeId: 'cio',
-        selectedRevisionId: 'rev-1',
-        notSelectedRevisionIds: ['rev-s1'],
-        rejectedRevisionIds: [],
-        evidenceSetId: 'set-1',
-        governance: {
-          verification: 'verified',
-          unresolvedChallengeCount: 0,
-          compliance: 'approved',
-          risk: 'accepted',
+        outcome: {
+          kind: 'selected',
+          selectedRevisionId: 'rev-1',
+          consideredRevisionIds: ['rev-1', 'rev-s1'],
         },
+        submissionIds: ['sub-1', 'sub-2'],
+        evidenceSetId: 'set-1',
         rationale: 'Risk-adjusted upside is adequate at this weight.',
-        unresolvedDissent: ['Risk flagged concentration in healthcare.'],
-        reconsiderationTriggers: ['US pricing legislation advances'],
+        unresolvedDissent: [
+          {
+            source: 'manager-disagreement',
+            sourceId: 'claim-risk-1',
+            revisionId: 'rev-1',
+            materiality: 'material',
+            rationale: 'Risk flagged concentration in healthcare.',
+            whyNotBlocking: 'below-threshold',
+            acknowledgement: 'Concentration is inside the mandate at this weight.',
+            dispositionAtDecision: 'acknowledged',
+          },
+        ],
+        reconsiderationTriggers: [
+          {
+            id: 'trg-1',
+            conditionType: 'policy-change',
+            subject: { kind: 'policy-rate', ref: 'us-drug-pricing' },
+            comparator: 'changes',
+            qualitativeCondition: 'US pricing legislation advances',
+            rationale: 'It would invalidate the margin assumption.',
+            createdByEmployeeId: 'cio',
+            createdAt: '2026-07-28T10:00:00.000Z',
+            policyVersion: '1',
+          },
+        ],
         ...over,
       },
       context,
     )
 
   it('references the exact revision, not just the thesis', () => {
-    expect(decision().selectedRevisionId).toBe('rev-1')
+    expect(decision().outcome).toMatchObject({
+      kind: 'selected',
+      selectedRevisionId: 'rev-1',
+    })
   })
 
   it('records what was not chosen and the dissent decided against', () => {
     const result = decision()
-    expect(result.notSelectedRevisionIds).toEqual(['rev-s1'])
+    expect(result.outcome.consideredRevisionIds).toEqual(['rev-1', 'rev-s1'])
     expect(result.unresolvedDissent).toHaveLength(1)
   })
 
   it('records what would reopen the case', () => {
-    expect(decision().reconsiderationTriggers).toEqual([
-      'US pricing legislation advances',
-    ])
+    const triggers = decision().reconsiderationTriggers
+    expect(triggers).toHaveLength(1)
+    expect(triggers[0]).toMatchObject({
+      conditionType: 'policy-change',
+      qualitativeCondition: 'US pricing legislation advances',
+      policyVersion: '1',
+    })
   })
 
   it('pins the aggregate version it was decided against', () => {
@@ -531,8 +571,41 @@ describe('the CIO decision', () => {
     expect(() => decision({ rationale: '   ' })).toThrow(/no rationale/)
   })
 
-  it('allows the CIO to take no position', () => {
-    expect(decision({ selectedRevisionId: null }).selectedRevisionId).toBeNull()
+  it('lets the CIO decline every alternative without inventing a selection', () => {
+    /*
+     * The nullable field this replaces meant three things at once. A decline
+     * is now its own outcome, and it has no field a revision could be put in.
+     */
+    const declined = decision({
+      outcome: {
+        kind: 'declined',
+        declinedRevisionIds: ['rev-1', 'rev-s1'],
+        consideredRevisionIds: ['rev-1', 'rev-s1'],
+      },
+    })
+    expect(declined.outcome.kind).toBe('declined')
+    expect('selectedRevisionId' in declined.outcome).toBe(false)
+  })
+
+  it('refuses a decline that leaves a considered revision unaccounted for', () => {
+    expect(() =>
+      decision({
+        outcome: {
+          kind: 'declined',
+          declinedRevisionIds: ['rev-1'],
+          consideredRevisionIds: ['rev-1', 'rev-s1'],
+        },
+      }),
+    ).toThrow(/cannot account for/)
+  })
+
+  it('refuses a deferral with no condition that would end the wait', () => {
+    expect(() =>
+      decision({
+        outcome: { kind: 'deferred', consideredRevisionIds: ['rev-1'] },
+        reconsiderationTriggers: [],
+      }),
+    ).toThrow(/indefinite deferral/)
   })
 })
 
