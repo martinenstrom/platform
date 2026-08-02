@@ -733,110 +733,12 @@ describe('governance records', () => {
 
 /* -------------------------------------------------------------- decisions */
 
-describe('the decision record', () => {
-  async function insertDecision(caseId: string, revisionId: string) {
-    await sql.query(
-      `INSERT INTO analysis.case_decisions
-         (case_id, tenant_id, aggregate_version, decided_at, decided_by_employee_id,
-          selected_revision_id, evidence_set_id, rationale, governance)
-       VALUES ($1, 'system', 3, now(), 'cio', $2, $3, 'The policy path is mispriced',
-               '{"verification":"verified"}'::jsonb)`,
-      [caseId, revisionId, await insertEvidenceSet()],
-    )
-  }
-
-  it('refuses a second decision on the same case', async () => {
-    const caseId = await insertCase()
-    const revisionId = await insertRevision(caseId)
-    await insertDecision(caseId, revisionId)
-    await expect(insertDecision(caseId, revisionId)).rejects.toThrow(/duplicate key/)
-  })
-
-  it('refuses an update to a committed decision', async () => {
-    // Of everything in the schema, this is where a quiet edit would be least
-    // detectable and most damaging.
-    const caseId = await insertCase()
-    const revisionId = await insertRevision(caseId)
-    await insertDecision(caseId, revisionId)
-
-    await expect(
-      sql.query(
-        `UPDATE analysis.case_decisions SET rationale = 'Something else' WHERE case_id = $1`,
-        [caseId],
-      ),
-    ).rejects.toThrow(/committed and cannot be update/)
-  })
-
-  it('refuses a delete of a committed decision', async () => {
-    const caseId = await insertCase()
-    const revisionId = await insertRevision(caseId)
-    await insertDecision(caseId, revisionId)
-
-    await expect(
-      sql.query('DELETE FROM analysis.case_decisions WHERE case_id = $1', [caseId]),
-    ).rejects.toThrow(/committed and cannot be delete/)
-  })
-
-  it('refuses a blank rationale', async () => {
-    const caseId = await insertCase()
-    const revisionId = await insertRevision(caseId)
-    await expect(
-      sql.query(
-        `INSERT INTO analysis.case_decisions
-           (case_id, tenant_id, aggregate_version, decided_at, decided_by_employee_id,
-            selected_revision_id, evidence_set_id, rationale, governance)
-         VALUES ($1, 'system', 1, now(), 'cio', $2, $3, '   ', '{}'::jsonb)`,
-        [caseId, revisionId, await insertEvidenceSet()],
-      ),
-    ).rejects.toThrow(/case_decisions_rationale_not_blank/)
-  })
-
-  it('refuses a decision selecting a revision that does not exist', async () => {
-    const caseId = await insertCase()
-    await expect(
-      sql.query(
-        `INSERT INTO analysis.case_decisions
-           (case_id, tenant_id, aggregate_version, decided_at, decided_by_employee_id,
-            selected_revision_id, evidence_set_id, rationale, governance)
-         VALUES ($1, 'system', 1, now(), 'cio', 'no-such-revision', $2, 'r', '{}'::jsonb)`,
-        [caseId, await insertEvidenceSet()],
-      ),
-    ).rejects.toThrow(/violates foreign key/)
-  })
-
-  it('has nowhere to record a second selected revision', async () => {
-    // Migration 0012 removed the `selected` relation entirely: the selected
-    // revision lives in one place, the column a foreign key already protects.
-    const caseId = await insertCase()
-    const first = await insertRevision(caseId)
-    await insertDecision(caseId, first)
-
-    await expect(
-      sql.query(
-        `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
-         VALUES ($1, $2, 'selected')`,
-        [caseId, first],
-      ),
-    ).rejects.toThrow(/decision_revisions_relation_known/)
-  })
-
-  it('refuses to list the selected revision as an alternative to itself', async () => {
-    const caseId = await insertCase()
-    const selected = await insertRevision(caseId)
-    await insertDecision(caseId, selected)
-
-    await sql.query('BEGIN')
-    await sql.query(
-      `INSERT INTO analysis.decision_revisions (case_id, revision_id, relation)
-       VALUES ($1, $2, 'not-selected')`,
-      [caseId, selected],
-    )
-    await expect(sql.query('COMMIT')).rejects.toThrow(/selected revision/)
-    await sql.query('ROLLBACK').catch(() => {})
-  })
-})
-
-/* ------------------------------------------------- events, results, keys */
+/*
+ * The decision-shape tests moved to `c1d1Schema.pg.test.ts` with the shape
+ * itself. Migration 0020 restructured `case_decisions`: the key is the decision
+ * rather than the case, an outcome kind is required, and the `governance`
+ * document whose compliance field had to be invented is gone.
+ */
 
 describe('append-only and write-once records', () => {
   it('refuses an event that stalls without a reason', async () => {

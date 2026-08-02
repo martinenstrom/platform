@@ -10,9 +10,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { LOAD_BEARING_RULES } from './rules'
-import { loadTree } from './sources'
+import { loadMigrations, loadTree } from './sources'
 
-const TREE = loadTree()
+/*
+ * Migrations live in `db/`, outside `src/`, and one rule judges them. Read as
+ * synthetic sources so a rule sees the same shape whatever it selects.
+ */
+const TREE = [...loadTree(), ...loadMigrations()]
 
 describe('architectural fitness', () => {
   for (const rule of LOAD_BEARING_RULES) {

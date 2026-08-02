@@ -651,4 +651,52 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+
+  {
+    ruleId: 'no-unrepresentable-characters-in-migrations',
+    violations: [
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'an arrow in a comment, which WIN1252 cannot encode',
+        source:
+          '-- pending \u2192 decided\nALTER TABLE analysis.cases ADD COLUMN x text;\n',
+      },
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'a NUL inside a string literal, invisible in review',
+        source: "INSERT INTO analysis.cases (id) VALUES ('case\u00001');\n",
+      },
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'a backspace where a word boundary was meant',
+        source:
+          '-- matches \u0008nothing\nALTER TABLE analysis.cases ADD COLUMN y text;\n',
+      },
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'a CJK character outside the client encoding',
+        source: '-- \u6c7a\nALTER TABLE analysis.cases ADD COLUMN z text;\n',
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'the em-dashes and curly quotes the comments actually use',
+        source:
+          '/* The firm\u2019s position \u2014 recorded once, where it is true. */\n' +
+          'ALTER TABLE analysis.cases ADD COLUMN note text;\n',
+      },
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'tabs and newlines, which are not the control characters at issue',
+        source: 'CREATE TABLE analysis.x (\n\tid text PRIMARY KEY\n);\n',
+      },
+      {
+        path: 'db/migrations/0021_example.sql',
+        what: 'accented Latin-1, which the client encodes',
+        source:
+          '-- Sm\u00e5f\u00f6retag \u00e4r ocks\u00e5 f\u00f6retag\nALTER TABLE analysis.cases ADD COLUMN w text;\n',
+      },
+    ],
+  },
 ]

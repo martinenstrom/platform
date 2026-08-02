@@ -252,6 +252,38 @@ export function analyseFixture(path: string, text: string): AnalysedSource {
   return analyse(path, text)
 }
 
+/**
+ * The SQL migrations, as sources a rule can judge.
+ *
+ * Not TypeScript, so `imports`, `code` and `ast` are empty shells — the one
+ * rule that selects them reads `text`. Presenting them in the same shape means
+ * a rule does not need to know where its subject lives, and the meta-test can
+ * plant a violation in a migration exactly as it does in a module.
+ */
+export function loadMigrations(): readonly AnalysedSource[] {
+  const directory = resolvePath(process.cwd(), 'db', 'migrations')
+  return readdirSync(directory)
+    .filter((entry) => entry.endsWith('.sql'))
+    .sort()
+    .map((entry) => {
+      const text = readFileSync(join(directory, entry), 'utf8')
+      return {
+        path: `db/migrations/${entry}`,
+        text,
+        code: text,
+        imports: [],
+        ast: ts.createSourceFile(
+          entry,
+          '',
+          ts.ScriptTarget.Latest,
+          true,
+          ts.ScriptKind.TS,
+        ),
+        isTest: false,
+      }
+    })
+}
+
 /** Reads a repository file outside `src/`, such as a migration. */
 export function readRepoFile(...segments: string[]): string {
   return readFileSync(join(SRC, '..', ...segments), 'utf8')

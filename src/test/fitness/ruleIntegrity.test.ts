@@ -18,9 +18,9 @@ import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
 import { LOAD_BEARING_RULES, ruleById } from './rules'
 import { PLANTED } from './planted'
-import { analyseFixture, loadTree } from './sources'
+import { analyseFixture, loadMigrations, loadTree } from './sources'
 
-const TREE = loadTree()
+const TREE = [...loadTree(), ...loadMigrations()]
 
 describe('fitness rules detect a planted violation', () => {
   it('covers every load-bearing rule the reviewer named', () => {
@@ -39,6 +39,7 @@ describe('fitness rules detect a planted violation', () => {
       'no-prose-activity-in-domain',
       'no-second-eligibility-answer',
       'no-ui-import-of-infrastructure',
+      'no-unrepresentable-characters-in-migrations',
       'orchestrator-writes-nothing-directly',
     ])
   })
@@ -78,9 +79,16 @@ describe('fitness rules detect a planted violation', () => {
       for (const fixture of entry.violations) {
         it(`fails on ${fixture.what}`, () => {
           const file = analyseFixture(fixture.path, fixture.source)
-          expect(syntaxErrors(file.ast), 'the fixture must be real TypeScript').toEqual(
-            [],
-          )
+          /*
+           * TypeScript fixtures must parse; a SQL one is a different subject with
+           * no AST to be wrong. Not a hole: the rule that selects migrations
+           * reads their text, so a nonsense fixture fails its own assertion.
+           */
+          if (/[.]tsx?$/.test(fixture.path)) {
+            expect(syntaxErrors(file.ast), 'the fixture must be real TypeScript').toEqual(
+              [],
+            )
+          }
           expect(
             rule.selects(file),
             `the rule does not even look at ${fixture.path}`,
@@ -95,9 +103,16 @@ describe('fitness rules detect a planted violation', () => {
       for (const fixture of entry.nearMisses) {
         it(`allows ${fixture.what}`, () => {
           const file = analyseFixture(fixture.path, fixture.source)
-          expect(syntaxErrors(file.ast), 'the fixture must be real TypeScript').toEqual(
-            [],
-          )
+          /*
+           * TypeScript fixtures must parse; a SQL one is a different subject with
+           * no AST to be wrong. Not a hole: the rule that selects migrations
+           * reads their text, so a nonsense fixture fails its own assertion.
+           */
+          if (/[.]tsx?$/.test(fixture.path)) {
+            expect(syntaxErrors(file.ast), 'the fixture must be real TypeScript').toEqual(
+              [],
+            )
+          }
           /*
            * Asserted, not assumed. A near-miss the rule never selects proves
            * nothing about the rule — it would pass just as happily against

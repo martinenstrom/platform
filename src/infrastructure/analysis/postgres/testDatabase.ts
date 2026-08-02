@@ -124,7 +124,12 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       await owner.query(`
         TRUNCATE
           analysis.transition_events, analysis.case_decisions,
-          analysis.decision_revisions, analysis.challenge_evidence,
+          analysis.decision_submissions, analysis.decision_dissent_evidence,
+          analysis.decision_dissent, analysis.decision_reconsideration_triggers,
+          analysis.cio_return_concerns, analysis.cio_returns,
+          analysis.submission_required_work, analysis.submission_disagreements,
+          analysis.submission_evidence, analysis.submission_open_challenges,
+          analysis.cio_submissions, analysis.challenge_evidence,
           analysis.challenges, analysis.verification_findings, analysis.reviews,
           analysis.claim_evidence, analysis.claims, analysis.run_events,
           analysis.runs, analysis.assignments, analysis.thesis_claim_links,

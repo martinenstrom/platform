@@ -573,6 +573,88 @@ const noMemoryInDurableTests: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 11 */
+
+/**
+ * Characters a migration must not contain.
+ *
+ * Two classes, and the second is the one that cost a debugging session.
+ *
+ * **Control characters** are the defect the whole fitness harness exists
+ * because of: invisible in an editor, invisible in review, invisible in a diff.
+ * In SQL a stray one lands inside a string literal or an identifier and is
+ * silently part of the value.
+ *
+ * **Characters the client encoding cannot represent.** The embedded PostgreSQL
+ * harness connects in WIN1252, and a character with no equivalent there fails
+ * the migration with `22P05` — at apply time, on a machine that is not the one
+ * that wrote it. An arrow in a comment did exactly that. The rule is not
+ * "no arrows": it is the whole set outside the encoding, because the next one
+ * will be a different character.
+ *
+ * Scoped to migrations. Application source is UTF-8 end to end and says so.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/
+
+/**
+ * Everything WIN1252 can represent, as ranges.
+ *
+ * Latin-1 minus the C1 control block, plus the 27 characters WIN1252 puts in
+ * 0x80–0x9F — the curly quotes, the dashes and the ellipsis this codebase's
+ * prose actually uses.
+ */
+const WIN1252_EXTRAS = new Set([
+  0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
+  0x0152, 0x017d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc, 0x2122,
+  0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+])
+
+const encodableInWin1252 = (code: number) =>
+  code <= 0x7f || (code >= 0xa0 && code <= 0xff) || WIN1252_EXTRAS.has(code)
+
+const migrationCharacters: FitnessRule = {
+  id: 'no-unrepresentable-characters-in-migrations',
+  states:
+    'A migration contains no control character and nothing the client encoding ' +
+    'cannot represent.',
+  because:
+    'A control character is invisible in an editor, a review and a diff, and in ' +
+    'SQL it becomes part of a literal. An unencodable one fails the migration at ' +
+    'apply time on a machine other than the one that wrote it.',
+  /*
+   * Migrations are read from `db/`, not `src/`, so the rule receives them as
+   * synthetic sources — see `loadMigrationSources` in `fitness.test.ts`.
+   */
+  selects: (file) => file.path.startsWith('db/migrations/'),
+  detect(file) {
+    const found: string[] = []
+    file.text.split('\n').forEach((line, index) => {
+      for (const character of line) {
+        const code = character.codePointAt(0)!
+        if (CONTROL_CHARACTERS.test(character)) {
+          found.push(
+            `${file.path}:${index + 1} — control character U+${code
+              .toString(16)
+              .toUpperCase()
+              .padStart(4, '0')}`,
+          )
+          return
+        }
+        if (!encodableInWin1252(code)) {
+          found.push(
+            `${file.path}:${index + 1} — "${character}" (U+${code
+              .toString(16)
+              .toUpperCase()
+              .padStart(4, '0')}) cannot be encoded by the client`,
+          )
+          return
+        }
+      }
+    })
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -590,6 +672,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noSecondEligibilityAnswer,
   noEligibilityInSql,
   noMemoryInDurableTests,
+  migrationCharacters,
 ]
 
 export function ruleById(id: string): FitnessRule {
