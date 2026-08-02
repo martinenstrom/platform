@@ -89,6 +89,8 @@ export const REVIEW_SQL = catalog({
   forCase: `SELECT ${REVIEW_COLUMNS} FROM analysis.reviews
             WHERE case_id = $1 AND kind = $2 ${REVIEW_ORDER}`,
 
+  byId: `SELECT ${REVIEW_COLUMNS} FROM analysis.reviews WHERE id = $1`,
+
   /*
    * The next position for one (case, revision, kind).
    *
@@ -270,6 +272,77 @@ export function createReviewRepository(
           [caseId, revisionId, kind],
         )
         return Number(rows[0]?.next ?? 1)
+      }),
+
+    get: (reviewId) =>
+      unitOfWork(scope, 'reviews.get', async (client) => {
+        const operation = 'reviews.get'
+        const rows = await run<ReviewRow>(client, context, operation, REVIEW_SQL.byId, [
+          reviewId,
+        ])
+        const row = rows[0]
+        if (!row) return null
+
+        /*
+         * The children are fetched per kind rather than always, so reading one
+         * verdict costs one statement plus that discipline's own tables — not
+         * every governance table in the schema.
+         */
+        if (row.kind === 'verification') {
+          const findings = await run<VerificationFindingRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.findings,
+            [[row.id]],
+          )
+          const claims = await run<VerificationClaimReviewedRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.claimsReviewed,
+            [[row.id]],
+          )
+          return toVerification(row, findings, claims)
+        }
+        if (row.kind === 'devils-advocate') {
+          const challenges = await run<ChallengeRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.challenges,
+            [[row.id]],
+          )
+          const evidence =
+            challenges.length === 0
+              ? []
+              : await run<ChallengeEvidenceRow>(
+                  client,
+                  context,
+                  operation,
+                  REVIEW_SQL.challengeEvidence,
+                  [challenges.map((challenge) => challenge.id)],
+                )
+          return toDevilsAdvocate(row, challenges, evidence)
+        }
+        if (row.kind === 'risk') {
+          const findings = await run<RiskFindingRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.riskFindings,
+            [[row.id]],
+          )
+          const limits = await run<RiskLimitRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.riskLimits,
+            [[row.id]],
+          )
+          return toRisk(row, findings, limits)
+        }
+        return toCompliance(row)
       }),
 
     verificationsForCase: (caseId) =>
@@ -648,7 +721,7 @@ export function createDecisionRepository(
 
 const EVENT_COLUMNS = `
   event_id, subject, case_id, tenant_id, thesis_id, revision_id, assignment_id,
-  run_id, from_state, to_state, actor_employee_id, actor_department_id, reason,
+  run_id, review_id, from_state, to_state, actor_employee_id, actor_department_id, reason,
   ${ts('occurred_at')}, correlation_id, causation_id, aggregate_version, corrects
 `
 
@@ -667,10 +740,10 @@ export const EVENT_SQL = catalog({
   // and the runtime role holds no grant for either.
   append: `INSERT INTO analysis.transition_events
              (event_id, subject, case_id, tenant_id, thesis_id, revision_id,
-              assignment_id, run_id, from_state, to_state, actor_employee_id,
+              assignment_id, run_id, review_id, from_state, to_state, actor_employee_id,
               actor_department_id, reason, occurred_at, correlation_id,
               causation_id, aggregate_version, corrects)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
            ON CONFLICT (event_id) DO NOTHING`,
 })
 
@@ -713,6 +786,7 @@ export function createEventRepository(
           event.revisionId ?? null,
           event.assignmentId ?? null,
           event.runId ?? null,
+          event.reviewId ?? null,
           event.fromState,
           event.toState,
           event.actorEmployeeId ?? null,

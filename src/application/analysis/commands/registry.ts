@@ -22,6 +22,10 @@ import { failAgentRun } from './failAgentRun'
 import { aggregateManagerConclusion } from './aggregateManagerConclusion'
 import { reviseThesis } from './reviseThesis'
 import { resolveConditionalRequirement } from './resolveConditionalRequirement'
+import { submitForVerification } from './submitForVerification'
+import { recordVerificationReview } from './recordVerificationReview'
+import { recordDevilsAdvocateReview } from './recordDevilsAdvocateReview'
+import { recordRiskReview } from './recordRiskReview'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a heterogeneous list of
    definitions has no useful common Input/Result; every consumer reads only the
@@ -42,5 +46,9 @@ export function productionCommands(
     aggregateManagerConclusion(organization),
     reviseThesis(organization),
     resolveConditionalRequirement(organization),
+    submitForVerification(organization),
+    recordVerificationReview(organization),
+    recordDevilsAdvocateReview(organization),
+    recordRiskReview(organization),
   ]
 }

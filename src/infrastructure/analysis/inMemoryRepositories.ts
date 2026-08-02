@@ -606,6 +606,17 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
               : store.risk
       return allocated(all, caseId, revisionId)
     },
+    async get(reviewId) {
+      guard(scope, 'reviews.get')
+      return (
+        [
+          ...store.verifications,
+          ...store.challenges,
+          ...store.compliance,
+          ...store.risk,
+        ].find((review) => review.reviewId === reviewId) ?? null
+      )
+    },
     async verificationsForCase(caseId) {
       return list(store.verifications, caseId, 'reviews.verificationsForCase')
     },

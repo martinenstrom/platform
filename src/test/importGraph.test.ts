@@ -891,12 +891,16 @@ describe('Phase C1A — the command foundation', () => {
       'openInvestmentCase.ts',
       'proposeThesis.ts',
       'recordContribution.ts',
+      'recordDevilsAdvocateReview.ts',
+      'recordRiskReview.ts',
+      'recordVerificationReview.ts',
       'registry.ts',
       'resolveCommand.ts',
       'resolveConditionalRequirement.ts',
       'reviseThesis.ts',
       'runCommand.ts',
       'startAgentRun.ts',
+      'submitForVerification.ts',
     ])
   })
 })

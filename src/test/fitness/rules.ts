@@ -399,6 +399,126 @@ const noCallerSuppliedIdentity: FitnessRule = {
   },
 }
 
+/* ------------------------------------------------------------- rules 7 & 8 */
+
+/**
+ * The one function that answers "may this revision reach the CIO".
+ *
+ * Plus the two beneath it: a handler that called `evaluateGate` or
+ * `evaluateThesisEligibility` directly would be assembling the answer from
+ * parts, which is the same failure wearing a different name.
+ */
+const ELIGIBILITY_DECIDERS =
+  /^(evaluateRevisionEligibility|evaluateThesisEligibility|evaluateGate|evaluateRevisionGates)$/
+
+/** The one module allowed to call them from outside the domain. */
+const ELIGIBILITY_ADAPTER = 'application/analysis/eligibility.ts'
+
+const eligibilityDecidedInTheDomain: FitnessRule = {
+  id: 'eligibility-decided-only-in-the-domain',
+  states:
+    'No command handler decides eligibility; the adapter maps state and the ' +
+    'domain decides.',
+  because:
+    'A handler that reimplements a blocking rule is a second answer to the one ' +
+    'question the CIO acts on, and it reads as correct because the domain ' +
+    'function is still being called somewhere.',
+  selects: (file) =>
+    !file.isTest &&
+    file.path.startsWith('application/analysis/') &&
+    file.path !== ELIGIBILITY_ADAPTER,
+  detect(file) {
+    const found: string[] = []
+    for (const reference of file.imports) {
+      for (const name of reference.names) {
+        if (ELIGIBILITY_DECIDERS.test(name)) {
+          found.push(`${file.path} — imports ${name}`)
+        }
+      }
+    }
+    for (const node of nodes(file)) {
+      if (!ts.isCallExpression(node)) continue
+      const called = accessPath(node.expression)
+      if (called && ELIGIBILITY_DECIDERS.test(called.split('.').pop()!)) {
+        found.push(at(file, node, `calls ${called}()`))
+      }
+    }
+    return found
+  },
+}
+
+/**
+ * Names that would mean a threshold has been reimplemented somewhere.
+ *
+ * Deliberately about the ANSWER rather than the inputs: a module may read a
+ * verdict status, and may not decide what it means for eligibility.
+ */
+const ELIGIBILITY_VERDICT_FIELDS = /^(eligibleForDecision|eligibleForPublication)$/
+
+const noSecondEligibilityAnswer: FitnessRule = {
+  id: 'no-second-eligibility-answer',
+  states:
+    'Nothing outside the domain assigns an eligibility verdict; it is read, ' +
+    'never computed.',
+  because:
+    'A boolean assembled in a projection or a handler outranks the domain ' +
+    'wherever it is read, and disagreeing answers to "may this reach the CIO" ' +
+    'is the one thing this model cannot survive.',
+  selects: (file) => !file.isTest && !file.path.startsWith('domain/'),
+  detect(file) {
+    const found: string[] = []
+    for (const node of nodes(file)) {
+      if (!ts.isPropertyAssignment(node)) continue
+      const name = nameOf(node.name)
+      if (name === null || !ELIGIBILITY_VERDICT_FIELDS.test(name)) continue
+      const value = node.initializer
+      /*
+       * A pass-through is fine — that is how the domain's answer travels. A
+       * literal, a comparison or a boolean expression is a decision.
+       */
+      if (
+        value.kind === ts.SyntaxKind.TrueKeyword ||
+        value.kind === ts.SyntaxKind.FalseKeyword ||
+        ts.isBinaryExpression(value) ||
+        ts.isPrefixUnaryExpression(value) ||
+        ts.isConditionalExpression(value)
+      ) {
+        found.push(at(file, node, `${name} is decided here`))
+      }
+    }
+    return found
+  },
+}
+
+/* ------------------------------------------------------------------ rule 9 */
+
+const noEligibilityInSql: FitnessRule = {
+  id: 'no-eligibility-in-sql',
+  states: 'No SQL statement decides whether a revision may reach the CIO.',
+  because:
+    'A CASE over verdict statuses in a query is a governance rule with no test, ' +
+    'no version and no reviewer — and it silently outranks the domain for every ' +
+    'reader of that query.',
+  selects: (file) =>
+    !file.isTest && file.path.startsWith('infrastructure/analysis/postgres/'),
+  detect(file) {
+    const found: string[] = []
+    for (const node of nodes(file)) {
+      if (!ts.isStringLiteralLike(node) && !ts.isTemplateLiteral(node)) continue
+      const text = node.getText(file.ast)
+      if (!/\b(SELECT|UPDATE|INSERT)\b/i.test(text)) continue
+      if (/\beligib/i.test(text)) {
+        found.push(at(file, node, 'SQL mentions eligibility'))
+      }
+      // A verdict compared inside SQL is a gate the domain cannot see.
+      if (/\bstatus\s*(=|<>|!=|IN)\s*\(?'(verified|accepted|approved)/i.test(text)) {
+        found.push(at(file, node, 'SQL compares a governance verdict'))
+      }
+    }
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -412,6 +532,9 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noLlmDependency,
   noUiImportOfInfrastructure,
   noCallerSuppliedIdentity,
+  eligibilityDecidedInTheDomain,
+  noSecondEligibilityAnswer,
+  noEligibilityInSql,
 ]
 
 export function ruleById(id: string): FitnessRule {

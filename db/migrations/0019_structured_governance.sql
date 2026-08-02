@@ -249,6 +249,23 @@ ALTER TABLE analysis.reviews
         kind = 'compliance' OR detail = '{}'::jsonb
     );
 
+-- ------------------------------------------------ events point at verdicts --
+
+/*
+ * A `review` event without the verdict it records is a timeline entry nobody
+ * can follow to the findings. The subject said "a review happened"; nothing
+ * said which.
+ */
+ALTER TABLE analysis.transition_events
+    ADD COLUMN review_id text REFERENCES analysis.reviews (id),
+    ADD CONSTRAINT transition_events_review_id_for_review_subject CHECK (
+        review_id IS NULL OR subject = 'review'
+    );
+
+CREATE INDEX transition_events_review_idx
+    ON analysis.transition_events (review_id)
+    WHERE review_id IS NOT NULL;
+
 -- ---------------------------------------------------------------- grants --
 
 GRANT SELECT, INSERT ON

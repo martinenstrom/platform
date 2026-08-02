@@ -850,21 +850,50 @@ against a rule written when nothing wired it.
 
 **Incurred:** the C1C-3 follow-up. **Severity:** medium. **Blocks:** nothing.
 
-Six rules are now proved to fail on a planted violation. The roughly sixty
-phase gates left in `importGraph.test.ts` are not: pinned provider lists, frozen
-inventories, and single-file assertions. They no longer share the two scanning
-defects above — they read the same parsed model — but nothing demonstrates that
-any individual one still detects what it was written to detect.
+Nine rules are now proved to fail on a planted violation and to pass a benign
+near-miss. The roughly sixty phase gates left in `importGraph.test.ts` are not:
+pinned provider lists, frozen inventories, and single-file assertions. They no
+longer share the two scanning defects above — they read the same parsed model —
+but nothing demonstrates that any individual one still detects what it was
+written to detect.
 
-They were left because they are a different kind of rule. A pinned list fails
-loudly when the list changes, and a frozen inventory is checked by its own
-`toEqual`; the class that failed silently is the source-scanning class, which is
-what the registry now holds.
+**Not a single cleanup phase.** Converting sixty rules at once would be a large
+change nobody could review carefully, in the one part of the codebase whose
+whole value is that somebody read it. They move into the registry as the phase
+that owns them is touched, and a new load-bearing rule goes in with fixtures
+from the start.
 
-**Preferred resolution:** move a phase gate into the registry whenever its phase
-is still live and its property is load-bearing, rather than converting sixty
-rules at once. C1C-4 adds three eligibility rules; those go in the registry with
-fixtures from the start.
+### Priority, by what goes wrong if the rule is silently dead
+
+**Tier 1 — done.** All nine are in the registry with both fixtures.
+
+| Rule                                                 | In registry as                            |
+| ---------------------------------------------------- | ----------------------------------------- |
+| no network outside approved infrastructure           | `no-outbound-network-outside-http-client` |
+| no fabricated prose activity in the domain           | `no-prose-activity-in-domain`             |
+| no direct repository writes from the orchestrator    | `orchestrator-writes-nothing-directly`    |
+| no LLM dependency                                    | `no-llm-dependency`                       |
+| no UI import of infrastructure or concrete providers | `no-ui-import-of-infrastructure`          |
+| no caller-supplied or invented identity              | `no-caller-supplied-or-invented-identity` |
+| no eligibility logic outside the domain              | `eligibility-decided-only-in-the-domain`  |
+| no second eligibility answer                         | `no-second-eligibility-answer`            |
+| no eligibility logic in SQL                          | `no-eligibility-in-sql`                   |
+
+**Tier 2 — next, and each with the phase that will touch it.**
+
+| Rule                                                | Why it is load-bearing                                                      | Moves with |
+| --------------------------------------------------- | --------------------------------------------------------------------------- | ---------- |
+| no memory fallback in the durable runtime           | a system that "works" while storing nothing is found later, by someone else | C1D        |
+| no governance mandate bypass                        | a verdict recorded by a department that does not hold the discipline        | C1D        |
+| no transaction opened inside a command handler      | splits the ledger entry from its effect                                     | C1D        |
+| no command handler imports another                  | two ledger entries where the caller believes there is one                   | C1D        |
+| revisions minted in exactly one place               | a revision superseding the wrong predecessor reads like a correct one       | C1D        |
+| no stored requirement resolution recomputed on read | historical eligibility would drift as the rule changes                      | C1D        |
+
+**Tier 3 — leave as assertions.** Pinned provider lists, frozen mock-consumer
+inventories, the approved-command list, the schema-version pin. These fail
+loudly when the list changes and cannot pass vacuously: the assertion IS the
+data. Converting them would add ceremony without adding coverage.
 
 ---
 
@@ -1017,3 +1046,80 @@ Deferred deliberately, each needing its own gate: FRED (keyed, deferred to keep
 Phase 4B keyless), Twelve Data (D1), sector data (D5), news providers, sentiment
 formula weights (D7), and market-implied policy probabilities — the last gated
 on the seven documentation requirements in `data-architecture.md` §59.
+
+---
+
+## TD-41 · No governance escalation path
+
+**Incurred:** C1C-4. **Severity:** medium. **Blocks:** nothing yet.
+
+`Escalation` exists in `domain/analysis/review.ts` and nothing produces one. A
+blocked revision sits blocked; nothing routes it to a manager or the CIO, and
+the only way to notice is to ask for eligibility and read the blockers. C1D's
+headquarters floor is the first place an escalation would be visible, which is
+where it belongs.
+
+---
+
+## TD-42 · Compliance is defined and unreachable
+
+**Incurred:** AI Phase A, surfaced by C1C-4. **Severity:** low.
+
+`ComplianceReview`, `complianceBlocks` and the `compliance` review kind all
+exist; no command records one. Two consequences, both deliberate for now:
+
+`reviews.detail` survives as a jsonb column for compliance findings alone,
+pinned there by a CHECK. Moving them relational would be schema for a shape
+nothing writes.
+
+A compliance block is filed as `blocks-decision`, which preserves the behaviour
+that existed before C1C-4 and is arguably wrong — compliance answers "may we
+publish this", which is `eligibleForPublication`. Changing the severity now
+would be a silent governance change with no test that could observe it. The
+publication phase is the first one that can decide it with evidence.
+
+---
+
+## TD-43 · A required correction does not create the work it requires
+
+**Incurred:** C1C-4. **Severity:** medium. **Blocks:** nothing.
+
+`correction-required` blocks the revision and the finding names what must
+change, but nothing opens an assignment for the desk that must change it. A
+manager reads the finding and issues the next command by hand. `ReturnWork`
+sits on `REASON_REQUIRED_COMMANDS` and is unimplemented.
+
+---
+
+## TD-44 · Eligibility is recomputed on every read
+
+**Incurred:** C1C-4, deliberately. **Severity:** low.
+
+`revisionEligibility` reads revisions, assignments, runs, resolutions,
+aggregations and every review of the case, then evaluates. At C1C's scale — one
+case, tens of reviews — that is cheap, and it is the reason there is no stored
+flag to go stale.
+
+C1D's read model is where it gets materialised, together with TD-36 and the
+transition observer that can emit `revision-became-eligible` honestly:
+comparing two projected states and recording `observedAt`, which is when the
+change was noticed rather than when it logically happened.
+
+---
+
+## TD-45 · The end-to-end Macro flow is not yet PostgreSQL-backed
+
+**Incurred:** C1C-4. **Severity:** medium. **Blocks:** the C1C-4 exit criteria.
+
+The governance branches are covered against the in-memory adapter — Risk in all
+three states, verification correction, material and non-material challenges,
+re-review ordering, concurrent verdicts, and a new revision reopening every
+gate. The PostgreSQL-backed run of the same flow, including the restart that
+proves eligibility, reviews, events and provenance reload identically, is not
+written.
+
+The schema, both adapters and the repository contract are exercised by the
+PostgreSQL suite, so the storage half is covered; what is missing is the two
+halves together. It is the last item of C1C-4 rather than a design gap, and it
+is named here rather than left implied because an exit report that omitted it
+would be the failure this project has already paid for once.

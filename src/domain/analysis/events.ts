@@ -62,6 +62,14 @@ export interface TransitionEvent {
   /** Present for assignment and run events. */
   assignmentId?: string
   runId?: string
+  /**
+   * The governance verdict this event records.
+   *
+   * Present on `review` events, and the reason they are not merely a state
+   * change on a revision: "verification completed" without the verdict it
+   * completed is a timeline entry the reader cannot follow to the findings.
+   */
+  reviewId?: string
 
   /** `null` on creation events, where there was no previous state. */
   fromState: string | null

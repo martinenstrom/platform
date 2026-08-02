@@ -436,6 +436,19 @@ export interface ReviewRepository {
   }): Promise<number>
 
   /**
+   * One verdict by its id, for a command replay.
+   *
+   * A replay returns what the original command produced, and the ledger carries
+   * only the result reference — so the store has to be able to find a review
+   * without being told which case or which discipline it belongs to.
+   */
+  get(
+    reviewId: string,
+  ): Promise<
+    VerificationReview | DevilsAdvocateReview | ComplianceReview | RiskReview | null
+  >
+
+  /**
    * All ordered by `sequence`, then `at`, then `byEmployeeId`, then `revisionId`.
    *
    * Sequence leads because it is the only total order. The revision is part of

@@ -279,9 +279,13 @@ describe('command declarations', () => {
       'OpenInvestmentCase',
       'ProposeThesis',
       'RecordContribution',
+      'RecordDevilsAdvocateReview',
+      'RecordRiskReview',
+      'RecordVerificationReview',
       'ResolveConditionalRequirement',
       'ReviseThesis',
       'StartAgentRun',
+      'SubmitForVerification',
     ])
   })
 
@@ -309,7 +313,20 @@ describe('command declarations', () => {
      */
     for (const command of commands) {
       const governance = command.category === 'governance'
-      expect(governance).toBe(command.type === 'ResolveConditionalRequirement')
+      /*
+       * The four control-function acts. `SubmitForVerification` is
+       * deliberately NOT among them: asking for a review is workflow, and
+       * filing it as governance would make the request itself look like a
+       * verdict.
+       */
+      expect(governance).toBe(
+        [
+          'ResolveConditionalRequirement',
+          'RecordVerificationReview',
+          'RecordDevilsAdvocateReview',
+          'RecordRiskReview',
+        ].includes(command.type),
+      )
       expect(['analysis', 'workflow', 'governance']).toContain(command.category)
     }
   })

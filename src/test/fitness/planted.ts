@@ -442,4 +442,161 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+
+  {
+    ruleId: 'eligibility-decided-only-in-the-domain',
+    violations: [
+      {
+        path: 'application/analysis/commands/recordRiskReview.ts',
+        what: 'a handler asking the domain whether the revision is eligible',
+        source: `
+          import { evaluateRevisionEligibility } from '~/domain/analysis'
+          export async function execute(repositories: never, input: { caseId: string }) {
+            const results = evaluateRevisionEligibility([], input.caseId, {})
+            return results
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/commands/submitForVerification.ts',
+        what: 'a handler assembling the answer from the gate instead',
+        source: `
+          import { evaluateGate } from '~/domain/analysis'
+          export function execute() {
+            return evaluateGate({ riskRequirement: 'not-required' }).passed
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/orchestrator.ts',
+        what: 'the sequencer deciding it',
+        source: `
+          import { evaluateThesisEligibility } from '~/domain/analysis'
+          export function ready(thesisId: string, revisionId: string) {
+            return evaluateThesisEligibility(thesisId, revisionId, {
+              lifecycle: 'verified',
+              blockers: [],
+              missingRequiredContributions: [],
+            }).eligibleForDecision
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/analysis/commands/recordRiskReview.ts',
+        what: 'a handler recording a verdict and drawing no conclusion from it',
+        source: `
+          import { buildRiskVerdict } from '~/domain/analysis'
+          export function execute(input: { status: 'accepted' }) {
+            return buildRiskVerdict({ status: input.status, findings: [] })
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/requiredWork.ts',
+        what: 'an input the domain will decide from, computed outside it',
+        source: `
+          export function unmet(entries: readonly string[]) {
+            return entries.filter((entry) => entry.length === 0)
+          }
+        `,
+      },
+    ],
+  },
+
+  {
+    ruleId: 'no-second-eligibility-answer',
+    violations: [
+      {
+        path: 'presentation/caseView.ts',
+        what: 'a projection deciding eligibility from a status',
+        source: `
+          export function view(status: string, blockers: readonly string[]) {
+            return { eligibleForDecision: status === 'verified' && blockers.length === 0 }
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/eligibility.ts',
+        what: 'the adapter hard-coding the answer',
+        source: `
+          export function summary() {
+            return { eligibleForDecision: true }
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/analysis/eligibility.ts',
+        what: "passing the domain's own answer through",
+        source: `
+          export function summary(decided: { eligibleForDecision: boolean }) {
+            return { eligibleForDecision: decided.eligibleForDecision }
+          }
+        `,
+      },
+      {
+        path: 'presentation/caseView.ts',
+        what: 'reading the answer to choose a label',
+        source: `
+          export function label(eligibility: { eligibleForDecision: boolean }) {
+            return eligibility.eligibleForDecision ? 'Ready for the CIO' : 'Blocked'
+          }
+        `,
+      },
+    ],
+  },
+
+  {
+    ruleId: 'no-eligibility-in-sql',
+    violations: [
+      {
+        path: 'infrastructure/analysis/postgres/eligibilityRepositories.ts',
+        what: 'a query computing eligibility',
+        source: `
+          export const SQL = {
+            list: \`SELECT revision_id,
+                          (status = 'verified') AS eligible
+                   FROM analysis.reviews\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/eligibilityRepositories.ts',
+        what: 'a query comparing a governance verdict',
+        source: `
+          export const SQL = {
+            passed: \`SELECT 1 FROM analysis.reviews WHERE status = 'verified'\`,
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'infrastructure/analysis/postgres/governanceRepositories.ts',
+        what: 'a query that reads verdicts without judging them',
+        source: `
+          export const SQL = {
+            forCase: \`SELECT id, kind, status, sequence
+                      FROM analysis.reviews
+                      WHERE case_id = $1 AND kind = $2
+                      ORDER BY sequence\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/caseRepositories.ts',
+        what: 'a comment mentioning eligibility beside an unrelated query',
+        source: `
+          /** Read by the eligibility adapter; it decides nothing here. */
+          export const SQL = {
+            revisions: \`SELECT revision_id, lifecycle FROM analysis.thesis_revisions
+                        WHERE case_id = $1\`,
+          }
+        `,
+      },
+    ],
+  },
 ]

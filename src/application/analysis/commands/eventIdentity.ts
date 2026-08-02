@@ -129,3 +129,38 @@ export function deriveAggregationId(commandId: string, sourceRevisionId: string)
     entityId: sourceRevisionId,
   })
 }
+
+/**
+ * The identity of a governance verdict.
+ *
+ * One command records one verdict on one revision, so the revision is the
+ * entity. A retry addresses the same review rather than filing a second opinion
+ * — which matters more here than anywhere else: two verdicts differ only by
+ * their id, and a duplicate would show as a control function that reviewed the
+ * same argument twice and said the same thing, for no stated reason.
+ *
+ * The id replaces the hash of `reviewIdentity` the store used to derive.
+ * The natural key survives as a uniqueness constraint, so the same reviewer
+ * recording the same verdict at the same instant still collides; identity now
+ * comes from the command, like every other record since C1C-1.
+ */
+export function deriveReviewId(commandId: string, revisionId: string): string {
+  return derive('rvw', { commandId, recordType: 'review', entityId: revisionId })
+}
+
+/**
+ * The identity of one challenge within a Devil's Advocate verdict.
+ *
+ * The ordinal is the challenge's position in the submission, for the same
+ * reason `deriveClaimId` takes the provider's own name: one review files
+ * several objections, and each needs an id that is stable across a retry and
+ * distinct from its siblings.
+ */
+export function deriveChallengeId(commandId: string, ordinal: number): string {
+  return derive('chl', {
+    commandId,
+    recordType: 'challenge',
+    entityId: 'challenge',
+    ordinal,
+  })
+}
