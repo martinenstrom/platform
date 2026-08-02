@@ -572,6 +572,22 @@ export const PLANTED: readonly RuleFixtures[] = [
           }
         `,
       },
+      {
+        /*
+         * The storage exemption is two names, not the word. An adapter that
+         * invents its own eligibility column is deciding again, and still fires.
+         */
+        path: 'infrastructure/analysis/postgres/eligibilityRepositories.ts',
+        what: 'an eligibility column the registry does not define',
+        source: `
+          export const SQL = {
+            state: \`SELECT revision_id,
+                           CASE WHEN risk_review_id IS NULL THEN 'blocked'
+                                ELSE 'clear' END AS eligibility_state
+                    FROM analysis.cio_submissions\`,
+          }
+        `,
+      },
     ],
     nearMisses: [
       {
@@ -583,6 +599,26 @@ export const PLANTED: readonly RuleFixtures[] = [
                       FROM analysis.reviews
                       WHERE case_id = $1 AND kind = $2
                       ORDER BY sequence\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/policyRepositories.ts',
+        what: 'reading the policy registry the domain applies',
+        source: `
+          export const SQL = {
+            policies: \`SELECT * FROM analysis.eligibility_policies ORDER BY version\`,
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/submissionRepositories.ts',
+        what: 'recording which policy version the domain used',
+        source: `
+          export const SQL = {
+            insert: \`INSERT INTO analysis.cio_submissions
+                       (id, case_id, eligibility_policy_version)
+                     VALUES ($1, $2, $3)\`,
           }
         `,
       },

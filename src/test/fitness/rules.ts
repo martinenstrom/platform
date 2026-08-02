@@ -492,6 +492,20 @@ const noSecondEligibilityAnswer: FitnessRule = {
 
 /* ------------------------------------------------------------------ rule 9 */
 
+/**
+ * The two places the word may legitimately appear in SQL: as storage.
+ *
+ * `eligibility_policies` is the registry the domain reads its own rules from,
+ * and `eligibility_policy_version` records which of those rules the domain
+ * applied. Both are the RESULT of a decision the domain already made, written
+ * down — the opposite of the query that makes one. Everything else still fires,
+ * including a computed `AS eligible` and any other invented eligibility column,
+ * because the exemption is anchored to these two names and nothing broader.
+ */
+const ELIGIBILITY_STORAGE_NAMES = /\beligibility_polic(?:ies|y_version)\b/gi
+
+const withoutStorageNames = (text: string) => text.replace(ELIGIBILITY_STORAGE_NAMES, '')
+
 const noEligibilityInSql: FitnessRule = {
   id: 'no-eligibility-in-sql',
   states: 'No SQL statement decides whether a revision may reach the CIO.',
@@ -507,7 +521,7 @@ const noEligibilityInSql: FitnessRule = {
       if (!ts.isStringLiteralLike(node) && !ts.isTemplateLiteral(node)) continue
       const text = node.getText(file.ast)
       if (!/\b(SELECT|UPDATE|INSERT)\b/i.test(text)) continue
-      if (/\beligib/i.test(text)) {
+      if (/\beligib/i.test(withoutStorageNames(text))) {
         found.push(at(file, node, 'SQL mentions eligibility'))
       }
       // A verdict compared inside SQL is a gate the domain cannot see.
