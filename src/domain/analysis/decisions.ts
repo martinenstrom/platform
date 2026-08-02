@@ -47,6 +47,7 @@ import type {
   RiskStatus,
   VerificationStatus,
 } from './review'
+import { assertCaseDecisionWellFormed } from './aggregateValidation'
 
 /* ----------------------------------------------------------------- outcome */
 
@@ -499,40 +500,18 @@ export function buildDecision(
   decision: CaseDecision,
   context: DecisionContext,
 ): CaseDecision {
-  if (!decision.rationale.trim()) {
-    throw new Error(`Decision on "${decision.caseId}" records no rationale`)
-  }
-  if (!decision.evidenceSetId) {
-    throw new Error(
-      `Decision on "${decision.caseId}" cites no evidence set — a decision ` +
-        `whose evidence cannot be located cannot be reviewed`,
-    )
-  }
+  /*
+   * Everything checkable from the record alone lives in the validator, which
+   * both repositories also call. Keeping a second copy here would give one rule
+   * two implementations — agreeing on the day they are written, and diverging
+   * on the day one of them is fixed.
+   */
+  assertCaseDecisionWellFormed(decision)
 
   const outcome = decision.outcome
   const considered = outcome.consideredRevisionIds
 
-  if (considered.length === 0) {
-    throw new Error(
-      `Decision on "${decision.caseId}" considers nothing. Every decision is ` +
-        `about an argument somebody put in front of the CIO.`,
-    )
-  }
-  if (new Set(considered).size !== considered.length) {
-    throw new Error(
-      `Decision on "${decision.caseId}" names a revision twice among those ` +
-        `considered.`,
-    )
-  }
-
   if (outcome.kind === 'selected') {
-    if (!considered.includes(outcome.selectedRevisionId)) {
-      throw new Error(
-        `Decision on "${decision.caseId}" selects ` +
-          `"${outcome.selectedRevisionId}", which is not among the revisions it ` +
-          `considered.`,
-      )
-    }
     const selected = context.eligibility.find(
       (e) => e.revisionId === outcome.selectedRevisionId,
     )
@@ -552,26 +531,6 @@ export function buildDecision(
       throw new Error(
         `Revision "${selected.revisionId}" is not eligible for decision` +
           (reasons ? `: ${reasons}` : ' — it has not been verified'),
-      )
-    }
-  }
-
-  if (outcome.kind === 'deferred' && decision.reconsiderationTriggers.length === 0) {
-    throw new Error(
-      `Decision on "${decision.caseId}" defers and records no condition that ` +
-        `would end the wait. An indefinite deferral is not a decision.`,
-    )
-  }
-
-  if (outcome.kind === 'declined') {
-    const declined = new Set(outcome.declinedRevisionIds)
-    const unaccounted = considered.filter((revisionId) => !declined.has(revisionId))
-    if (unaccounted.length > 0 || declined.size !== considered.length) {
-      throw new Error(
-        `Decision on "${decision.caseId}" declines ${declined.size} of ` +
-          `${considered.length} considered revisions. A revision that was ` +
-          `considered and neither selected nor declined is an alternative the ` +
-          `record cannot account for.`,
       )
     }
   }
@@ -598,30 +557,6 @@ export function buildDecision(
             `not "${decision.caseId}".`,
         )
       }
-    }
-    if (decision.submissionIds.length !== considered.length) {
-      throw new Error(
-        `Decision on "${decision.caseId}" references ` +
-          `${decision.submissionIds.length} submission(s) for ` +
-          `${considered.length} considered revision(s). Each revision is ` +
-          `considered on the basis of exactly one submission.`,
-      )
-    }
-  }
-
-  for (const dissent of decision.unresolvedDissent) {
-    if (!dissent.rationale.trim()) {
-      throw new Error(`Dissent "${dissent.sourceId}" records no rationale`)
-    }
-    if (
-      dissentRequiresAcknowledgement(dissent.materiality) &&
-      !dissent.acknowledgement?.trim()
-    ) {
-      throw new Error(
-        `Dissent "${dissent.sourceId}" is ${dissent.materiality} and the decision ` +
-          `does not acknowledge it. Deciding past a material objection is ` +
-          `legitimate; doing so without saying why is not.`,
-      )
     }
   }
 

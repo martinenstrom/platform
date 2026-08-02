@@ -32,11 +32,17 @@ import {
   DOMAIN_CONTRACT_VERSION,
   playbookAssignmentIdentity,
   reviewIdentity,
+  validateCaseDecision,
+  validateCioReturn,
+  validateCioSubmission,
   type ReviewOrder,
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
+  type CaseDecision,
   type CaseTransition,
+  type CioReturn,
+  type CioSubmission,
   type ComplianceReview,
   type DevilsAdvocateReview,
   type EvidenceSet,
@@ -53,6 +59,10 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  InvariantViolationError,
+  ReferentialIntegrityError,
+  type DecisionRepository,
+  type SubmissionRepository,
   ConflictingRecordError,
   DuplicateRecordError,
   MalformedRowError,
@@ -79,7 +89,10 @@ import {
   type CommandOutcome,
 } from '~/application/analysis/commandLog'
 import {
+  cioReturnSemanticKey,
+  cioSubmissionSemanticKey,
   claimSemanticKey,
+  decisionSemanticKey,
   evidenceSetSemanticKey,
   managerAggregationSemanticKey,
   requirementResolutionIdentity,
@@ -117,6 +130,19 @@ interface Store {
   playbooks: Map<string, CasePlaybook>
   requirements: Map<string, RequirementResolution>
   aggregations: Map<string, ManagerAggregation>
+  submissions: Map<string, CioSubmission>
+  returns: Map<string, CioReturn>
+  decisions: Map<string, CaseDecision>
+  /**
+   * Which decision superseded which.
+   *
+   * Kept beside the decisions rather than on them because a decision does not
+   * carry its own successor: it is set after the fact, by the correction, and a
+   * field for it on the aggregate would be a mutable hole in an immutable
+   * record. PostgreSQL stores it as the one updatable column on the row for
+   * exactly the same reason.
+   */
+  supersededBy: Map<string, string>
 }
 
 function emptyStore(): Store {
@@ -138,6 +164,10 @@ function emptyStore(): Store {
     playbooks: new Map(),
     requirements: new Map(),
     aggregations: new Map(),
+    submissions: new Map(),
+    returns: new Map(),
+    decisions: new Map(),
+    supersededBy: new Map(),
   }
 }
 
@@ -172,6 +202,10 @@ function snapshot(store: Store): Store {
     playbooks: new Map(store.playbooks),
     requirements: new Map(store.requirements),
     aggregations: new Map(store.aggregations),
+    submissions: new Map(store.submissions),
+    returns: new Map(store.returns),
+    decisions: new Map(store.decisions),
+    supersededBy: new Map(store.supersededBy),
   }
 }
 
@@ -193,6 +227,10 @@ function restore(target: Store, from: Store): void {
   target.playbooks = from.playbooks
   target.requirements = from.requirements
   target.aggregations = from.aggregations
+  target.submissions = from.submissions
+  target.returns = from.returns
+  target.decisions = from.decisions
+  target.supersededBy = from.supersededBy
 }
 
 /** A transaction's liveness, shared by every repository scoped to it. */
@@ -940,6 +978,8 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     playbooks: playbookRepository(store, scope),
     requirements: requirementRepository(store, scope),
     aggregations: aggregationRepository(store, scope),
+    submissions: submissionRepository(store, scope),
+    decisions: decisionRepository(store, scope),
   }
 }
 
@@ -1051,6 +1091,308 @@ export function createInMemoryRepositories(): AnalysisRepositories {
         restore(store, before)
         throw error
       }
+    },
+  }
+}
+
+/* --------------------------------------------- CIO submissions and returns */
+
+/**
+ * Material entering CIO consideration, and material leaving it for more work.
+ *
+ * Write-once except for `state`, which is the one thing about a submission the
+ * institution changes: it stops being a queue item when the CIO acts on it.
+ */
+function submissionRepository(store: Store, scope: Scope): SubmissionRepository {
+  const bySubmittedAt = (a: CioSubmission, b: CioSubmission) =>
+    byString(a.submittedAt, b.submittedAt) || byString(a.id, b.id)
+
+  const byReturnedAt = (a: CioReturn, b: CioReturn) =>
+    byString(a.returnedAt, b.returnedAt) || byString(a.id, b.id)
+
+  return {
+    async get(submissionId) {
+      guard(scope, 'submissions.get')
+      return store.submissions.get(submissionId) ?? null
+    },
+
+    async listForCase(caseId) {
+      guard(scope, 'submissions.listForCase')
+      return [...store.submissions.values()]
+        .filter((submission) => submission.caseId === caseId)
+        .sort(bySubmittedAt)
+    },
+
+    async applicableForRevision(revisionId) {
+      guard(scope, 'submissions.applicableForRevision')
+      return [...store.submissions.values()]
+        .filter((submission) => submission.revisionId === revisionId)
+        .sort(bySubmittedAt)
+    },
+
+    async pending(limit) {
+      guard(scope, 'submissions.pending')
+      const queue = [...store.submissions.values()]
+        .filter((submission) => submission.state === 'pending')
+        .sort(bySubmittedAt)
+      return limit === undefined ? queue : queue.slice(0, limit)
+    },
+
+    async save(submission) {
+      guard(scope, 'submissions.save')
+
+      /*
+       * The shared domain validator, not a second opinion written here. It is
+       * what refuses a submission carrying eligibility blockers — the invariant
+       * with no column and therefore no database backstop.
+       */
+      const problems = validateCioSubmission(submission)
+      if (problems.length > 0) {
+        throw new InvariantViolationError(problems[0]!.code, 'submissions.save')
+      }
+
+      const existing = store.submissions.get(submission.id)
+      if (existing) {
+        if (cioSubmissionSemanticKey(existing) !== cioSubmissionSemanticKey(submission)) {
+          throw new ConflictingRecordError(
+            'CIO submission',
+            submission.id,
+            'submissions.save',
+          )
+        }
+        return existing
+      }
+
+      const stored = seal(submission, `CIO submission ${submission.id}`)
+      store.submissions.set(submission.id, stored)
+      return stored
+    },
+
+    async settle(submissionIds, state) {
+      guard(scope, 'submissions.settle')
+      for (const submissionId of submissionIds) {
+        const existing = store.submissions.get(submissionId)
+        if (!existing) {
+          throw new ReferentialIntegrityError(
+            'cio_submissions_exists',
+            'submissions.settle',
+          )
+        }
+        if (existing.state === state) continue
+        /*
+         * `decided` and `returned` describe different institutional histories.
+         * Moving between them would rewrite what happened to the queue item.
+         */
+        if (existing.state !== 'pending') {
+          throw new InvariantViolationError(
+            'submission-already-settled',
+            'submissions.settle',
+          )
+        }
+        store.submissions.set(
+          submissionId,
+          seal({ ...existing, state }, `CIO submission ${submissionId}`),
+        )
+      }
+    },
+
+    async recordReturn(cioReturn) {
+      guard(scope, 'returns.recordReturn')
+
+      const problems = validateCioReturn(cioReturn)
+      if (problems.length > 0) {
+        throw new InvariantViolationError(problems[0]!.code, 'returns.recordReturn')
+      }
+
+      const existing = store.returns.get(cioReturn.id)
+      if (existing) {
+        if (cioReturnSemanticKey(existing) !== cioReturnSemanticKey(cioReturn)) {
+          throw new ConflictingRecordError(
+            'CIO return',
+            cioReturn.id,
+            'returns.recordReturn',
+          )
+        }
+        return existing
+      }
+
+      const submission = store.submissions.get(cioReturn.submissionId)
+      if (!submission) {
+        throw new ReferentialIntegrityError(
+          'cio_returns_submission_fk',
+          'returns.recordReturn',
+        )
+      }
+      if (submission.caseId !== cioReturn.caseId) {
+        throw new InvariantViolationError('return-submission-case', 'returns.recordReturn')
+      }
+
+      const stored = seal(cioReturn, `CIO return ${cioReturn.id}`)
+      store.returns.set(cioReturn.id, stored)
+      if (submission.state === 'pending') {
+        store.submissions.set(
+          submission.id,
+          seal(
+            { ...submission, state: 'returned' as const },
+            `CIO submission ${submission.id}`,
+          ),
+        )
+      }
+      return stored
+    },
+
+    async getReturn(returnId) {
+      guard(scope, 'returns.getReturn')
+      return store.returns.get(returnId) ?? null
+    },
+
+    async returnsForCase(caseId) {
+      guard(scope, 'returns.returnsForCase')
+      return [...store.returns.values()]
+        .filter((entry) => entry.caseId === caseId)
+        .sort(byReturnedAt)
+    },
+
+    async returnsForRevision(revisionId) {
+      guard(scope, 'returns.returnsForRevision')
+      return [...store.returns.values()]
+        .filter((entry) => entry.revisionId === revisionId)
+        .sort(byReturnedAt)
+    },
+  }
+}
+
+/* ------------------------------------------------------------- decisions */
+
+/**
+ * Completed institutional CIO outcomes.
+ *
+ * Live versus historical is derived from the supersession map rather than from
+ * a stored flag, which is the shape PostgreSQL takes too: `superseded_by IS
+ * NULL`. A flag would be a lifecycle no command owns.
+ */
+function decisionRepository(store: Store, scope: Scope): DecisionRepository {
+  const liveFor = (caseId: string) =>
+    [...store.decisions.values()].find(
+      (decision) =>
+        decision.caseId === caseId && !store.supersededBy.has(decision.decisionId),
+    ) ?? null
+
+  return {
+    async get(decisionId) {
+      guard(scope, 'decisions.get')
+      return store.decisions.get(decisionId) ?? null
+    },
+
+    async getForCase(caseId) {
+      guard(scope, 'decisions.getForCase')
+      return liveFor(caseId)
+    },
+
+    async historyForCase(caseId) {
+      guard(scope, 'decisions.historyForCase')
+      return [...store.decisions.values()]
+        .filter((decision) => decision.caseId === caseId)
+        .sort(
+          (a, b) =>
+            byString(a.decidedAt, b.decidedAt) || byString(a.decisionId, b.decisionId),
+        )
+    },
+
+    async listRecent(limit) {
+      guard(scope, 'decisions.listRecent')
+      return [...store.decisions.values()]
+        .filter((decision) => !store.supersededBy.has(decision.decisionId))
+        .sort(
+          (a, b) =>
+            byString(b.decidedAt, a.decidedAt) || byString(b.decisionId, a.decisionId),
+        )
+        .slice(0, limit)
+    },
+
+    async save(decision) {
+      guard(scope, 'decisions.save')
+
+      /*
+       * The shared validator again. Not re-implemented here, and not skipped
+       * because "the command already checked" — the port is reachable without
+       * a command, and PostgreSQL's triggers will refuse the same aggregate.
+       */
+      const problems = validateCaseDecision(decision)
+      if (problems.length > 0) {
+        throw new InvariantViolationError(problems[0]!.code, 'decisions.save')
+      }
+
+      const existing = store.decisions.get(decision.decisionId)
+      if (existing) {
+        if (decisionSemanticKey(existing) !== decisionSemanticKey(decision)) {
+          throw new ConflictingRecordError(
+            'Case decision',
+            decision.decisionId,
+            'decisions.save',
+          )
+        }
+        return existing
+      }
+
+      for (const submissionId of decision.submissionIds) {
+        const submission = store.submissions.get(submissionId)
+        if (!submission) {
+          throw new ReferentialIntegrityError(
+            'decision_submissions_submission_fk',
+            'decisions.save',
+          )
+        }
+        if (submission.caseId !== decision.caseId) {
+          throw new InvariantViolationError('decision-submission-case', 'decisions.save')
+        }
+      }
+
+      const predecessorId = decision.supersedesDecisionId
+      if (predecessorId !== undefined) {
+        const predecessor = store.decisions.get(predecessorId)
+        if (!predecessor) {
+          throw new ReferentialIntegrityError(
+            'case_decisions_supersedes_fk',
+            'decisions.save',
+          )
+        }
+        if (predecessor.caseId !== decision.caseId) {
+          /*
+           * A decision on one case cannot correct a decision on another. A
+           * composite foreign key expresses this in PostgreSQL; nothing in
+           * memory would notice, which is exactly why it is checked here.
+           */
+          throw new InvariantViolationError(
+            'decision-supersedes-other-case',
+            'decisions.save',
+          )
+        }
+        if (store.supersededBy.has(predecessorId)) {
+          throw new ConcurrencyConflictError(
+            decision.caseId,
+            decision.aggregateVersion,
+            decision.aggregateVersion,
+          )
+        }
+      } else if (liveFor(decision.caseId) !== null) {
+        throw new DuplicateRecordError(
+          'case_decisions_one_live_per_case',
+          'decisions.save',
+        )
+      }
+
+      const stored = seal(decision, `Case decision ${decision.decisionId}`)
+      /*
+       * Both writes together. A supersession that recorded the link without
+       * inserting the successor would leave the case with no live decision —
+       * which is why there is no separate `supersede()` on the port.
+       */
+      if (predecessorId !== undefined) {
+        store.supersededBy.set(predecessorId, decision.decisionId)
+      }
+      store.decisions.set(decision.decisionId, stored)
+      return stored
     },
   }
 }

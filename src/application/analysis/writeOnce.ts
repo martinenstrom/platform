@@ -28,6 +28,8 @@ import { canonicalJson } from '~/domain/analysis'
 import type {
   AgentClaim,
   CaseDecision,
+  CioReturn,
+  CioSubmission,
   EvidenceSet,
   ManagerAggregation,
   RequirementResolution,
@@ -180,9 +182,100 @@ export function decisionSemanticKey(decision: CaseDecision): string {
     submissionIds: sorted(decision.submissionIds),
     evidenceSetId: decision.evidenceSetId,
     rationale: decision.rationale,
-    unresolvedDissent: sorted(decision.unresolvedDissent.map(canonicalJson)),
+    /*
+     * Each dissent's EVIDENCE is canonicalised too, not just the dissent list.
+     *
+     * `decision_dissent_evidence` has no ordinal — its key is the reference
+     * itself — so the store cannot preserve the order the caller passed and a
+     * read has to impose one. Hashing the caller's order would make every
+     * benign replay of a decision whose dissent cites two observations compute
+     * a different key and be reported as a conflicting decision.
+     */
+    unresolvedDissent: sorted(
+      decision.unresolvedDissent.map((dissent) =>
+        canonicalJson({
+          ...dissent,
+          evidence: dissent.evidence
+            ? [...dissent.evidence].map(canonicalJson).sort()
+            : null,
+        }),
+      ),
+    ),
     reconsiderationTriggers: sorted(decision.reconsiderationTriggers.map(canonicalJson)),
     supersedesDecisionId: decision.supersedesDecisionId ?? null,
+  })
+}
+
+/**
+ * A revision put in front of the CIO, and the basis on which it was.
+ *
+ * `state` is deliberately **excluded**. It is the one field a submission is
+ * allowed to change — `pending` becomes `decided` or `returned` when the CIO
+ * acts — so including it would make a settled submission conflict with its own
+ * earlier self on every replay.
+ *
+ * `blockers` is excluded for the opposite reason: a valid submission has none,
+ * the repositories refuse one that does, and there is nothing for the key to
+ * distinguish. Including it would imply the field could vary.
+ */
+export function cioSubmissionSemanticKey(submission: CioSubmission): string {
+  const basis = submission.basis
+  return canonicalJson({
+    id: submission.id,
+    caseId: submission.caseId,
+    thesisId: submission.thesisId,
+    revisionId: submission.revisionId,
+    submittedByDepartmentId: submission.submittedByDepartmentId,
+    submittedByEmployeeId: submission.submittedByEmployeeId,
+    submittedAt: submission.submittedAt,
+    caseVersion: submission.caseVersion,
+    basis: canonicalJson({
+      revisionId: basis.revisionId,
+      thesisId: basis.thesisId,
+      aggregationId: basis.aggregationId,
+      eligibilityPolicyVersion: basis.eligibilityPolicyVersion,
+      verification: basis.verification ? canonicalJson(basis.verification) : null,
+      devilsAdvocate: basis.devilsAdvocate
+        ? canonicalJson({
+            reviewId: basis.devilsAdvocate.reviewId,
+            sequence: basis.devilsAdvocate.sequence,
+            openChallengeIds: sorted(basis.devilsAdvocate.openChallengeIds),
+          })
+        : null,
+      risk: basis.risk ? canonicalJson(basis.risk) : null,
+      riskRequirement: basis.riskRequirement,
+      riskRuleId: basis.riskRuleId,
+      riskRuleVersion: basis.riskRuleVersion,
+      requiredWork: sorted(basis.requiredWork.map(canonicalJson)),
+      materialDisagreements: sorted(basis.materialDisagreements.map(canonicalJson)),
+      evidenceSetIds: sorted(basis.evidenceSetIds),
+      storageProvenanceId: basis.storageProvenanceId,
+      evaluatedAt: basis.evaluatedAt,
+    }),
+  })
+}
+
+/**
+ * The CIO sending work back.
+ *
+ * All of it, including the concerns and their order: a return listing the same
+ * concerns in a different order is a different instruction to whoever picks the
+ * work up, so unlike an evidence list this collection is NOT sorted before
+ * hashing.
+ */
+export function cioReturnSemanticKey(cioReturn: CioReturn): string {
+  return canonicalJson({
+    id: cioReturn.id,
+    submissionId: cioReturn.submissionId,
+    caseId: cioReturn.caseId,
+    revisionId: cioReturn.revisionId,
+    returnedAt: cioReturn.returnedAt,
+    returnedBy: canonicalJson(cioReturn.returnedBy),
+    authorizationBasis: cioReturn.authorizationBasis,
+    returnedFor: cioReturn.returnedFor,
+    reason: cioReturn.reason,
+    caseVersion: cioReturn.caseVersion,
+    concerns: cioReturn.concerns.map((concern) => canonicalJson(concern)),
   })
 }
 

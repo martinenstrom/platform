@@ -31,6 +31,9 @@ import type {
   AgentClaim,
   AgentRunRecord,
   Assignment,
+  CaseDecision,
+  CioReturn,
+  CioSubmission,
   ComplianceReview,
   DevilsAdvocateReview,
   EvidenceSet,
@@ -550,6 +553,120 @@ export interface AggregationRepository {
   ): Promise<ManagerAggregation>
 }
 
+/* ------------------------------------------------- CIO submissions and returns */
+
+/**
+ * The two states a submission can settle into.
+ *
+ * Named rather than inlined so `settle` cannot be handed `'pending'` and
+ * quietly un-settle a queue item that has already been decided.
+ */
+export type SettledSubmissionState = 'decided' | 'returned'
+
+/**
+ * Material entering CIO consideration, and material leaving it for more work.
+ *
+ * One port because they are one aggregate: a return has no independent
+ * existence — it always settles exactly one submission, and the only thing it
+ * can do is move that submission to `returned`.
+ *
+ * **A return is not a decision.** It says the material was not ready to be
+ * decided, which is a different institutional statement from deciding to wait.
+ * Every method here is typed to exactly one record family: there is no
+ * `save(record)` taking a union, because sharing a port boundary must not make
+ * the three families look interchangeable.
+ */
+export interface SubmissionRepository {
+  get(submissionId: string): Promise<CioSubmission | null>
+  /** Ordered by `submittedAt`, then `id`. */
+  listForCase(caseId: string): Promise<CioSubmission[]>
+  /**
+   * Every submission targeting one exact revision, oldest first.
+   *
+   * Named on the port rather than left as a filter over `listForCase` because
+   * two commands need it — C1D-1C to refuse a second pending submission for a
+   * revision, C1D-1D to prove each considered revision has exactly one — and a
+   * lookup reimplemented twice is a rule that can diverge.
+   */
+  applicableForRevision(revisionId: string): Promise<CioSubmission[]>
+  /** The CIO queue: everything still `pending`, oldest first. A queue is FIFO. */
+  pending(limit?: number): Promise<CioSubmission[]>
+  /**
+   * Idempotent on `id`. Write-once except for `state`.
+   *
+   * Refuses a submission carrying eligibility blockers. A submission is a
+   * statement that the revision was eligible, so one that was not is not a
+   * submission the firm can make — and the basis has nowhere to record them,
+   * which would make storing it a record claiming the firm found none.
+   */
+  save(submission: CioSubmission): Promise<CioSubmission>
+  /**
+   * Settles submissions in one act.
+   *
+   * Takes a list because a decision settles every submission it considered, and
+   * one round trip per submission is the N+1 this adapter has already had to
+   * remove once. Settling an already-settled submission to a DIFFERENT state
+   * fails: `decided` and `returned` describe different institutional histories.
+   */
+  settle(
+    submissionIds: readonly string[],
+    state: SettledSubmissionState,
+  ): Promise<void>
+
+  /** Idempotent on `id`. Records the return and settles its submission. */
+  recordReturn(cioReturn: CioReturn): Promise<CioReturn>
+  getReturn(returnId: string): Promise<CioReturn | null>
+  /** Ordered by `returnedAt`, then `id`. */
+  returnsForCase(caseId: string): Promise<CioReturn[]>
+  /** Same ordering, for one exact revision. */
+  returnsForRevision(revisionId: string): Promise<CioReturn[]>
+}
+
+/* ---------------------------------------------------------------- decisions */
+
+/**
+ * Completed institutional CIO outcomes.
+ *
+ * Two reading semantics, neither hiding anything. The floor shows live
+ * decisions; the case timeline and every audit read show the complete history
+ * including superseded records. Nothing is deleted and nothing is hidden from
+ * audit — the distinction is which question is being asked.
+ *
+ * There is deliberately no `update` and no `delete`. A committed decision is
+ * immutable; a correction appends a decision naming its predecessor. The one
+ * field that moves is the supersession link, and it moves only as part of
+ * writing the successor.
+ */
+export interface DecisionRepository {
+  /**
+   * One decision by its id, for a command replay.
+   *
+   * The ledger carries only `resultRef: decisionId`, so the store has to find a
+   * decision without being told which case it belongs to.
+   */
+  get(decisionId: string): Promise<CaseDecision | null>
+  /** The LIVE decision — the one not superseded. Null where none exists. */
+  getForCase(caseId: string): Promise<CaseDecision | null>
+  /** Every decision for the case, oldest first: `decidedAt`, then `decisionId`. */
+  historyForCase(caseId: string): Promise<CaseDecision[]>
+  /** Live decisions only, newest first: `decidedAt` desc, then `decisionId` desc. */
+  listRecent(limit: number): Promise<CaseDecision[]>
+  /**
+   * Writes a decision, performing its supersession in the same act.
+   *
+   * Idempotent on `decisionId`; a second write with different content throws
+   * `ConflictingRecordError`. Where the decision names a predecessor, that
+   * predecessor is marked superseded and the successor inserted together —
+   * there is no separate `supersede()`, because one a caller could invoke
+   * without inserting the successor is a way to leave a case with no live
+   * decision.
+   *
+   * Refuses: an aggregate the domain validator rejects; a predecessor that does
+   * not exist, belongs to another case, or has already been superseded.
+   */
+  save(decision: CaseDecision): Promise<CaseDecision>
+}
+
 /* --------------------------------------------------------- command ledger */
 
 /*
@@ -591,6 +708,8 @@ export interface AnalysisRepositories {
   playbooks: PlaybookRepository
   requirements: RequirementRepository
   aggregations: AggregationRepository
+  submissions: SubmissionRepository
+  decisions: DecisionRepository
 
   /**
    * Runs `operation` inside one transaction.

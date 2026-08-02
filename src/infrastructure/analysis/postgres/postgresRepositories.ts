@@ -80,6 +80,30 @@ import {
 const ADAPTER_ID = 'postgres'
 
 /**
+ * The two ports B2 implements, declared so the tree compiles at B1.
+ *
+ * Deliberately a throw rather than a silent no-op or a partial implementation:
+ * a stub that returned `null` would let a caller believe a case has no
+ * decision, and a partial one would be judged by the contract suite as though
+ * it were finished. Nothing in the runtime constructs a submission or a
+ * decision yet — the commands are C1D-1C through C1D-1E — so the only way to
+ * reach this is to run ahead of the plan, and it says so.
+ */
+const notUntilB2 = (port: string) =>
+  new Proxy(
+    {},
+    {
+      get: (_target, method) => () => {
+        throw new Error(
+          `${port}.${String(method)} is not implemented in the PostgreSQL ` +
+            `adapter yet. C1D-1B stage B2 builds it; the in-memory reference ` +
+            `and the shared contract suite exist as of B1.`,
+        )
+      },
+    },
+  )
+
+/**
  * The container's own statement.
  *
  * In a catalogue like every other, because "every statement the adapter can
@@ -181,6 +205,8 @@ export function createPostgresRepositories(
     playbooks: createPlaybookRepository(scope, context),
     requirements: createRequirementRepository(scope, context, tenantId),
     aggregations: createAggregationRepository(scope, context, tenantId),
+    submissions: notUntilB2('submissions') as TransactionalAnalysisRepositories['submissions'],
+    decisions: notUntilB2('decisions') as TransactionalAnalysisRepositories['decisions'],
   })
 
   /*
