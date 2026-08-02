@@ -3,11 +3,12 @@
  *
  * ## Review ids
  *
- * The domain has no review id — a `VerificationReview` is identified by what it
- * reviewed, who reviewed it and when. The schema needs a primary key, so it is
- * **derived** from `reviewIdentity`, the same natural key
- * `reviews_natural_key_unique` uses. A generated uuid would break idempotency:
- * a retry would mint a new id and fail at the index with the intent lost.
+ * The id comes from the command, like every record since C1C-1. The natural key
+ * — what was reviewed, by whom, and when — survives as
+ * `reviews_natural_key_unique`, so one reviewer recording one verdict twice at
+ * one instant still collides. `reviewRowId` below computes the identity the
+ * schema used before that, and is kept for the parity test asserting the two
+ * schemes agree about what counts as the same act.
  *
  * ## Scope
  *
@@ -26,7 +27,9 @@ import {
 } from '~/domain/analysis'
 import { stableHashHex } from '~/domain/shared/hash'
 import {
+  ConcurrencyConflictError,
   ConflictingRecordError,
+  DuplicateRecordError,
   type DecisionRepository,
   type EventRepository,
   type ReviewRepository,
@@ -141,21 +144,26 @@ export const REVIEW_SQL = catalog({
                       ORDER BY challenge_id COLLATE "C", observation_id COLLATE "C"`,
 
   /*
-   * `RETURNING id` is the idempotency signal: no id means the natural key
-   * already holds a review, and the children are then skipped entirely —
-   * matching the in-memory adapter, which discards the whole submission.
+   * No `ON CONFLICT DO NOTHING`, and that is the point.
    *
-   * The id is the command's now, not a hash of the natural key. The natural key
-   * survives as `reviews_natural_key_unique`, so the same reviewer recording
-   * the same verdict at the same instant still collides, while identity comes
-   * from the command like every other record since C1C-1.
+   * It used to swallow every unique violation, which is right for two of the
+   * three and catastrophic for the third. The primary key collides when one
+   * command writes twice — a replay, correctly a no-op. The natural key
+   * collides when one reviewer records one verdict on one revision at one
+   * instant twice — the same institutional act, also a no-op. But
+   * `reviews_sequence_unique` collides when two GENUINELY DIFFERENT reviews
+   * race for the same position, and swallowing that silently discarded one of
+   * them: a control function's verdict would vanish, and the record would show
+   * a review that was never filed.
+   *
+   * The caller distinguishes them by constraint name and reallocates only for
+   * the sequence — see `insertReview`.
    */
   save: `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
             by_employee_id, by_department_id, at, status, detail,
             sequence, supersedes_review_id, reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-         ON CONFLICT DO NOTHING
          RETURNING id`,
 
   /*
@@ -225,7 +233,33 @@ export function createReviewRepository(
     operation: string,
   ) => run<ReviewRow>(client, context, operation, REVIEW_SQL.forCase, [caseId, kind])
 
-  /** Writes the review, and reports whether it was new. */
+  /**
+   * How many times a verdict may lose the race for a position before giving up.
+   *
+   * Bounded rather than open: a loop that reallocated forever would turn a
+   * stuck row into a hung transaction holding a connection. Five is far beyond
+   * the number of control functions that can file on one revision at one
+   * instant, so exhausting it means something other than contention.
+   */
+  const SEQUENCE_ATTEMPTS = 5
+
+  /**
+   * Writes the review, and reports whether it was new.
+   *
+   * `null` means the act is already recorded — a replay, or the same reviewer's
+   * same verdict at the same instant — and the caller then skips the children,
+   * matching the in-memory adapter, which discards the whole submission.
+   *
+   * A `reviews_sequence_unique` collision is neither: it means another verdict
+   * took this position between the read and the write, and both reviews are
+   * real. The position is reallocated inside a savepoint and the insert
+   * retried, so both commit and the order is whatever the database decided —
+   * deterministic afterwards, because `sequence` is a total order.
+   *
+   * A savepoint is what makes retrying possible at all: a constraint violation
+   * aborts the whole transaction otherwise, and the command has already written
+   * events and assignment state by this point.
+   */
   async function insertReview(
     client: Queryable,
     kind: ReviewKind,
@@ -235,30 +269,69 @@ export function createReviewRepository(
     operation: string,
   ): Promise<string | null> {
     const id = review.reviewId
-    const inserted = await run<{ id: string }>(
-      client,
-      context,
-      operation,
-      REVIEW_SQL.save,
-      [
-        id,
-        kind,
-        review.scope,
-        review.caseId,
-        tenantId,
-        review.scope === 'thesis-revision' ? review.thesisId : null,
-        review.scope === 'thesis-revision' ? review.revisionId : null,
-        review.byEmployeeId,
-        review.byDepartmentId,
-        review.at,
-        status,
-        JSON.stringify(detail ?? {}),
-        review.sequence,
-        review.supersedesReviewId ?? null,
-        review.reason ?? null,
-      ],
-    )
-    return inserted.length > 0 ? id : null
+    const revisionId = review.scope === 'thesis-revision' ? review.revisionId : null
+    let sequence = review.sequence
+
+    for (let attempt = 0; attempt < SEQUENCE_ATTEMPTS; attempt += 1) {
+      await client.query(`SAVEPOINT review_insert`)
+      try {
+        const inserted = await run<{ id: string }>(
+          client,
+          context,
+          operation,
+          REVIEW_SQL.save,
+          [
+            id,
+            kind,
+            review.scope,
+            review.caseId,
+            tenantId,
+            review.scope === 'thesis-revision' ? review.thesisId : null,
+            revisionId,
+            review.byEmployeeId,
+            review.byDepartmentId,
+            review.at,
+            status,
+            JSON.stringify(detail ?? {}),
+            sequence,
+            review.supersedesReviewId ?? null,
+            review.reason ?? null,
+          ],
+        )
+        await client.query(`RELEASE SAVEPOINT review_insert`)
+        return inserted.length > 0 ? id : null
+      } catch (error) {
+        await client.query(`ROLLBACK TO SAVEPOINT review_insert`)
+        if (!(error instanceof DuplicateRecordError)) throw error
+
+        if (error.constraint === 'reviews_sequence_unique') {
+          if (!revisionId) throw error
+          const next = await run<{ next: number }>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.nextSequence,
+            [review.caseId, revisionId, kind],
+          )
+          const reallocated = Number(next[0]?.next ?? sequence + 1)
+          /*
+           * Refuse to go backwards or stand still. Either would mean the read
+           * disagrees with the constraint, and looping on it would spin.
+           */
+          if (reallocated <= sequence) throw error
+          sequence = reallocated
+          continue
+        }
+
+        /*
+         * The primary key or the natural key: this exact act is already
+         * recorded. Idempotent, and the caller skips the children.
+         */
+        return null
+      }
+    }
+
+    throw new ConcurrencyConflictError(review.caseId, review.sequence, sequence)
   }
 
   return {
@@ -721,7 +794,7 @@ export function createDecisionRepository(
 
 const EVENT_COLUMNS = `
   event_id, subject, case_id, tenant_id, thesis_id, revision_id, assignment_id,
-  run_id, review_id, from_state, to_state, actor_employee_id, actor_department_id, reason,
+  run_id, review_id, challenge_id, from_state, to_state, actor_employee_id, actor_department_id, reason,
   ${ts('occurred_at')}, correlation_id, causation_id, aggregate_version, corrects
 `
 
@@ -740,10 +813,10 @@ export const EVENT_SQL = catalog({
   // and the runtime role holds no grant for either.
   append: `INSERT INTO analysis.transition_events
              (event_id, subject, case_id, tenant_id, thesis_id, revision_id,
-              assignment_id, run_id, review_id, from_state, to_state, actor_employee_id,
+              assignment_id, run_id, review_id, challenge_id, from_state, to_state, actor_employee_id,
               actor_department_id, reason, occurred_at, correlation_id,
               causation_id, aggregate_version, corrects)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
            ON CONFLICT (event_id) DO NOTHING`,
 })
 
@@ -787,6 +860,7 @@ export function createEventRepository(
           event.assignmentId ?? null,
           event.runId ?? null,
           event.reviewId ?? null,
+          event.challengeId ?? null,
           event.fromState,
           event.toState,
           event.actorEmployeeId ?? null,

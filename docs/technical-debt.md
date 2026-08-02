@@ -1051,7 +1051,10 @@ on the seven documentation requirements in `data-architecture.md` §59.
 
 ## TD-41 · No governance escalation path
 
-**Incurred:** C1C-4. **Severity:** medium. **Blocks:** nothing yet.
+**Incurred:** C1C-4. **Severity:** medium.
+**Blocks:** nothing before C1D. Required for the Agents headquarters to claim
+the workflow is operationally complete; not required for an internal CIO
+decision, which reads eligibility directly.
 
 `Escalation` exists in `domain/analysis/review.ts` and nothing produces one. A
 blocked revision sits blocked; nothing routes it to a manager or the CIO, and
@@ -1063,7 +1066,12 @@ where it belongs.
 
 ## TD-42 · Compliance is defined and unreachable
 
-**Incurred:** AI Phase A, surfaced by C1C-4. **Severity:** low.
+**Incurred:** AI Phase A, surfaced by C1C-4. **Severity:** low while the
+workflow ends at an internal CIO decision.
+**Hard gate before publication or any client-facing output.** A report leaving
+the firm without a compliance verdict is the failure the department exists to
+prevent, and the contract being present but unreachable makes that easy to
+miss — it looks implemented from every angle except the command registry.
 
 `ComplianceReview`, `complianceBlocks` and the `compliance` review kind all
 exist; no command records one. Two consequences, both deliberate for now:
@@ -1082,7 +1090,16 @@ publication phase is the first one that can decide it with evidence.
 
 ## TD-43 · A required correction does not create the work it requires
 
-**Incurred:** C1C-4. **Severity:** medium. **Blocks:** nothing.
+**Incurred:** C1C-4. **Severity:** medium.
+**Must be solved before C2, and before the Agents headquarters presents the
+workflow as operationally complete.** Not before C1D.
+
+A `correction-required` verdict leaves the case truthfully blocked and
+operationally stranded: the record is correct, the blocker names the claim, and
+no desk has been given the work. A human reading the floor can act on it; an
+autonomous runtime in C2 cannot, and a headquarters that showed the case as
+"in progress" with nobody progressing it would be the first thing this system
+says that is not true.
 
 `correction-required` blocks the revision and the finding names what must
 change, but nothing opens an assignment for the desk that must change it. A
@@ -1094,6 +1111,10 @@ sits on `REASON_REQUIRED_COMMANDS` and is unimplemented.
 ## TD-44 · Eligibility is recomputed on every read
 
 **Incurred:** C1C-4, deliberately. **Severity:** low.
+**Do not persist eligibility to avoid recomputation.** Measure first: the cost
+is unmeasured, the scale is one case and tens of reviews, and a stored flag
+would be a second source of truth bought to solve a problem nobody has
+demonstrated.
 
 `revisionEligibility` reads revisions, assignments, runs, resolutions,
 aggregations and every review of the case, then evaluates. At C1C's scale — one
@@ -1107,19 +1128,69 @@ change was noticed rather than when it logically happened.
 
 ---
 
-## TD-45 · The end-to-end Macro flow is not yet PostgreSQL-backed
+## TD-45 · The Macro flow was not PostgreSQL-backed — CLOSED in C1C-4.1
 
-**Incurred:** C1C-4. **Severity:** medium. **Blocks:** the C1C-4 exit criteria.
+**Incurred:** C1C-4. **Closed:** C1C-4.1.
 
-The governance branches are covered against the in-memory adapter — Risk in all
-three states, verification correction, material and non-material challenges,
-re-review ordering, concurrent verdicts, and a new revision reopening every
-gate. The PostgreSQL-backed run of the same flow, including the restart that
-proves eligibility, reviews, events and provenance reload identically, is not
-written.
+`macroFlow.pg.test.ts` runs the whole workflow against PostgreSQL through the
+durable composition root — open, instantiate, propose, contribute, aggregate,
+resolve Risk, submit, verify, challenge, review, derive eligibility — then
+destroys the runtime and rebuilds it. Six scenario branches, an optional input
+that failed, and resumability after the restart.
 
-The schema, both adapters and the repository contract are exercised by the
-PostgreSQL suite, so the storage half is covered; what is missing is the two
-halves together. It is the last item of C1C-4 rather than a design gap, and it
-is named here rather than left implied because an exit report that omitted it
-would be the failure this project has already paid for once.
+**The restart is proved, not asserted.** `restart` closes the pool and then
+requires a read through the dead runtime to FAIL: had any repository state
+survived in process memory, the read would be served from it and succeed, so
+success there would mean the restart never happened. A registry fitness rule —
+with a planted violation, including the dynamic-import form — forbids any
+PostgreSQL-backed test from reading institutional state through the memory
+adapter.
+
+**What is compared is a canonical institutional projection**, never row counts:
+case identity, stage, version and transitions; thesis lineage and exact revision
+identity; aggregation identity, inputs, claim dispositions and optional-input
+snapshots; assignment and run states with execution provenance; claims with
+their evidence refs; requirement resolutions with rule id, version and input
+hash; every review with its sequence, supersession, findings and challenges; the
+ordered event log; ledger entries with payload hashes and outcomes; structured
+eligibility blockers; and storage provenance. `evaluatedAt`, `provenanceId` and
+`buildId` are excluded **by name**, because a heuristic that dropped anything
+timestamp-shaped would also drop `occurredAt` — which is exactly what a restart
+has to preserve.
+
+**Two defects it found, both now fixed.** The review insert used
+`ON CONFLICT DO NOTHING` with no target, which swallowed
+`reviews_sequence_unique` along with the primary and natural keys: two genuinely
+different verdicts racing for one position would have had one silently
+discarded, and the record would have shown a review that was never filed. And
+`transition_events` had no way to name the verdict or the challenge an event
+recorded, so a governance timeline could not be followed to its findings.
+
+---
+
+## TD-46 · Same-kind review races reallocate rather than reject
+
+**Incurred:** C1C-4.1, deliberately. **Severity:** low. **Blocks:** nothing.
+
+The designed behaviour when two genuinely new reviews of one
+`(case, revision, kind)` race for the next position: **the loser reallocates
+inside a savepoint and both immutable verdicts commit**, ordered by whatever
+the database decided and total afterwards.
+
+The alternative — rejecting the loser with a bounded conflict — was not taken.
+A rejection is recorded in the ledger against the losing command id, so the
+caller cannot retry that command; it would have to issue a new one, and a
+control function whose verdict was refused for a reason that has nothing to do
+with its judgement is a worse outcome than an order nobody specified.
+
+The three unique constraints are distinguished by name rather than collapsed:
+the primary key means the same command wrote twice (a replay, correctly a
+no-op), the natural key means the same reviewer recorded the same verdict at the
+same instant (the same act, also a no-op), and only the sequence means two real
+verdicts collided. Reallocation is bounded to five attempts, after which a
+`ConcurrencyConflictError` surfaces — exhausting it means something other than
+contention.
+
+**Left open:** the reallocation loop is not exercised under real concurrent load,
+only under two connections racing in one test. If a future phase files verdicts
+from many processes, measure whether five attempts is still generous.

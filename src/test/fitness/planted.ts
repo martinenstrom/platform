@@ -599,4 +599,56 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+
+  {
+    ruleId: 'no-in-memory-adapter-in-durable-tests',
+    violations: [
+      {
+        path: 'infrastructure/analysis/postgres/macroFlow.pg.test.ts',
+        what: 'a durability test reaching for the memory store',
+        source: `
+          import { createInMemoryRepositories } from '../inMemoryRepositories'
+          export const repositories = createInMemoryRepositories()
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/schema.pg.test.ts',
+        what: 'the same import renamed on the way in',
+        source: `
+          import { createInMemoryRepositories as fallback } from '../inMemoryRepositories'
+          export const repositories = fallback()
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/macroFlow.pg.test.ts',
+        what: 'a fallback added dynamically, out of sight of the import block',
+        source: `
+          export async function repositories() {
+            const { createInMemoryRepositories } = await import('../inMemoryRepositories')
+            return createInMemoryRepositories()
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'infrastructure/analysis/postgres/macroFlow.pg.test.ts',
+        what: 'the durable composition root, which is the point',
+        source: `
+          import { createAnalysisContainer } from '~/infrastructure/analysis/container'
+          export const start = (url: string) =>
+            createAnalysisContainer({ connectionString: url } as never)
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/queryCount.pg.test.ts',
+        what: 'a comment explaining why the memory adapter is absent',
+        source: `
+          /* No createInMemoryRepositories here: a durable test that could fall
+             back to memory would prove that memory works. */
+          export const NOTE = 'inMemoryRepositories is deliberately unused'
+        `,
+      },
+    ],
+  },
 ]

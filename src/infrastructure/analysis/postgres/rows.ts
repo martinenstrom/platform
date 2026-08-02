@@ -300,6 +300,7 @@ export interface TransitionEventRow {
   assignment_id: string | null
   run_id: string | null
   review_id: string | null
+  challenge_id: string | null
   from_state: string | null
   to_state: string
   actor_employee_id: string | null

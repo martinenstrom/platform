@@ -519,6 +519,60 @@ const noEligibilityInSql: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 10 */
+
+/**
+ * The one PostgreSQL test allowed to name the memory adapter, and why.
+ *
+ * `adapter.pg.test.ts` constructs it to read its `provenance()` and assert that
+ * the two stores describe themselves differently — the memory adapter is the
+ * SUBJECT of that assertion, not a source of state. Frozen: the list may
+ * shrink, and a second entry means a durability test found somewhere to fall
+ * back to.
+ */
+const MEMORY_ADAPTER_COMPARISONS = ['infrastructure/analysis/postgres/adapter.pg.test.ts']
+
+const noMemoryInDurableTests: FitnessRule = {
+  id: 'no-in-memory-adapter-in-durable-tests',
+  states: 'No PostgreSQL-backed test reads institutional state from memory.',
+  because:
+    'A durability test that can fall back to memory proves that memory works. ' +
+    'The whole value of the restart suite is that the second runtime had ' +
+    'nowhere else to read from.',
+  selects: (file) =>
+    /\.pg\.test\.tsx?$/.test(file.path) &&
+    !MEMORY_ADAPTER_COMPARISONS.includes(file.path),
+  detect: (file) => {
+    const found: string[] = []
+    for (const reference of file.imports) {
+      if (
+        reference.specifier.includes('inMemoryRepositories') ||
+        reference.names.includes('createInMemoryRepositories')
+      ) {
+        found.push(`${file.path} — imports ${reference.specifier}`)
+      }
+    }
+    /*
+     * The dynamic form too. `await import('../inMemoryRepositories')` inside a
+     * test body is exactly how a fallback gets added without touching the
+     * import block anybody reviews.
+     */
+    for (const node of nodes(file)) {
+      if (!ts.isCallExpression(node)) continue
+      if (node.expression.kind !== ts.SyntaxKind.ImportKeyword) continue
+      const argument = node.arguments[0]
+      if (
+        argument &&
+        ts.isStringLiteralLike(argument) &&
+        argument.text.includes('inMemoryRepositories')
+      ) {
+        found.push(at(file, node, 'dynamically imports the memory adapter'))
+      }
+    }
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -535,6 +589,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   eligibilityDecidedInTheDomain,
   noSecondEligibilityAnswer,
   noEligibilityInSql,
+  noMemoryInDurableTests,
 ]
 
 export function ruleById(id: string): FitnessRule {

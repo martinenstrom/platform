@@ -258,8 +258,16 @@ ALTER TABLE analysis.reviews
  */
 ALTER TABLE analysis.transition_events
     ADD COLUMN review_id text REFERENCES analysis.reviews (id),
+    -- The objection an event opened or resolved. A separate column rather than
+    -- reusing `review_id`, because a challenge is not a review: one Devil's
+    -- Advocate verdict files several, and "which one was resolved" is the
+    -- question the floor asks.
+    ADD COLUMN challenge_id text REFERENCES analysis.challenges (id),
     ADD CONSTRAINT transition_events_review_id_for_review_subject CHECK (
         review_id IS NULL OR subject = 'review'
+    ),
+    ADD CONSTRAINT transition_events_challenge_implies_review CHECK (
+        challenge_id IS NULL OR review_id IS NOT NULL
     );
 
 CREATE INDEX transition_events_review_idx
@@ -273,3 +281,14 @@ GRANT SELECT, INSERT ON
     analysis.risk_findings,
     analysis.risk_limits
 TO finos_app;
+
+/*
+ * A challenge's outcome may already be updated in place — the organization
+ * answering an objection is not a new objection. `resolved_by` moves with it,
+ * because an outcome that names nobody accountable is what the CHECK above
+ * refuses, and the two have to be writable together or neither can change.
+ *
+ * Still no UPDATE on `argument`, `contests_claim_id`, `kind` or `materiality`:
+ * what was objected to, and how much it mattered, are what the objection IS.
+ */
+GRANT UPDATE (resolved_by) ON analysis.challenges TO finos_app;

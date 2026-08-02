@@ -33,6 +33,7 @@ describe('fitness rules detect a planted violation', () => {
       'eligibility-decided-only-in-the-domain',
       'no-caller-supplied-or-invented-identity',
       'no-eligibility-in-sql',
+      'no-in-memory-adapter-in-durable-tests',
       'no-llm-dependency',
       'no-outbound-network-outside-http-client',
       'no-prose-activity-in-domain',

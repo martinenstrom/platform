@@ -70,6 +70,14 @@ export interface TransitionEvent {
    * completed is a timeline entry the reader cannot follow to the findings.
    */
   reviewId?: string
+  /**
+   * The objection this event opened or resolved.
+   *
+   * Not the review: one Devil's Advocate verdict files several challenges, and
+   * "which objection was settled" is a different question from "which verdict
+   * was recorded".
+   */
+  challengeId?: string
 
   /** `null` on creation events, where there was no previous state. */
   fromState: string | null

@@ -818,6 +818,7 @@ export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
           assignmentId: row.assignment_id,
           runId: row.run_id,
           reviewId: row.review_id,
+          challengeId: row.challenge_id,
           toState: row.to_state,
           actorEmployeeId: row.actor_employee_id,
           actorDepartmentId: row.actor_department_id,
