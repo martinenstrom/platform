@@ -12,10 +12,15 @@ import {
   buildAssignment,
   buildChallenge,
   buildClaim,
+  blockingChallenges,
   buildEvidenceSet,
+  buildRiskVerdict,
   buildRole,
   buildRunRecord,
+  buildVerificationFinding,
   canTransition,
+  challengeBlocks,
+  disagreementBlocksEligibility,
   citeFrom,
   composeConfidence,
   departmentsHandling,
@@ -29,16 +34,21 @@ import {
   resolveCitation,
   runCacheKey,
   transitionCase,
+  unresolvedChallenges,
   validateOrganization,
   workQueueFor,
   workloadFor,
   waitingChains,
   type AgentClaim,
   type Assignment,
+  type Challenge,
   type Department,
+  type DevilsAdvocateReview,
   type EvidenceSignals,
   type InvestmentCase,
   type Organization,
+  type RiskReview,
+  type RiskStatus,
   type VerificationReview,
   type VerificationVerdict,
 } from './index'
@@ -767,6 +777,8 @@ describe('the governance gate', () => {
   const verification = (over: Partial<VerificationVerdict> = {}): VerificationReview => ({
     scope: 'case',
     caseId: 'case-1',
+    reviewId: 'rev-verification-1',
+    sequence: 1,
     byEmployeeId: 'fact-head',
     byDepartmentId: 'verification',
     at: '2026-07-27T10:00:00.000Z',
@@ -776,70 +788,177 @@ describe('the governance gate', () => {
     ...over,
   })
 
+  /** Risk resolved as not applying, so the Risk gate is not what is under test. */
+  const riskSettled = { riskRequirement: 'not-required' } as const
+  const kinds = (result: { blockers: readonly { kind: string }[] }) =>
+    result.blockers.map((blocker) => blocker.kind)
+
   it('blocks when verification has not happened at all', () => {
     // A missing check must not be a pass, or skipping it is the way through.
-    const result = evaluateGate({})
+    const result = evaluateGate(riskSettled)
     expect(result.passed).toBe(false)
-    expect(result.blockers).toContain('verification has not been performed')
+    expect(kinds(result)).toContain('verification-missing')
   })
 
   it('passes a verified case', () => {
-    expect(evaluateGate({ verification: verification() }).passed).toBe(true)
+    expect(evaluateGate({ ...riskSettled, verification: verification() }).passed).toBe(
+      true,
+    )
   })
 
   it('blocks on a correction requirement', () => {
-    expect(
-      evaluateGate({ verification: verification({ status: 'correction-required' }) })
-        .passed,
-    ).toBe(false)
+    const result = evaluateGate({
+      ...riskSettled,
+      verification: verification({ status: 'correction-required' }),
+    })
+    expect(result.passed).toBe(false)
+    expect(kinds(result)).toEqual(['verification-correction-required'])
+  })
+
+  it('names the claims a blocking verdict is about, rather than describing them', () => {
+    /*
+     * The property the structured blocker exists for. The floor links to a
+     * claim; it does not parse a sentence to find one.
+     */
+    const result = evaluateGate({
+      ...riskSettled,
+      verification: verification({
+        status: 'correction-required',
+        findings: [
+          buildVerificationFinding({
+            kind: 'value-mismatch',
+            claimId: 'claim-7',
+            detail: 'CPI print does not match the cited release',
+            blocking: true,
+            severity: 'critical',
+            expected: { amount: '3.1', unit: 'percent' },
+            observed: { amount: '3.4', unit: 'percent' },
+            correctionRequired: 'Recompute against the September release.',
+          }),
+        ],
+      }),
+    })
+    const blocker = result.blockers[0]!
+    expect(blocker.kind).toBe('verification-correction-required')
+    expect(blocker).toMatchObject({
+      blockingClaimIds: ['claim-7'],
+      status: 'correction-required',
+    })
   })
 
   it('blocks on a single blocking finding even when the status looks benign', () => {
     const review = verification({
       status: 'verified-with-qualifications',
       findings: [
-        {
+        buildVerificationFinding({
           kind: 'basis-point-confusion',
           claimId: 'claim-1',
           detail: '0.25 % reported as 25 bp',
           blocking: true,
-        },
+          severity: 'critical',
+          correctionRequired: 'Restate as 25 basis points.',
+        }),
       ],
     })
-    expect(evaluateGate({ verification: review }).passed).toBe(false)
+    expect(evaluateGate({ ...riskSettled, verification: review }).passed).toBe(false)
   })
 
-  it('blocks while a challenge is unresolved', () => {
+  it('refuses a blocking finding that does not say what would clear it', () => {
+    expect(() =>
+      buildVerificationFinding({
+        kind: 'value-mismatch',
+        claimId: 'claim-1',
+        detail: 'wrong',
+        blocking: true,
+        severity: 'critical',
+      }),
+    ).toThrow(/what would clear it/)
+  })
+
+  const challengeReview = (challenges: Challenge[]): DevilsAdvocateReview => ({
+    scope: 'case',
+    caseId: 'case-1',
+    reviewId: 'rev-da-1',
+    sequence: 1,
+    byEmployeeId: 'da',
+    byDepartmentId: 'devils-advocate',
+    at: '2026-07-27T10:05:00.000Z',
+    challenges,
+    outcomes: {},
+  })
+
+  const challenge = (over: Partial<Challenge> = {}) =>
+    buildChallenge({
+      id: 'ch-1',
+      contests: 'claim-1',
+      kind: 'contradicting-evidence',
+      argument: 'The order book says otherwise.',
+      counterEvidence: [{ setId: 's', observationId: 'o2', contentHash: 'h2' }],
+      materiality: 'material',
+      ...over,
+    })
+
+  it('blocks while a material challenge is unresolved', () => {
     const result = evaluateGate({
+      ...riskSettled,
       verification: verification(),
-      devilsAdvocate: {
-        scope: 'case',
-        caseId: 'case-1',
-        byEmployeeId: 'da',
-        byDepartmentId: 'devils-advocate',
-        at: '2026-07-27T10:05:00.000Z',
-        challenges: [
-          buildChallenge({
-            id: 'ch-1',
-            contests: 'claim-1',
-            kind: 'contradicting-evidence',
-            argument: 'The order book says otherwise.',
-            counterEvidence: [{ setId: 's', observationId: 'o2', contentHash: 'h2' }],
-          }),
-        ],
-        outcomes: {},
-      },
+      devilsAdvocate: challengeReview([challenge()]),
     })
     expect(result.passed).toBe(false)
-    expect(result.blockers.join(' ')).toMatch(/unresolved challenge/)
+    expect(result.blockers[0]).toMatchObject({
+      kind: 'unresolved-material-challenge',
+      challengeId: 'ch-1',
+      contests: 'claim-1',
+      materiality: 'material',
+    })
+  })
+
+  it('does not block on a non-material challenge, and keeps it visible', () => {
+    const review = challengeReview([challenge({ materiality: 'non-material' })])
+    const result = evaluateGate({
+      ...riskSettled,
+      verification: verification(),
+      devilsAdvocate: review,
+    })
+    expect(result.passed).toBe(true)
+    // Not a blocker, and not gone: the CIO reads it beside the thesis.
+    expect(unresolvedChallenges(review)).toHaveLength(1)
+    expect(blockingChallenges(review)).toEqual([])
+  })
+
+  it('blocks on a decision-critical challenge', () => {
+    const result = evaluateGate({
+      ...riskSettled,
+      verification: verification(),
+      devilsAdvocate: challengeReview([challenge({ materiality: 'decision-critical' })]),
+    })
+    expect(result.passed).toBe(false)
+  })
+
+  it('applies a lower threshold to a challenge than to an aggregation disagreement', () => {
+    /*
+     * The asymmetry, asserted rather than described. A formal objection from
+     * the desk whose mandate is to attack the argument blocks at `material`; a
+     * manager noting that two desks disagreed blocks only at
+     * `decision-critical`.
+     */
+    expect(challengeBlocks('material')).toBe(true)
+    expect(disagreementBlocksEligibility('material')).toBe(false)
+    expect(challengeBlocks('decision-critical')).toBe(true)
+    expect(disagreementBlocksEligibility('decision-critical')).toBe(true)
+    expect(challengeBlocks('non-material')).toBe(false)
+    expect(disagreementBlocksEligibility('non-material')).toBe(false)
   })
 
   it('reports every blocker at once, so one pass fixes them all', () => {
     const result = evaluateGate({
+      ...riskSettled,
       verification: verification({ status: 'unresolved-discrepancy' }),
       compliance: {
         scope: 'case',
         caseId: 'case-1',
+        reviewId: 'rev-compliance-1',
+        sequence: 1,
         byEmployeeId: 'c',
         byDepartmentId: 'compliance',
         at: '2026-07-27T10:10:00.000Z',
@@ -847,7 +966,10 @@ describe('the governance gate', () => {
         findings: [],
       },
     })
-    expect(result.blockers).toHaveLength(2)
+    expect(kinds(result)).toEqual([
+      'verification-correction-required',
+      'compliance-block',
+    ])
   })
 
   it('refuses an objection with nothing behind it', () => {
@@ -858,11 +980,12 @@ describe('the governance gate', () => {
         kind: 'contradicting-evidence',
         argument: 'I disagree.',
         counterEvidence: [],
+        materiality: 'material',
       }),
     ).toThrow(/argues from evidence/)
   })
 
-  it('allows an assumption challenge without counter-evidence', () => {
+  it('allows an assumption challenge without counter-evidence, if it says what would settle it', () => {
     // Naming a fragile assumption is legitimate without a counter-observation.
     expect(() =>
       buildChallenge({
@@ -871,8 +994,148 @@ describe('the governance gate', () => {
         kind: 'fragile-assumption',
         argument: 'The terminal growth rate assumes no competitive entry.',
         counterEvidence: [],
+        materiality: 'material',
+        wouldBeResolvedBy: 'Entry barriers evidenced from the last two cycles.',
       }),
     ).not.toThrow()
+  })
+
+  it('refuses an assumption challenge that nothing could settle', () => {
+    expect(() =>
+      buildChallenge({
+        id: 'ch-4',
+        contests: 'claim-1',
+        kind: 'overconfidence',
+        argument: 'This feels too certain.',
+        counterEvidence: [],
+        materiality: 'material',
+      }),
+    ).toThrow(/nothing could settle/)
+  })
+})
+
+describe('the conditional Risk gate', () => {
+  const verified = (): VerificationReview => ({
+    scope: 'case',
+    caseId: 'case-1',
+    reviewId: 'rev-v',
+    sequence: 1,
+    byEmployeeId: 'fact-head',
+    byDepartmentId: 'verification',
+    at: '2026-07-27T10:00:00.000Z',
+    status: 'verified',
+    findings: [],
+    claimsReviewed: [],
+  })
+
+  const risk = (status: RiskStatus): RiskReview => ({
+    scope: 'case',
+    caseId: 'case-1',
+    reviewId: 'rev-risk',
+    sequence: 1,
+    byEmployeeId: 'risk-head',
+    byDepartmentId: 'risk',
+    at: '2026-07-27T11:00:00.000Z',
+    status,
+    findings:
+      status === 'rejected'
+        ? [{ kind: 'tail-risk', detail: 'unhedged', severity: 'critical' }]
+        : [],
+    ...(status === 'accepted-with-limits' ? { limits: ['2% of NAV'] } : {}),
+  })
+
+  const kinds = (result: { blockers: readonly { kind: string }[] }) =>
+    result.blockers.map((b) => b.kind)
+
+  it('treats an unresolved requirement as unsatisfied', () => {
+    expect(
+      kinds(evaluateGate({ verification: verified(), riskRequirement: 'unresolved' })),
+    ).toEqual(['risk-requirement-unresolved'])
+  })
+
+  it('defaults to unresolved when nothing supplies the requirement', () => {
+    // The safe direction: forgetting to supply it must be visible, not silent.
+    expect(kinds(evaluateGate({ verification: verified() }))).toEqual([
+      'risk-requirement-unresolved',
+    ])
+  })
+
+  it('lets no Risk approval satisfy a gate whose requirement was never resolved', () => {
+    /*
+     * The load-bearing one. An approval of a review nobody established was
+     * needed is not evidence that the question was asked.
+     */
+    const result = evaluateGate({
+      verification: verified(),
+      riskRequirement: 'unresolved',
+      risk: risk('accepted'),
+    })
+    expect(result.passed).toBe(false)
+    expect(kinds(result)).toContain('risk-requirement-unresolved')
+  })
+
+  it('satisfies the gate with an explicit not-required and no review', () => {
+    const result = evaluateGate({
+      verification: verified(),
+      riskRequirement: 'not-required',
+    })
+    expect(result.passed).toBe(true)
+    expect(result.blockers).toEqual([])
+  })
+
+  it('blocks a Risk verdict against a revision recorded as not needing one', () => {
+    // Otherwise the Risk desk establishes its own mandate.
+    expect(
+      kinds(
+        evaluateGate({
+          verification: verified(),
+          riskRequirement: 'not-required',
+          risk: risk('accepted'),
+        }),
+      ),
+    ).toEqual(['risk-review-not-expected'])
+  })
+
+  it('blocks when required and missing', () => {
+    expect(
+      kinds(evaluateGate({ verification: verified(), riskRequirement: 'required' })),
+    ).toEqual(['risk-review-missing'])
+  })
+
+  it('blocks when required and rejected', () => {
+    expect(
+      kinds(
+        evaluateGate({
+          verification: verified(),
+          riskRequirement: 'required',
+          risk: risk('rejected'),
+        }),
+      ),
+    ).toEqual(['risk-review-rejected'])
+  })
+
+  it('passes when required and accepted, with or without limits', () => {
+    for (const status of ['accepted', 'accepted-with-limits'] as const) {
+      expect(
+        evaluateGate({
+          verification: verified(),
+          riskRequirement: 'required',
+          risk: risk(status),
+        }).passed,
+      ).toBe(true)
+    }
+  })
+
+  it('refuses a limited acceptance that states no limits', () => {
+    expect(() =>
+      buildRiskVerdict({ status: 'accepted-with-limits', findings: [], limits: [] }),
+    ).toThrow(/state.* no limits/)
+  })
+
+  it('refuses a rejection that records no finding', () => {
+    expect(() => buildRiskVerdict({ status: 'rejected', findings: [] })).toThrow(
+      /records no finding/,
+    )
   })
 })
 

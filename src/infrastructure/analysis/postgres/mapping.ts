@@ -58,6 +58,8 @@ import {
   type RiskReview,
   type RunEvent,
   type TransitionEvent,
+  type FindingValue,
+  type RiskFinding,
   type VerificationFinding,
   type VerificationReview,
 } from '~/domain/analysis'
@@ -87,6 +89,9 @@ import type {
   ThesisRevisionRow,
   TransitionEventRow,
   VerificationFindingRow,
+  RiskFindingRow,
+  RiskLimitRow,
+  VerificationClaimReviewedRow,
 } from './rows'
 
 /** Wraps a builder so a domain rejection is reported as a malformed row. */
@@ -583,15 +588,36 @@ function attribution(row: ReviewRow) {
   }
 }
 
+/** Identity and position — common to every verdict since 0019. */
+function order(row: ReviewRow) {
+  return present({
+    reviewId: row.id,
+    sequence: row.sequence,
+    supersedesReviewId: row.supersedes_review_id,
+    reason: row.reason,
+  })
+}
+
+/** A value only exists when it has an amount; unit and currency are optional. */
+function findingValue(
+  amount: string | null,
+  unit: string | null,
+  currency: string | null,
+): FindingValue | null {
+  if (amount === null) return null
+  return present({ amount, unit, currency }) as FindingValue
+}
+
 export function toVerification(
   row: ReviewRow,
   findings: readonly VerificationFindingRow[],
+  claimsReviewed: readonly VerificationClaimReviewedRow[],
 ): VerificationReview {
-  const detail = (row.detail ?? {}) as { claimsReviewed?: unknown }
   return seal(
     {
       ...toScope(row),
       ...attribution(row),
+      ...order(row),
       status: row.status as VerificationReview['status'],
       findings: findings.map(
         (finding) =>
@@ -600,6 +626,7 @@ export function toVerification(
             claimId: finding.claim_id,
             detail: finding.detail,
             blocking: finding.blocking,
+            severity: finding.severity,
             /*
              * All three parts, or no citation at all. The hash was previously
              * reconstructed as `''` because the column did not exist — which
@@ -616,11 +643,24 @@ export function toVerification(
                     contentHash: finding.content_hash,
                   }
                 : null,
+            citedContentHash: finding.cited_content_hash,
+            expected: findingValue(
+              finding.expected_amount,
+              finding.expected_unit,
+              finding.expected_currency,
+            ),
+            observed: findingValue(
+              finding.observed_amount,
+              finding.observed_unit,
+              finding.observed_currency,
+            ),
+            methodology: finding.methodology,
+            correctionRequired: finding.correction_required,
           }) as VerificationFinding,
       ),
-      claimsReviewed: Array.isArray(detail.claimsReviewed)
-        ? (detail.claimsReviewed as string[])
-        : [],
+      // A row per claim, so an unchecked claim is visible as unchecked rather
+      // than merely absent from a document nobody can query.
+      claimsReviewed: claimsReviewed.map((entry) => entry.claim_id),
     } as VerificationReview,
     'reviews.verification',
   )
@@ -643,6 +683,8 @@ export function toDevilsAdvocate(
           kind: challenge.kind,
           argument: challenge.argument,
           wouldBeResolvedBy: challenge.would_be_resolved_by,
+          materiality: challenge.materiality,
+          resolvedBy: challenge.resolved_by,
           counterEvidence: evidence
             .filter((item) => item.challenge_id === challenge.id)
             .map((item) => ({
@@ -659,6 +701,7 @@ export function toDevilsAdvocate(
     {
       ...toScope(row),
       ...attribution(row),
+      ...order(row),
       challenges: built,
       outcomes,
     } as DevilsAdvocateReview,
@@ -667,11 +710,14 @@ export function toDevilsAdvocate(
 }
 
 export function toCompliance(row: ReviewRow): ComplianceReview {
+  // The one kind still carrying a document, and only because nothing records
+  // a compliance review yet — see 0019 and TD-42.
   const detail = (row.detail ?? {}) as { findings?: unknown }
   return seal(
     {
       ...toScope(row),
       ...attribution(row),
+      ...order(row),
       status: row.status as ComplianceReview['status'],
       findings: Array.isArray(detail.findings)
         ? (detail.findings as ComplianceReview['findings'])
@@ -681,15 +727,28 @@ export function toCompliance(row: ReviewRow): ComplianceReview {
   )
 }
 
-export function toRisk(row: ReviewRow): RiskReview {
-  const detail = (row.detail ?? {}) as { concerns?: unknown; limits?: unknown }
+export function toRisk(
+  row: ReviewRow,
+  findings: readonly RiskFindingRow[],
+  limits: readonly RiskLimitRow[],
+): RiskReview {
   return seal(
     present({
       ...toScope(row),
       ...attribution(row),
+      ...order(row),
       status: row.status as RiskReview['status'],
-      concerns: Array.isArray(detail.concerns) ? (detail.concerns as string[]) : [],
-      limits: Array.isArray(detail.limits) ? (detail.limits as string[]) : null,
+      findings: findings.map(
+        (finding) =>
+          present({
+            kind: finding.kind,
+            detail: finding.detail,
+            severity: finding.severity,
+            implication: finding.implication,
+            mitigatedBy: finding.mitigated_by,
+          }) as RiskFinding,
+      ),
+      limits: limits.length > 0 ? limits.map((entry) => entry.limit_text) : null,
     }) as RiskReview,
     'reviews.risk',
   )

@@ -32,6 +32,7 @@ import {
   DOMAIN_CONTRACT_VERSION,
   playbookAssignmentIdentity,
   reviewIdentity,
+  type ReviewOrder,
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
@@ -549,14 +550,17 @@ const sameReview = (
 ) => reviewIdentity(kind, a) === reviewIdentity(kind, b)
 
 /**
- * `at`, then `byEmployeeId`, then `revisionId`.
+ * `sequence`, then `at`, then `byEmployeeId`, then `revisionId`.
  *
- * The revision is the final tie-break because one reviewer can record verdicts
- * on two competing revisions at the same instant. Case-wide reviews sort as
- * the empty string, which places them first among ties — a fixed position
- * rather than an arbitrary one.
+ * Sequence leads because it is the only total order — `at` alone left two
+ * verdicts recorded in the same millisecond in an arbitrary order. The revision
+ * is the final tie-break because one reviewer can record verdicts on two
+ * competing revisions at the same instant. Case-wide reviews sort as the empty
+ * string, which places them first among ties: a fixed position rather than an
+ * arbitrary one.
  */
-const byReview = <T extends ReviewScope & ReviewAttribution>(a: T, b: T) =>
+const byReview = <T extends ReviewScope & ReviewAttribution & ReviewOrder>(a: T, b: T) =>
+  a.sequence - b.sequence ||
   byString(a.at, b.at) ||
   byString(a.byEmployeeId, b.byEmployeeId) ||
   byString(
@@ -565,7 +569,7 @@ const byReview = <T extends ReviewScope & ReviewAttribution>(a: T, b: T) =>
   )
 
 function reviewRepository(store: Store, scope: Scope): ReviewRepository {
-  const list = <T extends ReviewScope & ReviewAttribution>(
+  const list = <T extends ReviewScope & ReviewAttribution & ReviewOrder>(
     all: T[],
     caseId: string,
     operation: string,
@@ -574,7 +578,34 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
     return all.filter((r) => r.caseId === caseId).sort(byReview)
   }
 
+  /** Mirrors the PostgreSQL adapter's `max(sequence) + 1` for one triple. */
+  const allocated = (
+    all: ReadonlyArray<ReviewScope & ReviewOrder>,
+    caseId: string,
+    revisionId: string,
+  ) =>
+    all
+      .filter(
+        (review) =>
+          review.caseId === caseId &&
+          review.scope === 'thesis-revision' &&
+          review.revisionId === revisionId,
+      )
+      .reduce((highest, review) => Math.max(highest, review.sequence), 0) + 1
+
   return {
+    async nextSequence({ caseId, revisionId, kind }) {
+      guard(scope, 'reviews.nextSequence')
+      const all =
+        kind === 'verification'
+          ? store.verifications
+          : kind === 'devils-advocate'
+            ? store.challenges
+            : kind === 'compliance'
+              ? store.compliance
+              : store.risk
+      return allocated(all, caseId, revisionId)
+    },
     async verificationsForCase(caseId) {
       return list(store.verifications, caseId, 'reviews.verificationsForCase')
     },

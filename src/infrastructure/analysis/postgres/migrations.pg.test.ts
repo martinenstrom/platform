@@ -71,6 +71,7 @@ describe('a clean database reaches the expected schema', () => {
       '0016',
       '0017',
       '0018',
+      '0019',
     ])
   })
 
@@ -115,6 +116,8 @@ describe('a clean database reaches the expected schema', () => {
       'requirement_resolutions',
       'responsibilities',
       'reviews',
+      'risk_findings',
+      'risk_limits',
       'roles',
       'run_events',
       'runs',
@@ -125,6 +128,7 @@ describe('a clean database reaches the expected schema', () => {
       'thesis_claim_links',
       'thesis_revisions',
       'transition_events',
+      'verification_claims_reviewed',
       'verification_findings',
     ])
   })

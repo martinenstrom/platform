@@ -621,9 +621,9 @@ describe('governance records', () => {
     await expect(
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
+           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status, sequence)
          VALUES ($1, 'verification', 'case', 'no-such-case', 'system', 'verification-head',
-                 'verification', now(), 'verified')`,
+                 'verification', now(), 'verified', 1)`,
         [id('review')],
       ),
     ).rejects.toThrow(/violates foreign key/)
@@ -634,8 +634,8 @@ describe('governance records', () => {
     await expect(
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
-         VALUES ($1, 'risk', 'case', $2, 'system', 'chief-risk-officer', 'risk', now(), 'approved')`,
+           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status, sequence)
+         VALUES ($1, 'risk', 'case', $2, 'system', 'chief-risk-officer', 'risk', now(), 'approved', 1)`,
         [id('review'), caseId],
       ),
     ).rejects.toThrow(/reviews_status_matches_kind/)
@@ -648,9 +648,9 @@ describe('governance records', () => {
     const insert = (reviewId: string) =>
       sql.query(
         `INSERT INTO analysis.reviews
-           (id, kind, scope, case_id, tenant_id, thesis_id, by_employee_id, by_department_id, at, status)
+           (id, kind, scope, case_id, tenant_id, thesis_id, by_employee_id, by_department_id, at, status, sequence)
          VALUES ($1, 'verification', 'case', $2, 'system', NULL, 'verification-head',
-                 'verification', $3, 'verified')`,
+                 'verification', $3, 'verified', 1)`,
         [reviewId, caseId, at],
       )
 
@@ -669,16 +669,16 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at)
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, sequence)
        VALUES ($1, 'devils-advocate', 'case', $2, 'system', 'devils-advocate-head',
-               'devils-advocate', now())`,
+               'devils-advocate', now(), 1)`,
       [reviewId, caseId],
     )
 
     await sql.query('BEGIN')
     await sql.query(
-      `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument)
-       VALUES ($1, $2, $3, 'contradicting-evidence', 'The number is wrong')`,
+      `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality)
+       VALUES ($1, $2, $3, 'contradicting-evidence', 'The number is wrong', 'material')`,
       [id('challenge'), reviewId, claimId],
     )
     await expect(sql.query('COMMIT')).rejects.toThrow(/cites no counter-evidence/)
@@ -694,15 +694,15 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at)
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, sequence)
        VALUES ($1, 'devils-advocate', 'case', $2, 'system', 'devils-advocate-head',
-               'devils-advocate', now())`,
+               'devils-advocate', now(), 1)`,
       [reviewId, caseId],
     )
     await expect(
       sql.query(
-        `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument)
-         VALUES ($1, $2, $3, 'fragile-assumption', 'This assumes no fiscal shock')`,
+        `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality, would_be_resolved_by)
+         VALUES ($1, $2, $3, 'fragile-assumption', 'This assumes no fiscal shock', 'material', 'A fiscal impulse estimate')`,
         [id('challenge'), reviewId, claimId],
       ),
     ).resolves.toBeDefined()
@@ -713,16 +713,18 @@ describe('governance records', () => {
     const reviewId = id('review')
     await sql.query(
       `INSERT INTO analysis.reviews
-         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status)
+         (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, status, sequence)
        VALUES ($1, 'verification', 'case', $2, 'system', 'verification-head', 'verification',
-               now(), 'correction-required')`,
+               now(), 'correction-required', 1)`,
       [reviewId, caseId],
     )
     await expect(
       sql.query(
         `INSERT INTO analysis.verification_findings
-           (id, review_id, kind, claim_id, detail, blocking)
-         VALUES ($1, $2, 'value-mismatch', 'no-such-claim', 'wrong', true)`,
+           (id, review_id, kind, claim_id, detail, blocking, severity,
+            correction_required)
+         VALUES ($1, $2, 'value-mismatch', 'no-such-claim', 'wrong', true,
+                 'critical', 'restate the number')`,
         [id('finding'), reviewId],
       ),
     ).rejects.toThrow(/violates foreign key/)

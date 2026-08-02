@@ -146,6 +146,8 @@ describe('all four control functions carry a scope', () => {
     const compliance: ComplianceReview = {
       scope: 'case',
       caseId: CASE,
+      reviewId: 'c-case',
+      sequence: 1,
       byEmployeeId: 'compliance-head',
       byDepartmentId: 'compliance',
       at: AT,
@@ -156,11 +158,13 @@ describe('all four control functions carry a scope', () => {
       scope: 'thesis-revision',
       caseId: CASE,
       ...rev1,
+      reviewId: 'r-rev1',
+      sequence: 1,
       byEmployeeId: 'chief-risk-officer',
       byDepartmentId: 'risk',
       at: AT,
       status: 'accepted',
-      concerns: [],
+      findings: [],
     }
 
     await repos.reviews.saveCompliance(compliance)

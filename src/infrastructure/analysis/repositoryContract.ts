@@ -248,6 +248,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
         ...(target === 'case'
           ? { scope: 'case', caseId: 'case-1' }
           : { scope: 'thesis-revision', caseId: 'case-1', ...target }),
+        reviewId: `v-${target === 'case' ? 'case' : target.revisionId}`,
+        sequence: 1,
         byEmployeeId: f.governanceEmployeeId,
         byDepartmentId: f.governanceDepartmentId,
         at: AT,
@@ -1146,11 +1148,20 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.reviews.saveVerification(submission)
         await repos.reviews.saveVerification({
           ...submission,
+          reviewId: 'v-rev-1-second',
+          sequence: 2,
           at: LATER,
           status: 'correction-required',
+          reason: 'A later check found the CPI series had been revised.',
+          supersedesReviewId: submission.reviewId,
         } as VerificationReview)
 
-        expect(await repos.reviews.verificationsForCase('case-1')).toHaveLength(2)
+        const both = await repos.reviews.verificationsForCase('case-1')
+        expect(both).toHaveLength(2)
+        // Ordered by sequence, so "the current verdict" is a function of the
+        // data rather than of two equal timestamps.
+        expect(both.map((review) => review.sequence)).toEqual([1, 2])
+        expect(both.at(-1)!.supersedesReviewId).toBe(submission.reviewId)
       })
 
       it('keeps the four control functions apart', async () => {
@@ -1159,6 +1170,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.reviews.saveCompliance({
           scope: 'case',
           caseId: 'case-1',
+          reviewId: 'c-case',
+          sequence: 1,
           byEmployeeId: f.governanceEmployeeId,
           byDepartmentId: f.governanceDepartmentId,
           at: AT,
@@ -1168,19 +1181,21 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.reviews.saveRisk({
           scope: 'case',
           caseId: 'case-1',
+          reviewId: 'r-case',
+          sequence: 1,
           byEmployeeId: f.governanceEmployeeId,
           byDepartmentId: f.governanceDepartmentId,
           at: AT,
           status: 'accepted',
-          concerns: ['duration'],
+          findings: [{ kind: 'downside', detail: 'duration', severity: 'material' }],
         })
 
         expect(await repos.reviews.verificationsForCase('case-1')).toHaveLength(1)
         expect(await repos.reviews.complianceForCase('case-1')).toHaveLength(1)
         expect(await repos.reviews.riskForCase('case-1')).toHaveLength(1)
-        expect((await repos.reviews.riskForCase('case-1'))[0]!.concerns).toEqual([
-          'duration',
-        ])
+        expect(
+          (await repos.reviews.riskForCase('case-1'))[0]!.findings.map((x) => x.kind),
+        ).toEqual(['downside'])
       })
     })
 
@@ -1480,6 +1495,9 @@ export function describeRepositoryContract(name: string, options: ContractOption
                 claimId: 'claim-1',
                 detail: 'the yield moved after this was cited',
                 blocking: true,
+                severity: 'critical',
+                correctionRequired: 'Re-cite against the current observation.',
+                citedContentHash: 'the-hash-at-citation',
                 evidence: { setId, observationId, contentHash: 'the-hash-at-citation' },
               },
             ],

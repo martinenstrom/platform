@@ -66,7 +66,13 @@ export interface DecisionContext {
     revisionId: RevisionId
     lifecycle: string
     eligibleForDecision: boolean
-    blockedBy: ReadonlyArray<{ kind: string; detail: string }>
+    /**
+     * Structurally typed on `kind` alone, so this stays readable against
+     * `ThesisEligibility` without importing the whole blocker union. A
+     * decision refusal names the kinds; how they read is presentation's
+     * problem, which is why there is no longer a `detail` sentence to quote.
+     */
+    blockedBy: ReadonlyArray<{ kind: string }>
   }>
   devilsAdvocate?: DevilsAdvocateReview
 }

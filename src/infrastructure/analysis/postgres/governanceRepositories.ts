@@ -20,6 +20,8 @@
 import {
   reviewIdentity,
   type ReviewAttribution,
+  type ReviewOrder,
+  type ReviewRecordId,
   type ReviewScope,
 } from '~/domain/analysis'
 import { stableHashHex } from '~/domain/shared/hash'
@@ -46,6 +48,9 @@ import type {
   ReviewRow,
   TransitionEventRow,
   VerificationFindingRow,
+  RiskFindingRow,
+  RiskLimitRow,
+  VerificationClaimReviewedRow,
 } from './rows'
 import {
   decisionSemanticKey,
@@ -66,25 +71,65 @@ export function reviewRowId(
 
 const REVIEW_COLUMNS = `
   id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-  by_employee_id, by_department_id, ${ts('at')}, status, detail
+  by_employee_id, by_department_id, ${ts('at')}, status, detail,
+  sequence, supersedes_review_id, reason
 `
 
-/** `at`, then by_employee_id, then revision_id — case-wide sorts first. */
-const REVIEW_ORDER = `ORDER BY at, by_employee_id COLLATE "C",
+/**
+ * `sequence`, then `at`, then the natural tiebreaks.
+ *
+ * Sequence leads because it is the only total order: `at` alone left two
+ * verdicts recorded in the same millisecond in an arbitrary order, so "the
+ * current verdict" was not a function of the data.
+ */
+const REVIEW_ORDER = `ORDER BY sequence, at, by_employee_id COLLATE "C",
                                coalesce(revision_id, '') COLLATE "C"`
 
 export const REVIEW_SQL = catalog({
   forCase: `SELECT ${REVIEW_COLUMNS} FROM analysis.reviews
             WHERE case_id = $1 AND kind = $2 ${REVIEW_ORDER}`,
 
+  /*
+   * The next position for one (case, revision, kind).
+   *
+   * Read-then-increment, and safe because `reviews_sequence_unique` is what
+   * actually protects it: two transactions racing for the same position cannot
+   * both commit, so the loser fails on the constraint rather than silently
+   * taking a position that is already claimed. Locking instead would serialise
+   * Verification against the Devil's Advocate, which is the concurrency the
+   * firm needs most.
+   */
+  nextSequence: `SELECT coalesce(max(sequence), 0) + 1 AS next
+                 FROM analysis.reviews
+                 WHERE case_id = $1 AND revision_id = $2 AND kind = $3`,
+
   findings: `SELECT id, review_id, kind, claim_id, detail, blocking,
-                    evidence_set_id, observation_id, content_hash
+                    evidence_set_id, observation_id, content_hash, severity,
+                    expected_amount, expected_unit, expected_currency,
+                    observed_amount, observed_unit, observed_currency,
+                    methodology, correction_required, cited_content_hash
              FROM analysis.verification_findings
              WHERE review_id = ANY($1::text[])
              ORDER BY review_id COLLATE "C", id COLLATE "C"`,
 
+  claimsReviewed: `SELECT review_id, claim_id
+                   FROM analysis.verification_claims_reviewed
+                   WHERE review_id = ANY($1::text[])
+                   ORDER BY review_id COLLATE "C", claim_id COLLATE "C"`,
+
+  riskFindings: `SELECT review_id, ordinal, kind, detail, severity,
+                        implication, mitigated_by
+                 FROM analysis.risk_findings
+                 WHERE review_id = ANY($1::text[])
+                 ORDER BY review_id COLLATE "C", ordinal`,
+
+  riskLimits: `SELECT review_id, ordinal, limit_text
+               FROM analysis.risk_limits
+               WHERE review_id = ANY($1::text[])
+               ORDER BY review_id COLLATE "C", ordinal`,
+
   challenges: `SELECT id, review_id, contests_claim_id, contests_thesis_id, kind,
-                      argument, would_be_resolved_by, outcome
+                      argument, would_be_resolved_by, outcome, materiality, resolved_by
                FROM analysis.challenges WHERE review_id = ANY($1::text[])
                ORDER BY review_id COLLATE "C", id COLLATE "C"`,
 
@@ -97,11 +142,17 @@ export const REVIEW_SQL = catalog({
    * `RETURNING id` is the idempotency signal: no id means the natural key
    * already holds a review, and the children are then skipped entirely —
    * matching the in-memory adapter, which discards the whole submission.
+   *
+   * The id is the command's now, not a hash of the natural key. The natural key
+   * survives as `reviews_natural_key_unique`, so the same reviewer recording
+   * the same verdict at the same instant still collides, while identity comes
+   * from the command like every other record since C1C-1.
    */
   save: `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-            by_employee_id, by_department_id, at, status, detail)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            by_employee_id, by_department_id, at, status, detail,
+            sequence, supersedes_review_id, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          ON CONFLICT DO NOTHING
          RETURNING id`,
 
@@ -112,18 +163,47 @@ export const REVIEW_SQL = catalog({
    */
   saveFindings: `INSERT INTO analysis.verification_findings
                    (id, review_id, kind, claim_id, detail, blocking,
-                    evidence_set_id, observation_id, content_hash)
-                 SELECT i, $2, k, c, d, b, es, o, h
+                    evidence_set_id, observation_id, content_hash, severity,
+                    expected_amount, expected_unit, expected_currency,
+                    observed_amount, observed_unit, observed_currency,
+                    methodology, correction_required, cited_content_hash)
+                 SELECT i, $2, k, c, d, b, es, o, h, sv,
+                        ea, eu, ec, oa, ou, oc, me, cr, ch
                  FROM unnest($1::text[], $3::text[], $4::text[], $5::text[],
-                             $6::boolean[], $7::text[], $8::text[], $9::text[])
-                      AS batch(i, k, c, d, b, es, o, h)
+                             $6::boolean[], $7::text[], $8::text[], $9::text[],
+                             $10::text[], $11::text[], $12::text[], $13::text[],
+                             $14::text[], $15::text[], $16::text[], $17::text[],
+                             $18::text[], $19::text[])
+                      AS batch(i, k, c, d, b, es, o, h, sv,
+                               ea, eu, ec, oa, ou, oc, me, cr, ch)
                  ON CONFLICT (id) DO NOTHING`,
+
+  saveClaimsReviewed: `INSERT INTO analysis.verification_claims_reviewed
+                         (review_id, claim_id)
+                       SELECT $1, c FROM unnest($2::text[]) AS batch(c)
+                       ON CONFLICT DO NOTHING`,
+
+  saveRiskFindings: `INSERT INTO analysis.risk_findings
+                       (review_id, ordinal, kind, detail, severity,
+                        implication, mitigated_by)
+                     SELECT $1, o, k, d, s, i, m
+                     FROM unnest($2::int[], $3::text[], $4::text[], $5::text[],
+                                 $6::text[], $7::text[])
+                          AS batch(o, k, d, s, i, m)
+                     ON CONFLICT DO NOTHING`,
+
+  saveRiskLimits: `INSERT INTO analysis.risk_limits (review_id, ordinal, limit_text)
+                   SELECT $1, o, t
+                   FROM unnest($2::int[], $3::text[]) AS batch(o, t)
+                   ON CONFLICT DO NOTHING`,
 
   saveChallenge: `INSERT INTO analysis.challenges
                     (id, review_id, contests_claim_id, contests_thesis_id, kind,
-                     argument, would_be_resolved_by, outcome)
-                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                  ON CONFLICT (id) DO UPDATE SET outcome = EXCLUDED.outcome`,
+                     argument, would_be_resolved_by, outcome, materiality, resolved_by)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                  ON CONFLICT (id) DO UPDATE
+                    SET outcome = EXCLUDED.outcome,
+                        resolved_by = EXCLUDED.resolved_by`,
 
   saveChallengeEvidence: `INSERT INTO analysis.challenge_evidence
                             (challenge_id, evidence_set_id, observation_id, content_hash)
@@ -147,12 +227,12 @@ export function createReviewRepository(
   async function insertReview(
     client: Queryable,
     kind: ReviewKind,
-    review: ReviewScope & ReviewAttribution,
+    review: ReviewScope & ReviewAttribution & ReviewRecordId & ReviewOrder,
     status: string | null,
     detail: unknown,
     operation: string,
   ): Promise<string | null> {
-    const id = reviewRowId(kind, review)
+    const id = review.reviewId
     const inserted = await run<{ id: string }>(
       client,
       context,
@@ -171,26 +251,56 @@ export function createReviewRepository(
         review.at,
         status,
         JSON.stringify(detail ?? {}),
+        review.sequence,
+        review.supersedesReviewId ?? null,
+        review.reason ?? null,
       ],
     )
     return inserted.length > 0 ? id : null
   }
 
   return {
+    nextSequence: ({ caseId, revisionId, kind }) =>
+      unitOfWork(scope, 'reviews.nextSequence', async (client) => {
+        const rows = await run<{ next: number }>(
+          client,
+          context,
+          'reviews.nextSequence',
+          REVIEW_SQL.nextSequence,
+          [caseId, revisionId, kind],
+        )
+        return Number(rows[0]?.next ?? 1)
+      }),
+
     verificationsForCase: (caseId) =>
       unitOfWork(scope, 'reviews.verificationsForCase', async (client) => {
         const operation = 'reviews.verificationsForCase'
         const rows = await rowsFor(client, 'verification', caseId, operation)
         if (rows.length === 0) return []
+        const ids = rows.map((row) => row.id)
         const findings = await run<VerificationFindingRow>(
           client,
           context,
           operation,
           REVIEW_SQL.findings,
-          [rows.map((row) => row.id)],
+          [ids],
+        )
+        const claims = await run<VerificationClaimReviewedRow>(
+          client,
+          context,
+          operation,
+          REVIEW_SQL.claimsReviewed,
+          [ids],
         )
         const byReview = groupBy(findings, (finding) => finding.review_id)
-        return rows.map((row) => toVerification(row, byReview.get(row.id) ?? []))
+        const claimsByReview = groupBy(claims, (claim) => claim.review_id)
+        return rows.map((row) =>
+          toVerification(
+            row,
+            byReview.get(row.id) ?? [],
+            claimsByReview.get(row.id) ?? [],
+          ),
+        )
       }),
 
     challengesForCase: (caseId) =>
@@ -235,17 +345,36 @@ export function createReviewRepository(
       return rows.map(toCompliance)
     },
 
-    /** One statement: risk carries no typed children. */
-    async riskForCase(caseId) {
-      const operation = 'reviews.riskForCase'
-      const rows = await rowsFor(
-        singleStatement(scope, operation),
-        'risk',
-        caseId,
-        operation,
-      )
-      return rows.map(toRisk)
-    },
+    riskForCase: (caseId) =>
+      unitOfWork(scope, 'reviews.riskForCase', async (client) => {
+        const operation = 'reviews.riskForCase'
+        const rows = await rowsFor(client, 'risk', caseId, operation)
+        if (rows.length === 0) return []
+        const ids = rows.map((row) => row.id)
+        const findings = await run<RiskFindingRow>(
+          client,
+          context,
+          operation,
+          REVIEW_SQL.riskFindings,
+          [ids],
+        )
+        const limits = await run<RiskLimitRow>(
+          client,
+          context,
+          operation,
+          REVIEW_SQL.riskLimits,
+          [ids],
+        )
+        const findingsByReview = groupBy(findings, (finding) => finding.review_id)
+        const limitsByReview = groupBy(limits, (limit) => limit.review_id)
+        return rows.map((row) =>
+          toRisk(
+            row,
+            findingsByReview.get(row.id) ?? [],
+            limitsByReview.get(row.id) ?? [],
+          ),
+        )
+      }),
 
     saveVerification: (review) =>
       unitOfWork(scope, 'reviews.saveVerification', async (client) => {
@@ -255,10 +384,17 @@ export function createReviewRepository(
           'verification',
           review,
           review.status,
-          { claimsReviewed: [...review.claimsReviewed] },
+          {},
           operation,
         )
         if (!id) return
+
+        if (review.claimsReviewed.length > 0) {
+          await run(client, context, operation, REVIEW_SQL.saveClaimsReviewed, [
+            id,
+            [...review.claimsReviewed],
+          ])
+        }
 
         const findings = [...review.findings]
         if (findings.length === 0) return
@@ -273,6 +409,16 @@ export function createReviewRepository(
           findings.map((finding) => finding.evidence?.setId ?? null),
           findings.map((finding) => finding.evidence?.observationId ?? null),
           findings.map((finding) => finding.evidence?.contentHash ?? null),
+          findings.map((finding) => finding.severity),
+          findings.map((finding) => finding.expected?.amount ?? null),
+          findings.map((finding) => finding.expected?.unit ?? null),
+          findings.map((finding) => finding.expected?.currency ?? null),
+          findings.map((finding) => finding.observed?.amount ?? null),
+          findings.map((finding) => finding.observed?.unit ?? null),
+          findings.map((finding) => finding.observed?.currency ?? null),
+          findings.map((finding) => finding.methodology ?? null),
+          findings.map((finding) => finding.correctionRequired ?? null),
+          findings.map((finding) => finding.citedContentHash ?? null),
         ])
       }),
 
@@ -299,6 +445,8 @@ export function createReviewRepository(
             challenge.argument,
             challenge.wouldBeResolvedBy ?? null,
             review.outcomes[challenge.id] ?? 'open',
+            challenge.materiality,
+            challenge.resolvedBy ?? null,
           ])
           for (const ref of challenge.counterEvidence) {
             await run(client, context, operation, REVIEW_SQL.saveChallengeEvidence, [
@@ -325,17 +473,38 @@ export function createReviewRepository(
 
     saveRisk: (review) =>
       unitOfWork(scope, 'reviews.saveRisk', async (client) => {
-        await insertReview(
+        const operation = 'reviews.saveRisk'
+        const id = await insertReview(
           client,
           'risk',
           review,
           review.status,
-          {
-            concerns: [...review.concerns],
-            limits: review.limits ? [...review.limits] : null,
-          },
-          'reviews.saveRisk',
+          {},
+          operation,
         )
+        if (!id) return
+
+        const findings = [...review.findings]
+        if (findings.length > 0) {
+          await run(client, context, operation, REVIEW_SQL.saveRiskFindings, [
+            id,
+            findings.map((_, index) => index),
+            findings.map((finding) => finding.kind),
+            findings.map((finding) => finding.detail),
+            findings.map((finding) => finding.severity),
+            findings.map((finding) => finding.implication ?? null),
+            findings.map((finding) => finding.mitigatedBy ?? null),
+          ])
+        }
+
+        const limits = [...(review.limits ?? [])]
+        if (limits.length > 0) {
+          await run(client, context, operation, REVIEW_SQL.saveRiskLimits, [
+            id,
+            limits.map((_, index) => index),
+            limits,
+          ])
+        }
       }),
   }
 }

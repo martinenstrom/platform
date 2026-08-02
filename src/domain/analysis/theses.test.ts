@@ -229,8 +229,11 @@ describe('sealing', () => {
 
 describe('lifecycle and governance are orthogonal', () => {
   const challenge: Blocker = {
-    kind: 'unresolved-challenge',
-    detail: 'The margin assumption ignores competitive entry.',
+    kind: 'unresolved-material-challenge',
+    reviewId: 'da-1',
+    challengeId: 'ch-1',
+    contests: 'claim-1',
+    materiality: 'material',
     owningDepartmentId: 'devils-advocate',
     severity: 'blocks-decision',
   }
@@ -273,14 +276,16 @@ describe('lifecycle and governance are orthogonal', () => {
     // Both facts survive, which a single enum could not express.
     expect(eligibility.lifecycle).toBe('under-analysis')
     expect(eligibility.canProgress).toBe(true)
-    expect(eligibility.blockedBy[0]?.kind).toBe('unresolved-challenge')
+    expect(eligibility.blockedBy[0]?.kind).toBe('unresolved-material-challenge')
   })
 
   it('turns a missing required contribution into a blocker', () => {
     const eligibility = evaluateThesisEligibility('th-buy', 'rev-1', {
       lifecycle: 'verified',
       blockers: [],
-      missingRequiredContributions: ['risk'],
+      missingRequiredContributions: [
+        { playbookEntryKey: 'risk-review', departmentId: 'risk', failed: false },
+      ],
     })
     expect(eligibility.eligibleForDecision).toBe(false)
     expect(eligibility.blockedBy[0]?.kind).toBe('missing-required-contribution')
@@ -292,7 +297,8 @@ describe('lifecycle and governance are orthogonal', () => {
       blockers: [
         {
           kind: 'compliance-block',
-          detail: 'disclaimer missing',
+          reviewId: 'compliance-1',
+          status: 'changes-required',
           severity: 'blocks-publication',
         },
       ],
@@ -314,6 +320,8 @@ describe('governance runs per revision', () => {
     caseId: 'case-1',
     thesisId,
     revisionId,
+    reviewId: `v-${revisionId}-${status}`,
+    sequence: 1,
     byEmployeeId: 'fact-head',
     byDepartmentId: 'verification',
     at: '2026-07-27T10:00:00.000Z',
@@ -327,6 +335,8 @@ describe('governance runs per revision', () => {
   ): VerificationReview => ({
     scope: 'case',
     caseId: 'case-1',
+    reviewId: `v-case-${status}`,
+    sequence: 1,
     byEmployeeId: 'fact-head',
     byDepartmentId: 'verification',
     at: '2026-07-27T10:00:00.000Z',
@@ -335,8 +345,22 @@ describe('governance runs per revision', () => {
     claimsReviewed: [],
   })
 
-  const buy = { thesisId: 'th-buy', revisionId: 'buy-r1' }
-  const sell = { thesisId: 'th-sell', revisionId: 'sell-r1' }
+  /*
+   * Risk resolved as not applying. Supplied rather than defaulted: the gate
+   * treats an unresolved requirement as unsatisfied, so a revision-scope test
+   * that omitted it would fail for a Risk reason while appearing to be about
+   * scope.
+   */
+  const buy = {
+    thesisId: 'th-buy',
+    revisionId: 'buy-r1',
+    riskRequirement: 'not-required' as const,
+  }
+  const sell = {
+    thesisId: 'th-sell',
+    revisionId: 'sell-r1',
+    riskRequirement: 'not-required' as const,
+  }
 
   it('clears one revision while blocking another', () => {
     const results = evaluateRevisionGates([buy, sell], 'case-1', {
@@ -367,12 +391,12 @@ describe('governance runs per revision', () => {
     // TD-21, as a test. The verifier read revision 1; revision 2 is a
     // different argument and has been reviewed by nobody.
     const results = evaluateRevisionGates(
-      [{ thesisId: 'th-buy', revisionId: 'buy-r2' }],
+      [{ thesisId: 'th-buy', revisionId: 'buy-r2', riskRequirement: 'not-required' }],
       'case-1',
       { verification: [revisionVerification('th-buy', 'buy-r1', 'verified')] },
     )
     expect(results[0]!.passed).toBe(false)
-    expect(results[0]!.blockers.join(' ')).toMatch(/verification has not been performed/)
+    expect(results[0]!.blockers.map((b) => b.kind)).toContain('verification-missing')
   })
 
   it('ignores a review belonging to another case', () => {
@@ -491,12 +515,12 @@ describe('the CIO decision', () => {
               revisionId: 'rev-1',
               lifecycle: 'verified',
               eligibleForDecision: false,
-              blockedBy: [{ kind: 'unresolved-challenge', detail: 'x' }],
+              blockedBy: [{ kind: 'unresolved-material-challenge' }],
             },
           ],
         },
       ),
-    ).toThrow(/unresolved-challenge/)
+    ).toThrow(/unresolved-material-challenge/)
   })
 
   it('refuses a decision with no evidence reference', () => {

@@ -420,11 +420,28 @@ export interface ClaimRepository {
  */
 export interface ReviewRepository {
   /**
-   * All ordered by `at`, then `byEmployeeId`, then `revisionId`.
+   * The next position for one (case, revision, kind).
    *
-   * The revision is part of the tie-break because it is part of the identity:
-   * one reviewer can record verdicts on two competing revisions at the same
-   * instant, and without it the order of those two would be arbitrary.
+   * Read-then-increment, and safe because the store's uniqueness constraint on
+   * `(case, revision, kind, sequence)` is what protects it: two commands racing
+   * for the same position cannot both commit, so the loser fails rather than
+   * quietly taking a place that is already claimed. Locking instead would
+   * serialise Verification against the Devil's Advocate, which is the
+   * concurrency the firm needs most.
+   */
+  nextSequence(input: {
+    caseId: string
+    revisionId: string
+    kind: 'verification' | 'devils-advocate' | 'compliance' | 'risk'
+  }): Promise<number>
+
+  /**
+   * All ordered by `sequence`, then `at`, then `byEmployeeId`, then `revisionId`.
+   *
+   * Sequence leads because it is the only total order. The revision is part of
+   * the tie-break because it is part of the identity: one reviewer can record
+   * verdicts on two competing revisions at the same instant, and without it the
+   * order of those two would be arbitrary.
    */
   verificationsForCase(caseId: string): Promise<VerificationReview[]>
   challengesForCase(caseId: string): Promise<DevilsAdvocateReview[]>

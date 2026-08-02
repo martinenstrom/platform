@@ -194,6 +194,8 @@ describe('what a new revision does not inherit', () => {
       caseId: 'case-1',
       thesisId: seeded.thesisId,
       revisionId: seeded.revisionId,
+      reviewId: 'v-seeded',
+      sequence: 1,
       byEmployeeId: 'verification-head',
       byDepartmentId: 'verification',
       at: AT,

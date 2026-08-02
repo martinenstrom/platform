@@ -113,8 +113,8 @@ function insertReview(row: ReviewRow) {
   return sql.query(
     `INSERT INTO analysis.reviews
        (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-        by_employee_id, by_department_id, at, status)
-     VALUES ($1, $2, $3, $4, 'system', $5, $6, $7, $8, $9, $10)`,
+        by_employee_id, by_department_id, at, status, sequence)
+     VALUES ($1, $2, $3, $4, 'system', $5, $6, $7, $8, $9, $10, 1)`,
     [
       row.reviewId ?? id('review'),
       kind,
@@ -360,6 +360,8 @@ describe('the natural key includes the exact scope', () => {
       caseId,
       thesisId,
       revisionId,
+      reviewId: 'v-scoped',
+      sequence: 1,
       byEmployeeId: 'verification-head',
       byDepartmentId: 'verification',
       at,
@@ -370,6 +372,8 @@ describe('the natural key includes the exact scope', () => {
     const caseWide: VerificationReview = {
       scope: 'case',
       caseId,
+      reviewId: 'v-case-wide',
+      sequence: 1,
       byEmployeeId: 'verification-head',
       byDepartmentId: 'verification',
       at,
@@ -400,9 +404,9 @@ describe('runtime-role permissions still hold', () => {
       app.query(
         `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-            by_employee_id, by_department_id, at, status)
+            by_employee_id, by_department_id, at, status, sequence)
          VALUES ($1, 'verification', 'thesis-revision', $2, 'system', $3, $4,
-                 'verification-head', 'verification', now(), 'verified')`,
+                 'verification-head', 'verification', now(), 'verified', 1)`,
         [id('review'), caseId, thesisId, revisionId],
       ),
     ).resolves.toBeDefined()
@@ -550,9 +554,9 @@ describe('0011 upgrades an existing database to the same schema as a clean one',
       upgraded.owner.query(
         `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-            by_employee_id, by_department_id, at, status)
+            by_employee_id, by_department_id, at, status, sequence)
          VALUES ('r', 'verification', 'thesis-revision', 'c', 'system', 'th', NULL,
-                 'verification-head', 'verification', now(), 'verified')`,
+                 'verification-head', 'verification', now(), 'verified', 1)`,
       ),
     ).rejects.toThrow(/reviews_revision_scope_is_complete/)
   })

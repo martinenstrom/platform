@@ -202,6 +202,9 @@ export interface ReviewRow {
   at: string
   status: string | null
   detail: unknown
+  sequence: number
+  supersedes_review_id: string | null
+  reason: string | null
 }
 
 export interface VerificationFindingRow {
@@ -214,6 +217,37 @@ export interface VerificationFindingRow {
   evidence_set_id: string | null
   observation_id: string | null
   content_hash: string | null
+  severity: string
+  expected_amount: string | null
+  expected_unit: string | null
+  expected_currency: string | null
+  observed_amount: string | null
+  observed_unit: string | null
+  observed_currency: string | null
+  methodology: string | null
+  correction_required: string | null
+  cited_content_hash: string | null
+}
+
+export interface VerificationClaimReviewedRow {
+  review_id: string
+  claim_id: string
+}
+
+export interface RiskFindingRow {
+  review_id: string
+  ordinal: number
+  kind: string
+  detail: string
+  severity: string
+  implication: string | null
+  mitigated_by: string | null
+}
+
+export interface RiskLimitRow {
+  review_id: string
+  ordinal: number
+  limit_text: string
 }
 
 export interface ChallengeRow {
@@ -225,6 +259,8 @@ export interface ChallengeRow {
   argument: string
   would_be_resolved_by: string | null
   outcome: string
+  materiality: string
+  resolved_by: string | null
 }
 
 export interface ChallengeEvidenceRow {

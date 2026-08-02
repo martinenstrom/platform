@@ -19,7 +19,17 @@
  */
 
 import type { ClaimId } from './claims'
-import type { ThesisId } from './theses'
+import type { RevisionId, ThesisId } from './theses'
+import type { AssignmentId } from './work'
+import type { DepartmentId } from './organization'
+import type { EvidenceRef } from './identity'
+import type { DisagreementMateriality } from './aggregation'
+/*
+ * Type-only, and therefore erased. `review.ts` imports values from here, so a
+ * value import in this direction would be a runtime cycle; a verdict status is
+ * a type and travels freely.
+ */
+import type { ComplianceStatus, VerificationStatus } from './review'
 
 /* --------------------------------------------------------------- lifecycle */
 
@@ -112,30 +122,109 @@ export function isSealed(args: {
  * Storing them would create two sources of truth that drift: a thesis marked
  * "unblocked" while an open challenge sits in the Devil's Advocate queue.
  */
-export type BlockerKind =
-  | 'unresolved-challenge'
-  | 'verification-correction-required'
-  | 'verification-missing'
-  | 'compliance-block'
-  | 'risk-rejected'
-  | 'unresolved-risk-escalation'
-  | 'missing-required-contribution'
+export type BlockerKind = Blocker['kind']
+
+/** Whether it stops the CIO seeing the thesis, or only publication. */
+export type BlockerSeverity = 'blocks-decision' | 'blocks-publication'
+
+interface BlockerBase {
+  severity: BlockerSeverity
+  /** The department that must act. Lets the floor show whose queue it is in. */
+  owningDepartmentId?: DepartmentId
+}
+
+/**
+ * Why a thesis cannot progress right now — structurally.
+ *
+ * A union rather than a `kind` beside a sentence, and that is the whole point.
+ * The previous model carried `detail: string`, `evaluateGate` composed English
+ * into it, and `blockerKindFor` recovered the category by matching sentence
+ * prefixes. Renaming a message silently reclassified a blocker and nothing
+ * failed — prose used as a data channel, in the layer that has spent three
+ * phases removing exactly that.
+ *
+ * Each arm names the records it points at, so the floor can link to them and
+ * the CIO can ask "which claim, whose queue, which review" without parsing
+ * anything. Human-readable text is composed in the presentation layer from the
+ * arm and its fields.
+ */
+export type Blocker =
+  /* ------------------------------------------------------- verification */
+  /** Never verified. Absence is a blocker, not a pass. */
+  | (BlockerBase & { kind: 'verification-missing' })
+  | (BlockerBase & {
+      kind: 'verification-correction-required'
+      reviewId: string
+      status: VerificationStatus
+      /** The claims whose findings block. Empty when the status alone blocks. */
+      blockingClaimIds: readonly ClaimId[]
+    })
+  /** A finding the verifier could not resolve against a source. */
+  | (BlockerBase & { kind: 'unresolved-citation'; reviewId: string; claimId: ClaimId })
+
+  /* ---------------------------------------------------- devil's advocate */
+  /**
+   * An open challenge at `material` or above. Non-material open challenges are
+   * recorded and visible and do not appear here — see `challengeBlocks`.
+   */
+  | (BlockerBase & {
+      kind: 'unresolved-material-challenge'
+      reviewId: string
+      challengeId: string
+      contests: ClaimId
+      materiality: DisagreementMateriality
+    })
+
+  /* ------------------------------------------------------- aggregation */
   /**
    * A disagreement the manager could not resolve, at a level that decides the
-   * answer. Distinct from `unresolved-challenge`, which is the Devil's
+   * answer. Distinct from an unresolved challenge, which is the Devil's
    * Advocate's formal objection: this one comes from two desks disagreeing and
    * a manager saying so rather than picking a side.
    */
-  | 'decision-critical-disagreement'
-  | 'unresolved-citation'
+  | (BlockerBase & { kind: 'decision-critical-disagreement'; claimId: ClaimId })
 
-export interface Blocker {
-  kind: BlockerKind
-  detail: string
-  /** The department that must act. Lets the floor show whose queue it is in. */
-  owningDepartmentId?: string
-  /** Whether it stops the CIO seeing the thesis, or only publication. */
-  severity: 'blocks-decision' | 'blocks-publication'
+  /* -------------------------------------------------------------- risk */
+  /** Nobody has decided whether Risk applies. No verdict can satisfy this. */
+  | (BlockerBase & { kind: 'risk-requirement-unresolved'; playbookEntryKey: string })
+  | (BlockerBase & { kind: 'risk-review-missing'; playbookEntryKey: string })
+  | (BlockerBase & { kind: 'risk-review-rejected'; reviewId: string })
+  /** A Risk verdict against a revision recorded as not needing one. */
+  | (BlockerBase & { kind: 'risk-review-not-expected'; reviewId: string })
+
+  /* -------------------------------------------------------------- work */
+  | (BlockerBase & { kind: 'missing-required-contribution'; playbookEntryKey: string })
+  | (BlockerBase & {
+      kind: 'required-assignment-failed'
+      playbookEntryKey: string
+      assignmentId?: AssignmentId
+    })
+
+  /* ---------------------------------------------------------- evidence */
+  | (BlockerBase & { kind: 'missing-evidence'; claimId: ClaimId; evidence?: EvidenceRef })
+  | (BlockerBase & { kind: 'missing-provenance'; claimId: ClaimId })
+
+  /* --------------------------------------------------------- lifecycle */
+  | (BlockerBase & { kind: 'superseded-revision'; supersededBy: RevisionId })
+
+  /* --------------------------------------------- publication (not C1C-4) */
+  | (BlockerBase & {
+      kind: 'compliance-block'
+      reviewId: string
+      status: ComplianceStatus
+    })
+
+/** Required work that has not arrived, as the domain needs to see it. */
+export interface MissingWork {
+  playbookEntryKey: string
+  departmentId: DepartmentId
+  /**
+   * A run exists and failed, as opposed to work simply not being done.
+   *
+   * Two different institutional facts: a desk that tried and could not finish
+   * needs a manager, and a desk that has not started needs a queue.
+   */
+  failed: boolean
 }
 
 /** The inputs eligibility is computed from. Supplied by the application layer. */
@@ -143,7 +232,7 @@ export interface ThesisGateInputs {
   lifecycle: ThesisLifecycleState
   blockers: readonly Blocker[]
   /** Required playbook contributions that have not completed. */
-  missingRequiredContributions: readonly string[]
+  missingRequiredContributions: readonly MissingWork[]
   /**
    * Claims the manager retained as decision-critical unresolved disagreement.
    *
@@ -151,7 +240,7 @@ export interface ThesisGateInputs {
    * contribution state — the aggregation records what it found; eligibility is
    * decided here, in the one place that decides it.
    */
-  blockingDisagreements?: readonly string[]
+  blockingDisagreements?: readonly ClaimId[]
 }
 
 /**
@@ -177,17 +266,26 @@ export function evaluateThesisEligibility(
   revisionId: string,
   inputs: ThesisGateInputs,
 ): ThesisEligibility {
-  const blockers = [
+  const blockers: Blocker[] = [
     ...inputs.blockers,
-    ...inputs.missingRequiredContributions.map((departmentId): Blocker => ({
-      kind: 'missing-required-contribution',
-      detail: `required contribution from ${departmentId} has not completed`,
-      owningDepartmentId: departmentId,
-      severity: 'blocks-decision',
-    })),
+    ...inputs.missingRequiredContributions.map((missing): Blocker =>
+      missing.failed
+        ? {
+            kind: 'required-assignment-failed',
+            playbookEntryKey: missing.playbookEntryKey,
+            owningDepartmentId: missing.departmentId,
+            severity: 'blocks-decision',
+          }
+        : {
+            kind: 'missing-required-contribution',
+            playbookEntryKey: missing.playbookEntryKey,
+            owningDepartmentId: missing.departmentId,
+            severity: 'blocks-decision',
+          },
+    ),
     ...(inputs.blockingDisagreements ?? []).map((claimId): Blocker => ({
       kind: 'decision-critical-disagreement',
-      detail: `claim ${claimId} is an unresolved disagreement the manager judged decision-critical`,
+      claimId,
       severity: 'blocks-decision',
     })),
   ]
