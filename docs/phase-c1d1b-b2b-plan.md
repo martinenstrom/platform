@@ -455,7 +455,140 @@ TD-34–37, TD-39, TD-8.
 
 ---
 
-## 14 · Open questions
+## 14 · Approved rulings (review, revision 2)
+
+All three questions answered; B2B splits in two.
+
+### 14.1 Eligibility policy version — confirmed absent from the decision
+
+No `eligibility_policy_version` on `case_decisions`. The version belongs to each
+exact submission because it describes the policy under which *that* revision was
+evaluated. A decision reaches it through `decision_submissions → cio_submissions`.
+
+Explicitly forbidden: copying one submission's version onto the decision;
+requiring all considered submissions to share a version; synthesising a
+decision-level version from the first submission; duplicating basis fields for
+read convenience.
+
+**Mixed policy versions are preserved honestly.** If a decision considers
+submissions evaluated under different versions, the record says so. Whether that
+is institutionally permitted — with explicit CIO acknowledgement, or forbidden
+outright — is a command rule, and **the repository does not invent it**. Recorded
+for C1D-1D. The existing schema tests asserting no decision-level column are
+retained.
+
+### 14.2 "Structurally usable" — the narrow definition, confirmed
+
+A referenced submission is structurally usable when it exists · belongs to the
+decision's case · targets the exact revision the relation names · hydrates and
+passes submission validation · has no blockers in its basis · its governance
+artifacts structurally belong to its case and revision · its policy version
+exists · it is not malformed or partially persisted · it appears **once** in the
+decision.
+
+The repository does **not** decide: whether the revision is currently
+decision-ready · whether the submission should still be pending · whether the CIO
+may reuse it · whether new evidence invalidated the basis · whether a later
+review requires resubmission · whether mixed policy versions may be considered
+together. Those are command and workflow rules.
+
+**Settled submissions are not rejected for being settled.** Both approved cases
+are supported: a pending submission for an initial decision, and a settled one
+explicitly reused by a successor. The repository verifies the relation is
+structurally valid; the command authorises the reuse and checks that it was
+referenced by the decision being superseded, that the revision is unchanged, that
+the basis is still the approved one, and that no later fact invalidated it.
+
+Tests separate: valid pending · valid reused settled · missing · wrong-case ·
+wrong-revision · malformed · duplicate revision relation.
+
+### 14.3 Two integrity levels, never described as one
+
+- **Submission → review ownership is repository-enforced only (R6).** `reviews`
+  is keyed on `id` alone; no foreign key can prove a cited review reviewed this
+  revision. Load-bearing technical debt, documented as such, never described as
+  a database constraint.
+- **Decision → submission case/revision ownership is database-enforced**, by the
+  two composite foreign keys on `decision_submissions`, and repository-prechecked
+  for parity of error class and call boundary.
+
+### 14.4 Zero-row supersession — the algorithm
+
+Inside the same transaction and connection:
+
+1. attempt the guarded update
+2. one row changed → continue with the successor
+3. zero rows → look up the supplied successor id
+4. that exact successor exists and is semantically identical → **replay**, return it
+5. a different live successor exists → `ConcurrencyConflictError`
+6. neither, and the prior relation is inconsistent → the matching invariant or
+   reference error
+
+Zero rows is never read as success without proving the intended successor exists,
+and never read as a conflict without proving something else won. No global case
+lock; no serialisation of unrelated cases.
+
+### 14.5 The split
+
+**B2B-1** — catalogues, root and child inserts, relations, the three outcome
+mappings, dissent and evidence, triggers, actor and authorization snapshot,
+`get`, `getForCase`, `historyForCase`, `listRecent`, replay versus conflict for
+non-superseding decisions, migration 0021 with its plan tests, and shared
+contract activation for standard decision cases. **No supersession.**
+
+**B2B-2** — the superseding transaction, zero-row disambiguation, named
+constraint forcing, the error-mapping correction, race tests, runtime-role
+completion, restart durability, the full shared decision contract, and removal of
+every placeholder.
+
+### 14.6 B2B-1 validation order
+
+Fixed, and asserted:
+
+1. the shared `validateCaseDecision`
+2. load and structurally validate the referenced submissions
+3. verify case and revision ownership
+4. verify no duplicate revision relation
+5. compare against an existing decision on replay
+6. write the complete relational aggregate
+7. force the applicable named outcome constraints *(B2B-2)*
+8. return only once the aggregate is valid
+
+**A non-superseding save modifies no other decision and no case row.**
+
+### 14.7 B2B-1 query budgets
+
+Independent of considered submissions, dissent, evidence refs and triggers;
+measured at 1 and 25.
+
+| Operation                        | Count | Composition                                     |
+| -------------------------------- | ----- | ----------------------------------------------- |
+| `decisions.save` (new, no supersession) | 7 | replay probe · submission check · root · 4 child inserts |
+| `decisions.save` (replay)        | 5     | probe + 4 hydration reads; nothing written      |
+| `decisions.get`                  | 5     | root + relations + dissent + evidence + triggers |
+| `decisions.getForCase`           | 5     | same                                             |
+| `decisions.historyForCase`       | 5     | same                                             |
+| `decisions.listRecent`           | 5     | same                                             |
+
+B2B-2 adds the predecessor read, the supersession update and two constraint
+statements to the superseding path.
+
+### 14.8 TD-57, pinned while the compromise stands
+
+Prefix-based classification is approved as temporary and bounded. The prefixes
+are schema-owned identifiers, never derived from institutional prose;
+interpolated ids never escape; every prefix is covered by a mapping test; an
+unknown 23000 message is **not guessed** into a domain error but falls through to
+the conservative default.
+
+**A migration fitness test pins the machine prefixes** while the compromise is
+active, so a message reword that dropped one fails loudly. TD-57 does not block
+B2B and must be resolved before database messages are localised or substantially
+refactored.
+
+---
+
+## 15 · Superseded open questions
 
 1. **§5 — what "structurally usable" means.** I propose: exists, same case,
    targets the exact revision. I propose the repository does **not** check
