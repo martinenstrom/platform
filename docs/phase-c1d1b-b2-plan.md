@@ -620,7 +620,82 @@ command, no envelope field, no stored vocabulary value.
 
 ---
 
-## 17 · What I need decided before B2A
+## 17 · Approved rulings (review, revision 2)
+
+All five questions answered. What changed:
+
+**1 · Stub containment.** The decision placeholder may survive B2A–B2B, but the
+production composition root must not expose it and it must not reach any
+command. Taken as: `submissions` becomes **real** in `createPostgresRepositories`
+in B2A, so only `decisions` remains a placeholder; the placeholder carries an
+explicit `@removeIn B2C` marker; **fitness rule 14** detects a port satisfied by
+throwing methods, with a frozen one-entry exception list that may only shrink;
+B2C deletes `notUntilB2`, adds `assertRepositoriesComplete` at construction, and
+proves by tree-level assertion that no equivalent placeholder remains.
+
+I want one tension on the record rather than papered over. `createAnalysisContainer`
+is the durable composition root, and `macroFlowHarness` builds the whole runtime
+through it for the restart proof. Making the container refuse a placeholder today
+would take the restart suite down for two stages. So B2A's containment is the
+narrower one above — the placeholder does not widen, `submissions` stops being
+one, and the construction guard lands in B2C with the deletion. No command
+reaches `decisions` before C1D-1C, so nothing institutional can receive it in the
+interval.
+
+**2 · Provenance.** No new columns on `cio_returns` or `case_decisions`.
+`cio_submissions.storage_provenance_id` is preserved and its distinct meaning is
+documented in the mapper: it identifies the runtime that produced the
+**eligibility projection**, which is not necessarily the runtime that later
+persisted or used the submission. Tests prove the writing command and its
+provenance stay discoverable through the ledger for both returns and decisions,
+that no duplicated columns appear, and that no mapper fabricates a missing
+provenance field.
+
+**3 · Cross-revision references — enforced in the repository, now.** This is the
+largest change to B2A's scope. A repository is an institutional integrity
+boundary and must not depend on every future caller being correct.
+
+A new pure validator, `validateSubmissionReferences(submission, governance)`,
+checks structural ownership: every referenced review belongs to the submission's
+case and is either case-wide or scoped to that exact revision; every open
+challenge belongs to the named Devil's Advocate review; the aggregation belongs
+to the case and produced that exact revision; every required-work run and every
+disagreed claim belongs to the case. It validates **references, not the gate
+result** — the repository never recalculates eligibility.
+
+Both adapters call it, on write **and on hydration**. Hydration costs no extra
+statements: the root read is widened with `LEFT JOIN`s that bring back each
+referenced artifact's case and revision, and the child reads join their run and
+claim. Query budgets are unchanged.
+
+Where the schema can enforce it, it does — but it largely cannot: `reviews` is
+keyed on `id` alone, so no composite foreign key from `cio_submissions` can prove
+a review belongs to this revision. **That absence is recorded honestly as R6**;
+the repository check is the only enforcement, exactly as `blockers` is.
+
+**4 · Migration 0021.** History index only, in B2B, with the §11.1
+justification recorded in full. Live-recent stays TD-55 with its numeric trigger.
+
+**5 · Error map.** Outcome-guard failures map to `InvariantViolationError`;
+`ImmutableRecordError` is reserved for rewriting or deleting a committed record.
+The in-memory behaviour is authoritative and is not weakened to match the current
+PostgreSQL mapping.
+
+**6 · Deferred constraints.** Verification is widened: each of the six is checked
+to exist, to belong to the expected table, to be deferrable, and to be initially
+deferred. A name that exists but is not deferrable fails verification.
+
+**7 · `settle`.** Two statements, approved. The sequence is a read of the current
+states followed by a conditional `UPDATE … WHERE id = ANY($1) AND state =
+'pending'`, and the four outcomes are distinguished by comparing what the update
+returned against what was asked: absent → `ReferentialIntegrityError`; already in
+the requested state → replay; already in the other state → `InvariantViolationError`;
+pending → settled. The conditional predicate is what makes two incompatible
+settlements unable to both succeed, and a real PostgreSQL race test proves it.
+
+---
+
+## 18 · What was decided before B2A
 
 1. **The stub bridge** (§0.1) — accept it narrowing to `decisions` only across
    B2A/B2B, or collapse B2 into one commit so no stub ever exists.
