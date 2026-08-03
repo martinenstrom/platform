@@ -18,7 +18,10 @@ import {
   selectedDecision,
 } from '~/domain/analysis/decisionFixtures'
 import type { StorageMetrics } from '~/application/analysis/storageObservability'
-import { InvariantViolationError } from '~/application/analysis/repositories'
+import {
+  InvariantViolationError,
+  MalformedRowError,
+} from '~/application/analysis/repositories'
 import { seedDecisionGovernance } from '../decisionSeed'
 import { IN_MEMORY_SEED_FIXTURES } from '../decisionSeedFixtures'
 import {
@@ -387,5 +390,205 @@ describe('decision statement counts do not grow with the data', () => {
     await repositories.decisions.save(selectedDecision())
     // The probe and its four hydration reads. No insert.
     expect(statementsFor('decisions.save')).toBe(5)
+  })
+})
+
+/* ------------------------------------------- the rest of the budget matrix */
+
+describe('every remaining public method has a fixed statement count', () => {
+  /**
+   * The methods the earlier budgets did not reach, at one child row and at
+   * twenty-five. The property is the same one throughout: the number does not
+   * move with the data.
+   */
+  const wideSubmission = (id: string, size: number) =>
+    cioSubmission({
+      id,
+      basis: eligibilityBasis({
+        requiredWork: Array.from({ length: size }, (_, index) => ({
+          playbookEntryKey: `entry-${index}`,
+          runId: `run-${(index % 2) + 1}-rev-1`,
+        })),
+      }),
+    })
+
+  const wideReturn = (id: string, size: number) =>
+    cioReturn({
+      id,
+      concerns: Array.from({ length: size }, (_, index) => ({
+        concernKind: `kind-${index}`,
+        subjectKind: 'revision' as const,
+        subjectId: 'rev-1',
+        detail: `Concern ${index}.`,
+      })),
+    })
+
+  for (const size of [1, 25]) {
+    it(`applicableForRevision issues six at ${size} child rows`, async () => {
+      await repositories.submissions.save(wideSubmission(`sub-a-${size}`, size))
+      counts.clear()
+      await repositories.submissions.applicableForRevision('rev-1')
+      expect(statementsFor('submissions.applicableForRevision')).toBe(6)
+    })
+
+    it(`pending issues six at ${size} child rows`, async () => {
+      await repositories.submissions.save(wideSubmission(`sub-p-${size}`, size))
+      counts.clear()
+      await repositories.submissions.pending()
+      expect(statementsFor('submissions.pending')).toBe(6)
+    })
+
+    it(`recordReturn issues six at ${size} concerns`, async () => {
+      await repositories.submissions.save(cioSubmission())
+      counts.clear()
+      await repositories.submissions.recordReturn(wideReturn(`ret-w-${size}`, size))
+      /*
+       * Five, measured. The replay probe misses, so it costs one statement and
+       * not two -- the concern read is skipped when there is no return to
+       * hydrate. Then subject ownership, the return, its concerns, and the
+       * submission's state. Five at one concern or twenty-five.
+       */
+      expect(statementsFor('returns.recordReturn')).toBe(5)
+    })
+
+    it(`getReturn issues three at ${size} concerns`, async () => {
+      await repositories.submissions.save(cioSubmission())
+      await repositories.submissions.recordReturn(wideReturn(`ret-g-${size}`, size))
+      counts.clear()
+      await repositories.submissions.getReturn(`ret-g-${size}`)
+      expect(statementsFor('returns.getReturn')).toBe(3)
+    })
+
+    it(`returnsForRevision issues three at ${size} concerns`, async () => {
+      await repositories.submissions.save(cioSubmission())
+      await repositories.submissions.recordReturn(wideReturn(`ret-r-${size}`, size))
+      counts.clear()
+      await repositories.submissions.returnsForRevision('rev-1')
+      expect(statementsFor('returns.returnsForRevision')).toBe(3)
+    })
+  }
+
+  it('reads a long decision history in five statements', async () => {
+    /*
+     * History length is its own dimension: twenty-five decisions on one case,
+     * twenty-four of them superseded, still read in five statements.
+     */
+    await repositories.submissions.save(cioSubmission())
+    await repositories.submissions.save(
+      cioSubmission({ id: 'sub-2', revisionId: 'rev-2', thesisId: 'thesis-2' }),
+    )
+
+    let previous: string | undefined
+    for (let index = 0; index < 25; index += 1) {
+      const decisionId = `dec-h-${String(index).padStart(2, '0')}`
+      await repositories.decisions.save(
+        selectedDecision({
+          decisionId,
+          ...(previous === undefined ? {} : { supersedesDecisionId: previous }),
+          decidedAt: `2026-07-${String(1 + index).padStart(2, '0')}T10:00:00.000Z`,
+          reconsiderationTriggers: [quantitativeTrigger({ id: `trg-h-${index}` })],
+        }),
+      )
+      previous = decisionId
+    }
+
+    counts.clear()
+    const history = await repositories.decisions.historyForCase('case-1')
+    expect(history).toHaveLength(25)
+    expect(statementsFor('decisions.historyForCase')).toBe(5)
+  })
+})
+
+/* -------------------------------- submission-reference public-path inventory */
+
+describe('every public path that hydrates a submission refuses a bad reference', () => {
+  /**
+   * The behavioural half of fitness rule 13.
+   *
+   * The rule proves the module calls the validator; this proves each public
+   * path actually refuses. Neither is sufficient on its own: a module could
+   * call the validator on one path and not another, and a passing path test
+   * says nothing about a path nobody thought to test. The inventory is the
+   * list of paths, kept beside the assertions that exercise them.
+   */
+  const paths = () =>
+    [
+      ['get', () => repositories.submissions.get('sub-1')],
+      ['listForCase', () => repositories.submissions.listForCase('case-1')],
+      [
+        'applicableForRevision',
+        () => repositories.submissions.applicableForRevision('rev-1'),
+      ],
+      ['pending', () => repositories.submissions.pending()],
+    ] as const
+
+  beforeEach(async () => {
+    await repositories.submissions.save(cioSubmission())
+  })
+
+  it('refuses a wrong-revision reference on every hydrating path', async () => {
+    await db.owner.query(
+      `UPDATE analysis.cio_submissions SET verification_review_id = 'review-v-rev-2'
+        WHERE id = 'sub-1'`,
+    )
+    for (const [name, read] of paths()) {
+      await expect(read(), name).rejects.toThrow(MalformedRowError)
+    }
+  })
+
+  it('refuses a wrong-case reference on every hydrating path', async () => {
+    await seedDecisionGovernance(repositories, {
+      caseId: 'case-2',
+      revisionIds: ['rev-3', 'rev-4'],
+      fixtures: IN_MEMORY_SEED_FIXTURES,
+    })
+    await db.owner.query(
+      `UPDATE analysis.cio_submissions SET verification_review_id = 'review-v-rev-3'
+        WHERE id = 'sub-1'`,
+    )
+    for (const [name, read] of paths()) {
+      await expect(read(), name).rejects.toThrow(MalformedRowError)
+    }
+  })
+
+  it('refuses a bad reference at the write boundary, before any SQL', async () => {
+    await expect(
+      repositories.submissions.save(
+        cioSubmission({
+          id: 'sub-bad',
+          basis: eligibilityBasis({
+            verification: {
+              reviewId: 'review-v-rev-2',
+              sequence: 1,
+              status: 'verified',
+            },
+          }),
+        }),
+      ),
+    ).rejects.toThrow(InvariantViolationError)
+    expect(await repositories.submissions.get('sub-bad')).toBeNull()
+  })
+
+  it('refuses the submission a decision references, without breaking the decision', async () => {
+    await repositories.submissions.save(
+      cioSubmission({ id: 'sub-2', revisionId: 'rev-2', thesisId: 'thesis-2' }),
+    )
+    await repositories.decisions.save(selectedDecision())
+
+    await db.owner.query(
+      `UPDATE analysis.cio_submissions SET verification_review_id = 'review-v-rev-2'
+        WHERE id = 'sub-1'`,
+    )
+
+    /*
+     * The decision still reads: it stores the submission ids and does not
+     * hydrate the submissions themselves, so nothing it returns is unsound.
+     * Any read that returns the submission must still refuse.
+     */
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(MalformedRowError)
+    expect((await repositories.decisions.get('dec-1'))?.submissionIds).toEqual([
+      'sub-1',
+      'sub-2',
+    ])
   })
 })
