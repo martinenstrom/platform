@@ -790,6 +790,204 @@ export const PLANTED: readonly RuleFixtures[] = [
   },
 
   {
+    ruleId: 'submission-references-always-validated',
+    violations: [
+      {
+        path: 'infrastructure/analysis/postgres/rogueSubmissions.ts',
+        what: 'a persistence path that never validates its references',
+        source: `
+          export function createRogue(client: { query(sql: string): Promise<void> }) {
+            return {
+              save: async () => {
+                await client.query('INSERT INTO analysis.cio_submissions (id) VALUES ($1)')
+              },
+            }
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/rogueMemory.ts',
+        what: 'an in-memory store writing submissions unchecked',
+        source: `
+          export function createRogue(store: { submissions: Map<string, unknown> }) {
+            return {
+              save: async (submission: { id: string }) => {
+                store.submissions.set(submission.id, submission)
+                return submission
+              },
+            }
+          }
+        `,
+      },
+      {
+        /*
+         * The one the rule exists to catch. Importing the validator is not
+         * calling it, and a re-export looks reassuring in a diff.
+         */
+        path: 'infrastructure/analysis/postgres/rogueReexport.ts',
+        what: 'a persistence path that only re-exports the validator',
+        source: `
+          import { validateSubmissionReferences } from '~/domain/analysis'
+          export { validateSubmissionReferences }
+
+          export function createRogue(client: { query(sql: string): Promise<void> }) {
+            return {
+              save: async () => {
+                await client.query('INSERT INTO analysis.cio_submissions (id) VALUES ($1)')
+              },
+            }
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'infrastructure/analysis/postgres/goodSubmissions.ts',
+        what: 'a persistence path that calls the validator',
+        source: `
+          import { validateSubmissionReferences } from '~/domain/analysis'
+
+          export function createGood(client: { query(sql: string): Promise<void> }) {
+            return {
+              save: async (submission: never, governance: never) => {
+                const problems = validateSubmissionReferences(submission, governance)
+                if (problems.length > 0) throw new Error('refused')
+                await client.query('INSERT INTO analysis.cio_submissions (id) VALUES ($1)')
+              },
+            }
+          }
+        `,
+      },
+      {
+        /*
+         * The call is indirect. A rule that only looked at `save` itself would
+         * flag this, and the real adapter routes hydration through a helper for
+         * exactly this reason.
+         */
+        path: 'infrastructure/analysis/postgres/helperSubmissions.ts',
+        what: 'a persistence path that validates through a local helper',
+        source: `
+          import { validateSubmissionReferences } from '~/domain/analysis'
+
+          function checked(submission: never, governance: never) {
+            const problems = validateSubmissionReferences(submission, governance)
+            if (problems.length > 0) throw new Error('refused')
+            return submission
+          }
+
+          export function createGood(client: { query(sql: string): Promise<void> }) {
+            return {
+              save: async (submission: never, governance: never) => {
+                checked(submission, governance)
+                await client.query('INSERT INTO analysis.cio_submissions (id) VALUES ($1)')
+              },
+            }
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/goodMemory.ts',
+        what: 'an in-memory store that validates before writing',
+        source: `
+          import { validateSubmissionReferences } from '~/domain/analysis'
+
+          export function createGood(store: { submissions: Map<string, unknown> }) {
+            return {
+              save: async (submission: { id: string }, governance: never) => {
+                validateSubmissionReferences(submission as never, governance)
+                store.submissions.set(submission.id, submission)
+                return submission
+              },
+            }
+          }
+        `,
+      },
+    ],
+  },
+
+  {
+    ruleId: 'no-placeholder-port-implementations',
+    violations: [
+      {
+        path: 'infrastructure/analysis/postgres/stubRepositories.ts',
+        what: 'a Proxy standing in for a repository port',
+        source: `
+          export const decisions = new Proxy(
+            {},
+            {
+              get: () => () => {
+                throw new Error('not implemented yet')
+              },
+            },
+          ) as DecisionRepository
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/stubRepositories.ts',
+        what: 'a method whose whole body is a placeholder throw',
+        source: `
+          export const decisions = {
+            save: async () => {
+              throw new Error('decisions.save is not implemented')
+            },
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/stubRepositories.ts',
+        what: 'an incomplete literal cast to a complete port',
+        source: `
+          export const partial = {
+            get: async () => null,
+          } as unknown as AnalysisRepositories
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        /*
+         * A refusal, not a placeholder. It throws unconditionally and it is
+         * still correct code -- the difference is that the error is named and
+         * bounded, which is what the rule keys on.
+         */
+        path: 'infrastructure/analysis/postgres/readOnlyRepositories.ts',
+        what: 'a method that unconditionally throws a bounded error',
+        source: `
+          export const decisions = {
+            save: async () => {
+              throw new ImmutableRecordError('Case decision', 'decisions.save')
+            },
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/guardedRepositories.ts',
+        what: 'a method that validates and then refuses',
+        source: `
+          export const submissions = {
+            save: async (submission: { blockers: readonly unknown[] }) => {
+              if (submission.blockers.length > 0) {
+                throw new InvariantViolationError('blockers', 'submissions.save')
+              }
+              return submission
+            },
+          }
+        `,
+      },
+      {
+        path: 'infrastructure/analysis/postgres/tracing.ts',
+        what: 'a Proxy used for something that is not a port',
+        source: `
+          export const counted = new Proxy(
+            { total: 0 },
+            { get: (target, key) => Reflect.get(target, key) },
+          )
+        `,
+      },
+    ],
+  },
+
+  {
     ruleId: 'no-unrepresentable-characters-in-migrations',
     violations: [
       {

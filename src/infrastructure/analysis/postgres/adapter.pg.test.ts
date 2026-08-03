@@ -58,7 +58,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.truncateAnalysisData()
-  repos = createPostgresRepositories({ connectionString: appUrl })
+  repos = await createPostgresRepositories({ connectionString: appUrl })
   opened.push(repos)
 })
 
@@ -533,8 +533,8 @@ describe('isolation is stated, not inherited (B5)', () => {
     await db.owner.query(
       `ALTER ROLE ${login} SET default_transaction_isolation = 'repeatable read'`,
     )
-    const first = createPostgresRepositories({ connectionString: appUrl })
-    const second = createPostgresRepositories({ connectionString: appUrl })
+    const first = await createPostgresRepositories({ connectionString: appUrl })
+    const second = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(first, second)
 
     try {
@@ -566,7 +566,7 @@ describe('two real connections', () => {
      * see the winner's committed row. Under REPEATABLE READ it would find
      * nothing and have to fail a command that is supposed to succeed.
      */
-    const other = createPostgresRepositories({ connectionString: appUrl })
+    const other = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
     const intent = probeIntent()
@@ -581,7 +581,7 @@ describe('two real connections', () => {
   })
 
   it('lets exactly one of two concurrent version updates win', async () => {
-    const other = createPostgresRepositories({ connectionString: appUrl })
+    const other = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
     await repos.cases.create(investmentCase())
@@ -713,14 +713,14 @@ describe('storage provenance', () => {
 
   it('changes the catalogue hash when a statement changes', () => {
     // The coordinate's whole purpose: "which SQL produced this analysis".
-    expect(catalogHash([{ get: 'SELECT 1' }])).not.toBe(
-      catalogHash([{ get: 'SELECT 2' }]),
+    expect(catalogHash([{ name: 'c', statements: { get: 'SELECT 1' } }])).not.toBe(
+      catalogHash([{ name: 'c', statements: { get: 'SELECT 2' } }]),
     )
   })
 
   it('ignores whitespace, so reformatting is not a new catalogue', () => {
-    expect(catalogHash([{ get: 'SELECT  1\n  FROM t' }])).toBe(
-      catalogHash([{ get: 'SELECT 1 FROM t' }]),
+    expect(catalogHash([{ name: 'c', statements: { get: 'SELECT  1\n  FROM t' } }])).toBe(
+      catalogHash([{ name: 'c', statements: { get: 'SELECT 1 FROM t' } }]),
     )
   })
 

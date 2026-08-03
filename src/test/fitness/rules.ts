@@ -749,6 +749,159 @@ const noPre0020DecisionShape: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 13 */
+
+/**
+ * The submission-reference validator cannot be routed around.
+ *
+ * `analysis.reviews` is keyed on `id` alone, so no foreign key can prove that
+ * the verification a submission cites reviewed THIS revision. The database
+ * accepts a sibling revision's verdict with every constraint satisfied, and the
+ * record then says the firm verified something it did not.
+ *
+ * That makes `validateSubmissionReferences` the only enforcement (R6), and an
+ * only enforcement is one a new persistence path can forget. This rule is what
+ * notices.
+ *
+ * ## What it proves, and what it does not
+ *
+ * It proves the module that owns submission persistence CALLS the validator.
+ * It does not prove every branch does -- that needs a call graph this rule does
+ * not build. The behavioural contract tests cover the branches; this covers the
+ * module. Both are needed and neither is sufficient, and this is repository
+ * enforcement rather than a database constraint either way.
+ */
+const SUBMISSION_PERSISTENCE = /INSERT INTO analysis\.cio_submissions|store\.submissions\.set/
+
+const submissionValidatorNotBypassed: FitnessRule = {
+  id: 'submission-references-always-validated',
+  states: 'Every module that stores or rebuilds a CIO submission validates its references.',
+  because:
+    'No foreign key can prove a cited review reviewed this revision, so the ' +
+    'validator is the only thing standing between a submission and a record ' +
+    'claiming a verification that belongs to a different argument.',
+  selects: (file) =>
+    !file.isTest &&
+    file.path.startsWith('infrastructure/analysis/') &&
+    SUBMISSION_PERSISTENCE.test(file.text),
+  detect(file) {
+    /*
+     * A CALL, not an import. A module that imports the validator and re-exports
+     * it has done nothing, and the whole point of the rule is the difference.
+     */
+    for (const node of nodes(file)) {
+      if (!ts.isCallExpression(node)) continue
+      const called = accessPath(node.expression)
+      if (called !== null && /(^|\.)validateSubmissionReferences$/.test(called)) {
+        return []
+      }
+    }
+    return [
+      `${file.path} — stores or rebuilds a submission without calling ` +
+        `validateSubmissionReferences`,
+    ]
+  },
+}
+
+/* ----------------------------------------------------------------- rule 14 */
+
+/**
+ * No port is satisfied by something that only refuses.
+ *
+ * B2A carried a `Proxy` whose every method threw "not implemented", and it
+ * satisfied `DecisionRepository` structurally while failing on first use. That
+ * is the worst shape a missing capability can take: the container looks
+ * complete, construction succeeds, and the failure arrives during an
+ * institutional command.
+ *
+ * ## Placeholder, not refusal
+ *
+ * A repository legitimately throws all the time -- `InvariantViolationError`
+ * for a blocked submission, `ConflictingRecordError` for a real disagreement.
+ * The difference is not the throw. A placeholder throws a **generic `Error`**,
+ * unconditionally, and usually says so in the message; a refusal throws a
+ * **named** domain or storage error, and normally after checking something.
+ * The rule keys on both, and the near-misses prove it discriminates.
+ */
+const PLACEHOLDER_WORDS =
+  /not implemented|unimplemented|placeholder|to ?do|coming (in|soon)|stage b\d/i
+
+/** Errors that mean "the caller is wrong", not "this was never built". */
+const BOUNDED_ERRORS =
+  /^(Invariant|Conflicting|Duplicate|Referential|Immutable|Malformed|Concurrency|Transaction|Storage|Retryable|Ambiguous|Invalid)\w*Error$/
+
+function isPlaceholderBody(body: ts.Node | undefined, file: AnalysedSource): boolean {
+  if (!body || !ts.isBlock(body) || body.statements.length !== 1) return false
+  const only = body.statements[0]!
+  if (!ts.isThrowStatement(only) || !only.expression) return false
+  if (!ts.isNewExpression(only.expression)) return false
+
+  const thrown = accessPath(only.expression.expression) ?? ''
+  const text = only.expression.getText(file.ast)
+
+  // A named bounded error is a refusal, whatever it says.
+  if (BOUNDED_ERRORS.test(thrown)) return false
+  return thrown === 'Error' || PLACEHOLDER_WORDS.test(text)
+}
+
+const noThrowingPortImplementations: FitnessRule = {
+  id: 'no-placeholder-port-implementations',
+  states: 'No repository port is satisfied by methods that exist only to refuse.',
+  because:
+    'A container that is structurally complete and fails on first use turns a ' +
+    'missing capability into a failure during an institutional command, which ' +
+    'is the latest and worst moment to discover it.',
+  selects: (file) => !file.isTest && file.path.startsWith('infrastructure/analysis/'),
+  detect(file) {
+    const found: string[] = []
+
+    for (const node of nodes(file)) {
+      /* A method or property function whose whole body is a placeholder throw. */
+      if (ts.isMethodDeclaration(node) && isPlaceholderBody(node.body, file)) {
+        found.push(at(file, node, `${nameOf(node.name) ?? 'a method'} only refuses`))
+      }
+      if (
+        ts.isPropertyAssignment(node) &&
+        (ts.isArrowFunction(node.initializer) ||
+          ts.isFunctionExpression(node.initializer)) &&
+        isPlaceholderBody(node.initializer.body, file)
+      ) {
+        found.push(at(file, node, `${nameOf(node.name) ?? 'a method'} only refuses`))
+      }
+
+      /*
+       * A Proxy standing in for a port. Structurally perfect and behaviourally
+       * empty -- the exact shape the B2A stub took.
+       */
+      if (
+        ts.isNewExpression(node) &&
+        accessPath(node.expression) === 'Proxy' &&
+        /Repositor|Repository|ResultStore|CommandLog/.test(file.text)
+      ) {
+        found.push(at(file, node, 'a Proxy stands in for a port'))
+      }
+
+      /*
+       * A cast that asserts completeness the object does not have. The `unknown`
+       * hop is what lets an incomplete literal reach a port type at all.
+       */
+      if (ts.isAsExpression(node)) {
+        const target = node.type.getText(file.ast)
+        if (
+          /Repositor(y|ies)|ResultStore|CommandLog/.test(target) &&
+          (ts.isObjectLiteralExpression(node.expression) ||
+            (ts.isAsExpression(node.expression) &&
+              node.expression.type.kind === ts.SyntaxKind.UnknownKeyword))
+        ) {
+          found.push(at(file, node, `casts an incomplete value to ${target}`))
+        }
+      }
+    }
+
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -768,6 +921,8 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noMemoryInDurableTests,
   migrationCharacters,
   noPre0020DecisionShape,
+  submissionValidatorNotBypassed,
+  noThrowingPortImplementations,
 ]
 
 export function ruleById(id: string): FitnessRule {

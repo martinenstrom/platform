@@ -741,3 +741,109 @@ export interface AnalysisRepositories {
    */
   provenance(): Promise<StorageProvenance>
 }
+
+/* ------------------------------------------------------ container completeness */
+
+/**
+ * Every capability a durable container must actually implement.
+ *
+ * Not a list somebody remembers to update. Three mechanisms hold it to the
+ * ports, and each catches what the others cannot:
+ *
+ * 1. **`satisfies` over a mapped type**, below: a port added to
+ *    `TransactionalAnalysisRepositories` with no entry here is a compile error,
+ *    and a method name that is not on its port is one too.
+ * 2. **A parser test** (`src/test/repositoryCapabilities.test.ts`) reads the
+ *    port interfaces out of this file and requires each entry to list exactly
+ *    the methods the interface declares. `satisfies` cannot demand
+ *    exhaustiveness, so a method added to a port and forgotten here would
+ *    otherwise pass — that test is what catches it, by name.
+ * 3. **`assertRepositoriesComplete`** refuses a concrete container that is
+ *    missing one, at construction rather than on the first command.
+ *
+ * What none of them catch is a method that is present and throws a placeholder:
+ * checking that would mean calling it, and calling `save` to see whether it
+ * works would write. Fitness rule 14 covers that shape statically. The runtime
+ * guard proves presence; it does not prove behaviour, and it should not be
+ * described as if it did.
+ */
+export const ANALYSIS_REPOSITORY_CAPABILITIES = {
+  cases: ['get', 'list', 'create', 'save'],
+  theses: ['get', 'listForCase', 'save'],
+  assignments: ['get', 'listForCase', 'listForDepartment', 'save'],
+  runs: ['get', 'listForCase', 'save'],
+  claims: ['get', 'listForRun', 'listForCase', 'save'],
+  reviews: [
+    'nextSequence',
+    'get',
+    'verificationsForCase',
+    'challengesForCase',
+    'complianceForCase',
+    'riskForCase',
+    'saveVerification',
+    'saveDevilsAdvocate',
+    'saveCompliance',
+    'saveRisk',
+  ],
+  events: ['append', 'listForCase', 'recent'],
+  evidence: ['get', 'save'],
+  results: ['get', 'put'],
+  commands: ['find', 'record', 'appendOutcome'],
+  playbooks: ['register', 'get'],
+  requirements: ['save', 'listForCase'],
+  aggregations: ['get', 'forRevision', 'listForCase', 'save'],
+  submissions: [
+    'get',
+    'listForCase',
+    'applicableForRevision',
+    'pending',
+    'save',
+    'settle',
+    'recordReturn',
+    'getReturn',
+    'returnsForCase',
+    'returnsForRevision',
+  ],
+  decisions: ['get', 'getForCase', 'historyForCase', 'listRecent', 'save'],
+} as const satisfies {
+  readonly [K in keyof TransactionalAnalysisRepositories]: readonly (keyof TransactionalAnalysisRepositories[K])[]
+}
+
+/** Thrown when a container is handed out missing a capability. */
+export class IncompleteRepositoriesError extends Error {
+  constructor(readonly missing: readonly string[]) {
+    super(
+      `The repository container is incomplete: ${missing.join(', ')}. A durable ` +
+        `runtime that starts without a capability fails on the first command ` +
+        `that needs it, which is the worst possible moment to find out.`,
+    )
+    this.name = 'IncompleteRepositoriesError'
+  }
+}
+
+/**
+ * Refuses a container that cannot do everything the ports promise.
+ *
+ * Presence only — **no method is invoked**. A write method called to see
+ * whether it works would write, and this runs during construction.
+ */
+export function assertRepositoriesComplete(
+  repositories: Partial<TransactionalAnalysisRepositories>,
+): void {
+  const missing: string[] = []
+
+  for (const [port, methods] of Object.entries(ANALYSIS_REPOSITORY_CAPABILITIES)) {
+    const implementation = (repositories as Record<string, unknown>)[port]
+    if (implementation === null || typeof implementation !== 'object') {
+      missing.push(port)
+      continue
+    }
+    for (const method of methods as readonly string[]) {
+      if (typeof (implementation as Record<string, unknown>)[method] !== 'function') {
+        missing.push(`${port}.${method}`)
+      }
+    }
+  }
+
+  if (missing.length > 0) throw new IncompleteRepositoriesError(missing)
+}

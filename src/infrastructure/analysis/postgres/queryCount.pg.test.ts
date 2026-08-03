@@ -64,7 +64,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.truncateAnalysisData()
   counts.clear()
-  repos = createPostgresRepositories({ connectionString: appUrl, metrics: counting })
+  repos = await createPostgresRepositories({ connectionString: appUrl, metrics: counting })
   /*
    * A run carries a foreign key to its playbook entry from 0015, so the
    * workflow it executes has to exist. Registered before counting starts, so

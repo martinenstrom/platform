@@ -43,7 +43,7 @@ describeRepositoryContract('postgres', {
      * tests. Truncating gives the same isolation for a fraction of the time.
      */
     await db.truncateAnalysisData()
-    const repositories = createPostgresRepositories({ connectionString: appUrl })
+    const repositories = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(repositories)
     return repositories
   },

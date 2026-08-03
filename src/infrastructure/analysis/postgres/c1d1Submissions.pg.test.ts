@@ -63,7 +63,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.truncateAnalysisData()
-  repositories = createPostgresRepositories({
+  repositories = await createPostgresRepositories({
     connectionString: appUrl,
     metrics: counting,
   })
@@ -162,7 +162,7 @@ describe('two settlements racing for one submission', () => {
   it('lets exactly one win, and the loser learns why', async () => {
     await repositories.submissions.save(cioSubmission())
 
-    const other = createPostgresRepositories({ connectionString: appUrl })
+    const other = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
     /*

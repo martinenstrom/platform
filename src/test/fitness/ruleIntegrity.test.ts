@@ -36,12 +36,14 @@ describe('fitness rules detect a planted violation', () => {
       'no-in-memory-adapter-in-durable-tests',
       'no-llm-dependency',
       'no-outbound-network-outside-http-client',
+      'no-placeholder-port-implementations',
       'no-pre-0020-decision-shape',
       'no-prose-activity-in-domain',
       'no-second-eligibility-answer',
       'no-ui-import-of-infrastructure',
       'no-unrepresentable-characters-in-migrations',
       'orchestrator-writes-nothing-directly',
+      'submission-references-always-validated',
     ])
   })
 

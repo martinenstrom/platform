@@ -82,10 +82,76 @@ export function catalog<T extends Record<string, string>>(statements: T): Readon
   return Object.freeze(statements)
 }
 
-export function catalogHash(catalogs: ReadonlyArray<Record<string, string>>): string {
-  const statements = catalogs
-    .flatMap((entry) => Object.entries(entry))
-    .map(([name, sql]) => `${name}:${sql.replace(/\s+/g, ' ').trim()}`)
+/**
+ * One named catalogue, as the production registry holds it.
+ *
+ * The name is part of the hashed identity, so two catalogues that happen to
+ * share a statement name -- `byId` appears in most of them -- stay
+ * distinguishable. Without it, a second `byId` with the same text somewhere
+ * else would collapse into the first and the hash would not move.
+ */
+export interface CatalogueEntry {
+  name: string
+  statements: Readonly<Record<string, string>>
+}
+
+/** Thrown when the production registry is malformed. */
+export class CatalogueRegistrationError extends Error {
+  constructor(reason: string) {
+    super(`The production SQL registry is invalid: ${reason}`)
+    this.name = 'CatalogueRegistrationError'
+  }
+}
+
+/**
+ * Validates the production registry, at module load.
+ *
+ * Registering a catalogue twice is REFUSED rather than deduplicated. Silently
+ * collapsing it would hide a definition defect behind a hash that still looks
+ * plausible -- and `COMMAND_SQL` was registered twice for two phases without
+ * anything noticing, which is exactly that failure.
+ */
+export function registerCatalogues(
+  entries: readonly CatalogueEntry[],
+): readonly CatalogueEntry[] {
+  const names = new Set<string>()
+  const objects = new Set<object>()
+
+  for (const entry of entries) {
+    if (names.has(entry.name)) {
+      throw new CatalogueRegistrationError(`"${entry.name}" is registered twice`)
+    }
+    if (objects.has(entry.statements)) {
+      throw new CatalogueRegistrationError(
+        `"${entry.name}" registers a catalogue object already registered under ` +
+          `another name`,
+      )
+    }
+    if (!Object.isFrozen(entry.statements)) {
+      throw new CatalogueRegistrationError(`"${entry.name}" is not frozen`)
+    }
+    names.add(entry.name)
+    objects.add(entry.statements)
+  }
+
+  return Object.freeze([...entries])
+}
+
+/**
+ * A content address over every statement this build can issue.
+ *
+ * Sorted, so registration ORDER does not change the identity: reordering the
+ * registry is not a change in capability. Whitespace is collapsed, so
+ * reindenting a query is not one either. Nothing else is normalised -- two
+ * materially different statements must never hash alike.
+ */
+export function catalogHash(entries: readonly CatalogueEntry[]): string {
+  const statements = entries
+    .flatMap((entry) =>
+      Object.entries(entry.statements).map(
+        ([name, sql]) => `${entry.name}.${name}:${sql.replace(/\s+/g, ' ').trim()}`,
+      ),
+    )
     .sort()
   return createHash('sha256').update(statements.join('\n'), 'utf8').digest('hex')
 }

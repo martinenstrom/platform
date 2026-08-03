@@ -93,7 +93,7 @@ export async function createAnalysisContainer(
   }
 
   const tenantId = options.tenantId ?? 'system'
-  const repositories = createPostgresRepositories({
+  const repositories = await createPostgresRepositories({
     connectionString: options.connectionString,
     buildId: options.buildId ?? 'dev',
     tenantId,
@@ -148,9 +148,15 @@ export async function createAnalysisContainer(
       close: () => repositories.close(),
     }
   } catch (error) {
-    // A container that failed to build owns nothing. Releasing the pool here
-    // keeps a refused startup from leaking connections.
-    await repositories.close().catch(() => {})
+    /*
+     * A container that failed to build owns nothing. Releasing the pool here
+     * keeps a refused startup from leaking connections — and a failure to
+     * release is attached to the original error rather than replacing it,
+     * because what the caller needs to know is why startup was refused.
+     */
+    await repositories.close().catch((cleanup: unknown) => {
+      ;(error as { cleanupError?: unknown }).cleanupError = cleanup
+    })
     throw error
   }
 }

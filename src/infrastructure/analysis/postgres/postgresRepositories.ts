@@ -12,6 +12,7 @@
  */
 
 import {
+  assertRepositoriesComplete,
   type AnalysisRepositories,
   type StorageProvenance,
   type TransactionalAnalysisRepositories,
@@ -59,6 +60,7 @@ import {
   catalogHash,
   defaultSqlContext,
   one,
+  registerCatalogues,
   type Queryable,
   type SqlContext,
 } from './sql'
@@ -83,8 +85,11 @@ import {
   DECISION_READ_SQL,
   DECISION_HYDRATE_SQL,
   DECISION_WRITE_SQL,
+  SUPERSESSION_SQL,
   createDecisionRepository,
 } from './decisionRepositories'
+import { CONSTRAINT_SQL } from './deferredConstraints'
+import { ORGANIZATION_SQL } from './organizationReader'
 
 /**
  * Identifies the implementation. The VERSION is derived, not written here —
@@ -104,32 +109,53 @@ const CONTAINER_SQL = catalog({
                   ORDER BY version DESC LIMIT 1`,
 })
 
-/** Every statement the adapter can issue, for `queryCatalogHash`. See D-S20. */
-const CATALOGS = [
-  CONTAINER_SQL,
-  COMMAND_SQL,
-  PROVENANCE_SQL,
-  CASE_SQL,
-  THESIS_SQL,
-  ASSIGNMENT_SQL,
-  RUN_SQL,
-  CLAIM_SQL,
-  EVIDENCE_SQL,
-  RESULT_SQL,
-  COMMAND_SQL,
-  REVIEW_SQL,
-  EVENT_SQL,
-  PLAYBOOK_SQL,
-  REQUIREMENT_SQL,
-  AGGREGATION_SQL,
-  SUBMISSION_READ_SQL,
-  SUBMISSION_WRITE_SQL,
-  RETURN_READ_SQL,
-  RETURN_WRITE_SQL,
-  DECISION_READ_SQL,
-  DECISION_HYDRATE_SQL,
-  DECISION_WRITE_SQL,
-]
+/**
+ * Every statement this build can issue while serving the analysis runtime.
+ *
+ * The question a catalogue must answer is not which file constructs the
+ * statement -- it is whether this build can issue it in production. So
+ * `ORGANIZATION_SQL` is here even though `container.ts` constructs the reader
+ * that uses it: it runs against this pool, on every start, and a provenance
+ * hash that omitted it would describe a build that cannot read the firm.
+ *
+ * Registration is validated at module load. `COMMAND_SQL` was listed twice for
+ * two phases and nothing noticed, so a duplicate is now a refusal rather than
+ * a silently different hash. See D-S20.
+ *
+ * Excluded, deliberately: migrations, test setup, fixture seeding and anything
+ * that cannot run in production -- `testDatabase.ts`, `schemaFingerprint.ts`,
+ * `macroFlowHarness.ts` and every `*.pg.test.ts`.
+ */
+const CATALOGS = registerCatalogues([
+  { name: 'container', statements: CONTAINER_SQL },
+  { name: 'command', statements: COMMAND_SQL },
+  { name: 'provenance', statements: PROVENANCE_SQL },
+  { name: 'organization', statements: ORGANIZATION_SQL },
+  { name: 'case', statements: CASE_SQL },
+  { name: 'thesis', statements: THESIS_SQL },
+  { name: 'assignment', statements: ASSIGNMENT_SQL },
+  { name: 'run', statements: RUN_SQL },
+  { name: 'claim', statements: CLAIM_SQL },
+  { name: 'evidence', statements: EVIDENCE_SQL },
+  { name: 'result', statements: RESULT_SQL },
+  { name: 'review', statements: REVIEW_SQL },
+  { name: 'event', statements: EVENT_SQL },
+  { name: 'playbook', statements: PLAYBOOK_SQL },
+  { name: 'requirement', statements: REQUIREMENT_SQL },
+  { name: 'aggregation', statements: AGGREGATION_SQL },
+  { name: 'submissionRead', statements: SUBMISSION_READ_SQL },
+  { name: 'submissionWrite', statements: SUBMISSION_WRITE_SQL },
+  { name: 'returnRead', statements: RETURN_READ_SQL },
+  { name: 'returnWrite', statements: RETURN_WRITE_SQL },
+  { name: 'decisionRead', statements: DECISION_READ_SQL },
+  { name: 'decisionHydrate', statements: DECISION_HYDRATE_SQL },
+  { name: 'decisionWrite', statements: DECISION_WRITE_SQL },
+  { name: 'supersession', statements: SUPERSESSION_SQL },
+  { name: 'constraintControl', statements: CONSTRAINT_SQL },
+])
+
+/** The registry, for the membership tests. Read-only by construction. */
+export const PRODUCTION_CATALOGUES = CATALOGS
 
 export interface PostgresRepositoriesOptions extends PostgresPoolOptions {
   metrics?: StorageMetrics
@@ -174,9 +200,18 @@ export interface PostgresRepositories extends ClosableRepositories {
   readonly sql: Queryable
 }
 
-export function createPostgresRepositories(
+/**
+ * Builds the adapter, or fails having released everything it opened.
+ *
+ * **Asynchronous, deliberately.** A pool exists before the container can be
+ * validated, so a refusal has to close it — and `pool.end()` returns a promise.
+ * A synchronous factory could only launch that cleanup in the background and
+ * hope, which for durable infrastructure is not good enough: repeated refused
+ * constructions would accumulate connections nobody is waiting on.
+ */
+export async function createPostgresRepositories(
   options: PostgresRepositoriesOptions,
-): PostgresRepositories {
+): Promise<PostgresRepositories> {
   const pool = createPostgresPool(options)
   const metrics = options.metrics ?? (noopMetrics as StorageMetrics)
   const tenantId = options.tenantId ?? 'system'
@@ -211,6 +246,26 @@ export function createPostgresRepositories(
    * consistent snapshot must use `withTransaction`.
    */
   const ambient = repositoriesFor(poolScope(pool, (p) => recordPoolGauges(p, metrics)))
+  let closed = false
+
+  /*
+   * Before anything is handed out. A container missing a capability fails here
+   * rather than on the first institutional command, and the pool it opened is
+   * fully closed before the rejection surfaces.
+   */
+  try {
+    assertRepositoriesComplete(ambient)
+  } catch (error) {
+    /*
+     * Awaited, not launched. The construction error is what the caller needs,
+     * so a cleanup failure is attached rather than thrown over it -- and
+     * rather than swallowed, which would hide a pool that did not drain.
+     */
+    await pool.end().catch((cleanup: unknown) => {
+      ;(error as { cleanupError?: unknown }).cleanupError = cleanup
+    })
+    throw error
+  }
 
   return {
     ...ambient,
@@ -246,7 +301,18 @@ export function createPostgresRepositories(
       })
     },
 
+    /**
+     * Drains the pool, once.
+     *
+     * `pg` throws "Called end on pool more than once", so an unguarded close
+     * makes shutdown order matter: a container closed by both its owner and a
+     * test teardown would fail the second time, and the failure would look like
+     * a database problem rather than a lifecycle one. Closing something already
+     * closed is not an error — it is the caller being careful.
+     */
     async close() {
+      if (closed) return
+      closed = true
       await pool.end()
     },
   }

@@ -68,7 +68,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.truncateAnalysisData()
-  repositories = createPostgresRepositories({
+  repositories = await createPostgresRepositories({
     connectionString: appUrl,
     metrics: counting,
   })
@@ -195,7 +195,7 @@ describe('two corrections racing for one live decision', () => {
   })
 
   it('lets one different successor win and bounds the loser', async () => {
-    const other = createPostgresRepositories({ connectionString: appUrl })
+    const other = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
     const results = await Promise.allSettled([
@@ -233,7 +233,7 @@ describe('two corrections racing for one live decision', () => {
      * same correction; the loser's guarded update affects nothing, looks for
      * the successor, finds the winner's, and returns it.
      */
-    const other = createPostgresRepositories({ connectionString: appUrl })
+    const other = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(other)
 
     const results = await Promise.allSettled([

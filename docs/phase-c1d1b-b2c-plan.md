@@ -425,7 +425,46 @@ TD-43, TD-50, TD-51, TD-53, TD-54, TD-41–44, TD-46, TD-34–37, TD-39, TD-8.
 
 ---
 
-## 12 · Open questions
+## 12 · Approved rulings (review, revision 2)
+
+**`ORGANIZATION_SQL` is production SQL.** The test is not which file constructs
+the statement but whether this build can issue it while serving the runtime. It
+can, so it is registered and contributes to `queryCatalogHash`. Excluded only:
+migrations, test setup, fixture seeding used exclusively by tests, and
+diagnostic SQL that cannot run in production.
+
+**Duplicate registration is refused, never deduplicated.** Collapsing it in the
+hashing function would conceal a registry defect behind a plausible-looking
+hash, which is precisely how `COMMAND_SQL` survived two phases registered twice.
+`registerCatalogues` throws.
+
+**The factory becomes asynchronous.** All cleanup is awaited before rejection;
+no unawaited `pool.end()`. A cleanup failure is attached to the construction
+error rather than replacing or hiding it. No synchronous fallback is provided
+and every caller awaits.
+
+**Historical provenance is not rewritten.** The old hash accurately records what
+the software claimed at the time, incomplete though the claim was; changing it
+retroactively would make the audit trail more misleading, not less. The
+catalogue is fixed, the identity is re-derived, and future rows carry the
+corrected hash. A regression test proves a catalogue change moves the identity.
+
+**Rule 13 needs both forms of evidence.** The static rule proves the owning
+module calls the validator; the behavioural contract tests prove each public
+path rejects a wrong-case reference, a wrong-revision reference, a malformed
+hydrated reference and a bypassed replay. Branch-level static proof is not
+claimed.
+
+**Rule 14 classifies by shape and marker, not by the presence of `throw`.**
+Named bounded errors — `InvariantViolationError`, `ConflictingRecordError`,
+`ReferentialIntegrityError`, `TransactionClosedError` — are legitimate refusals
+and must never be flagged.
+
+**Three stages, approved**, reported separately.
+
+---
+
+## 13 · Superseded open questions
 
 1. **`ORGANIZATION_SQL` in `CATALOGS`?** (§0.1) It is issued through the
    adapter's pool but constructed by `container.ts`. I lean to including it and

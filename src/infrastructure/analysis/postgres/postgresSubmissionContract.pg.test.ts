@@ -43,7 +43,7 @@ afterAll(async () => {
 describeDecisionRepositoryContract('postgres', {
   async create() {
     await db.truncateAnalysisData()
-    const repositories = createPostgresRepositories({ connectionString: appUrl })
+    const repositories = await createPostgresRepositories({ connectionString: appUrl })
     opened.push(repositories)
     return repositories
   },
