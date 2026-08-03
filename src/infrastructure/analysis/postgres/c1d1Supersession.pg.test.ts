@@ -347,6 +347,39 @@ describe('supersession statement counts', () => {
     expect(statementsFor('decisions.save')).toBe(12)
   })
 
+  it('measures the identical-replay and conflict paths', async () => {
+    /*
+     * Measured, not estimated. Both take a different branch through the
+     * zero-row disambiguation, and pinning a guess would mean editing it later
+     * and calling that a measurement.
+     */
+    await repositories.decisions.save(correction())
+
+    counts.clear()
+    await repositories.decisions.save(correction())
+    const replay = statementsFor('decisions.save')
+
+    counts.clear()
+    await repositories.decisions
+      .save(correction({ decisionId: 'dec-9', reconsiderationTriggers: [] }))
+      .catch(() => {})
+    const conflict = statementsFor('decisions.save')
+
+    /*
+     * Measured: replay 5, conflict 6.
+     *
+     * A replay never reaches the predecessor at all -- the probe finds the
+     * successor and returns it. The conflict path spends one more than a first
+     * correction's prefix because it probes, reads the predecessor and its
+     * submissions, checks the referenced submissions, attempts the guarded
+     * update, and then re-reads the successor to decide which of the three
+     * zero-row meanings it is looking at.
+     *
+     * Recorded so a change in either is visible rather than absorbed.
+     */
+    expect({ replay, conflict }).toEqual({ replay: 5, conflict: 6 })
+  })
+
   it('replays an identical correction in five', async () => {
     await repositories.decisions.save(correction())
     counts.clear()
