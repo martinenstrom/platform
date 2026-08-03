@@ -24,13 +24,19 @@
  * three different policy versions. Copying any of it here would answer the audit
  * question worse than the join does.
  *
- * **No supersession.** B2B-2 builds the correcting-decision transaction, its
- * zero-row disambiguation and the named constraint forcing. A decision naming a
- * predecessor is refused here rather than half-written.
+ * ## Supersession is one act
+ *
+ * There is no `supersede()` a caller could invoke without inserting the
+ * successor -- that would be a way to leave a case with no live decision. The
+ * predecessor's link is updated inside `save`, BEFORE the successor row exists,
+ * which only works because both supersession foreign keys are `DEFERRABLE
+ * INITIALLY DEFERRED`: the predecessor leaves the one-live partial index before
+ * the successor enters it, so no instant has two live decisions.
  */
 
 import { validateCaseDecision, type CaseDecision } from '~/domain/analysis'
 import {
+  ConcurrencyConflictError,
   ConflictingRecordError,
   InvariantViolationError,
   ReferentialIntegrityError,
@@ -46,6 +52,7 @@ import type {
   DecisionSubmissionRow,
   DecisionTriggerRow,
 } from './rows'
+import { CONSTRAINT_SQL } from './deferredConstraints'
 import { catalog, run, ts, type Queryable, type SqlContext } from './sql'
 import { unitOfWork, type Scope } from './transaction'
 
@@ -171,6 +178,29 @@ export const DECISION_WRITE_SQL = catalog({
   /** Structural facts about every submission the decision references. */
   submissionsById: `SELECT id, case_id, revision_id, state
                     FROM analysis.cio_submissions WHERE id = ANY($1)`,
+})
+
+export const SUPERSESSION_SQL = catalog({
+  /** The predecessor, and whether anything has already superseded it. */
+  predecessorFor: `SELECT decision_id, case_id, superseded_by_decision_id
+                   FROM analysis.case_decisions WHERE decision_id = $1`,
+
+  /** Which submissions the predecessor referenced, for a reuse claim. */
+  predecessorSubmissions: `SELECT submission_id FROM analysis.decision_submissions
+                           WHERE decision_id = $1`,
+
+  /*
+   * Guarded on `IS NULL`, which is what makes two corrections unable to both
+   * win: the loser updates zero rows rather than overwriting the winner's link.
+   * The deferrable foreign keys are what let this run BEFORE the successor
+   * exists, so the predecessor leaves the one-live partial index before the
+   * successor enters it and no instant has two live decisions.
+   */
+  markSuperseded: `UPDATE analysis.case_decisions
+                      SET superseded_by_decision_id = $2
+                    WHERE decision_id = $1
+                      AND superseded_by_decision_id IS NULL
+                RETURNING decision_id`,
 })
 
 type RelationRow = DecisionSubmissionRow
@@ -322,19 +352,6 @@ export function createDecisionRepository(
           throw new InvariantViolationError(problems[0]!.code, 'decisions.save')
         }
 
-        if (decision.supersedesDecisionId !== undefined) {
-          /*
-           * Refused rather than half-written. The correcting transaction needs
-           * the deferred foreign keys, the zero-row disambiguation and the
-           * named constraint forcing, and writing the successor without them
-           * would leave a case with two live decisions or none.
-           */
-          throw new InvariantViolationError(
-            'decision-supersession-not-implemented',
-            'decisions.save',
-          )
-        }
-
         const existing = (
           await hydrate(
             client,
@@ -353,6 +370,46 @@ export function createDecisionRepository(
             )
           }
           return existing
+        }
+
+        /*
+         * The predecessor, before anything is written. Its case is checked here
+         * rather than left to the composite foreign key, so the rejection is the
+         * same CLASS as the in-memory reference's: a raw foreign-key violation
+         * would arrive as ReferentialIntegrityError.
+         */
+        const predecessorId = decision.supersedesDecisionId
+        let predecessorSubmissions: ReadonlySet<string> = new Set()
+
+        if (predecessorId !== undefined) {
+          const found = await run<{
+            decision_id: string
+            case_id: string
+            superseded_by_decision_id: string | null
+          }>(client, context, 'decisions.save', SUPERSESSION_SQL.predecessorFor, [
+            predecessorId,
+          ])
+          const predecessor = found[0]
+          if (!predecessor) {
+            throw new ReferentialIntegrityError(
+              'case_decisions_supersedes_fk',
+              'decisions.save',
+            )
+          }
+          if (predecessor.case_id !== decision.caseId) {
+            throw new InvariantViolationError(
+              'decision-supersedes-other-case',
+              'decisions.save',
+            )
+          }
+          const referenced = await run<{ submission_id: string }>(
+            client,
+            context,
+            'decisions.save',
+            SUPERSESSION_SQL.predecessorSubmissions,
+            [predecessorId],
+          )
+          predecessorSubmissions = new Set(referenced.map((row) => row.submission_id))
         }
 
         /*
@@ -391,9 +448,80 @@ export function createDecisionRepository(
           }
           /*
            * A settled submission is NOT rejected for being settled: a
-           * correction legitimately reuses the basis it corrects. Whether this
-           * particular reuse is authorised is the command's question.
+           * correction legitimately reuses the basis it corrects. What the
+           * repository does check is that the reuse is structurally real -- the
+           * predecessor must actually have referenced it. Whether the reuse
+           * remains institutionally permissible after later evidence or
+           * governance is the command's question, not this one's.
            */
+          if (
+            submission.state !== 'pending' &&
+            predecessorId !== undefined &&
+            !predecessorSubmissions.has(submission.id)
+          ) {
+            throw new InvariantViolationError(
+              'decision-submission-not-reusable',
+              'decisions.save',
+            )
+          }
+        }
+
+        if (predecessorId !== undefined) {
+          const marked = await run<{ decision_id: string }>(
+            client,
+            context,
+            'decisions.save',
+            SUPERSESSION_SQL.markSuperseded,
+            [predecessorId, decision.decisionId],
+          )
+
+          if (marked.length === 0) {
+            /*
+             * Zero rows is neither success nor conflict on its own.
+             *
+             * The replay probe above already missed, so the successor did not
+             * exist when this transaction started -- but under READ COMMITTED a
+             * concurrent winner may have committed while this statement waited
+             * on the row lock. Which of the three it is gets decided by looking,
+             * in this same transaction, at what actually happened.
+             */
+            const raced = (
+              await hydrate(
+                client,
+                'decisions.save',
+                await readRoots(client, 'decisions.save', DECISION_READ_SQL.byId, [
+                  decision.decisionId,
+                ]),
+              )
+            )[0]
+
+            if (raced) {
+              /*
+               * The SAME successor won. An identical retry is a replay and gets
+               * the winner; a different one under that id is two decisions
+               * wearing one name.
+               */
+              if (decisionSemanticKey(raced) !== decisionSemanticKey(decision)) {
+                throw new ConflictingRecordError(
+                  'Case decision',
+                  decision.decisionId,
+                  'decisions.save',
+                )
+              }
+              return raced
+            }
+
+            /*
+             * A DIFFERENT successor won, or the predecessor was not live when
+             * this caller read it. Either way this correction is against a
+             * decision that has moved on: re-read and decide again.
+             */
+            throw new ConcurrencyConflictError(
+              decision.caseId,
+              decision.aggregateVersion,
+              decision.aggregateVersion,
+            )
+          }
         }
 
         const root = rows.decision
@@ -480,6 +608,21 @@ export function createDecisionRepository(
           rows.triggers.map((row) => row.created_at),
           rows.triggers.map((row) => row.policy_version),
         ])
+
+        /*
+         * The rules that span these writes fire at COMMIT, which is the wrong
+         * moment for a repository to learn it was wrong. Forcing exactly the
+         * six the decision owns makes an invalid relation set fail from `save`,
+         * where the in-memory reference fails, and restores the caller's mode
+         * so unrelated deferred work is untouched.
+         */
+        await run(client, context, 'decisions.save', CONSTRAINT_SQL.forceDecisionConstraints)
+        await run(
+          client,
+          context,
+          'decisions.save',
+          CONSTRAINT_SQL.restoreDecisionConstraints,
+        )
 
         /*
          * The argument, sealed — not a read-back. The references were checked

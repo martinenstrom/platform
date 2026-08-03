@@ -1416,6 +1416,13 @@ function decisionRepository(store: Store, scope: Scope): DecisionRepository {
         return existing
       }
 
+      const predecessorId = decision.supersedesDecisionId
+      const predecessorSubmissions = new Set(
+        predecessorId === undefined
+          ? []
+          : (store.decisions.get(predecessorId)?.submissionIds ?? []),
+      )
+
       for (const submissionId of decision.submissionIds) {
         const submission = store.submissions.get(submissionId)
         if (!submission) {
@@ -1427,9 +1434,23 @@ function decisionRepository(store: Store, scope: Scope): DecisionRepository {
         if (submission.caseId !== decision.caseId) {
           throw new InvariantViolationError('decision-submission-case', 'decisions.save')
         }
+        /*
+         * A settled submission is not rejected for being settled -- a
+         * correction reuses the basis it corrects. What has to be true is that
+         * the reuse is real: the predecessor must actually have referenced it.
+         */
+        if (
+          submission.state !== 'pending' &&
+          predecessorId !== undefined &&
+          !predecessorSubmissions.has(submissionId)
+        ) {
+          throw new InvariantViolationError(
+            'decision-submission-not-reusable',
+            'decisions.save',
+          )
+        }
       }
 
-      const predecessorId = decision.supersedesDecisionId
       if (predecessorId !== undefined) {
         const predecessor = store.decisions.get(predecessorId)
         if (!predecessor) {
@@ -1461,6 +1482,27 @@ function decisionRepository(store: Store, scope: Scope): DecisionRepository {
           'case_decisions_one_live_per_case',
           'decisions.save',
         )
+      }
+
+      /*
+       * A reconsideration trigger id is unique across every decision, not just
+       * within one: `decision_reconsideration_triggers.id` is the primary key.
+       * A superseding decision therefore mints its OWN conditions rather than
+       * restating its predecessor's under the same ids -- which is also why
+       * triggers have no lineage across decisions (TD-52).
+       */
+      const mintedTriggerIds = new Set(
+        [...store.decisions.values()].flatMap((stored) =>
+          stored.reconsiderationTriggers.map((trigger) => trigger.id),
+        ),
+      )
+      for (const trigger of decision.reconsiderationTriggers) {
+        if (mintedTriggerIds.has(trigger.id)) {
+          throw new DuplicateRecordError(
+            'decision_reconsideration_triggers_pkey',
+            'decisions.save',
+          )
+        }
       }
 
       const stored = seal(decision, `Case decision ${decision.decisionId}`)

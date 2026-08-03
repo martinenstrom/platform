@@ -636,12 +636,22 @@ function buildContract(
     /* ------------------------------------------------------ supersession */
 
     describeSupersession('supersession', () => {
+      /*
+       * A correction mints its own reconsideration conditions. Trigger ids are
+       * unique across every decision, so restating the predecessor's under the
+       * same ids is not a correction -- it is two decisions claiming one
+       * condition. See TD-52.
+       */
       const correction = (over: Partial<CaseDecision> = {}) =>
         selectedDecision({
           decisionId: 'dec-2',
           supersedesDecisionId: 'dec-1',
           decidedAt: SECOND,
           rationale: 'Corrected: the credit impulse was mis-signed.',
+          reconsiderationTriggers: [
+            quantitativeTrigger({ id: 'trg-corrected-1' }),
+            qualitativeTrigger({ id: 'trg-corrected-2' }),
+          ],
           ...over,
         })
 
@@ -681,6 +691,23 @@ function buildContract(
         await expect(
           repositories.decisions.save(correction({ decisionId: 'dec-3' })),
         ).rejects.toThrow(ConcurrencyConflictError)
+      })
+
+      it('refuses a correction reusing a predecessor trigger id', async () => {
+        /*
+         * Found by running the shared contract against PostgreSQL: the trigger
+         * id is a global primary key, and the in-memory reference had no such
+         * rule. The schema is right -- a superseding decision restates its
+         * conditions as its own, which is why they carry no lineage.
+         */
+        await expect(
+          repositories.decisions.save(
+            correction({
+              decisionId: 'dec-reused',
+              reconsiderationTriggers: [quantitativeTrigger()],
+            }),
+          ),
+        ).rejects.toThrow(DuplicateRecordError)
       })
 
       it('refuses a decision that supersedes itself', async () => {

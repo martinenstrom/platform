@@ -108,6 +108,55 @@ interface DatabaseFailure {
  * content. What survives is the constraint NAME, which is a schema identifier
  * and bounded.
  */
+/**
+ * Which rule the schema raised, from a fixed machine prefix.
+ *
+ * Every `RAISE` in this schema uses `integrity_constraint_violation`, so the
+ * SQLSTATE alone cannot say whether an aggregate was invalid or an immutable
+ * record was being rewritten. Those are different institutional failures and
+ * the in-memory reference distinguishes them, so mapping all of them to
+ * `ImmutableRecordError` made the two stores disagree about the same mistake.
+ *
+ * The prefixes are **schema-owned identifiers**, written in migration 0020
+ * precisely to be matched on. No user-authored or institutional text influences
+ * the classification, and an unknown message is not guessed into a domain error
+ * -- it falls through to the conservative default.
+ *
+ * A message prefix is a weak identity for a rule. TD-57 replaces it with a
+ * structured SQLSTATE in a later migration; until then a fitness test pins the
+ * prefixes so a reword cannot silently reclassify a failure.
+ */
+const SCHEMA_RAISE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ['decision_outcome:', 'decision_outcome'],
+  ['supersession_cycle:', 'supersession_cycle'],
+]
+
+function schemaRaised(
+  failure: DatabaseFailure,
+  operation: string,
+  correlationId?: string,
+): StorageError {
+  const message = failure.message ?? ''
+  for (const [prefix, code] of SCHEMA_RAISE_PREFIXES) {
+    if (message.startsWith(prefix)) {
+      /*
+       * The bounded code, never the raised text: the message interpolates a
+       * decision id, and the constraint field is for schema identifiers.
+       */
+      return new InvariantViolationError(code, operation, correlationId)
+    }
+  }
+  /*
+   * Everything else the schema raises is a refusal to rewrite or delete a
+   * sealed record -- the immutability guards in 0008 and 0020.
+   */
+  return new ImmutableRecordError(
+    message || 'a sealed record',
+    operation,
+    correlationId,
+  )
+}
+
 export function mapDatabaseError(
   error: unknown,
   operation: string,
@@ -147,11 +196,7 @@ export function mapDatabaseError(
      */
     case '23000':
     case 'P0001':
-      return new ImmutableRecordError(
-        failure.message ?? 'a sealed record',
-        operation,
-        correlationId,
-      )
+      return schemaRaised(failure, operation, correlationId)
     case '40001':
       return new RetryableStorageError('serialization-failure', operation, correlationId)
     case '40P01':

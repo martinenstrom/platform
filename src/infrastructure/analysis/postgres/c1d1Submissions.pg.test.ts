@@ -336,10 +336,16 @@ describe('decision statement counts do not grow with the data', () => {
       counts.clear()
       await repositories.decisions.save(wide(`dec-${size}`, size))
       /*
-       * Replay probe, the submission check, the root, and four child tables.
-       * Seven, whether the decision carries one dissent entry or twenty-five.
+       * Replay probe, the submission check, the root, four child tables, and
+       * the two `SET CONSTRAINTS` statements. Nine, whether the decision
+       * carries one dissent entry or twenty-five.
+       *
+       * Seven until B2B-2. The two added statements are what make an invalid
+       * relation set fail from `save` rather than from the caller's commit --
+       * the parity property the whole named-constraint design exists for -- so
+       * the increase buys something and is recorded rather than absorbed.
        */
-      expect(statementsFor('decisions.save')).toBe(7)
+      expect(statementsFor('decisions.save')).toBe(9)
     })
 
     it(`get issues five statements at ${size} child rows`, async () => {
