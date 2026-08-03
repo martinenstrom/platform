@@ -47,6 +47,151 @@ import {
   verificationIdFor,
 } from '~/domain/analysis/decisionFixtures'
 
+/**
+ * Every shared case this contract defines, recorded as it defines them.
+ *
+ * The two adapters run in different vitest projects and different processes,
+ * so neither can observe what the other executed. What they CAN both do is
+ * check the list this module produced while defining their suite — derived
+ * from the definitions rather than copied beside them, so a case added or
+ * removed moves the list automatically.
+ *
+ * `assertSharedInventory` then checks that list against the frozen inventory
+ * below, from inside each adapter's own run. Two independent checks against one
+ * pinned list, which is the strongest honest guarantee available across
+ * processes.
+ */
+let registered: string[] = []
+
+/** `it`, plus a record that this case exists. */
+function sharedCase(name: string, body: () => Promise<void> | void): void {
+  registered.push(name)
+  it(name, body)
+}
+
+/**
+ * The shared cases, pinned.
+ *
+ * Regenerated rather than remembered: when this drifts, the failure prints the
+ * list the contract actually defined, and updating it is a copy of that output
+ * rather than an act of memory.
+ */
+export const SHARED_CONTRACT_CASES: readonly string[] = Object.freeze([
+  "round-trips a fully populated submission",
+  "accepts a submission with no blockers",
+  "refuses a submission carrying a blocker, before storing anything",
+  "never silently drops blockers instead of refusing",
+  "reconstructs blockers as an explicit empty array",
+  "refuses a submission whose Risk requirement was never resolved",
+  "returns the stored submission on an identical replay",
+  "refuses a conflicting submission replay",
+  "orders submissions for a case by time, then id",
+  "finds every submission for one exact revision",
+  "shows the queue oldest first and settles it",
+  "settles a whole list in one act",
+  "treats settling to the same state as a replay",
+  "refuses to rewrite one settlement as the other",
+  "refuses to settle a submission that does not exist",
+  "refuses a verification review for another revision",
+  "refuses a Devil's Advocate review for another revision",
+  "refuses a Risk review for another revision",
+  "refuses a challenge that belongs to another review",
+  "refuses an aggregation that produced another revision",
+  "refuses a review that reviewed another case",
+  "refuses required work from another case",
+  "refuses a disagreement about a claim from another case",
+  "refuses a review that does not exist at all",
+  "stores none of it",
+  "round-trips a return with its concerns in order",
+  "settles the submission it returns",
+  "returns the stored return on an identical replay",
+  "refuses a conflicting return replay",
+  "refuses a return with no reason",
+  "refuses a return against a submission that does not exist",
+  "lists returns by case and by revision, oldest first",
+  "round-trips a selected decision",
+  "round-trips a deferred decision with its conditions",
+  "round-trips a declined decision accounting for every revision",
+  "keeps dissent, its acknowledgement and its evidence",
+  "keeps each trigger policy version individually",
+  "keeps dissent order across more than one entry",
+  "canonicalises nothing about the actor it was given",
+  "invents no Compliance state",
+  "returns the stored decision on an identical replay",
+  "refuses a conflicting decision replay",
+  "refuses a decision the domain validator rejects",
+  "refuses a deferral with no reconsideration condition",
+  "refuses a decision referencing a submission that does not exist",
+  "refuses a second live decision for one case",
+  "makes the correction the only live decision",
+  "keeps the superseded decision in history, unchanged",
+  "excludes superseded decisions from the live listing",
+  "still reaches a superseded decision by id",
+  "refuses a second correction of an already-superseded decision",
+  "refuses a correction reusing a predecessor trigger id",
+  "refuses a decision that supersedes itself",
+  "refuses a decision superseding one on another case",
+  "refuses a correction of a decision that does not exist",
+  "leaves the prior decision live when the correction rolls back",
+  "freezes a submission and a return on read",
+  "freezes a decision on read",
+  "ignores a caller mutating the object it passed in",
+  "ignores a caller mutating what a read returned",
+  "guarantees nothing about object identity between reads",
+  "refuses a repository captured inside a transaction and used after",
+  "rolls a submission back with its transaction",
+])
+
+/**
+ * Asserts this run defined exactly the shared contract, and skipped nothing.
+ *
+ * Called by each adapter's suite. The residual limitation, stated: if the
+ * shared contract itself were edited wrongly, both adapters would drift
+ * identically and still agree. That is a contract-quality risk, not an
+ * adapter-parity divergence, and no cross-process check can distinguish them.
+ */
+export function sharedContractInventory(): readonly string[] {
+  return Object.freeze([...registered])
+}
+
+/**
+ * Asserts this adapter's run defined the whole shared contract, and no more.
+ *
+ * Invoked from each adapter's suite file. It compares what the contract just
+ * registered against the pinned inventory, both directions, and refuses
+ * duplicates — so a case added without updating the pin fails in both suites,
+ * and a suite that quietly stopped defining half its cases fails in its own.
+ *
+ * There are no conditional cases left to skip: the staged entry points that
+ * ran half the contract were removed once both adapters could run all of it,
+ * which makes "nothing was skipped" structural rather than asserted.
+ */
+export function assertSharedInventory(): void {
+  const actual = sharedContractInventory()
+
+  const duplicates = actual.filter((name, index) => actual.indexOf(name) !== index)
+  if (duplicates.length > 0) {
+    throw new Error(`The shared contract defines duplicate case names: ${duplicates}`)
+  }
+
+  const missing = SHARED_CONTRACT_CASES.filter((name) => !actual.includes(name))
+  const extra = actual.filter((name) => !SHARED_CONTRACT_CASES.includes(name))
+
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `The shared contract inventory has drifted.
+` +
+        `Missing from this run: ${JSON.stringify(missing)}
+` +
+        `Not in the pinned inventory: ${JSON.stringify(extra)}
+` +
+        `The pin is meant to be copied, not remembered — the current list is:
+` +
+        JSON.stringify(actual, null, 2),
+    )
+  }
+}
+
 export interface DecisionContractOptions {
   /** A fresh, empty store for each test. */
   create: () => Promise<AnalysisRepositories>
@@ -64,56 +209,16 @@ export interface DecisionContractOptions {
   ) => Promise<void>
 }
 
-/**
- * Submissions and returns.
- *
- * A separate entry point from the decision half only so a stage that has
- * finished one and not the other can run what exists. Both are invoked for
- * every completed adapter, and neither body knows which adapter it is running
- * against.
- */
-export function describeSubmissionRepositoryContract(
-  name: string,
-  options: DecisionContractOptions,
-): void {
-  buildContract(name, options, { decisions: false, supersession: false })
-}
-
-/**
- * Decisions without supersession.
- *
- * The correcting-decision transaction needs the deferred foreign keys and the
- * named constraint forcing, which arrive a stage later than the rest. A stage
- * that has the one and not the other runs this.
- */
-export function describeDecisionPersistenceContract(
-  name: string,
-  options: DecisionContractOptions,
-): void {
-  buildContract(name, options, { decisions: true, supersession: false })
-}
-
 export function describeDecisionRepositoryContract(
   name: string,
   options: DecisionContractOptions,
 ): void {
-  buildContract(name, options, { decisions: true, supersession: true })
+  buildContract(name, options)
 }
 
-function buildContract(
-  name: string,
-  options: DecisionContractOptions,
-  parts: { decisions: boolean; supersession: boolean },
-): void {
-  /*
-   * `describe`/`it` for a stage that has the decision repository, and their
-   * skipping counterparts for one that does not. Named rather than written
-   * inline: a parenthesised conditional at the start of a statement is parsed
-   * as a call on whatever the line above evaluated to.
-   */
-  const describeDecisions = parts.decisions ? describe : describe.skip
-  const describeSupersession = parts.supersession ? describe : describe.skip
-  const whenDecisions = parts.decisions ? it : it.skip
+function buildContract(name: string, options: DecisionContractOptions): void {
+
+  registered = []
 
   describe(`decision repository contract — ${name}`, () => {
     let repositories: AnalysisRepositories
@@ -141,7 +246,7 @@ function buildContract(
     /* ------------------------------------------------------- submissions */
 
     describe('submissions', () => {
-      it('round-trips a fully populated submission', async () => {
+      sharedCase('round-trips a fully populated submission', async () => {
         const saved = await repositories.submissions.save(cioSubmission())
         const read = await repositories.submissions.get('sub-1')
 
@@ -158,13 +263,13 @@ function buildContract(
         expect(saved.id).toBe('sub-1')
       })
 
-      it('accepts a submission with no blockers', async () => {
+      sharedCase('accepts a submission with no blockers', async () => {
         await expect(
           repositories.submissions.save(cioSubmission()),
         ).resolves.toMatchObject({ id: 'sub-1' })
       })
 
-      it('refuses a submission carrying a blocker, before storing anything', async () => {
+      sharedCase('refuses a submission carrying a blocker, before storing anything', async () => {
         const blocked = cioSubmission({
           id: 'sub-blocked',
           basis: eligibilityBasis({
@@ -179,7 +284,7 @@ function buildContract(
         expect(await repositories.submissions.get('sub-blocked')).toBeNull()
       })
 
-      it('never silently drops blockers instead of refusing', async () => {
+      sharedCase('never silently drops blockers instead of refusing', async () => {
         /*
          * The failure this guards is the plausible one: a mapper that ignored
          * the field would store the submission happily and read it back with
@@ -201,12 +306,12 @@ function buildContract(
         expect(await repositories.submissions.listForCase('case-1')).toEqual([])
       })
 
-      it('reconstructs blockers as an explicit empty array', async () => {
+      sharedCase('reconstructs blockers as an explicit empty array', async () => {
         await repositories.submissions.save(cioSubmission())
         expect((await repositories.submissions.get('sub-1'))?.basis.blockers).toEqual([])
       })
 
-      it('refuses a submission whose Risk requirement was never resolved', async () => {
+      sharedCase('refuses a submission whose Risk requirement was never resolved', async () => {
         await expect(
           repositories.submissions.save(
             cioSubmission({
@@ -217,21 +322,21 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('returns the stored submission on an identical replay', async () => {
+      sharedCase('returns the stored submission on an identical replay', async () => {
         const first = await repositories.submissions.save(cioSubmission())
         const second = await repositories.submissions.save(cioSubmission())
         expect(second.id).toBe(first.id)
         expect(await repositories.submissions.listForCase('case-1')).toHaveLength(1)
       })
 
-      it('refuses a conflicting replay', async () => {
+      sharedCase('refuses a conflicting submission replay', async () => {
         await repositories.submissions.save(cioSubmission())
         await expect(
           repositories.submissions.save(cioSubmission({ caseVersion: 99 })),
         ).rejects.toThrow(ConflictingRecordError)
       })
 
-      it('orders submissions for a case by time, then id', async () => {
+      sharedCase('orders submissions for a case by time, then id', async () => {
         await repositories.submissions.save(
           cioSubmission({ id: 'sub-2', revisionId: 'rev-2', submittedAt: SECOND }),
         )
@@ -241,7 +346,7 @@ function buildContract(
         ).toEqual(['sub-1', 'sub-2'])
       })
 
-      it('finds every submission for one exact revision', async () => {
+      sharedCase('finds every submission for one exact revision', async () => {
         await seedSubmissions()
         await repositories.submissions.save(
           cioSubmission({ id: 'sub-3', submittedAt: SECOND }),
@@ -251,7 +356,7 @@ function buildContract(
         ).toEqual(['sub-1', 'sub-3'])
       })
 
-      it('shows the queue oldest first and settles it', async () => {
+      sharedCase('shows the queue oldest first and settles it', async () => {
         await seedSubmissions()
         expect((await repositories.submissions.pending()).map((s) => s.id)).toEqual([
           'sub-1',
@@ -265,13 +370,13 @@ function buildContract(
         expect((await repositories.submissions.get('sub-1'))?.state).toBe('decided')
       })
 
-      it('settles a whole list in one act', async () => {
+      sharedCase('settles a whole list in one act', async () => {
         await seedSubmissions()
         await repositories.submissions.settle(['sub-1', 'sub-2'], 'decided')
         expect(await repositories.submissions.pending()).toEqual([])
       })
 
-      it('treats settling to the same state as a replay', async () => {
+      sharedCase('treats settling to the same state as a replay', async () => {
         await seedSubmissions()
         await repositories.submissions.settle(['sub-1'], 'decided')
         await expect(
@@ -279,7 +384,7 @@ function buildContract(
         ).resolves.toBeUndefined()
       })
 
-      it('refuses to rewrite one settlement as the other', async () => {
+      sharedCase('refuses to rewrite one settlement as the other', async () => {
         await seedSubmissions()
         await repositories.submissions.settle(['sub-1'], 'returned')
         await expect(
@@ -287,7 +392,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses to settle a submission that does not exist', async () => {
+      sharedCase('refuses to settle a submission that does not exist', async () => {
         await expect(
           repositories.submissions.settle(['sub-nowhere'], 'decided'),
         ).rejects.toThrow(ReferentialIntegrityError)
@@ -312,7 +417,7 @@ function buildContract(
           cioSubmission({ id: 'sub-wrong', basis: eligibilityBasis(basis) }),
         )
 
-      it('refuses a verification review for another revision', async () => {
+      sharedCase('refuses a verification review for another revision', async () => {
         await expect(
           citing({
             verification: {
@@ -324,7 +429,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it("refuses a Devil's Advocate review for another revision", async () => {
+      sharedCase("refuses a Devil's Advocate review for another revision", async () => {
         await expect(
           citing({
             devilsAdvocate: {
@@ -336,7 +441,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a Risk review for another revision', async () => {
+      sharedCase('refuses a Risk review for another revision', async () => {
         await expect(
           citing({
             risk: { reviewId: riskIdFor('rev-2'), sequence: 1, status: 'accepted' },
@@ -344,7 +449,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a challenge that belongs to another review', async () => {
+      sharedCase('refuses a challenge that belongs to another review', async () => {
         await expect(
           citing({
             devilsAdvocate: {
@@ -356,13 +461,13 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses an aggregation that produced another revision', async () => {
+      sharedCase('refuses an aggregation that produced another revision', async () => {
         await expect(citing({ aggregationId: aggregationIdFor('rev-2') })).rejects.toThrow(
           InvariantViolationError,
         )
       })
 
-      it('refuses a review that reviewed another case', async () => {
+      sharedCase('refuses a review that reviewed another case', async () => {
         await options.seed(repositories, {
           caseId: 'case-2',
           revisionIds: ['rev-3', 'rev-4'],
@@ -378,7 +483,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses required work from another case', async () => {
+      sharedCase('refuses required work from another case', async () => {
         await options.seed(repositories, {
           caseId: 'case-2',
           revisionIds: ['rev-3', 'rev-4'],
@@ -392,7 +497,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a disagreement about a claim from another case', async () => {
+      sharedCase('refuses a disagreement about a claim from another case', async () => {
         await options.seed(repositories, {
           caseId: 'case-2',
           revisionIds: ['rev-3', 'rev-4'],
@@ -406,7 +511,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a review that does not exist at all', async () => {
+      sharedCase('refuses a review that does not exist at all', async () => {
         await expect(
           citing({
             verification: { reviewId: 'review-nowhere', sequence: 1, status: 'verified' },
@@ -414,7 +519,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('stores none of it', async () => {
+      sharedCase('stores none of it', async () => {
         await expect(
           citing({ aggregationId: aggregationIdFor('rev-2') }),
         ).rejects.toThrow()
@@ -425,7 +530,7 @@ function buildContract(
     /* ----------------------------------------------------------- returns */
 
     describe('returns', () => {
-      it('round-trips a return with its concerns in order', async () => {
+      sharedCase('round-trips a return with its concerns in order', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
 
@@ -441,20 +546,20 @@ function buildContract(
         ])
       })
 
-      it('settles the submission it returns', async () => {
+      sharedCase('settles the submission it returns', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
         expect((await repositories.submissions.get('sub-1'))?.state).toBe('returned')
       })
 
-      it('returns the stored return on an identical replay', async () => {
+      sharedCase('returns the stored return on an identical replay', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
         await repositories.submissions.recordReturn(cioReturn())
         expect(await repositories.submissions.returnsForCase('case-1')).toHaveLength(1)
       })
 
-      it('refuses a conflicting replay', async () => {
+      sharedCase('refuses a conflicting return replay', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
         await expect(
@@ -462,20 +567,20 @@ function buildContract(
         ).rejects.toThrow(ConflictingRecordError)
       })
 
-      it('refuses a return with no reason', async () => {
+      sharedCase('refuses a return with no reason', async () => {
         await seedSubmissions()
         await expect(
           repositories.submissions.recordReturn(cioReturn({ reason: '   ' })),
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a return against a submission that does not exist', async () => {
+      sharedCase('refuses a return against a submission that does not exist', async () => {
         await expect(
           repositories.submissions.recordReturn(cioReturn({ submissionId: 'sub-nowhere' })),
         ).rejects.toThrow(ReferentialIntegrityError)
       })
 
-      it('lists returns by case and by revision, oldest first', async () => {
+      sharedCase('lists returns by case and by revision, oldest first', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
         await repositories.submissions.recordReturn(
@@ -497,13 +602,13 @@ function buildContract(
 
     /* --------------------------------------------------------- decisions */
 
-    describeDecisions('decisions', () => {
+    describe('decisions', () => {
       const save = async (decision: CaseDecision) => {
         await seedSubmissions()
         return repositories.decisions.save(decision)
       }
 
-      it('round-trips a selected decision', async () => {
+      sharedCase('round-trips a selected decision', async () => {
         await save(selectedDecision())
         const read = await repositories.decisions.get('dec-1')
 
@@ -516,7 +621,7 @@ function buildContract(
         expect(read?.rationale).toContain('disinflation')
       })
 
-      it('round-trips a deferred decision with its conditions', async () => {
+      sharedCase('round-trips a deferred decision with its conditions', async () => {
         await save(deferredDecision())
         const read = await repositories.decisions.get('dec-deferred')
         expect(read?.outcome.kind).toBe('deferred')
@@ -524,7 +629,7 @@ function buildContract(
         expect(read?.reconsiderationTriggers).toHaveLength(2)
       })
 
-      it('round-trips a declined decision accounting for every revision', async () => {
+      sharedCase('round-trips a declined decision accounting for every revision', async () => {
         await save(declinedDecision())
         const read = await repositories.decisions.get('dec-declined')
         expect(read?.outcome).toMatchObject({
@@ -533,7 +638,7 @@ function buildContract(
         })
       })
 
-      it('keeps dissent, its acknowledgement and its evidence', async () => {
+      sharedCase('keeps dissent, its acknowledgement and its evidence', async () => {
         await save(selectedDecision())
         const dissent = (await repositories.decisions.get('dec-1'))?.unresolvedDissent[0]
         expect(dissent?.acknowledgement).toContain('Weighed and accepted')
@@ -541,7 +646,7 @@ function buildContract(
         expect(dissent?.materiality).toBe('material')
       })
 
-      it('keeps each trigger policy version individually', async () => {
+      sharedCase('keeps each trigger policy version individually', async () => {
         await save(
           selectedDecision({
             reconsiderationTriggers: [
@@ -557,7 +662,7 @@ function buildContract(
         ).toEqual(['1', '2'])
       })
 
-      it('keeps dissent order across more than one entry', async () => {
+      sharedCase('keeps dissent order across more than one entry', async () => {
         await save(
           selectedDecision({
             unresolvedDissent: [
@@ -573,33 +678,33 @@ function buildContract(
         ).toEqual(['challenge-z', 'challenge-a'])
       })
 
-      it('canonicalises nothing about the actor it was given', async () => {
+      sharedCase('canonicalises nothing about the actor it was given', async () => {
         await save(selectedDecision())
         const actor = (await repositories.decisions.get('dec-1'))?.decidedBy
         expect(actor?.departmentHandles).toEqual(['chief-decision', 'strategy'])
         expect(actor?.authentication).toBe('system-asserted')
       })
 
-      it('invents no Compliance state', async () => {
+      sharedCase('invents no Compliance state', async () => {
         await save(selectedDecision())
         const read = await repositories.decisions.get('dec-1')
         expect(JSON.stringify(read)).not.toMatch(/compliance/i)
       })
 
-      it('returns the stored decision on an identical replay', async () => {
+      sharedCase('returns the stored decision on an identical replay', async () => {
         await save(selectedDecision())
         await repositories.decisions.save(selectedDecision())
         expect(await repositories.decisions.historyForCase('case-1')).toHaveLength(1)
       })
 
-      it('refuses a conflicting replay', async () => {
+      sharedCase('refuses a conflicting decision replay', async () => {
         await save(selectedDecision())
         await expect(
           repositories.decisions.save(selectedDecision({ rationale: 'Different.' })),
         ).rejects.toThrow(ConflictingRecordError)
       })
 
-      it('refuses a decision the domain validator rejects', async () => {
+      sharedCase('refuses a decision the domain validator rejects', async () => {
         await expect(
           save(
             selectedDecision({
@@ -613,19 +718,19 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a deferral with no reconsideration condition', async () => {
+      sharedCase('refuses a deferral with no reconsideration condition', async () => {
         await expect(
           save(deferredDecision({ reconsiderationTriggers: [] })),
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a decision referencing a submission that does not exist', async () => {
+      sharedCase('refuses a decision referencing a submission that does not exist', async () => {
         await expect(
           save(selectedDecision({ submissionIds: ['sub-1', 'sub-nowhere'] })),
         ).rejects.toThrow(ReferentialIntegrityError)
       })
 
-      it('refuses a second live decision for one case', async () => {
+      sharedCase('refuses a second live decision for one case', async () => {
         await save(selectedDecision())
         await expect(
           repositories.decisions.save(selectedDecision({ decisionId: 'dec-2' })),
@@ -635,7 +740,7 @@ function buildContract(
 
     /* ------------------------------------------------------ supersession */
 
-    describeSupersession('supersession', () => {
+    describe('supersession', () => {
       /*
        * A correction mints its own reconsideration conditions. Trigger ids are
        * unique across every decision, so restating the predecessor's under the
@@ -660,40 +765,40 @@ function buildContract(
         await repositories.decisions.save(selectedDecision())
       })
 
-      it('makes the correction the only live decision', async () => {
+      sharedCase('makes the correction the only live decision', async () => {
         await repositories.decisions.save(correction())
         expect((await repositories.decisions.getForCase('case-1'))?.decisionId).toBe(
           'dec-2',
         )
       })
 
-      it('keeps the superseded decision in history, unchanged', async () => {
+      sharedCase('keeps the superseded decision in history, unchanged', async () => {
         await repositories.decisions.save(correction())
         const history = await repositories.decisions.historyForCase('case-1')
         expect(history.map((decision) => decision.decisionId)).toEqual(['dec-1', 'dec-2'])
         expect(history[0]?.rationale).toContain('disinflation')
       })
 
-      it('excludes superseded decisions from the live listing', async () => {
+      sharedCase('excludes superseded decisions from the live listing', async () => {
         await repositories.decisions.save(correction())
         expect(
           (await repositories.decisions.listRecent(10)).map((d) => d.decisionId),
         ).toEqual(['dec-2'])
       })
 
-      it('still reaches a superseded decision by id', async () => {
+      sharedCase('still reaches a superseded decision by id', async () => {
         await repositories.decisions.save(correction())
         expect((await repositories.decisions.get('dec-1'))?.decisionId).toBe('dec-1')
       })
 
-      it('refuses a second correction of an already-superseded decision', async () => {
+      sharedCase('refuses a second correction of an already-superseded decision', async () => {
         await repositories.decisions.save(correction())
         await expect(
           repositories.decisions.save(correction({ decisionId: 'dec-3' })),
         ).rejects.toThrow(ConcurrencyConflictError)
       })
 
-      it('refuses a correction reusing a predecessor trigger id', async () => {
+      sharedCase('refuses a correction reusing a predecessor trigger id', async () => {
         /*
          * Found by running the shared contract against PostgreSQL: the trigger
          * id is a global primary key, and the in-memory reference had no such
@@ -710,7 +815,7 @@ function buildContract(
         ).rejects.toThrow(DuplicateRecordError)
       })
 
-      it('refuses a decision that supersedes itself', async () => {
+      sharedCase('refuses a decision that supersedes itself', async () => {
         await expect(
           repositories.decisions.save(
             selectedDecision({ decisionId: 'dec-9', supersedesDecisionId: 'dec-9' }),
@@ -718,7 +823,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a decision superseding one on another case', async () => {
+      sharedCase('refuses a decision superseding one on another case', async () => {
         await options.seed(repositories, {
           caseId: 'case-2',
           revisionIds: ['rev-3', 'rev-4'],
@@ -734,7 +839,7 @@ function buildContract(
         ).rejects.toThrow(InvariantViolationError)
       })
 
-      it('refuses a correction of a decision that does not exist', async () => {
+      sharedCase('refuses a correction of a decision that does not exist', async () => {
         await expect(
           repositories.decisions.save(
             correction({ decisionId: 'dec-4', supersedesDecisionId: 'dec-nowhere' }),
@@ -742,7 +847,7 @@ function buildContract(
         ).rejects.toThrow(ReferentialIntegrityError)
       })
 
-      it('leaves the prior decision live when the correction rolls back', async () => {
+      sharedCase('leaves the prior decision live when the correction rolls back', async () => {
         await expect(
           repositories.withTransaction(async (scoped) => {
             await scoped.decisions.save(correction({ decisionId: 'dec-5' }))
@@ -760,7 +865,7 @@ function buildContract(
     /* -------------------------------------------------------- immutability */
 
     describe('records cannot be changed through what they return', () => {
-      it('freezes a submission and a return on read', async () => {
+      sharedCase('freezes a submission and a return on read', async () => {
         await seedSubmissions()
         await repositories.submissions.recordReturn(cioReturn())
 
@@ -768,13 +873,13 @@ function buildContract(
         expect(isDeeplyFrozen(await repositories.submissions.getReturn('ret-1'))).toBe(true)
       })
 
-      whenDecisions('freezes a decision on read', async () => {
+      sharedCase('freezes a decision on read', async () => {
         await seedSubmissions()
         await repositories.decisions.save(selectedDecision())
         expect(isDeeplyFrozen(await repositories.decisions.get('dec-1'))).toBe(true)
       })
 
-      it('ignores a caller mutating the object it passed in', async () => {
+      sharedCase('ignores a caller mutating the object it passed in', async () => {
         /*
          * The guarantee is that the STORE does not change — not that the
          * mutation succeeds or fails. The two adapters reach it differently:
@@ -794,7 +899,7 @@ function buildContract(
         expect((await repositories.submissions.get('sub-1'))?.caseVersion).toBe(3)
       })
 
-      whenDecisions('ignores a caller mutating what a read returned', async () => {
+      sharedCase('ignores a caller mutating what a read returned', async () => {
         await seedSubmissions()
         await repositories.decisions.save(selectedDecision())
         const read = await repositories.decisions.get('dec-1')
@@ -811,7 +916,7 @@ function buildContract(
         )
       })
 
-      it('guarantees nothing about object identity between reads', async () => {
+      sharedCase('guarantees nothing about object identity between reads', async () => {
         /*
          * Deliberately NOT asserting that two reads return the same reference.
          * The in-memory store can; PostgreSQL cannot; and a caller that depended
@@ -827,7 +932,7 @@ function buildContract(
     /* --------------------------------------------------------- lifetimes */
 
     describe('transaction lifetime', () => {
-      it('refuses a repository captured inside a transaction and used after', async () => {
+      sharedCase('refuses a repository captured inside a transaction and used after', async () => {
         let escaped: AnalysisRepositories['submissions'] | null = null
         await repositories.withTransaction(async (scoped) => {
           escaped = scoped.submissions
@@ -835,7 +940,7 @@ function buildContract(
         await expect(escaped!.get('sub-1')).rejects.toThrow(TransactionClosedError)
       })
 
-      it('rolls a submission back with its transaction', async () => {
+      sharedCase('rolls a submission back with its transaction', async () => {
         await expect(
           repositories.withTransaction(async (scoped) => {
             await scoped.submissions.save(cioSubmission())

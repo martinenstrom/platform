@@ -39,6 +39,7 @@ import {
   ConcurrencyConflictError,
   ConflictingRecordError,
   InvariantViolationError,
+  MalformedRowError,
   ReferentialIntegrityError,
   type DecisionRepository,
 } from '~/application/analysis/repositories'
@@ -69,9 +70,22 @@ export const DECISION_READ_SQL = catalog({
   byId: `SELECT ${DECISION_COLUMNS} FROM analysis.case_decisions
          WHERE decision_id = $1`,
 
-  /** The live decision — the one nothing has superseded. */
+  /**
+   * The live decision — and enough to tell whether there is exactly one.
+   *
+   * `LIMIT 2` is the whole design. A case is supposed to hold at most one
+   * unsuperseded decision, and `case_decisions_one_live_per_case` normally
+   * makes anything else unreachable. But a read that took the first row would
+   * answer "this is what the firm currently holds" from an ambiguous state, and
+   * the caller would have no way to know it was a choice. Two rows is not a
+   * decision the repository is entitled to make.
+   *
+   * Reading two rather than counting keeps this one statement, and the
+   * aggregate is hydrated only once the cardinality is known.
+   */
   liveForCase: `SELECT ${DECISION_COLUMNS} FROM analysis.case_decisions
-                WHERE case_id = $1 AND superseded_by_decision_id IS NULL`,
+                WHERE case_id = $1 AND superseded_by_decision_id IS NULL
+                LIMIT 2`,
 
   /*
    * Everything, superseded included, oldest first. The supersession links are
@@ -302,17 +316,32 @@ export function createDecisionRepository(
       ),
 
     getForCase: (caseId) =>
-      unitOfWork(scope, 'decisions.getForCase', async (client) =>
-        (
-          await hydrate(
-            client,
+      unitOfWork(scope, 'decisions.getForCase', async (client) => {
+        const roots = await readRoots(
+          client,
+          'decisions.getForCase',
+          DECISION_READ_SQL.liveForCase,
+          [caseId],
+        )
+
+        if (roots.length === 0) return null
+        if (roots.length > 1) {
+          /*
+           * Refused, not resolved. Picking the first, the newest, or the
+           * lowest id would manufacture certainty the stored state does not
+           * contain -- and would hide the second decision from whoever most
+           * needs to know it exists. The database normally prevents this; if it
+           * is ever reachable, that is corruption and the read says so.
+           */
+          throw new MalformedRowError(
+            'Case decision',
+            `case "${caseId}" holds more than one live decision`,
             'decisions.getForCase',
-            await readRoots(client, 'decisions.getForCase', DECISION_READ_SQL.liveForCase, [
-              caseId,
-            ]),
           )
-        )[0] ?? null,
-      ),
+        }
+
+        return (await hydrate(client, 'decisions.getForCase', roots))[0] ?? null
+      }),
 
     historyForCase: (caseId) =>
       unitOfWork(scope, 'decisions.historyForCase', async (client) =>

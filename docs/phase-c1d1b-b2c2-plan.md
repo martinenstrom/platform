@@ -358,7 +358,48 @@ TD-34–37 · TD-39 · TD-8. **TD-56 stays closed.**
 
 ---
 
-## 13 · What I need decided before B2C-2A
+## 13 · Approved rulings (review, revision 2)
+
+**Multiple live decisions — behaviour change approved.** Zero → `null`; exactly
+one → return it; more than one → `MalformedRowError`. Never the first, the
+newest or the lowest id. The read detects cardinality deliberately (`LIMIT 2`)
+and hydrates only once it knows there is one, so the statement count is
+unchanged. The corruption test runs in a database it destroys, and the plan says
+it weakens the schema on purpose.
+
+**Parity inventory — derived, then pinned.** Every shared case is defined
+through a `sharedCase` recorder, so the registered list comes from the
+definitions rather than from a second hand-maintained array. `SHARED_CONTRACT_CASES`
+is generated from those definitions and checked by each adapter in its own
+process, both directions, with duplicates refused. The staged partial entry
+points were **deleted**, so "nothing was skipped" is structural rather than
+asserted. Residual limitation recorded: both adapters would still agree if the
+shared contract itself were edited wrongly — a contract-quality risk, not an
+adapter-parity divergence.
+
+**`evaluatedAt` is compared exactly.** It is persisted institutional state at
+this layer and nothing recomputes it during hydration. The C1C-4.1 exclusion
+applied to a separately recomputed projection and establishes no general rule
+about timestamps.
+
+**Two stages**, approved: 2A durability, parity and no-fallback; 2B refusal,
+bounds and cleanup.
+
+**The malformed matrix classifies enforcement level** — prevented by schema,
+prevented by permissions, refused on hydration, or not detectable — never
+collapsed into "covered". A test that fails during corrupt insertion does not
+prove mapper refusal, and a mapper-refusal test must create the malformed state
+first. **B2C-2B.**
+
+**Missing required-work row.** Determined mechanically before any test is
+written; if the absence is indistinguishable from a valid smaller basis, that is
+recorded as a representational gap with a named technical-debt item rather than
+given a passing test. A completeness witness — count, manifest or basis hash —
+is a focused domain and schema decision and **not** taken inside B2C-2. **B2C-2B.**
+
+---
+
+## 14 · Superseded open questions
 
 1. **The §0.1 detection.** Adding "more than one live decision is a
    `MalformedRowError`" is a behaviour change in a hardening stage. Confirm, or

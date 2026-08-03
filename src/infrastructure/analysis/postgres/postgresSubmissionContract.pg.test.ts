@@ -16,7 +16,13 @@
 
 import { afterAll, beforeAll } from 'vitest'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
-import { describeDecisionRepositoryContract } from '../decisionRepositoryContract'
+import { describe, expect, it } from 'vitest'
+import {
+  assertSharedInventory,
+  sharedContractInventory,
+  SHARED_CONTRACT_CASES,
+  describeDecisionRepositoryContract,
+} from '../decisionRepositoryContract'
 import { seedDecisionGovernance } from '../decisionSeed'
 import { IN_MEMORY_SEED_FIXTURES } from '../decisionSeedFixtures'
 import {
@@ -57,4 +63,17 @@ describeDecisionRepositoryContract('postgres', {
       ...fixture,
       fixtures: IN_MEMORY_SEED_FIXTURES,
     }),
+})
+
+/*
+ * The parity half. Each adapter checks, in its own process, that it defined
+ * exactly the shared contract -- the two suites run in different vitest
+ * projects and cannot observe each other, so one pinned list checked twice is
+ * the strongest honest guarantee available.
+ */
+describe('the postgres adapter runs the whole shared contract', () => {
+  it('defines exactly the pinned inventory', () => {
+    assertSharedInventory()
+    expect(sharedContractInventory()).toHaveLength(SHARED_CONTRACT_CASES.length)
+  })
 })

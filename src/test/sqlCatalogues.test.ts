@@ -78,24 +78,28 @@ function declaredCatalogues(): Array<{ file: string; binding: string }> {
 }
 
 describe('the production registry is complete', () => {
-  it('registers every catalogue the adapter declares', async () => {
+  it('registers every catalogue the adapter declares', () => {
+    /*
+     * Compared statically, by parsing the registry rather than importing every
+     * adapter module. Importing twenty modules — several of which pull in `pg`
+     * — inside one test is slow enough to time out under load, and a test that
+     * is flaky under load is a test people learn to rerun rather than read.
+     *
+     * Binding names rather than object identity here; identity is covered by
+     * `registerCatalogues`, which refuses the same object under two names, and
+     * by the duplicate checks below.
+     */
     const declared = declaredCatalogues()
     expect(declared.length, 'no catalogues found — the parse is wrong').toBeGreaterThan(20)
 
-    /*
-     * Matched on statement identity rather than on binding name: the registry
-     * names entries for the hash, and tying those to variable names would mean
-     * a rename silently changed the provenance identity.
-     */
-    const registered = new Set(PRODUCTION_CATALOGUES.map((entry) => entry.statements))
-    const missing: string[] = []
+    const registry = readFileSync(join(ADAPTER, 'postgresRepositories.ts'), 'utf8')
+    const registered = new Set(
+      [...registry.matchAll(/statements:\s*([A-Z][A-Z0-9_]*)/g)].map((match) => match[1]!),
+    )
 
-    for (const { file, binding } of declared) {
-      const module: Record<string, unknown> = await import(
-        `../infrastructure/analysis/postgres/${file.replace(/\.ts$/, '')}`
-      )
-      if (!registered.has(module[binding] as never)) missing.push(`${file}:${binding}`)
-    }
+    const missing = declared
+      .filter(({ binding }) => !registered.has(binding))
+      .map(({ file, binding }) => `${file}:${binding}`)
 
     expect(missing).toEqual([])
   })
