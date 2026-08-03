@@ -32,6 +32,8 @@ import {
   DOMAIN_CONTRACT_VERSION,
   playbookAssignmentIdentity,
   reviewIdentity,
+  subjectKey,
+  validateReturnReferences,
   validateSubmissionReferences,
   validateCaseDecision,
   validateCioReturn,
@@ -43,6 +45,7 @@ import {
   type CaseDecision,
   type CaseTransition,
   type ReferencedGovernance,
+  type ReferencedSubjects,
   type CioReturn,
   type CioSubmission,
   type ComplianceReview,
@@ -1156,6 +1159,52 @@ function governanceFacts(store: Store): ReferencedGovernance {
   }
 }
 
+/**
+ * The things a return's concerns can point at, and who owns them.
+ *
+ * One flat map keyed `kind:id`, because the concern already says which kind it
+ * means and the ownership question is the same for all of them. Evidence sets
+ * are absent deliberately: content-addressed, owned by no case.
+ */
+function returnSubjects(store: Store): ReferencedSubjects {
+  const byKindAndId = new Map<string, { caseId: string; revisionId: string | null }>()
+
+  const facts = governanceFacts(store)
+  for (const [reviewId, review] of facts.reviews) {
+    byKindAndId.set(subjectKey('review', reviewId), {
+      caseId: review.caseId,
+      revisionId: review.revisionId,
+    })
+    byKindAndId.set(subjectKey('finding', reviewId), {
+      caseId: review.caseId,
+      revisionId: review.revisionId,
+    })
+    for (const challengeId of review.challengeIds) {
+      byKindAndId.set(subjectKey('challenge', challengeId), {
+        caseId: review.caseId,
+        revisionId: review.revisionId,
+      })
+    }
+  }
+  for (const [id, aggregation] of facts.aggregations) {
+    byKindAndId.set(subjectKey('aggregation', id), {
+      caseId: aggregation.caseId,
+      revisionId: aggregation.producedRevisionId,
+    })
+  }
+  for (const [id, claim] of facts.claims) {
+    byKindAndId.set(subjectKey('claim', id), { caseId: claim.caseId, revisionId: null })
+  }
+  for (const revision of store.theses.values()) {
+    byKindAndId.set(subjectKey('revision', revision.revisionId), {
+      caseId: revision.caseId,
+      revisionId: revision.revisionId,
+    })
+  }
+
+  return { byKindAndId }
+}
+
 /* --------------------------------------------- CIO submissions and returns */
 
 /**
@@ -1186,6 +1235,24 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
 
   const byReturnedAt = (a: CioReturn, b: CioReturn) =>
     byString(a.returnedAt, b.returnedAt) || byString(a.id, b.id)
+
+  /**
+   * A stored return, re-checked on the way out.
+   *
+   * Same reasoning as `hydrated` for submissions: a reference valid when
+   * written can stop being valid, and reading it back as a valid return would
+   * launder that into the record.
+   */
+  const hydratedReturn = (cioReturn: CioReturn, operation: string): CioReturn => {
+    const problems = [
+      ...validateCioReturn(cioReturn),
+      ...validateReturnReferences(cioReturn, returnSubjects(store)),
+    ]
+    if (problems.length > 0) {
+      throw new MalformedRowError('CIO return', problems[0]!.code, operation)
+    }
+    return cioReturn
+  }
 
   return {
     async get(submissionId) {
@@ -1280,7 +1347,10 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
     async recordReturn(cioReturn) {
       guard(scope, 'returns.recordReturn')
 
-      const problems = validateCioReturn(cioReturn)
+      const problems = [
+        ...validateCioReturn(cioReturn),
+        ...validateReturnReferences(cioReturn, returnSubjects(store)),
+      ]
       if (problems.length > 0) {
         throw new InvariantViolationError(problems[0]!.code, 'returns.recordReturn')
       }
@@ -1324,7 +1394,8 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
 
     async getReturn(returnId) {
       guard(scope, 'returns.getReturn')
-      return store.returns.get(returnId) ?? null
+      const stored = store.returns.get(returnId)
+      return stored ? hydratedReturn(stored, 'returns.getReturn') : null
     },
 
     async returnsForCase(caseId) {

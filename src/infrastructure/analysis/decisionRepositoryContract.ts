@@ -108,6 +108,12 @@ export const SHARED_CONTRACT_CASES: readonly string[] = Object.freeze([
   "refuses a conflicting return replay",
   "refuses a return with no reason",
   "refuses a return against a submission that does not exist",
+  "accepts a return raising several concerns",
+  "refuses a return that raises no concern",
+  "refuses a concern about another case",
+  "refuses a concern about another revision",
+  "refuses a concern whose subject does not exist",
+  "allows a case-wide subject on any revision",
   "lists returns by case and by revision, oldest first",
   "round-trips a selected decision",
   "round-trips a deferred decision with its conditions",
@@ -537,7 +543,7 @@ function buildContract(name: string, options: DecisionContractOptions): void {
         const read = await repositories.submissions.getReturn('ret-1')
         expect(read?.reason).toBe('The inflation path rests on one observation.')
         expect(read?.concerns.map((concern) => concern.subjectId)).toEqual([
-          'claim-1',
+          claimIdFor('rev-1'),
           'rev-1',
         ])
         expect(read?.returnedBy.departmentHandles).toEqual([
@@ -578,6 +584,106 @@ function buildContract(name: string, options: DecisionContractOptions): void {
         await expect(
           repositories.submissions.recordReturn(cioReturn({ submissionId: 'sub-nowhere' })),
         ).rejects.toThrow(ReferentialIntegrityError)
+      })
+
+      sharedCase('accepts a return raising several concerns', async () => {
+        await seedSubmissions()
+        const stored = await repositories.submissions.recordReturn(cioReturn())
+        expect(stored.concerns).toHaveLength(2)
+      })
+
+      sharedCase('refuses a return that raises no concern', async () => {
+        /*
+         * A return exists to send work back WITH reasons. One that records only
+         * that the CIO was unhappy tells whoever receives it nothing they can
+         * act on.
+         */
+        await seedSubmissions()
+        await expect(
+          repositories.submissions.recordReturn(cioReturn({ concerns: [] })),
+        ).rejects.toThrow(InvariantViolationError)
+        expect(await repositories.submissions.getReturn('ret-1')).toBeNull()
+      })
+
+      sharedCase('refuses a concern about another case', async () => {
+        await seedSubmissions()
+        await options.seed(repositories, {
+          caseId: 'case-2',
+          revisionIds: ['rev-3', 'rev-4'],
+        })
+        await expect(
+          repositories.submissions.recordReturn(
+            cioReturn({
+              concerns: [
+                {
+                  concernKind: 'evidence-thin',
+                  subjectKind: 'claim',
+                  subjectId: claimIdFor('rev-3'),
+                  detail: 'A claim from a different case entirely.',
+                },
+              ],
+            }),
+          ),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      sharedCase('refuses a concern about another revision', async () => {
+        await seedSubmissions()
+        await expect(
+          repositories.submissions.recordReturn(
+            cioReturn({
+              concerns: [
+                {
+                  concernKind: 'unaddressed-objection',
+                  subjectKind: 'review',
+                  subjectId: verificationIdFor('rev-2'),
+                  detail: "A verdict about the other revision's argument.",
+                },
+              ],
+            }),
+          ),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      sharedCase('refuses a concern whose subject does not exist', async () => {
+        await seedSubmissions()
+        await expect(
+          repositories.submissions.recordReturn(
+            cioReturn({
+              concerns: [
+                {
+                  concernKind: 'evidence-thin',
+                  subjectKind: 'claim',
+                  subjectId: 'claim-nowhere',
+                  detail: 'Points at nothing.',
+                },
+              ],
+            }),
+          ),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      sharedCase('allows a case-wide subject on any revision', async () => {
+        /*
+         * A case-wide review applies to every revision of its case, so citing
+         * one from a return about `rev-2` is legitimate. The near-miss to the
+         * wrong-revision rule.
+         */
+        await seedSubmissions()
+        const stored = await repositories.submissions.recordReturn(
+          cioReturn({
+            revisionId: 'rev-1',
+            concerns: [
+              {
+                concernKind: 'scope',
+                subjectKind: 'revision',
+                subjectId: 'rev-1',
+                detail: 'The revision itself.',
+              },
+            ],
+          }),
+        )
+        expect(stored.concerns).toHaveLength(1)
       })
 
       sharedCase('lists returns by case and by revision, oldest first', async () => {

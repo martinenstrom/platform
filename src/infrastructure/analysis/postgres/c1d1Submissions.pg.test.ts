@@ -152,7 +152,13 @@ describe('statement counts do not grow with the data', () => {
     await repositories.submissions.recordReturn(cioReturn())
     counts.clear()
     await repositories.submissions.returnsForCase('case-1')
-    expect(statementsFor('returns.returnsForCase')).toBe(2)
+    /*
+     * Three, not two, since B2C-2B: the root, its concerns, and the one union
+     * statement that establishes who owns each thing those concerns cite. A
+     * return whose concern points at another case is refused on hydration, and
+     * that check is what the third statement buys.
+     */
+    expect(statementsFor('returns.returnsForCase')).toBe(3)
   })
 })
 

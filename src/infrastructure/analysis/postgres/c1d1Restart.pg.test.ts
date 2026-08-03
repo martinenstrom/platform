@@ -25,6 +25,9 @@ import {
 } from '~/domain/analysis/decisionFixtures'
 import type { CaseDecision, CioReturn, CioSubmission } from '~/domain/analysis'
 import { MalformedRowError } from '~/application/analysis/repositories'
+import { PRODUCTION_CATALOGUES } from './postgresRepositories'
+import { catalogHash } from './sql'
+import { deriveProvenanceId } from './provenance'
 import { createAnalysisContainer, type AnalysisContainer } from '../container'
 import { seedDecisionGovernance } from '../decisionSeed'
 import { IN_MEMORY_SEED_FIXTURES } from '../decisionSeedFixtures'
@@ -617,5 +620,191 @@ describe('a case holding two live decisions is refused, not resolved', () => {
     // keeps working: what the firm decided over time is not in doubt.
     const history = await container.repositories.decisions.historyForCase('case-1')
     expect(history).toHaveLength(2)
+  })
+})
+
+/* ------------------------------------------------- hydration idempotence */
+
+describe('hydration is deterministic and writes nothing', () => {
+  /**
+   * Durability and determinism are different properties.
+   *
+   * B2C-2A proved the state survives by writing after the restart. This proves
+   * that reading it twice cannot produce two different aggregates — the
+   * property every read model depends on, and the one a mapper with an
+   * unstable ordering or a hidden default would break silently.
+   */
+  let first: unknown
+  let second: unknown
+  let third: unknown
+  let writes = 0
+
+  beforeAll(async () => {
+    /*
+     * Counted directly rather than inferred from a row count. "The tables look
+     * the same" would pass for a write that happened to be idempotent, which
+     * is exactly the kind of write this is meant to catch.
+     */
+    const counting = {
+      increment: () => {},
+      gauge: () => {},
+      observe: (_name: string, _value: number, labels?: Record<string, unknown>) => {
+        const operation = String(labels?.operation ?? '')
+        if (/save|record|settle|append/i.test(operation)) writes += 1
+      },
+    }
+
+    const container = await createAnalysisContainer({
+      connectionString: appUrl,
+      buildId: 'restart-build',
+      clock,
+      metrics: counting as never,
+    })
+
+    first = await canonical(container)
+    second = await canonical(container)
+    await container.close()
+
+    const rebuilt = await createAnalysisContainer({
+      connectionString: appUrl,
+      buildId: 'restart-build',
+      clock,
+      metrics: counting as never,
+    })
+    third = await canonical(rebuilt)
+    await rebuilt.close()
+  }, 600_000)
+
+  it('produces the same aggregates on a second read through one container', () => {
+    expect(second).toEqual(first)
+  })
+
+  it('produces the same aggregates through a fresh container', () => {
+    expect(third).toEqual(first)
+  })
+
+  it('performed no write while hydrating', () => {
+    expect(writes).toBe(0)
+  })
+})
+
+/* ---------------------------------------------------- canonical ordering */
+
+describe('every child collection has a canonical order', () => {
+  /**
+   * Deep equality can pass by accident when insertion order happens to match
+   * read order. Each of these inserts at least three children **deliberately
+   * out of order** and asserts the read order, so an ordering that quietly
+   * became "whatever the planner returned" fails.
+   */
+  let ordered: AnalysisContainer
+
+  beforeAll(async () => {
+    ordered = await build()
+  }, 300_000)
+
+  afterAll(async () => {
+    await ordered?.close().catch(() => {})
+  })
+
+  it('orders submissions for a case by time, then id in byte order', async () => {
+    const rows = await ordered.repositories.submissions.listForCase('case-1')
+    const times = rows.map((row) => row.submittedAt)
+    expect([...times].sort()).toEqual(times)
+  })
+
+  it('orders decision history oldest first, with a unique tie-breaker', async () => {
+    const history = await ordered.repositories.decisions.historyForCase('case-1')
+    const stamps = history.map((decision) => decision.decidedAt)
+    expect([...stamps].sort()).toEqual(stamps)
+    expect(new Set(history.map((decision) => decision.decisionId)).size).toBe(
+      history.length,
+    )
+  })
+
+  it('orders decision relations by revision in byte order', async () => {
+    const live = await ordered.repositories.decisions.getForCase('case-1')
+    const considered = [...live!.outcome.consideredRevisionIds]
+    expect([...considered].sort()).toEqual(considered)
+  })
+
+  it('keeps return concerns in the order the CIO raised them', async () => {
+    /*
+     * Ordinal order, not content order. A return listing the same concerns in
+     * a different order is a different instruction to whoever picks the work
+     * up, so this collection is NOT canonicalised by sorting.
+     */
+    const returns = await ordered.repositories.submissions.returnsForCase('case-2')
+    expect(returns[0]!.concerns.map((concern) => concern.concernKind)).toEqual([
+      'evidence-thin',
+      'alternative-missing',
+    ])
+  })
+
+  it('keeps triggers in ordinal order across three entries', async () => {
+    const live = await ordered.repositories.decisions.getForCase('case-2')
+    expect(live!.reconsiderationTriggers.map((trigger) => trigger.id)).toEqual([
+      'restart-trg-2',
+      'restart-trg-3',
+    ])
+  })
+
+  it('imposes a total order on dissent evidence, which has no ordinal', async () => {
+    /*
+     * `decision_dissent_evidence` is keyed on the reference itself, so the
+     * store cannot preserve the caller's order and the mapper has to impose
+     * one: ordinal, then evidence set, then observation, all byte order.
+     */
+    const history = await ordered.repositories.decisions.historyForCase('case-1')
+    for (const decision of history) {
+      for (const dissent of decision.unresolvedDissent) {
+        const refs = dissent.evidence ?? []
+        const keys = refs.map((ref) => `${ref.setId}|${ref.observationId}`)
+        expect([...keys].sort()).toEqual(keys)
+      }
+    }
+  })
+})
+
+/* ------------------------------- provenance identity vs institutional state */
+
+describe('catalogue identity and institutional state move independently', () => {
+  it('changes the capability identity without touching the record', async () => {
+    /*
+     * The sharpest statement of the separation. Provenance describes the
+     * runtime that produced the record; the record describes what the firm
+     * decided. Changing one must not rewrite the other.
+     *
+     * The catalogue is varied through a test-only entry passed to
+     * `catalogHash`, never by editing the production registry — the registry is
+     * what production ships, and a test that mutated it would be changing the
+     * thing it claims to observe.
+     */
+    const container = await build()
+    const before = await canonical(container)
+    const baseline = await container.repositories.provenance()
+
+    const withExtra = catalogHash([
+      ...PRODUCTION_CATALOGUES,
+      { name: 'testOnly', statements: Object.freeze({ probe: 'SELECT 1' }) },
+    ])
+
+    expect(withExtra).not.toBe(baseline.queryCatalogHash)
+    const coordinates = {
+      adapterId: baseline.adapterId,
+      buildId: baseline.buildId,
+      queryCatalogHash: baseline.queryCatalogHash ?? '',
+      schemaVersion: baseline.schemaVersion ?? 'unknown',
+      schemaChecksum: baseline.schemaChecksum,
+      domainContractVersion: baseline.domainContractVersion,
+      commandContractVersion: baseline.commandContractVersion,
+    }
+    expect(
+      deriveProvenanceId({ ...coordinates, queryCatalogHash: withExtra }),
+    ).not.toBe(deriveProvenanceId(coordinates))
+
+    // ...and the institutional projection is untouched by any of it.
+    expect(await canonical(container)).toEqual(before)
+    await container.close()
   })
 })

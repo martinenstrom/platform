@@ -29,12 +29,15 @@
  */
 
 import {
+  subjectKey,
   validateCioReturn,
   validateCioSubmission,
+  validateReturnReferences,
   validateSubmissionReferences,
   type CioReturn,
   type CioSubmission,
   type ReferencedGovernance,
+  type ReferencedSubjects,
 } from '~/domain/analysis'
 import {
   ConflictingRecordError,
@@ -263,6 +266,36 @@ export const RETURN_READ_SQL = catalog({
                 FROM analysis.cio_return_concerns
                 WHERE return_id = ANY($1)
                 ORDER BY return_id COLLATE "C", ordinal`,
+
+  /**
+   * Who owns each thing a concern points at, in one statement.
+   *
+   * A union rather than a query per subject kind: a concern already says which
+   * kind it means, and the ownership question -- this case, and this revision
+   * where the subject is scoped to one -- is identical for all of them.
+   *
+   * `evidence` is absent deliberately. Evidence sets are content-addressed and
+   * belong to no case, so there is nothing to own.
+   */
+  subjectOwnership: `
+      SELECT 'review' AS kind, id, case_id, revision_id
+      FROM analysis.reviews WHERE id = ANY($1)
+    UNION ALL
+      SELECT 'finding', id, case_id, revision_id
+      FROM analysis.reviews WHERE id = ANY($1)
+    UNION ALL
+      SELECT 'challenge', c.id, r.case_id, r.revision_id
+      FROM analysis.challenges c
+      JOIN analysis.reviews r ON r.id = c.review_id
+      WHERE c.id = ANY($1)
+    UNION ALL
+      SELECT 'claim', id, case_id, NULL FROM analysis.claims WHERE id = ANY($1)
+    UNION ALL
+      SELECT 'revision', revision_id, case_id, revision_id
+      FROM analysis.thesis_revisions WHERE revision_id = ANY($1)
+    UNION ALL
+      SELECT 'aggregation', id, case_id, produced_revision_id
+      FROM analysis.aggregations WHERE id = ANY($1)`,
 })
 
 export const RETURN_WRITE_SQL = catalog({
@@ -460,6 +493,38 @@ export function createSubmissionRepository(
   const readRoots = (client: Queryable, operation: string, sql: string, values: unknown[]) =>
     run<SubmissionRootRow>(client, context, operation, sql, values)
 
+  /**
+   * The ownership facts a set of concerns needs, in one statement.
+   *
+   * Every subject id is passed to every arm of the union; the arms disagree
+   * about which table to look in, and only the rows that exist come back. One
+   * round trip whatever mix of kinds the concerns use.
+   */
+  async function subjectsFor(
+    client: Queryable,
+    operation: string,
+    concerns: readonly CioReturnConcernRow[],
+  ): Promise<ReferencedSubjects> {
+    const ids = [...new Set(concerns.map((concern) => concern.subject_id))]
+    const byKindAndId = new Map<string, { caseId: string; revisionId: string | null }>()
+    if (ids.length === 0) return { byKindAndId }
+
+    const rows = await run<{
+      kind: string
+      id: string
+      case_id: string
+      revision_id: string | null
+    }>(client, context, operation, RETURN_READ_SQL.subjectOwnership, [ids])
+
+    for (const row of rows) {
+      byKindAndId.set(subjectKey(row.kind, row.id), {
+        caseId: row.case_id,
+        revisionId: row.revision_id,
+      })
+    }
+    return { byKindAndId }
+  }
+
   async function hydrateReturns(
     client: Queryable,
     operation: string,
@@ -479,12 +544,28 @@ export function createSubmissionRepository(
       list.push(row)
       byReturn.set(row.return_id, list)
     }
-    return roots.map((root) =>
-      seal(
-        returnFromRows({ cioReturn: root, concerns: byReturn.get(root.id) ?? [] }, operation),
-        `CIO return ${root.id}`,
-      ),
-    )
+    const subjects = await subjectsFor(client, operation, concerns)
+
+    return roots.map((root) => {
+      const mapped = returnFromRows(
+        { cioReturn: root, concerns: byReturn.get(root.id) ?? [] },
+        operation,
+      )
+
+      /*
+       * Re-checked on the way out, like a submission. A concern citing another
+       * case was refused when written; reading it back as a valid return would
+       * launder a later corruption into the record.
+       */
+      const problems = [
+        ...validateCioReturn(mapped),
+        ...validateReturnReferences(mapped, subjects),
+      ]
+      if (problems.length > 0) {
+        throw new MalformedRowError('CIO return', problems[0]!.code, operation)
+      }
+      return seal(mapped, `CIO return ${root.id}`)
+    })
   }
 
   return {
@@ -753,6 +834,22 @@ export function createSubmissionRepository(
         const problems = validateCioReturn(cioReturn)
         if (problems.length > 0) {
           throw new InvariantViolationError(problems[0]!.code, 'returns.recordReturn')
+        }
+
+        /*
+         * Ownership before the write, so a cross-case concern is refused with
+         * the same class and from the same call as the in-memory reference's.
+         */
+        const rowsForSubjects = returnToRows(cioReturn).concerns
+        const referenceProblems = validateReturnReferences(
+          cioReturn,
+          await subjectsFor(client, 'returns.recordReturn', rowsForSubjects),
+        )
+        if (referenceProblems.length > 0) {
+          throw new InvariantViolationError(
+            referenceProblems[0]!.code,
+            'returns.recordReturn',
+          )
         }
 
         const existing = (

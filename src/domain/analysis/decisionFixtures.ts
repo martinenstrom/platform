@@ -183,11 +183,17 @@ export function cioSubmission(over: Partial<CioSubmission> = {}): CioSubmission 
 }
 
 export function cioReturn(over: Partial<CioReturn> = {}): CioReturn {
+  /*
+   * Concern subjects follow the revision, because a concern must belong to the
+   * revision its return is about. A fixed `rev-1` subject on a `rev-2` return
+   * is the wrong-revision citation the rule exists to refuse.
+   */
+  const revisionId = over.revisionId ?? 'rev-1'
   return {
     id: 'ret-1',
     submissionId: 'sub-1',
     caseId: 'case-1',
-    revisionId: 'rev-1',
+    revisionId,
     returnedAt: '2026-07-28T12:00:00.000Z',
     returnedBy: cioActor(),
     authorizationBasis: 'mandate:chief-decision',
@@ -198,13 +204,14 @@ export function cioReturn(over: Partial<CioReturn> = {}): CioReturn {
       {
         concernKind: 'evidence-thin',
         subjectKind: 'claim',
-        subjectId: 'claim-1',
+        // A real seeded claim: concern subjects must belong to the return's case.
+        subjectId: claimIdFor(revisionId),
         detail: 'One print is not a trend.',
       },
       {
         concernKind: 'alternative-missing',
         subjectKind: 'revision',
-        subjectId: 'rev-1',
+        subjectId: revisionId,
         detail: 'No downside case was put forward.',
       },
     ],

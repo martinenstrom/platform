@@ -175,6 +175,22 @@ export function validateCioReturn(cioReturn: CioReturn): readonly AggregateProbl
     )
   }
 
+  /*
+   * A return exists to send work back WITH reasons. One that records only
+   * "the CIO returned this" tells whoever receives it that something was
+   * wrong and nothing about what — which is not an instruction anybody can
+   * act on.
+   */
+  if (cioReturn.concerns.length === 0) {
+    found.push(
+      problem(
+        'return-no-concerns',
+        `Return "${cioReturn.id}" raises no concern. A return records what was ` +
+          `insufficient; without one it records only that somebody was unhappy.`,
+      ),
+    )
+  }
+
   cioReturn.concerns.forEach((concern, index) => {
     if (blank(concern.detail)) {
       found.push(
@@ -717,6 +733,95 @@ export function validateSubmissionReferences(
    * belong to no case: the same observations assembled for two cases are one
    * set by construction, so there is no ownership to verify.
    */
+
+  return found
+}
+
+/* ------------------------------------------------- referenced return subjects */
+
+/**
+ * What the store knows about the things a return's concerns point at.
+ *
+ * Keyed `kind:id` rather than as one map per table, because a concern already
+ * carries its own `subjectKind` and the check is the same shape whatever the
+ * subject is: does it exist, is it this case's, and — where it is scoped to a
+ * revision — is it this revision's.
+ *
+ * `revisionId` is null for a subject that is case-wide rather than about one
+ * argument. Evidence sets are absent by design: they are content-addressed and
+ * belong to no case, so there is no ownership to verify.
+ */
+export interface ReferencedSubjects {
+  byKindAndId: ReadonlyMap<string, { caseId: string; revisionId: string | null }>
+}
+
+export const subjectKey = (kind: string, id: string) => `${kind}:${id}`
+
+/** Subjects that are content-addressed and therefore own nothing. */
+const UNOWNED_SUBJECT_KINDS = new Set(['evidence'])
+
+/**
+ * Every concern a return raises is about this case, and this revision.
+ *
+ * A return sends work back with reasons attached. If one of those reasons cites
+ * a finding from another case, whoever picks the work up is being pointed at
+ * something that has nothing to do with what they are being asked to fix — and
+ * the record says the CIO objected to it.
+ *
+ * Structural ownership only. Whether the concern is *substantively* right is
+ * the CIO's judgement and no repository's business.
+ */
+export function validateReturnReferences(
+  cioReturn: CioReturn,
+  subjects: ReferencedSubjects,
+): readonly AggregateProblem[] {
+  const found: AggregateProblem[] = []
+
+  cioReturn.concerns.forEach((concern, index) => {
+    if (UNOWNED_SUBJECT_KINDS.has(concern.subjectKind)) return
+
+    const subject = subjects.byKindAndId.get(
+      subjectKey(concern.subjectKind, concern.subjectId),
+    )
+
+    if (!subject) {
+      found.push(
+        problem(
+          'return-concern-subject-missing',
+          `Concern ${index} on return "${cioReturn.id}" cites ` +
+            `${concern.subjectKind} "${concern.subjectId}", which does not exist.`,
+        ),
+      )
+      return
+    }
+
+    if (subject.caseId !== cioReturn.caseId) {
+      found.push(
+        problem(
+          'return-concern-wrong-case',
+          `Concern ${index} on return "${cioReturn.id}" cites a ` +
+            `${concern.subjectKind} from case "${subject.caseId}". Work sent ` +
+            `back with a reason from another case points whoever receives it at ` +
+            `something that has nothing to do with the fix.`,
+        ),
+      )
+    }
+
+    /*
+     * A case-wide subject applies to every revision of its case. Only one
+     * scoped to a DIFFERENT revision is about a different argument.
+     */
+    if (subject.revisionId !== null && subject.revisionId !== cioReturn.revisionId) {
+      found.push(
+        problem(
+          'return-concern-wrong-revision',
+          `Concern ${index} on return "${cioReturn.id}" is about revision ` +
+            `"${cioReturn.revisionId}" and cites a ${concern.subjectKind} ` +
+            `scoped to "${subject.revisionId}".`,
+        ),
+      )
+    }
+  })
 
   return found
 }

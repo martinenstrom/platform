@@ -33,6 +33,7 @@ import {
 import {
   cioReturn,
   cioSubmission,
+  claimIdFor,
   declinedDecision,
   deferredDecision,
   disclosedDissent,
@@ -155,7 +156,7 @@ describe('a return survives the round trip', () => {
      */
     const mapped = returnFromRows(returnToRows(cioReturn()))
     expect(mapped.concerns.map((concern) => concern.subjectId)).toEqual([
-      'claim-1',
+      claimIdFor('rev-1'),
       'rev-1',
     ])
   })
