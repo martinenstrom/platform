@@ -1250,3 +1250,37 @@ generation, read-time verification, and revision and policy versioning.
 
 **Until this is resolved, no document may describe CIO eligibility submissions
 as fully self-validating against privileged row deletion.**
+
+
+---
+
+## TD-59 · The test harness cannot reserve a port atomically
+
+**Incurred:** C1D-1B B2C-3, deliberately. **Severity:** low — test
+infrastructure only. **Blocks:** nothing.
+
+`embedded-postgres` takes a port *number*, not a bound socket, and has no
+port-0 path. So the harness binds an ephemeral socket to discover a free port,
+**releases it**, and then starts PostgreSQL on that number. Between the release
+and PostgreSQL's bind, another process can claim it.
+
+The window is microseconds on loopback. The harness handles a loss by selecting
+a **new** port and retrying, up to five attempts, and then fails with a
+diagnostic naming every port it tried. It never reuses a port that just failed,
+and it never terminates a process to take one.
+
+**Bounded retry does not eliminate the race.** It bounds the consequences.
+
+**Close it only when** the harness can hold the socket through PostgreSQL
+startup, use a supported port-0 mechanism, or receive an owned process handle
+and a bound endpoint atomically from the library. Any of those would make the
+retry loop unnecessary rather than merely rarer.
+
+### The related limitation this does not cover
+
+A `SIGKILL` of the test runner between `start()` and the marker write leaves a
+cluster the next run cannot prove is its own. It **refuses and asks a human**
+rather than terminating anything under the harness's temp prefix. That is the
+deliberate trade — an occasional manual cleanup against never killing an
+unrelated database — and it is a property of the ownership policy rather than
+debt to be repaid.
