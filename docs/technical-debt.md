@@ -1284,3 +1284,27 @@ rather than terminating anything under the harness's temp prefix. That is the
 deliberate trade — an occasional manual cleanup against never killing an
 unrelated database — and it is a property of the ownership policy rather than
 debt to be repaid.
+
+
+---
+
+## C1D-1B / B2C · complete
+
+Recorded so a later phase does not have to reconstruct what was proven.
+
+| Property | State |
+| --- | --- |
+| PostgreSQL repository implementation | complete — submissions, returns, decisions, supersession |
+| shared contract parity | 69 cases, both adapters, **zero skips** |
+| restart durability | proven, including that hydration is deterministic and write-free |
+| malformed-state classification | four categories, never collapsed: schema-prevented, permission-prevented, refused on hydration, not detectable |
+| query budgets | fixed and pinned; independent of child volume |
+| transaction and connection cleanup | measured against `pg_stat_activity`, not inferred |
+| SQL catalogue provenance | every production statement registered exactly once and covered by `queryCatalogHash` |
+| repository completeness | compile-time, parser-level and runtime |
+| harness lifecycle | dynamic ports, ownership-proven cleanup, named diagnostics |
+
+**Open against it:** TD-58 (**high** — a hard gate before real CIO submissions)
+and TD-59 (low, test infrastructure).
+
+**Not to be reopened** unless a later phase finds a concrete defect.
