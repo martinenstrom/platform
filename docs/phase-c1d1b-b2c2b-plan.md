@@ -331,3 +331,35 @@ not stored shapes.
    because the carried items are small and the rest divides badly.
 
 Everything else I am prepared to build as written.
+
+
+---
+
+## 15 · The malformed-state classification, retained
+
+Approved and kept as four categories. **They are never collapsed into a
+generic "covered" count** — each proves something different, and a single
+number would hide which.
+
+| Category | What a passing test proves |
+| -------- | -------------------------- |
+| **H** — privileged corruption refused on hydration | **repository read integrity.** The malformed state was created successfully and the mapper refused to return it. |
+| **S** — schema-prevented | **database integrity, not mapper behaviour.** The insert failed; hydration was never reached, and no claim is made about it. |
+| **P** — runtime-permission prevented | **the production role cannot create the state at all.** |
+| **N** — not detectable | nothing is proven, and the test says so. Currently: TD-58. |
+
+### Recorded limitation — deferred relations
+
+`decisionFromRows` does **not** independently detect a deferred decision
+carrying a selected relation. It builds the considered set and ignores
+relations, because a deferral selects nothing by definition.
+
+The normal schema prevents the state — a CHECK ties `outcome_kind` to
+`selected_revision_id`, and `decision_outcome_guard` refuses the relation set at
+COMMIT — and the runtime cannot bypass either. **No mapper-level protection is
+claimed.**
+
+A later storage-import, disaster-recovery or forensic tool that can write past
+those constraints must validate the full relational outcome independently before
+accepting the data. The limitation is recorded in `decisionMapping.ts` beside
+the code it describes.

@@ -557,6 +557,21 @@ function outcomeFromRows(
   }
 
   if (row.outcome_kind === 'deferred') {
+    /*
+     * A deferral selects nothing by definition, so the relations are not
+     * consulted here.
+     *
+     * **Stated limitation.** That means this mapper does NOT independently
+     * detect a `deferred` row whose relations contain a `selected` — it builds
+     * the considered set and ignores the rest. The database is authoritative
+     * for that state: a CHECK ties `outcome_kind` to `selected_revision_id` and
+     * `decision_outcome_guard` refuses the relation set at COMMIT, and the
+     * runtime cannot bypass either.
+     *
+     * A future storage-import, disaster-recovery or forensic tool that can
+     * write past those constraints must validate the full relational outcome
+     * itself before accepting the data. It cannot rely on hydration to notice.
+     */
     return { kind: 'deferred', consideredRevisionIds: considered }
   }
 
