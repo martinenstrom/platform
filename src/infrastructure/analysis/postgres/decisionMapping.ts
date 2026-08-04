@@ -29,8 +29,10 @@
  */
 
 import {
+  buildBasisManifest,
   relationsOf,
   type ActorSnapshot,
+  type BasisContent,
   type CaseDecision,
   type CioDecisionOutcome,
   type CioReturn,
@@ -269,7 +271,7 @@ export function submissionFromRows(
           status: row.risk_status as NonNullable<EligibilityBasis['risk']>['status'],
         }
 
-  const basis: EligibilityBasis = {
+  const content: BasisContent = {
     revisionId: row.revision_id,
     thesisId: row.thesis_id,
     aggregationId: row.aggregation_id,
@@ -310,7 +312,19 @@ export function submissionFromRows(
     submittedAt: row.submitted_at,
     caseVersion: row.case_version,
     state: row.state,
-    basis,
+    basis: {
+      ...content,
+      /*
+       * Computed from the hydrated rows, not read from the database. TD58-2
+       * adds the stored columns and turns this into a COMPARISON; until then
+       * it always agrees with itself and detects nothing, which is stated
+       * rather than left to look like verification.
+       */
+      manifest: buildBasisManifest(
+        { submissionId: row.id, caseId: row.case_id },
+        content,
+      ),
+    },
   }
 }
 

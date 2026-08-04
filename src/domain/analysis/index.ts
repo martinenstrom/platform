@@ -18,6 +18,7 @@ export * from './events'
 export * from './decisions'
 export * from './eligibilityPolicy'
 export * from './aggregateValidation'
+export * from './basisManifest'
 export * from './work'
 export * from './identity'
 export * from './evidence'
@@ -52,5 +53,19 @@ export * from './aggregation'
  *      points at the one that produced it, unresolved disagreement carries
  *      materiality that can block the CIO, and a requirement resolution hashes
  *      the input it was computed from
+ *   7  Phase C1C-4 — a blocker is a discriminated union rather than a kind
+ *      beside a sentence, reviews carry an explicit order, and the Risk
+ *      requirement is three-state rather than a boolean
+ *   8  Phase C1D-1A — the CIO outcome is a union rather than a nullable
+ *      selection, dissent and reconsideration conditions are first-class, and
+ *      the eligibility policy is versioned
+ *   9  TD-58 — an eligibility basis carries an immutable integrity manifest, so
+ *      a stored basis can be checked against the one that was stored
+ *
+ * NOTE: 7 and 8 were described by their plans but this constant was never
+ * advanced, so provenance written during C1D-1A and C1D-1B recorded '6'. No
+ * retained row is affected — no durable database exists — but the coordinate
+ * was untrue while it existed. Nothing caught it because the only assertion
+ * was that the two adapters reported the SAME value, and both read this.
  */
-export const DOMAIN_CONTRACT_VERSION = '6'
+export const DOMAIN_CONTRACT_VERSION = '9'

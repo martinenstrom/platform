@@ -8,7 +8,8 @@
  * failure the round-trip tests exist to catch.
  */
 
-import { buildEvidenceSet, observationRef } from './index'
+import { buildBasisManifest, buildEvidenceSet, observationRef } from './index'
+import type { BasisContent } from './basisManifest'
 import type {
   ActorSnapshot,
   CaseDecision,
@@ -133,7 +134,7 @@ export function evidenceRefsFor(revisionId: string) {
 
 export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): EligibilityBasis {
   const revisionId = over.revisionId ?? 'rev-1'
-  return {
+  const content = {
     revisionId,
     thesisId: 'thesis-1',
     aggregationId: aggregationIdFor(revisionId),
@@ -163,11 +164,24 @@ export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): Eligibil
     evaluatedAt: '2026-07-28T08:59:00.000Z',
     ...over,
   }
+
+  /*
+   * Derived rather than fixed. A hard-coded digest would have to be updated by
+   * hand every time a fixture field changed, and the version that was easiest
+   * to update would be the one that stopped matching.
+   */
+  return {
+    ...content,
+    manifest: buildBasisManifest(
+      { submissionId: 'sub-1', caseId: 'case-1' },
+      content as BasisContent,
+    ),
+  } as EligibilityBasis
 }
 
 export function cioSubmission(over: Partial<CioSubmission> = {}): CioSubmission {
   const revisionId = over.revisionId ?? 'rev-1'
-  return {
+  const submission: CioSubmission = {
     id: 'sub-1',
     caseId: 'case-1',
     thesisId: 'thesis-1',
@@ -179,6 +193,22 @@ export function cioSubmission(over: Partial<CioSubmission> = {}): CioSubmission 
     state: 'pending',
     basis: eligibilityBasis({ revisionId, thesisId: over.thesisId ?? 'thesis-1' }),
     ...over,
+  }
+
+  /*
+   * The manifest binds the submission identity, which the basis fixture cannot
+   * know -- so it is rebuilt here for whatever id and case this submission
+   * actually has.
+   */
+  return {
+    ...submission,
+    basis: {
+      ...submission.basis,
+      manifest: buildBasisManifest(
+        { submissionId: submission.id, caseId: submission.caseId },
+        submission.basis as BasisContent,
+      ),
+    },
   }
 }
 

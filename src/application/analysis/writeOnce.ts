@@ -251,6 +251,13 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
       evidenceSetIds: sorted(basis.evidenceSetIds),
       storageProvenanceId: basis.storageProvenanceId,
       evaluatedAt: basis.evaluatedAt,
+      /*
+       * The witness is part of the identity. Two submissions whose bases differ
+       * only in a way the digest notices must not replay as one another -- and
+       * a caller presenting a changed digest for an unchanged basis is a
+       * disagreement about what was attested, not a retry.
+       */
+      manifest: canonicalJson(basis.manifest),
     }),
   })
 }

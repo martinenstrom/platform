@@ -1600,7 +1600,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('6')
+        expect(provenance.domainContractVersion).toBe('9')
       })
     })
   })

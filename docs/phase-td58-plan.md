@@ -282,7 +282,56 @@ case (§0.2), if you want that gap tracked rather than merely documented.
 
 ---
 
-## 10 · What I need decided before TD-58-A
+## 10 · Approved rulings, and two findings they surfaced
+
+All four questions answered: SHA-256 confirmed, the honest limit confirmed,
+TD-60 opened, domain contract 8 → 9, three stages.
+
+**FNV identifies conveniently. SHA-256 attests content integrity.** Existing FNV
+uses are reviewed per threat model, not replaced wholesale.
+
+### 10.1 The domain may not import `node:crypto`
+
+`importGraph.test.ts` forbids node builtins in `src/domain`, and
+`hash.ts` says why in its own words: *"the domain layer must not depend on a
+platform module, and this runs identically in Node and jsdom."*
+
+So `createHash` cannot be reused there, and the ruling's suggested helper cannot
+live where the manifest is built. Three options were considered:
+
+1. put the helper in `application/` — but the ruling says the **domain** builds
+   the manifest, so the canonicalisation would be split from its hash
+2. inject a hasher as a port, like `Clock` and `Random` — the established
+   pattern, but those are injected because they are *non-deterministic*; SHA-256
+   is not, so injection buys no testability and costs plumbing at every call site
+3. **a pure TypeScript SHA-256 in the domain** — no platform dependency, and the
+   layering rule stands unweakened
+
+**Taken: (3).** Verified against published NIST test vectors *and* cross-checked
+against `node:crypto` in a test — the test layer may use builtins, so the
+hand-written implementation is proven to agree with the platform's on every
+input the suite generates. That cross-check is stronger evidence than either
+alone.
+
+### 10.2 `DOMAIN_CONTRACT_VERSION` had already drifted
+
+The constant is **`'6'`**. The C1C-3 plan bumped it to 6; C1D-1A's plan said
+"domain contract 7 → 8" and `eligibilityPolicy.ts` hard-codes `'8'` — but the
+constant itself was never changed. Nothing caught it: the only assertion is that
+memory and PostgreSQL report the *same* value as each other, which they did,
+because both read the same drifted constant.
+
+So provenance rows written during C1D-1A and C1D-1B recorded a domain contract
+version that was wrong about the build. **No retained row is affected** — no
+durable database exists (§1) — but the coordinate was untrue while it existed.
+
+**TD58-1 sets it to `'9'` and documents the missing 7 and 8 entries.** The policy
+registry's `'8'` is left alone: it records which contract version policy v1 was
+authored under, which is a point-in-time fact and not something to re-derive.
+
+---
+
+## 11 · What was decided before TD-58-A
 
 1. **SHA-256 rather than `stableHashHex`** (§0.1). It means two hash families in
    the codebase — FNV for identity and sampling, SHA-256 for evidence. I think

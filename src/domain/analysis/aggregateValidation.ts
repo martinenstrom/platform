@@ -28,6 +28,7 @@
  * that pretended to make them would be reading `undefined` and passing.
  */
 
+import { verifyBasisManifest } from './basisManifest'
 import {
   dissentRequiresAcknowledgement,
   type CaseDecision,
@@ -131,6 +132,27 @@ export function validateCioSubmission(
       problem(
         'submission-no-provenance',
         `Submission "${submission.id}" carries no storage provenance.`,
+      ),
+    )
+  }
+
+  /*
+   * The witness must describe THIS basis. A submission carrying a manifest for
+   * something else is not a smaller failure than a corrupt row -- it is a
+   * caller presenting an attestation that does not attest to what it is
+   * attached to.
+   */
+  const mismatch = verifyBasisManifest(
+    { submissionId: submission.id, caseId: submission.caseId },
+    basis,
+    basis.manifest,
+  )
+  if (mismatch !== null) {
+    found.push(
+      problem(
+        mismatch,
+        `Submission "${submission.id}" carries a manifest that does not ` +
+          `describe its own eligibility basis (${mismatch}).`,
       ),
     )
   }

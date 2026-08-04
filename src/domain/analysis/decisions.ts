@@ -48,6 +48,7 @@ import type {
   VerificationStatus,
 } from './review'
 import { assertCaseDecisionWellFormed } from './aggregateValidation'
+import type { EligibilityBasisManifest } from './basisManifest'
 
 /* ----------------------------------------------------------------- outcome */
 
@@ -347,6 +348,15 @@ export interface EligibilityBasis {
    * number in the record.
    */
   evaluatedAt: string
+
+  /**
+   * A digest over this exact basis, so a later deletion or insertion of a
+   * child row is detectable.
+   *
+   * Corruption-evident within a stated threat model, never tamper-proof: it
+   * catches a writer that did not also recompute it. See `basisManifest.ts`.
+   */
+  manifest: EligibilityBasisManifest
 }
 
 /* -------------------------------------------------------- submission */
