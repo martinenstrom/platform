@@ -164,6 +164,99 @@ describe('the encoding is unambiguous', () => {
     expect(sneaky).not.toBe(honest)
   })
 
+  it('is injective across adversarial field decompositions', () => {
+    /*
+     * The property, stated once and tested exhaustively rather than by example:
+     * **distinct bases produce distinct bytes.** Not "`|` is escaped" — `|` is
+     * not special, and nothing is escaped. The claim is that the complete
+     * length-prefixed structure is unambiguous, so no content can be mistaken
+     * for structure and no two field decompositions can render the same.
+     *
+     * The values below are chosen to break a naive encoder: each one either
+     * looks like a delimiter, looks like a length prefix, looks like a complete
+     * encoded field, or moves a character across a boundary between two
+     * adjacent fields. Every pairing of every value into every adjacent field
+     * pair is generated, and all renderings must differ.
+     */
+    const adversarial = [
+      '',
+      '|',
+      '||',
+      ':',
+      '1:',
+      '5:hello',
+      's5:rev-1', // a complete encoded string field
+      'l2:', // a list header
+      'n', // the null token
+      'a', // the absent token
+      'i1', // an integer
+      'b1', // a boolean
+      'x|y',
+      '|s6:case-1',
+      'rev-1|thesis-1',
+      '12:s5:sub-1',
+      'é|é', // multi-byte either side of a delimiter
+      '\u{1d11e}|', // astral before a delimiter
+      '0',
+      '00',
+    ]
+
+    /*
+     * Adjacent pairs, because a shift can only forge a boundary between fields
+     * that touch: (thesisId, revisionId) are elements 4 and 5, and
+     * (riskRuleId, riskRuleVersion) are 13 and 14.
+     */
+    const renderings = new Map<string, string>()
+    for (const left of adversarial) {
+      for (const right of adversarial) {
+        const cases: Array<[string, BasisContent]> = [
+          [
+            `thesis=${left} revision=${right}`,
+            { ...MINIMAL, thesisId: left, revisionId: right },
+          ],
+          [
+            `ruleId=${left} ruleVersion=${right}`,
+            { ...MINIMAL, riskRuleId: left, riskRuleVersion: right },
+          ],
+        ]
+
+        for (const [label, basis] of cases) {
+          const encoded = canonicalBasisInput(SUBJECT, basis)
+          const collision = renderings.get(encoded)
+          expect(
+            collision,
+            `"${label}" renders identically to "${collision}"`,
+          ).toBeUndefined()
+          renderings.set(encoded, label)
+        }
+      }
+    }
+
+    // The guard against a vacuous sweep: 20 values, 2 field pairs, no collisions.
+    expect(renderings.size).toBe(adversarial.length * adversarial.length * 2)
+  })
+
+  it('separates a value from the field that follows it', () => {
+    /*
+     * The specific forgery a delimiter-joined encoding permits: move a character
+     * out of one field and into the next, and a naive rendering is unchanged.
+     * Here the two must differ, and the length prefixes are why.
+     */
+    const left = canonicalBasisInput(SUBJECT, {
+      ...MINIMAL,
+      riskRuleId: 'ab',
+      riskRuleVersion: 'c',
+    })
+    const right = canonicalBasisInput(SUBJECT, {
+      ...MINIMAL,
+      riskRuleId: 'a',
+      riskRuleVersion: 'bc',
+    })
+    expect(left).not.toBe(right)
+    expect(left).toContain('s2:abs1:c')
+    expect(right).toContain('s1:as2:bc')
+  })
+
   it('counts bytes rather than code units in the length prefix', () => {
     // U+00E9 is one UTF-16 unit and two UTF-8 bytes; the prefix must say 2.
     expect(canonicalBasisInput(SUBJECT, { ...MINIMAL, revisionId: '\u00e9' })).toContain(

@@ -149,6 +149,55 @@ world uses.
 
 **Retain the pure implementation.**
 
+### 3.0 The grounds
+
+The decision rests on these five conditions **together**. It does not survive the
+loss of any one of them, and it transfers to no other capability that fails any
+one of them.
+
+1. **Synchronous domain validation.** Manifest verification happens inside
+   `validateCioSubmission`, a synchronous domain invariant (§1.2). No
+   asynchronous digest can be called from there without making the aggregate's
+   own validity check asynchronous.
+2. **Platform neutrality.** The domain may not import Node builtins (§1.1), and
+   the layer is required to be usable on either side of the wire regardless of
+   what today's bundle happens to contain.
+3. **Deterministic total behaviour.** SHA-256 is a pure total function of its
+   input. It has no clock, no entropy, no environment and no failure mode, so
+   none of the reasons that make `Clock` and `Random` injected ports apply.
+4. **Narrow cryptographic scope.** One unkeyed digest over non-secret data,
+   compared for equality. No keys, no randomness, no modes, no protocol, no
+   secrets — therefore none of the classic reasons not to hand-write
+   cryptography are engaged.
+5. **Exhaustive differential correctness testing.** The one risk that *is*
+   engaged — ordinary correctness — is fully detectable by comparison against a
+   trusted reference, and is compared exhaustively over the input space that
+   matters (§4).
+
+**This precedent does not generalize.** It is a finding about an unkeyed hash
+meeting all five conditions above. It is not a licence for any other
+cryptographic capability, and specifically not for keyed hashing, signing, MACs,
+encryption, key derivation, key management or randomness — each of which fails
+condition 4, and the first four of which also fail condition 5, because a
+correct-looking output can still be insecure. Anything in that list must use an
+audited implementation.
+
+### 3.1 The permanent constraints
+
+In force for as long as the pure implementation remains:
+
+- it remains limited to **unkeyed SHA-256**;
+- it exposes only the approved digest and UTF-8 byte-length capabilities;
+- it does not evolve into a general cryptographic library;
+- NIST vectors remain mandatory;
+- differential tests against an independent trusted implementation remain
+  mandatory;
+- every modification requires focused security-sensitive review;
+- **TD-60 must reopen this decision** before keyed constructions, signing, MACs
+  or key management are introduced.
+
+### 3.2 The case against, stated plainly
+
 The reasoning in one line: the constraint that actually binds is
 *synchronous + platform-neutral + inside a domain invariant*, and of the five
 options only 3 and 5 satisfy it; between those two, a hand-written unkeyed hash
@@ -168,7 +217,7 @@ cryptography, not precedent for a second primitive, and not a judgement that
 audited libraries are untrustworthy. It is a narrow finding about one unkeyed
 digest under a hard synchronicity constraint.
 
-### 3.1 What the evidence from this work actually showed
+### 3.3 What the evidence from this work actually showed
 
 Two defects were found while writing the specification, and neither was in the
 SHA-256 core:

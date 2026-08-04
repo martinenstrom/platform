@@ -87,6 +87,18 @@ It is **metadata about how the basis was stored, not part of the eligibility
 reasoning** — and it is bound anyway, because the rule above binds the stored
 record rather than a subset of it judged to be substantive.
 
+**Semantic comparison and integrity comparison are distinct operations.** They
+answer different questions, use different inputs, and must never be conflated:
+
+| Operation | Question | Input |
+| --- | --- | --- |
+| semantic comparison | is this the same analytical basis? | the basis fields, compared directly |
+| integrity comparison | is this the same stored record? | the manifest digest |
+
+A caller that uses the digest to answer the first question will get "no" for two
+records that are analytically identical, and will be right about the wrong
+thing.
+
 The consequences are intentional and must be stated wherever they matter:
 
 1. **An identical analytical basis written under different storage provenance
@@ -100,6 +112,13 @@ The consequences are intentional and must be stated wherever they matter:
    the migrating runtime's provenance would produce a witness that attests the
    migration rather than the original write, which is worse than no witness: it
    would verify, and it would be verifying the wrong claim.
+
+   **A historical manifest is never recomputed merely because the record moved
+   to another backend.** Moving a row is not rewriting it. A record that arrives
+   in a new store carrying provenance naming the old one is correct — that is
+   what actually wrote it. A migration that "fixes" the provenance to name
+   itself has destroyed the only evidence of where the record came from and
+   replaced a fact with an assertion.
 4. **If storage provenance is superseded or corrected, the manifest is not
    recomputed.** The provenance row records what wrote the record; a correction
    to that row is a change to a historical fact, and the digest is supposed to

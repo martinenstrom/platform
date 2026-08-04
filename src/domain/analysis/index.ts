@@ -29,6 +29,91 @@ export * from './authority'
 export * from './requirements'
 export * from './aggregation'
 
+/** One advance of the domain contract, and what it changed about stored meaning. */
+export interface DomainContractRevision {
+  version: string
+  /** What a stored record MEANS differently from here on. */
+  states: string
+}
+
+/**
+ * Every version of the analysis domain contracts, oldest first.
+ *
+ * A declaration rather than a comment, because a comment cannot be required.
+ * Versions 7 and 8 were described by their plans and **the constant was never
+ * advanced**: provenance written throughout C1D-1A and C1D-1B recorded `'6'`.
+ * No retained row is affected — no durable database exists — but the coordinate
+ * was untrue for two phases, and nothing noticed.
+ *
+ * Why nothing noticed is the part worth keeping. The only assertion was that
+ * the in-memory and PostgreSQL adapters reported the *same* version, and they
+ * did, because both read this constant. **Agreement between two readers of one
+ * wrong value is not correctness**, and no parity test can distinguish a version
+ * that was deliberately held from one that was forgotten.
+ *
+ * So advancing the contract now takes three deliberate acts, none of them
+ * inferable from a source diff: add an entry here, change the constant, and
+ * update the literal pinned in `domainContractVersion.test.ts`. A test cannot
+ * judge whether a change was material — that is the author's judgement — but it
+ * can insist the judgement was recorded.
+ */
+export const DOMAIN_CONTRACT_HISTORY: readonly DomainContractRevision[] = [
+  {
+    version: '1',
+    states: 'Phase A/B — the original analysis contracts, the baseline for the rest',
+  },
+  { version: '2', states: 'storage stage 1.5 — reviews became revision-scoped' },
+  {
+    version: '3',
+    states:
+      'Phase C1B — a revision declares its investment implications, and ' +
+      'conditional requirements resolve against an exact revision',
+  },
+  {
+    version: '4',
+    states:
+      'Phase C1C — runs carry execution provenance, failures are a bounded ' +
+      'category rather than free text, and an assignment can be failed',
+  },
+  {
+    version: '5',
+    states:
+      'Phase C1C-2 — a run states its execution identity as one of three shapes ' +
+      'rather than always a prompt and a model, and what it consumed as one of ' +
+      'three states rather than a nullable amount. Both change what a stored run ' +
+      'MEANS: a null cost used to be readable as free, and a model reference used ' +
+      'to be readable as a model having run.',
+  },
+  {
+    version: '6',
+    states:
+      'Phase C1C-3 — a manager aggregation is a first-class record, a revision ' +
+      'points at the one that produced it, unresolved disagreement carries ' +
+      'materiality that can block the CIO, and a requirement resolution hashes ' +
+      'the input it was computed from',
+  },
+  {
+    version: '7',
+    states:
+      'Phase C1C-4 — a blocker is a discriminated union rather than a kind beside ' +
+      'a sentence, reviews carry an explicit order, and the Risk requirement is ' +
+      'three-state rather than a boolean',
+  },
+  {
+    version: '8',
+    states:
+      'Phase C1D-1A — the CIO outcome is a union rather than a nullable selection, ' +
+      'dissent and reconsideration conditions are first-class, and the eligibility ' +
+      'policy is versioned',
+  },
+  {
+    version: '9',
+    states:
+      'TD-58 — an eligibility basis carries an immutable integrity manifest, so a ' +
+      'stored basis can be checked against the one that was stored',
+  },
+]
+
 /**
  * The version of the analysis domain contracts.
  *
@@ -37,35 +122,8 @@ export * from './aggregation'
  * directory changes in a way that alters what a stored record means — a new
  * field is not a bump, a changed rule is.
  *
- * History:
- *   1  Phase A/B contracts
- *   2  storage stage 1.5 — reviews became revision-scoped
- *   3  Phase C1B — a revision declares its investment implications, and
- *      conditional requirements resolve against an exact revision
- *   4  Phase C1C — runs carry execution provenance, failures are a bounded
- *      category rather than free text, and an assignment can be failed
- *   5  Phase C1C-2 — a run states its execution identity as one of three
- *      shapes rather than always a prompt and a model, and what it consumed
- *      as one of three states rather than a nullable amount. Both change what
- *      a stored run MEANS: a null cost used to be readable as free, and a
- *      model reference used to be readable as a model having run.
- *   6  Phase C1C-3 — a manager aggregation is a first-class record, a revision
- *      points at the one that produced it, unresolved disagreement carries
- *      materiality that can block the CIO, and a requirement resolution hashes
- *      the input it was computed from
- *   7  Phase C1C-4 — a blocker is a discriminated union rather than a kind
- *      beside a sentence, reviews carry an explicit order, and the Risk
- *      requirement is three-state rather than a boolean
- *   8  Phase C1D-1A — the CIO outcome is a union rather than a nullable
- *      selection, dissent and reconsideration conditions are first-class, and
- *      the eligibility policy is versioned
- *   9  TD-58 — an eligibility basis carries an immutable integrity manifest, so
- *      a stored basis can be checked against the one that was stored
- *
- * NOTE: 7 and 8 were described by their plans but this constant was never
- * advanced, so provenance written during C1D-1A and C1D-1B recorded '6'. No
- * retained row is affected — no durable database exists — but the coordinate
- * was untrue while it existed. Nothing caught it because the only assertion
- * was that the two adapters reported the SAME value, and both read this.
+ * Written as a literal rather than derived from the last history entry, so that
+ * adding an entry and advancing the version are two separate decisions. Deriving
+ * it would let a documentation edit change what every provenance row records.
  */
 export const DOMAIN_CONTRACT_VERSION = '9'
