@@ -1251,6 +1251,16 @@ generation, read-time verification, and revision and policy versioning.
 **Until this is resolved, no document may describe CIO eligibility submissions
 as fully self-validating against privileged row deletion.**
 
+### Progress
+
+**TD58-1 (domain manifest) is in the tree; TD-58 remains open.** The digest, the
+canonical encoding, its normative specification
+(`docs/eligibility-basis-canonicalization-v1.md`) and the hashing-architecture
+decision (`docs/decision-integrity-hashing.md`) exist and are tested. Nothing is
+persisted yet: there is no migration and no repository write or read
+verification, so **a deleted child row is still undetectable in storage today**.
+The sentence above continues to apply in full until TD58-2 and TD58-3 land.
+
 
 ---
 
@@ -1284,6 +1294,67 @@ rather than terminating anything under the harness's temp prefix. That is the
 deliberate trade — an occasional manual cleanup against never killing an
 unrelated database — and it is a property of the ownership policy rather than
 debt to be repaid.
+
+
+---
+
+## TD-61 · `canonicalJson` orders keys with a host-configured collation
+
+**Incurred:** before TD58-1; **found** while writing the canonicalization
+specification. **Severity: medium.** **Blocks:** specifying any digest or
+derived identity that flows through `canonicalJson`.
+
+`canonicalJson` (`src/domain/analysis/identity.ts:106`) sorts object keys with:
+
+```ts
+.sort(([a], [b]) => a.localeCompare(b))
+```
+
+`localeCompare` with no locale argument uses **the host's default locale**. The
+ordering is therefore a property of the machine, not of the value.
+
+**Locales genuinely disagree**, measured rather than assumed — comparing `Id`
+against `id` under Node's ICU:
+
+| Locale | `Id` vs `id` |
+| --- | --- |
+| `en`, `sv`, `lt`, `cs`, `et` | `Id` after |
+| `tr`, `da` | `Id` before |
+
+So two hosts can canonicalize the same value into different bytes.
+
+**Why it matters here.** `canonicalJson` derives evidence-set ids and content
+hashes (`evidence.ts`, `identity.ts`), command-envelope and event identity
+(`commands/envelope.ts`, `commands/eventIdentity.ts`), playbook identity, and
+the write-once semantic keys that decide whether a replay is the same record or
+a conflicting one. A derived identity must be reproducible by definition; one
+produced by a host-configured collation cannot be specified, and two deployments
+with different locale settings could derive different ids for identical content
+— surfacing as spurious conflicts or duplicate records rather than as an error.
+
+**Not currently known to misbehave.** Every key observed in these objects is
+lowerCamelCase ASCII, and the divergence above needs two keys differing by case
+at the deciding position. The defect is that the property is **unspecifiable**,
+not that a failure has been seen.
+
+**Contained, not fixed.** The eligibility-basis manifest deliberately does not
+use `canonicalJson`. `src/domain/analysis/basisCanonical.ts` sorts with `<` on
+UTF-16 code units and uses no key sorting at all, and
+`docs/eligibility-basis-canonicalization-v1.md` §6.8 states the rule normatively.
+That is why this is medium rather than high: the one mechanism whose whole
+purpose is reproducibility is already outside the blast radius.
+
+**Close it by** replacing `localeCompare` with code-unit comparison. The change
+is one line and mechanically safe, but it **changes every id and hash
+`canonicalJson` has ever derived**, so it is not a drive-by edit: it needs a
+decision about stored values, and possibly a migration. Do not fold it into an
+unrelated commit.
+
+**The related limit this does not cover.** §5.3 of the canonicalization
+specification: the manifest binds evidence-set ids as stored strings and does
+not re-derive them, so it does not detect a change to a set's membership that
+leaves its id unchanged. Extending the witness through evidence-set contents
+requires this debt to be repaid first.
 
 
 ---

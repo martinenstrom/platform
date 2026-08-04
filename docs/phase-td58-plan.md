@@ -343,3 +343,26 @@ authored under, which is a point-in-time fact and not something to re-derive.
 4. **Three stages**, or fewer.
 
 Everything else I am prepared to build as written.
+
+---
+
+## 12 · TD58-1 review outcome
+
+TD58-1 was approved in principle with four conditions. All four are settled; the
+durable answers live in their own documents rather than here, because they
+outlive this plan.
+
+| Condition | Where it is settled |
+| --- | --- |
+| Review the custom SHA-256 architecture | `docs/decision-integrity-hashing.md` — retain the pure implementation, with §5 safeguards in force and §6 naming what reverses it |
+| Settle `storageProvenanceId` semantics | `docs/eligibility-basis-canonicalization-v1.md` §3.1 — included; the manifest attests the complete stored `EligibilityBasis` record |
+| Normative canonicalization v1 specification | `docs/eligibility-basis-canonicalization-v1.md` — that document defines the meaning; `basisCanonical.ts` implements it |
+| Golden canonical-byte vectors | `src/domain/analysis/basisCanonical.test.ts`, and reproduced in the specification §9 |
+
+Two defects were found by writing the specification, both since fixed: a second
+UTF-8 byte counter that mishandled a lone surrogate, and a literal NUL byte in
+the domain-separation constant. Neither was in the SHA-256 core. See
+`decision-integrity-hashing.md` §3.1.
+
+**TD58-2 and TD58-3 remain unstarted.** No migration exists, nothing is
+persisted, and a deleted child row is still undetectable in storage.

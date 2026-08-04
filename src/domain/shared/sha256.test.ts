@@ -12,6 +12,8 @@
  */
 
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { sha256Hex } from './sha256'
 
@@ -57,6 +59,39 @@ describe('it agrees with node:crypto', () => {
     }
   })
 
+  it('on the padding boundaries reached by multi-byte characters', () => {
+    /*
+     * The sweep above moves one BYTE per step because its input is ASCII, so a
+     * padding length computed from `String.length` instead of the UTF-8 byte
+     * length would pass it, pass every NIST vector, and still be wrong.
+     *
+     * These cross the same boundaries in code units that do not equal bytes:
+     * 28 x U+00E9 is 28 units and 56 bytes; 14 x U+1D11E is 28 units and 56
+     * bytes through surrogate pairs.
+     */
+    const boundaries = [54, 55, 56, 57, 63, 64, 65, 119, 120, 127, 128]
+    for (const bytes of boundaries) {
+      const twoByte = 'é'.repeat(bytes >> 1) + (bytes % 2 === 1 ? 'x' : '')
+      expect(sha256Hex(twoByte), `${bytes} bytes as U+00E9`).toBe(reference(twoByte))
+
+      const fourByte = '\u{1d11e}'.repeat(bytes >> 2) + 'x'.repeat(bytes % 4)
+      expect(sha256Hex(fourByte), `${bytes} bytes as U+1D11E`).toBe(reference(fourByte))
+    }
+  })
+
+  it('on canonical renderings sized to every padding boundary', () => {
+    /*
+     * The boundaries that matter are the ones the real input hits, and the real
+     * input is a canonical rendering with a domain prefix in front of it. Grown
+     * one byte at a time so the prefixed length sweeps the boundaries rather
+     * than landing near them by luck.
+     */
+    for (let padding = 0; padding <= 140; padding += 1) {
+      const input = `financial-os:eligibility-basis:v1|l1:s${padding}:${'w'.repeat(padding)}`
+      expect(sha256Hex(input), `padding ${padding}`).toBe(reference(input))
+    }
+  })
+
   it('on multi-byte and astral characters', () => {
     for (const input of [
       'é',
@@ -79,6 +114,56 @@ describe('it agrees with node:crypto', () => {
         evaluatedAt: `2026-07-${String((seed % 28) + 1).padStart(2, '0')}T09:00:00.000Z`,
       })
       expect(sha256Hex(input), input).toBe(reference(input))
+    }
+  })
+})
+
+describe('the module stays inside its mandate', () => {
+  /*
+   * Hand-written cryptographic code is retained here on stated conditions
+   * (`docs/decision-integrity-hashing.md`): an unkeyed digest, nothing else.
+   * The conditions are worth exactly as much as their enforcement, so the
+   * export surface is pinned rather than described.
+   *
+   * A hand-written HMAC, signature, cipher or key-derivation function would be
+   * a different risk class entirely — one that differential testing does not
+   * cover, because a correct-looking result can still leak. Adding one must
+   * fail here and go back to review.
+   */
+  it('exports a digest and a byte counter, and nothing else', async () => {
+    const module = await import('./sha256')
+    expect(Object.keys(module).sort()).toEqual(['sha256Hex', 'utf8ByteLength'])
+  })
+
+  it('offers no keyed, signing or key-handling surface', () => {
+    /*
+     * Comments are stripped before scanning. The header explains that nothing
+     * here is secret and that correctness is the only property needed — a
+     * sentence worth keeping, and one a naive text search reads as a violation.
+     * The mandate is about what the code does, not about which words describe it.
+     */
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/domain/shared/sha256.ts'),
+      'utf8',
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ')
+
+    for (const forbidden of [
+      'hmac',
+      'sign',
+      'verify',
+      'encrypt',
+      'decrypt',
+      'cipher',
+      'pbkdf',
+      'privateKey',
+      'secret',
+    ]) {
+      expect(
+        source.toLowerCase(),
+        `${forbidden} has no place in this module`,
+      ).not.toContain(forbidden)
     }
   })
 })

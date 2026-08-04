@@ -30,8 +30,13 @@
  */
 
 import { sha256Hex } from '../shared/sha256'
-import { canonicalJson } from './identity'
-import type { EligibilityBasis } from './decisions'
+import {
+  BASIS_CANONICALIZATION_VERSION,
+  BASIS_DOMAIN_SEPARATION,
+  canonicalBasisInput,
+  type BasisContent,
+  type BasisSubject,
+} from './basisCanonical'
 
 /**
  * The canonical shape in force.
@@ -40,17 +45,13 @@ import type { EligibilityBasis } from './decisions'
  * ordered can never be mistaken for corruption: a row whose version this build
  * does not know is refused rather than recomputed under a different shape.
  */
-export const BASIS_CANONICALIZATION_VERSION = 1
-
-/**
- * Separates this attestation from every other use of SHA-256 in the system.
- *
- * Without it, the same bytes rendered for some other purpose would produce the
- * same digest and could be presented as an eligibility attestation. The NUL
- * terminator keeps the prefix from running into the payload — a prefix that can
- * be extended by choosing the right first byte of content is not a separator.
- */
-const DOMAIN_SEPARATION = `financial-os:eligibility-basis:v${BASIS_CANONICALIZATION_VERSION}\0`
+export {
+  BASIS_CANONICALIZATION_VERSION,
+  BASIS_DOMAIN_SEPARATION,
+  canonicalBasisInput,
+  type BasisContent,
+  type BasisSubject,
+} from './basisCanonical'
 
 /** Lowercase 64-character hex. Branded, so an arbitrary string is not a digest. */
 export type Sha256Digest = string & { readonly __brand: 'Sha256Digest' }
@@ -64,116 +65,6 @@ export interface EligibilityBasisManifest {
   algorithm: 'sha256'
   canonicalizationVersion: typeof BASIS_CANONICALIZATION_VERSION
   digest: Sha256Digest
-}
-
-/** The basis without its own witness — what the witness is computed over. */
-export type BasisContent = Omit<EligibilityBasis, 'manifest'>
-
-/** Everything the manifest binds that does not live on the basis itself. */
-export interface BasisSubject {
-  submissionId: string
-  caseId: string
-}
-
-/** Byte order, matching `COLLATE "C"` and the in-memory comparator. */
-const byteOrder = (left: string, right: string) =>
-  left < right ? -1 : left > right ? 1 : 0
-
-/**
- * The exact bytes the digest is taken over.
- *
- * Structural and type-aware rather than a dump of the object: every set-like
- * collection is sorted explicitly by a stated key, so the same basis assembled
- * in a different order renders identically, and a materially different one does
- * not. Nothing here depends on insertion order, object-property order or the
- * order a database happened to return rows in.
- *
- * Counts are bound beside the collections deliberately. They are redundant
- * with the sets — a deletion changes both — and that is the point: a bug that
- * silently dropped an element while rendering would have to drop it from the
- * count too.
- */
-export function canonicalBasisInput(
-  subject: BasisSubject,
-  basis: BasisContent,
-): string {
-  return canonicalJson({
-    v: BASIS_CANONICALIZATION_VERSION,
-
-    submissionId: subject.submissionId,
-    caseId: subject.caseId,
-    revisionId: basis.revisionId,
-    thesisId: basis.thesisId,
-
-    eligibilityPolicyVersion: basis.eligibilityPolicyVersion,
-    aggregationId: basis.aggregationId,
-    evaluatedAt: basis.evaluatedAt,
-
-    /*
-     * Bound, though the plan first proposed excluding it. It is a stored fact
-     * about which runtime produced this projection, and an edit to it would
-     * otherwise be undetectable. The manifest's job is noticing alteration of
-     * stored facts, whatever they describe.
-     */
-    storageProvenanceId: basis.storageProvenanceId,
-
-    verification:
-      basis.verification === null
-        ? null
-        : {
-            reviewId: basis.verification.reviewId,
-            sequence: basis.verification.sequence,
-            status: basis.verification.status,
-          },
-
-    devilsAdvocate:
-      basis.devilsAdvocate === null
-        ? null
-        : {
-            reviewId: basis.devilsAdvocate.reviewId,
-            sequence: basis.devilsAdvocate.sequence,
-            openChallengeIds: [...basis.devilsAdvocate.openChallengeIds].sort(byteOrder),
-            openChallengeCount: basis.devilsAdvocate.openChallengeIds.length,
-          },
-
-    risk:
-      basis.risk === null
-        ? null
-        : {
-            reviewId: basis.risk.reviewId,
-            sequence: basis.risk.sequence,
-            status: basis.risk.status,
-          },
-    riskRequirement: basis.riskRequirement,
-    riskRuleId: basis.riskRuleId,
-    riskRuleVersion: basis.riskRuleVersion,
-
-    /*
-     * NUL-separated, written as an escape rather than typed literally. A plain
-     * space would be ambiguous -- two ids could be split differently and render
-     * identically -- and an invisible control character in source is the defect
-     * the migration-character rule exists to catch.
-     */
-    requiredWork: [...basis.requiredWork]
-      .map((work) => `${work.playbookEntryKey}\u0000${work.runId}`)
-      .sort(byteOrder),
-    requiredWorkCount: basis.requiredWork.length,
-
-    materialDisagreements: [...basis.materialDisagreements]
-      .map((entry) => `${entry.claimId}\u0000${entry.materiality}`)
-      .sort(byteOrder),
-    materialDisagreementCount: basis.materialDisagreements.length,
-
-    evidenceSetIds: [...basis.evidenceSetIds].sort(byteOrder),
-    evidenceSetCount: basis.evidenceSetIds.length,
-
-    /*
-     * `blockers` is not bound: a valid submission has none, by an invariant the
-     * repositories refuse to store past. There is nothing for the digest to
-     * distinguish, and binding a field that is always empty would imply it
-     * could vary.
-     */
-  })
 }
 
 /**
@@ -191,7 +82,9 @@ export function buildBasisManifest(
   return Object.freeze({
     algorithm: 'sha256' as const,
     canonicalizationVersion: BASIS_CANONICALIZATION_VERSION,
-    digest: sha256Hex(DOMAIN_SEPARATION + canonicalBasisInput(subject, basis)) as Sha256Digest,
+    digest: sha256Hex(
+      BASIS_DOMAIN_SEPARATION + canonicalBasisInput(subject, basis),
+    ) as Sha256Digest,
   })
 }
 

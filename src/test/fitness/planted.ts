@@ -1034,4 +1034,62 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+  {
+    ruleId: 'no-invisible-characters-in-source',
+    violations: [
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'a NUL terminating a domain separator, the defect this rule exists for',
+        source: 'export const SEPARATION = `financial-os:example:v1\u0000`\n',
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'a backspace where a word boundary was meant',
+        source: 'export const NAMES = /\u0008(?:governance)\u0008/\n',
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'a zero-width space hiding inside an identifier literal',
+        source: "export const KEY = 'macro\u200bscan'\n",
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'a bidirectional override, which reorders what a reviewer sees',
+        source: '/* \u202e drah si siht \u202c */\nexport const X = 1\n',
+      },
+      {
+        path: 'domain/analysis/example.test.ts',
+        what: 'the same character in a test, which the rule judges equally',
+        source: "const separator = '\u0000'\nexport default separator\n",
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'the escape form, which is the correct way to write the character',
+        source:
+          'export const SEPARATION = `financial-os:example:v1' +
+          '\\u0000`\n' +
+          'export const CONTROLS = /[' +
+          '\\u0000-\\u001f\\u007f]/\n',
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'tabs, which are ordinary whitespace rather than a hidden payload',
+        source: 'export const SHAPE = {\n\tid: 1,\n}\n',
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'the em-dashes, curly quotes and accents the prose actually uses',
+        source:
+          '/* The firm\u2019s position \u2014 recorded once. Sm\u00e5f\u00f6retag too. */\n' +
+          'export const NOTE = 1\n',
+      },
+      {
+        path: 'domain/analysis/example.ts',
+        what: 'an astral character, which is visible and four bytes wide',
+        source: "export const CLEF = '\u{1d11e}'\n",
+      },
+    ],
+  },
 ]

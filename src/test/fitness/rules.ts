@@ -728,12 +728,17 @@ const noPre0020DecisionShape: FitnessRule = {
        * so a case can hold a decision and the correction that supersedes it;
        * anything still shaped around `case_id` alone cannot represent that.
        */
-      if (ts.isInterfaceDeclaration(node) && /^Decision|Decision.*Row$/.test(node.name.text)) {
+      if (
+        ts.isInterfaceDeclaration(node) &&
+        /^Decision|Decision.*Row$/.test(node.name.text)
+      ) {
         const members = node.members
           .map((member) => nameOf(member.name))
           .filter((name): name is string => name !== null)
         if (members.includes('case_id') && !members.includes('decision_id')) {
-          found.push(at(file, node, `${node.name.text} is keyed on the case, not the decision`))
+          found.push(
+            at(file, node, `${node.name.text} is keyed on the case, not the decision`),
+          )
         }
       }
 
@@ -771,11 +776,13 @@ const noPre0020DecisionShape: FitnessRule = {
  * module. Both are needed and neither is sufficient, and this is repository
  * enforcement rather than a database constraint either way.
  */
-const SUBMISSION_PERSISTENCE = /INSERT INTO analysis\.cio_submissions|store\.submissions\.set/
+const SUBMISSION_PERSISTENCE =
+  /INSERT INTO analysis\.cio_submissions|store\.submissions\.set/
 
 const submissionValidatorNotBypassed: FitnessRule = {
   id: 'submission-references-always-validated',
-  states: 'Every module that stores or rebuilds a CIO submission validates its references.',
+  states:
+    'Every module that stores or rebuilds a CIO submission validates its references.',
   because:
     'No foreign key can prove a cited review reviewed this revision, so the ' +
     'validator is the only thing standing between a submission and a record ' +
@@ -902,6 +909,92 @@ const noThrowingPortImplementations: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 15 */
+
+/**
+ * The same rule as 11, for the half of the tree it never covered.
+ *
+ * Rule 11 selects `db/migrations/` only, because a control character in SQL
+ * becomes part of a literal. TypeScript was left out on the reasoning that a
+ * compiler would object — and it does not. `BASIS_DOMAIN_SEPARATION` was
+ * written with a **literal NUL** as its terminator, twice, in the file that
+ * defines an integrity digest. It compiled, the tests passed, and every tool
+ * that read the file back rendered the byte as a space. The second occurrence
+ * was written *while fixing the first*.
+ *
+ * ## Two classes, both invisible
+ *
+ * **Control characters** are the original defect: a backspace where `\b` was
+ * meant silenced eleven rules for months.
+ *
+ * **Zero-width and bidirectional characters** are worse, because they are
+ * invisible by design rather than by accident. A bidi override makes source
+ * *display* in one order and *compile* in another — the Trojan Source class.
+ * In a file whose job is to attest that stored bytes are unaltered, a character
+ * that changes what a reviewer sees is precisely the wrong thing to permit.
+ *
+ * ## What stays legal
+ *
+ * Tab, and carriage return. A CR is a line-ending artefact of whoever checked
+ * the tree out, not a hidden payload, and a rule that fires on a contributor's
+ * git settings is a rule that gets deleted rather than obeyed. Escapes such as
+ * a backslash-u escape are plain ASCII in source and are the correct way to write these
+ * characters — the near-misses pin that, because a rule that rejected the fix
+ * for the defect it detects would be worse than no rule.
+ */
+const INVISIBLE_IN_SOURCE = new Map<number, string>([
+  ...Array.from({ length: 32 }, (_, code): [number, string] => [
+    code,
+    'control character',
+  ]).filter(([code]) => code !== 0x09 && code !== 0x0a && code !== 0x0d),
+  [0x7f, 'control character'],
+  [0x200b, 'zero-width space'],
+  [0x200c, 'zero-width non-joiner'],
+  [0x200d, 'zero-width joiner'],
+  [0x2060, 'word joiner'],
+  [0xfeff, 'byte-order mark'],
+  [0x202a, 'bidirectional override'],
+  [0x202b, 'bidirectional override'],
+  [0x202c, 'bidirectional override'],
+  [0x202d, 'bidirectional override'],
+  [0x202e, 'bidirectional override'],
+  [0x2066, 'bidirectional isolate'],
+  [0x2067, 'bidirectional isolate'],
+  [0x2068, 'bidirectional isolate'],
+  [0x2069, 'bidirectional isolate'],
+])
+
+const sourceCharacters: FitnessRule = {
+  id: 'no-invisible-characters-in-source',
+  states:
+    'No TypeScript source contains a control, zero-width or bidirectional ' +
+    'character as a literal byte.',
+  because:
+    'Such a character is invisible in the editor, the review and the diff, and ' +
+    'the compiler accepts it. One sat inside an integrity digest’s domain ' +
+    'separator and was rendered as a space by every tool that read it back.',
+  selects: (file) => /[.]tsx?$/.test(file.path),
+  detect(file) {
+    const found: string[] = []
+    file.text.split('\n').forEach((line, index) => {
+      for (const character of line) {
+        const code = character.codePointAt(0)!
+        const what = INVISIBLE_IN_SOURCE.get(code)
+        if (what !== undefined) {
+          found.push(
+            `${file.path}:${index + 1} — ${what} U+${code
+              .toString(16)
+              .toUpperCase()
+              .padStart(4, '0')}; write it as an escape`,
+          )
+          return
+        }
+      }
+    })
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -920,6 +1013,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noEligibilityInSql,
   noMemoryInDurableTests,
   migrationCharacters,
+  sourceCharacters,
   noPre0020DecisionShape,
   submissionValidatorNotBypassed,
   noThrowingPortImplementations,

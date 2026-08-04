@@ -91,6 +91,26 @@ function utf8Bytes(input: string): Uint8Array {
 }
 
 /**
+ * How many UTF-8 bytes a string occupies.
+ *
+ * Deliberately `utf8Bytes(...).length` rather than a second traversal that
+ * counts without encoding. The canonical form in `basisCanonical.ts` prefixes
+ * every string with this number, and the bytes it prefixes are produced by
+ * `utf8Bytes` below — so a counter that disagreed with the encoder by even one
+ * byte would emit a length prefix that did not describe its own payload, and
+ * the encoding would stop being unambiguously readable.
+ *
+ * It did disagree. A hand-written counter treated any code unit in the high-
+ * surrogate range as the start of a pair without checking that a low surrogate
+ * followed, so a lone surrogate before a multi-byte character was counted as
+ * four bytes where the encoder emitted five.
+ *
+ * The allocation is the price of that being impossible rather than tested for.
+ * The inputs are identifiers.
+ */
+export const utf8ByteLength = (input: string): number => utf8Bytes(input).length
+
+/**
  * The digest of a UTF-8 string, as lowercase hex.
  *
  * One representation and no options: two call sites that disagreed about
@@ -124,8 +144,7 @@ export function sha256Hex(input: string): string {
       const b = schedule[index - 2]!
       const s0 = (rotr(a, 7) ^ rotr(a, 18) ^ (a >>> 3)) >>> 0
       const s1 = (rotr(b, 17) ^ rotr(b, 19) ^ (b >>> 10)) >>> 0
-      schedule[index] =
-        (schedule[index - 16]! + s0 + schedule[index - 7]! + s1) >>> 0
+      schedule[index] = (schedule[index - 16]! + s0 + schedule[index - 7]! + s1) >>> 0
     }
 
     let [a, b, c, d, e, f, g, h] = hash as unknown as number[]
