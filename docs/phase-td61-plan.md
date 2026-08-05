@@ -246,18 +246,26 @@ rename**; all 19 sites are reviewed individually.
 
 ## 8 · Contract versions — ratified, with one concern
 
-**Domain contract advances 9 → 10.** The accepted value vocabulary narrows,
-previously colliding values become invalid, host-dependent ordering is removed,
-and identity generation becomes explicitly specified.
+**Domain contract advances 9 → 10 in TD61-2, not TD61-1.**
 
-> **Concern, stated once and then followed.** The instruction places contract 10
-> in TD61-1, but no production caller changes until TD61-2, so records written by
-> a TD61-1 build have identities *identical* to those written by a TD58-1 build,
-> while a TD61-2 build's differ — and all three would record `'10'`. That gives
-> one coordinate two meanings, which is the failure mode the version-governance
-> work was built to prevent. Advancing in TD61-2 would tie the version to the
-> point where stored meaning actually changes. **Implemented as instructed in
-> TD61-1**; raised here so it can be moved if desired.
+The governing rule, ratified:
+
+> A contract version advances when externally meaningful domain behaviour
+> changes, **not** when an unused implementation capability is added.
+
+TD61-1 introduces the capability; TD61-2 activates the behaviour. Between them,
+a TD58-1 build, a TD61-1 build and a TD61-2 build would otherwise all record
+`'10'` while only the last produces different identities — one coordinate
+describing two identity semantics, which is precisely the failure the
+version-governance work exists to prevent.
+
+| Stage | State | Contract |
+| --- | --- | --- |
+| TD61-1 | model, specification and tests exist; no production identity path uses them | **9** |
+| TD61-2 | production identity paths migrate; `observationRef` narrows; invalid values are refused in production | **10** |
+
+TD61-1 briefly advanced it to `'10'` and was corrected in a following scoped
+commit rather than by rewriting history.
 
 **Command contract stays at `'2'`. `PAYLOAD_CANONICALIZATION_VERSION` advances
 `'1'` → `'2'` in TD61-2**, when `commandPayloadHash` actually changes format.
@@ -329,8 +337,8 @@ membership still matches those ids. **TD-58 does not absorb it.**
 
 | Stage | Contents |
 | --- | --- |
-| **TD61-1** | canonical value type; deterministic comparator; normative encoding specification; runtime validator; golden vectors; locale tests; invalid-value tests; domain contract 10. No caller migration beyond what compilation requires. |
-| **TD61-2** | all production call-site conversions; `observationRef.value` narrowing; exact decimal-string handling; evidence-set identity updates; semantic-key updates; command-identity assessment and `PAYLOAD_CANONICALIZATION_VERSION`; fixture and golden updates with explanations. |
+| **TD61-1** | canonical value type; deterministic comparator; normative encoding specification; runtime validator; golden vectors; locale tests; invalid-value tests. **Domain contract stays at 9.** No caller migration beyond what compilation requires. |
+| **TD61-2** | all production call-site conversions; `observationRef.value` narrowing; exact decimal-string handling; evidence-set identity updates; semantic-key updates; command-identity assessment and `PAYLOAD_CANONICALIZATION_VERSION` 1 -> 2; **domain contract 9 -> 10**; fixture and golden updates with explanations. |
 | **TD61-3** | before/after valid-subset identity proof; cross-locale tests; cross-runtime tests; malformed-input boundaries; provenance and version behaviour; documentation; TD-61 closure; residual evidence-membership debt recorded. |
 
 Reported separately. Not combined into one commit.
