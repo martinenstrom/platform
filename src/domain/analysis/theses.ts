@@ -28,6 +28,7 @@ import type { CaseId } from './cases'
 import type { ClaimId } from './claims'
 import { isSealed, type ThesisLifecycleState } from './lifecycle'
 import type { DepartmentId, EmployeeId } from './organization'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export type ThesisId = string
 export type RevisionId = string
@@ -249,9 +250,7 @@ export function buildThesis(thesis: InvestmentThesis): InvestmentThesis {
     citedByClaimIds: Object.freeze([...thesis.citedByClaimIds]),
     // Sorted and de-duplicated, so two identical declarations hash identically
     // and a resolution recorded against one applies to the other.
-    implications: Object.freeze(
-      [...new Set(thesis.implications)].sort((a, b) => a.localeCompare(b)),
-    ),
+    implications: Object.freeze([...new Set(thesis.implications)].sort(utf8ByteOrder)),
   })
 }
 

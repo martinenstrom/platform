@@ -90,6 +90,7 @@ import type {
   RiskLimitRow,
   VerificationClaimReviewedRow,
 } from './rows'
+import { asCanonicalValue } from '~/domain/shared/canonicalValue'
 
 /** Wraps a builder so a domain rejection is reported as a malformed row. */
 function build<T>(record: string, operation: string, make: () => T): T {
@@ -529,7 +530,15 @@ export function toEvidenceSet(
       methodology: item.methodology,
       contentHash: item.content_hash,
     }) as EvidenceItem['ref'],
-    value: item.value,
+    /*
+     * Validated on the way out of the database, not trusted.
+     *
+     * A stored payload is external data by the time it comes back: it was
+     * written by some build, possibly an older one, and `EvidenceItem.value`
+     * is an identity input. A row that is not canonical is refused loudly here
+     * rather than producing a different semantic key further downstream.
+     */
+    value: asCanonicalValue(item.value),
     provenance: item.provenance as EvidenceItem['provenance'],
   }))
 

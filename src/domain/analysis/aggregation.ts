@@ -30,6 +30,7 @@ import type { CaseId } from './cases'
 import type { ClaimId } from './claims'
 import type { EmployeeId, DepartmentId } from './organization'
 import type { RevisionId, ThesisId } from './theses'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export type AggregationId = string
 
@@ -502,12 +503,12 @@ export function buildManagerAggregation(
     inputs: Object.freeze(aggregation.inputs.map((input) => Object.freeze({ ...input }))),
     dispositions: Object.freeze(
       [...aggregation.dispositions]
-        .sort((a, b) => a.claimId.localeCompare(b.claimId))
+        .sort((a, b) => utf8ByteOrder(a.claimId, b.claimId))
         .map((record) => Object.freeze({ ...record })),
     ),
     optionalInputs: Object.freeze(
       [...aggregation.optionalInputs]
-        .sort((a, b) => a.playbookEntryKey.localeCompare(b.playbookEntryKey))
+        .sort((a, b) => utf8ByteOrder(a.playbookEntryKey, b.playbookEntryKey))
         .map((record) => Object.freeze({ ...record })),
     ),
   })

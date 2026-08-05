@@ -1359,6 +1359,41 @@ requires this debt to be repaid first.
 
 ---
 
+## TD-62 · The LightCommandCenter semantic test fails intermittently
+
+**Incurred:** observed during TD61-1. **Severity: low** — test reliability only.
+**Blocks:** nothing. **Does not block TD61-2** unless the failure rate prevents
+reliable verification.
+
+`src/components/lightDashboard/LightCommandCenter.semantic.test.tsx` →
+*"live mode > renders the Swedish quotes Avanza supplied"*.
+
+**What was observed, and nothing more:**
+
+| | |
+| --- | --- |
+| failed in a full-suite run | twice |
+| passed when run in isolation | yes |
+| passed on a repeat full-suite run | yes |
+| TD-61 files touching that path | none |
+| root cause established | **no** |
+
+**It is not fixed.** No change was made to it, and none should be made that
+merely hides it: **do not add retries, do not rerun on failure, and do not mark
+it flaky-and-skip.** A test that fails sometimes is reporting something, and the
+something is unknown.
+
+**Candidates for a focused investigation**, none of them confirmed: shared
+mutable fixture state; a clock or timezone dependency; test ordering;
+asynchronous rendering not awaited; a market-status assumption that depends on
+the date the suite runs; global environment leakage between workers.
+
+**Close it only when** the cause is identified and removed — not when the test
+stops failing on its own, which is the same evidence that produced this entry.
+
+
+---
+
 ## C1D-1B / B2C · complete
 
 Recorded so a later phase does not have to reconstruct what was proven.

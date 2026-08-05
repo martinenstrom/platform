@@ -29,7 +29,7 @@
  */
 
 import { stableHashHex } from '~/domain/shared/hash'
-import { canonicalJson } from '~/domain/analysis'
+import { canonicalIdentityInput } from '~/domain/shared/canonicalValue'
 
 /** Long enough that collision is not a practical concern, short enough to read. */
 const ID_LENGTH = 32
@@ -51,9 +51,12 @@ export interface DerivedIdentity {
   ordinal?: number
 }
 
+/** Domain tag for derived record identity, per `docs/canonical-value-v1.md` §9. */
+const EVENT_IDENTITY_DOMAIN = 'financial-os:derived-record-identity:v1'
+
 function derive(prefix: string, identity: DerivedIdentity): string {
   const digest = stableHashHex(
-    canonicalJson({
+    canonicalIdentityInput(EVENT_IDENTITY_DOMAIN, {
       commandId: identity.commandId,
       recordType: identity.recordType,
       entityId: identity.entityId,

@@ -260,7 +260,10 @@ export function validateReconsiderationTrigger(
   }
   if (blank(trigger.policyVersion)) {
     found.push(
-      problem('trigger-no-policy-version', `Trigger "${trigger.id}" names no policy version`),
+      problem(
+        'trigger-no-policy-version',
+        `Trigger "${trigger.id}" names no policy version`,
+      ),
     )
   }
 
@@ -448,7 +451,10 @@ export function validateCaseDecision(
   for (const dissent of decision.unresolvedDissent) {
     if (blank(dissent.rationale)) {
       found.push(
-        problem('dissent-no-rationale', `Dissent "${dissent.sourceId}" records no rationale.`),
+        problem(
+          'dissent-no-rationale',
+          `Dissent "${dissent.sourceId}" records no rationale.`,
+        ),
       )
     }
     if (

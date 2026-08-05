@@ -113,7 +113,10 @@ describe('submissions', () => {
       }),
     )
     expect(codes(problems)).toEqual(
-      expect.arrayContaining(['submission-no-policy-version', 'submission-no-provenance']),
+      expect.arrayContaining([
+        'submission-no-policy-version',
+        'submission-no-provenance',
+      ]),
     )
   })
 })
@@ -158,7 +161,9 @@ describe('triggers', () => {
 
   it('refuses a quantitative trigger with no threshold at all', () => {
     expect(
-      codes(validateReconsiderationTrigger(quantitativeTrigger({ threshold: undefined }))),
+      codes(
+        validateReconsiderationTrigger(quantitativeTrigger({ threshold: undefined })),
+      ),
     ).toContain('trigger-threshold-missing')
   })
 
@@ -284,7 +289,9 @@ describe('decisions', () => {
 
   it('refuses one submission referenced twice', () => {
     expect(
-      codes(validateCaseDecision(selectedDecision({ submissionIds: ['sub-1', 'sub-1'] }))),
+      codes(
+        validateCaseDecision(selectedDecision({ submissionIds: ['sub-1', 'sub-1'] })),
+      ),
     ).toContain('decision-duplicate-submission')
   })
 
@@ -350,9 +357,7 @@ describe('decisions', () => {
 
   it('refuses a decision that supersedes itself', () => {
     expect(
-      codes(
-        validateCaseDecision(selectedDecision({ supersedesDecisionId: 'dec-1' })),
-      ),
+      codes(validateCaseDecision(selectedDecision({ supersedesDecisionId: 'dec-1' }))),
     ).toContain('decision-supersedes-itself')
   })
 })

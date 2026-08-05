@@ -309,7 +309,9 @@ describe('a decision survives the round trip', () => {
   it('never writes its own superseded_by', () => {
     // Set by the successor's write. A decision that recorded its own would be
     // claiming to know it had been corrected.
-    expect(decisionToRows(selectedDecision()).decision.superseded_by_decision_id).toBeNull()
+    expect(
+      decisionToRows(selectedDecision()).decision.superseded_by_decision_id,
+    ).toBeNull()
   })
 
   it('invents no Compliance state anywhere', () => {

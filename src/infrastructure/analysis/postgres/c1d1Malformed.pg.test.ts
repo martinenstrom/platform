@@ -86,12 +86,16 @@ afterEach(async () => {
 })
 
 /** Every read that hydrates a submission. Corruption must be refused by all of them. */
-const submissionReads = () => [
-  ['get', () => repositories.submissions.get('sub-1')],
-  ['listForCase', () => repositories.submissions.listForCase('case-1')],
-  ['applicableForRevision', () => repositories.submissions.applicableForRevision('rev-1')],
-  ['pending', () => repositories.submissions.pending()],
-] as const
+const submissionReads = () =>
+  [
+    ['get', () => repositories.submissions.get('sub-1')],
+    ['listForCase', () => repositories.submissions.listForCase('case-1')],
+    [
+      'applicableForRevision',
+      () => repositories.submissions.applicableForRevision('rev-1'),
+    ],
+    ['pending', () => repositories.submissions.pending()],
+  ] as const
 
 /* =========================================================== submissions === */
 
@@ -251,7 +255,9 @@ describe('submissions — S: the schema refuses the insert', () => {
 
   it('refuses a state outside the vocabulary', async () => {
     expect(
-      await refused(`UPDATE analysis.cio_submissions SET state = 'maybe' WHERE id = 'sub-1'`),
+      await refused(
+        `UPDATE analysis.cio_submissions SET state = 'maybe' WHERE id = 'sub-1'`,
+      ),
     ).not.toBeNull()
   })
 })
@@ -320,7 +326,9 @@ describe('returns — H: stored by privilege, refused on hydration', () => {
   })
 
   it('refuses a return whose concerns were all deleted', async () => {
-    await db.owner.query(`DELETE FROM analysis.cio_return_concerns WHERE return_id = 'ret-1'`)
+    await db.owner.query(
+      `DELETE FROM analysis.cio_return_concerns WHERE return_id = 'ret-1'`,
+    )
     const remaining = await db.owner.query(
       `SELECT count(*)::int AS n FROM analysis.cio_return_concerns WHERE return_id = 'ret-1'`,
     )
@@ -396,7 +404,9 @@ describe('returns — S and P', () => {
 
   it('S · refuses a returned_for outside the vocabulary', async () => {
     const error = await db.owner
-      .query(`UPDATE analysis.cio_returns SET returned_for = 'because' WHERE id = 'ret-1'`)
+      .query(
+        `UPDATE analysis.cio_returns SET returned_for = 'because' WHERE id = 'ret-1'`,
+      )
       .then(
         () => null,
         (thrown: unknown) => thrown,

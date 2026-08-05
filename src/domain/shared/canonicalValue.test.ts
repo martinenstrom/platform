@@ -18,6 +18,8 @@ import {
   assertCanonical,
   canonicalIdentityInput,
   canonicalValueString,
+  canonicalDecimalFromNumber,
+  canonicalDecimalOrNull,
   isCanonicalDecimal,
   isCanonicalValue,
   utf8ByteOrder,
@@ -446,5 +448,91 @@ describe('the assertion helper', () => {
         path: 'a.0',
       })
     }
+  })
+})
+
+describe('the approved decimal conversion', () => {
+  const cases: Array<[number, string]> = [
+    [0, '0'],
+    [1, '1'],
+    [-1, '-1'],
+    [2.5, '2.5'],
+    [-2.5, '-2.5'],
+    [0.5, '0.5'],
+    [4.69, '4.69'],
+    [0.1 + 0.2, '0.30000000000000004'],
+    [1e21, '1000000000000000000000'],
+    [1e-7, '0.0000001'],
+    [1.25e-7, '0.000000125'],
+    [-1e-7, '-0.0000001'],
+    [1.5e22, '15000000000000000000000'],
+    [9007199254740991, '9007199254740991'],
+  ]
+
+  for (const [input, expected] of cases) {
+    it(`converts ${input} to ${expected}`, () => {
+      expect(canonicalDecimalFromNumber(input)).toBe(expected)
+    })
+  }
+
+  it('always produces a canonical decimal', () => {
+    // The conversion may not emit something its own validator would refuse.
+    for (const [input] of cases) {
+      expect(isCanonicalDecimal(canonicalDecimalFromNumber(input)), String(input)).toBe(
+        true,
+      )
+    }
+  })
+
+  it('round-trips the double exactly', () => {
+    /*
+     * The honest claim: the conversion loses nothing about the number it is
+     * given. Whatever the source published was lost earlier, when its decimal
+     * became a double.
+     */
+    for (const [input] of cases) {
+      expect(Number(canonicalDecimalFromNumber(input)), String(input)).toBe(input)
+    }
+  })
+
+  it('refuses what the value model refuses', () => {
+    for (const bad of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -0,
+    ]) {
+      expect(() => canonicalDecimalFromNumber(bad), String(bad)).toThrow(
+        NotCanonicalError,
+      )
+    }
+  })
+
+  it('never emits exponent notation', () => {
+    for (const input of [1e21, 1e-7, 1e-21, 5e-324]) {
+      expect(canonicalDecimalFromNumber(input), String(input)).not.toContain('e')
+    }
+  })
+
+  it('refuses a magnitude too large to write in 38 digits, and says why', () => {
+    /*
+     * 1.5e300 expands to 301 digits. A double never carries more than 17
+     * significant digits, so only magnitude can breach the bound -- and the
+     * refusal names magnitude rather than blaming the fractional part.
+     */
+    expect(() => canonicalDecimalFromNumber(1.5e300)).toThrow(NotCanonicalError)
+    try {
+      canonicalDecimalFromNumber(1.5e300)
+    } catch (error) {
+      expect((error as NotCanonicalError).problem.code).toBe('decimal-out-of-range')
+    }
+
+    // Small magnitudes are fine: the leading zeros are not significant digits.
+    expect(canonicalDecimalFromNumber(5e-324)).toContain('0.0000')
+  })
+
+  it('passes null through unchanged', () => {
+    expect(canonicalDecimalOrNull(null)).toBeNull()
+    expect(canonicalDecimalOrNull(2.5)).toBe('2.5')
   })
 })

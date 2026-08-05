@@ -50,6 +50,7 @@ import { CANONICALIZATION_VERSION, resultKey } from '../resultStore'
 import { deriveClaimId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { asCanonicalValue } from '~/domain/shared/canonicalValue'
 
 export interface RecordContributionInput {
   caseId: string
@@ -112,9 +113,9 @@ export function recordContribution(
        * must not resolve to each other. Their provider-supplied ids are
        * included for the same reason.
        */
-      claims: input.claims,
+      claims: asCanonicalValue(input.claims),
       observedStates: input.observedStates,
-      usage: input.usage,
+      usage: asCanonicalValue(input.usage),
     }),
 
     async execute(repositories, context, input) {

@@ -8,7 +8,6 @@
 
 import { stableHashHex } from '~/domain/shared/hash'
 import {
-  canonicalJson,
   type AssertedActor,
   type CommandInitiator,
   type Mandate,
@@ -20,18 +19,30 @@ import type {
   LedgerEntry,
   RejectionCode,
 } from '../commandLog'
+import {
+  canonicalIdentityInput,
+  type CanonicalValue,
+} from '~/domain/shared/canonicalValue'
 
 /**
  * The command contract version.
  *
- * Bumped when the envelope, the payload canonicalization, the outcome
- * vocabulary or the `expectedVersion` policy changes in a way that alters what
- * a stored command means. Recorded in provenance, so an audit can tell which
- * contract produced a ledger entry.
+ * Bumped when the **envelope**, the **outcome vocabulary** or the
+ * **`expectedVersion` policy** changes in a way that alters what a stored
+ * command means. Recorded in provenance, so an audit can tell which contract
+ * produced a ledger entry.
  *
  * A stored command keeps the version it was written under. Reading a
  * version-1 record as though it were version 2 would attribute a reason and a
  * category to a command that was issued before either existed.
+ *
+ * **Payload canonicalization is NOT one of the triggers.** It has its own
+ * coordinate below, and that coordinate is the first field inside the hashed
+ * input — so a reader can already tell which canonicalization produced a given
+ * hash. Listing it here as well would double-version one change: TD-61 altered
+ * the payload encoding and nothing about the envelope, the outcome vocabulary
+ * or `expectedVersion`, and bumping both would have claimed a command-semantics
+ * change that did not happen.
  *
  * History:
  *   1  Phase C1A — the foundation
@@ -46,8 +57,18 @@ export const COMMAND_CONTRACT_VERSION = '2'
  * Versioned for the same reason evidence identity is: if canonicalization
  * changes, two identical payloads could hash differently and a replay would
  * look like a conflict.
+ *
+ * The version is bound **inside** the hashed input, so a version-1 hash and a
+ * version-2 hash of the same payload differ by construction and can never be
+ * compared as though they were the same claim.
+ *
+ * History:
+ *   1  Phase C1A — `canonicalJson`: JSON.stringify with locale-sorted keys
+ *   2  TD-61 — canonical value v1: a specified value model with a specified
+ *      byte encoding, refusing the values the previous one silently collided
+ *      (NaN, the infinities, undefined, negative zero, every Date)
  */
-export const PAYLOAD_CANONICALIZATION_VERSION = '1'
+export const PAYLOAD_CANONICALIZATION_VERSION = '2'
 
 export interface CommandEnvelope {
   /** Caller-supplied and stable across retries. Never generated in a handler. */
@@ -156,6 +177,9 @@ export function reject(code: RejectionCode, detail: string): never {
  * id, the initiator, the receive time — which vary between a request and its
  * retry without changing what was requested.
  */
+/** Domain tag for command-payload identity, per `docs/canonical-value-v1.md` §9. */
+const COMMAND_PAYLOAD_DOMAIN = 'financial-os:command-payload:v1'
+
 export function commandPayloadHash(input: {
   commandType: string
   caseId?: string
@@ -163,10 +187,10 @@ export function commandPayloadHash(input: {
   expectedVersion?: number
   accountableEmployeeId: string | null
   reason?: string
-  payload: unknown
+  payload: CanonicalValue
 }): string {
   return stableHashHex(
-    canonicalJson({
+    canonicalIdentityInput(COMMAND_PAYLOAD_DOMAIN, {
       canonicalization: PAYLOAD_CANONICALIZATION_VERSION,
       contract: COMMAND_CONTRACT_VERSION,
       type: input.commandType,

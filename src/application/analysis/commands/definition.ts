@@ -15,6 +15,7 @@ import type {
 } from '../repositories'
 import type { ActorSnapshot } from '~/domain/analysis'
 import type { CommandCategory } from '../commandLog'
+import type { CanonicalValue } from '~/domain/shared/canonicalValue'
 
 /**
  * Whether the command moves case-level aggregate state.
@@ -109,7 +110,14 @@ export interface CommandDefinition<Input, Result> {
    * that does not change what was asked, and including it would make a retry
    * look like a different command.
    */
-  payload: (input: Input) => unknown
+  /**
+   * The payload that identifies this command, as a canonical value.
+   *
+   * Not `unknown`: this feeds `commandPayloadHash`, and an identity boundary
+   * that accepts anything accepts values whose encoding collides. See
+   * `docs/canonical-value-v1.md`.
+   */
+  payload: (input: Input) => CanonicalValue
   /**
    * The work, inside the caller's transaction.
    *

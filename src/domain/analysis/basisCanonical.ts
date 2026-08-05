@@ -7,15 +7,19 @@
  * writing it down separately: an independent implementation must be able to
  * reproduce a digest without reading this code.
  *
- * ## Why not `canonicalJson`
+ * ## Why not the general canonical format
  *
- * `canonicalJson` sorts object keys with `localeCompare`, which is
- * **locale-sensitive**: the ordering depends on the host's collation. Today
- * every key here is lower-camelCase ASCII and every locale agrees, so nothing
- * is wrong in practice — but a digest whose byte layout depends on the machine
- * that computed it cannot be specified, and "an independent implementation
- * reproduces it" is exactly the property a witness needs. Recorded as TD-61,
- * because `canonicalJson` also derives evidence-set ids and content hashes.
+ * This encoder predates canonical value v1 and is deliberately kept separate
+ * from it. It was written because `canonicalJson` — the mechanism it would
+ * otherwise have reused — sorted object keys with `localeCompare`, whose
+ * ordering depends on the host's collation. TD-61 has since replaced that
+ * mechanism entirely.
+ *
+ * The two remain distinct formats. **This one sorts by UTF-16 code unit;
+ * canonical value v1 sorts by UTF-8 byte order.** They agree except on astral
+ * characters, and `canonicalFormats.test.ts` proves the divergence is
+ * deliberate so a later refactor cannot unify them by accident. Merging them
+ * would change every digest derived under one of the two.
  *
  * ## The encoding
  *

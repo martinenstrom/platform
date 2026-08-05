@@ -47,7 +47,12 @@ const organization = TEST_ORGANIZATION
 /* ------------------------------------------------------------------ evidence */
 
 /** One observation, with the provenance that decides whether it is real. */
-function item(subject: string, value: number, quality: Quality): EvidenceItem {
+/*
+ * The value is a canonical decimal string, matching what `evidenceRefs`
+ * produces from a provider quote. A fractional double is refused by the
+ * canonical-value model, and `EvidenceItem.value` is an identity input.
+ */
+function item(subject: string, value: string, quality: Quality): EvidenceItem {
   return {
     ref: observationRef(
       {
@@ -73,8 +78,8 @@ function item(subject: string, value: number, quality: Quality): EvidenceItem {
   }
 }
 
-const REAL = item('de10y', 2.41, 'official-daily')
-const INVENTED = item('made-up', 1.11, 'fixture')
+const REAL = item('de10y', '2.41', 'official-daily')
+const INVENTED = item('made-up', '1.11', 'fixture')
 
 const evidenceSet: EvidenceSet = buildEvidenceSet({
   items: [REAL, INVENTED],

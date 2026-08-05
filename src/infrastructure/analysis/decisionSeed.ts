@@ -218,9 +218,7 @@ export async function seedDecisionGovernance(
       })),
       // How the organization answered each challenge. Open, so the submission
       // legitimately lists them as open.
-      outcomes: Object.fromEntries(
-        challengeIdsFor(revisionId).map((id) => [id, 'open']),
-      ),
+      outcomes: Object.fromEntries(challengeIdsFor(revisionId).map((id) => [id, 'open'])),
     } as never)
 
     await repositories.reviews.saveRisk({
@@ -234,7 +232,6 @@ export async function seedDecisionGovernance(
       findings: [],
       limits: [],
     } as never)
-
   }
 
   /*

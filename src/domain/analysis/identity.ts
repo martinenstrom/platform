@@ -35,6 +35,10 @@
  */
 
 import { stableHashHex } from '~/domain/shared/hash'
+import {
+  canonicalIdentityInput,
+  type CanonicalValue,
+} from '~/domain/shared/canonicalValue'
 
 /** What an observation is ABOUT, without naming another domain's types. */
 export type SubjectKind =
@@ -91,31 +95,37 @@ function serializeKey(key: ObservationNaturalKey): string {
   ].join('|')
 }
 
-/**
- * Canonical serialization of a value.
- *
- * Object keys are sorted, so two structurally identical values hash the same
- * regardless of construction order. Without this a revision would be reported
- * every time a provider happened to emit fields in a different sequence.
- */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`)
-  return `{${entries.join(',')}}`
-}
+/** Domain tag for observation content, per `docs/canonical-value-v1.md` §9. */
+const OBSERVATION_CONTENT_DOMAIN = 'financial-os:observation-content:v1'
 
+/**
+ * The identity of an observation, and of what it said.
+ *
+ * `value` is a **canonical value**, not `unknown`. The narrowing is the point:
+ * `contentHash` is what `isRevisionOf` compares to decide whether an
+ * observation was revised, and under the previous `unknown` signature a value
+ * that went from missing to `NaN` produced the same hash and read as unrevised.
+ * `NaN`, the infinities, `undefined` and every `Date` all canonicalized to
+ * `null`.
+ *
+ * The compile-time narrowing protects TypeScript callers. `canonicalValueString`
+ * validates again at runtime, which is what protects parsed JSON, external
+ * provider data, unsafe casts and database hydration — **the type system is not
+ * a runtime trust boundary.** An invalid value throws before a hash exists,
+ * rather than becoming a hash that stands for two different things.
+ *
+ * Fractional quantities do not arrive here as numbers. They are converted at the
+ * domain boundary in `application/analysis/evidenceRefs.ts` through
+ * `canonicalDecimalFromNumber`, the one approved conversion.
+ */
 export function observationRef(
   key: ObservationNaturalKey,
-  value: unknown,
+  value: CanonicalValue,
 ): ObservationRef {
   return Object.freeze({
     ...key,
     id: stableHashHex(serializeKey(key)),
-    contentHash: stableHashHex(canonicalJson(value)),
+    contentHash: stableHashHex(canonicalIdentityInput(OBSERVATION_CONTENT_DOMAIN, value)),
   })
 }
 

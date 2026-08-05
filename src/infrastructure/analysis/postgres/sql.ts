@@ -216,11 +216,7 @@ function schemaRaised(
    * Everything else the schema raises is a refusal to rewrite or delete a
    * sealed record -- the immutability guards in 0008 and 0020.
    */
-  return new ImmutableRecordError(
-    message || 'a sealed record',
-    operation,
-    correlationId,
-  )
+  return new ImmutableRecordError(message || 'a sealed record', operation, correlationId)
 }
 
 export function mapDatabaseError(

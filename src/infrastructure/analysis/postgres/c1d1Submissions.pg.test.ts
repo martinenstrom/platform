@@ -194,9 +194,9 @@ describe('two settlements racing for one submission', () => {
 
     // Whichever lost, a later attempt at the other state is refused outright.
     const opposite = settled?.state === 'decided' ? 'returned' : 'decided'
-    await expect(
-      repositories.submissions.settle(['sub-1'], opposite),
-    ).rejects.toThrow(InvariantViolationError)
+    await expect(repositories.submissions.settle(['sub-1'], opposite)).rejects.toThrow(
+      InvariantViolationError,
+    )
 
     await other.close()
   })

@@ -459,23 +459,23 @@ describe('observation identity', () => {
   }
 
   it('is stable across re-retrieval', () => {
-    const first = observationRef(key, { yieldPercent: 4.69 })
-    const second = observationRef(key, { yieldPercent: 4.69 })
+    const first = observationRef(key, { yieldPercent: '4.69' })
+    const second = observationRef(key, { yieldPercent: '4.69' })
     expect(second.id).toBe(first.id)
     expect(second.contentHash).toBe(first.contentHash)
   })
 
   it('ignores field order when hashing content', () => {
-    const a = observationRef(key, { yieldPercent: 4.69, change: -2 })
-    const b = observationRef(key, { change: -2, yieldPercent: 4.69 })
+    const a = observationRef(key, { yieldPercent: '4.69', change: '-2' })
+    const b = observationRef(key, { change: '-2', yieldPercent: '4.69' })
     // Without canonical ordering, a provider emitting fields differently would
     // register as a revision on every fetch.
     expect(b.contentHash).toBe(a.contentHash)
   })
 
   it('detects a revision: same identity, different content', () => {
-    const original = observationRef(key, { yieldPercent: 4.69 })
-    const revised = observationRef(key, { yieldPercent: 4.71 })
+    const original = observationRef(key, { yieldPercent: '4.69' })
+    const revised = observationRef(key, { yieldPercent: '4.71' })
     expect(revised.id).toBe(original.id)
     expect(isRevisionOf(revised, original)).toBe(true)
   })
@@ -483,10 +483,10 @@ describe('observation identity', () => {
   it('treats a different methodology as a different observation', () => {
     // A par yield and a fitted zero rate for the same bond on the same day are
     // two things, not one thing revised.
-    const par = observationRef(key, { yieldPercent: 4.69 })
+    const par = observationRef(key, { yieldPercent: '4.69' })
     const fitted = observationRef(
       { ...key, methodology: 'zero-coupon-fitted' },
-      { yieldPercent: 4.69 },
+      { yieldPercent: '4.69' },
     )
     expect(fitted.id).not.toBe(par.id)
     expect(isRevisionOf(fitted, par)).toBe(false)
@@ -508,7 +508,7 @@ describe('the evidence set', () => {
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
     },
-    { yieldPercent: 4.69 },
+    { yieldPercent: '4.69' },
   )
   const refB = observationRef(
     {
@@ -518,7 +518,7 @@ describe('the evidence set', () => {
       observedAt: '2026-07-26T00:00:00.000Z',
       sourceId: 'ecb',
     },
-    { level: 2.25 },
+    { level: '2.25' },
   )
   const provenance = { source: { providerId: 'x' } } as never
 
@@ -554,11 +554,11 @@ describe('the evidence set', () => {
     }
     const bundesbank = observationRef(
       { ...sameThingKey, sourceId: 'bundesbank' },
-      { yieldPercent: 3.24 },
+      { yieldPercent: '3.24' },
     )
     const vendor = observationRef(
       { ...sameThingKey, sourceId: 'riksbank' },
-      { yieldPercent: 3.31 },
+      { yieldPercent: '3.31' },
     )
     const set = setOf([bundesbank, vendor])
 
@@ -580,8 +580,8 @@ describe('the evidence set', () => {
       observedAt: '2026-07-24T00:00:00.000Z',
     }
     const set = setOf([
-      observationRef({ ...shared, sourceId: 'a' }, { yieldPercent: 3.24 }),
-      observationRef({ ...shared, sourceId: 'b' }, { yieldPercent: 3.24 }),
+      observationRef({ ...shared, sourceId: 'a' }, { yieldPercent: '3.24' }),
+      observationRef({ ...shared, sourceId: 'b' }, { yieldPercent: '3.24' }),
     ])
     expect(set.disagreements).toHaveLength(0)
   })
@@ -596,7 +596,7 @@ describe('citations resolve against the set they were made in', () => {
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
     },
-    { yieldPercent: 4.69 },
+    { yieldPercent: '4.69' },
   )
   const set = buildEvidenceSet({
     items: [{ ref, value: {}, provenance: {} as never }],
@@ -617,7 +617,7 @@ describe('citations resolve against the set they were made in', () => {
         observedAt: '2026-07-24T00:00:00.000Z',
         sourceId: 'treasury',
       },
-      { yieldPercent: 4.33 },
+      { yieldPercent: '4.33' },
     )
     expect(() => citeFrom(set, outsider)).toThrow(/not in evidence set/)
   })

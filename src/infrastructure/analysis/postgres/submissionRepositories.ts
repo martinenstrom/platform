@@ -345,7 +345,12 @@ function governanceFrom(
 ): ReferencedGovernance {
   const reviews = new Map<
     string,
-    { caseId: string; revisionId: string | null; kind: string; challengeIds: readonly string[] }
+    {
+      caseId: string
+      revisionId: string | null
+      kind: string
+      challengeIds: readonly string[]
+    }
   >()
 
   for (const root of roots) {
@@ -411,7 +416,13 @@ export function createSubmissionRepository(
     const ids = roots.map((root) => root.id)
 
     const [work, disagreements, evidence, challenges] = [
-      await run<WorkRow>(client, context, operation, SUBMISSION_READ_SQL.requiredWorkFor, [ids]),
+      await run<WorkRow>(
+        client,
+        context,
+        operation,
+        SUBMISSION_READ_SQL.requiredWorkFor,
+        [ids],
+      ),
       await run<DisagreementRow>(
         client,
         context,
@@ -490,8 +501,12 @@ export function createSubmissionRepository(
     })
   }
 
-  const readRoots = (client: Queryable, operation: string, sql: string, values: unknown[]) =>
-    run<SubmissionRootRow>(client, context, operation, sql, values)
+  const readRoots = (
+    client: Queryable,
+    operation: string,
+    sql: string,
+    values: unknown[],
+  ) => run<SubmissionRootRow>(client, context, operation, sql, values)
 
   /**
    * The ownership facts a set of concerns needs, in one statement.
@@ -571,9 +586,12 @@ export function createSubmissionRepository(
   return {
     get: (submissionId) =>
       unitOfWork(scope, 'submissions.get', async (client) => {
-        const roots = await readRoots(client, 'submissions.get', SUBMISSION_READ_SQL.byId, [
-          submissionId,
-        ])
+        const roots = await readRoots(
+          client,
+          'submissions.get',
+          SUBMISSION_READ_SQL.byId,
+          [submissionId],
+        )
         return (await hydrate(client, 'submissions.get', roots))[0] ?? null
       }),
 
@@ -582,9 +600,12 @@ export function createSubmissionRepository(
         hydrate(
           client,
           'submissions.listForCase',
-          await readRoots(client, 'submissions.listForCase', SUBMISSION_READ_SQL.forCase, [
-            caseId,
-          ]),
+          await readRoots(
+            client,
+            'submissions.listForCase',
+            SUBMISSION_READ_SQL.forCase,
+            [caseId],
+          ),
         ),
       ),
 
@@ -635,7 +656,9 @@ export function createSubmissionRepository(
           )
         )[0]
         if (existing) {
-          if (cioSubmissionSemanticKey(existing) !== cioSubmissionSemanticKey(submission)) {
+          if (
+            cioSubmissionSemanticKey(existing) !== cioSubmissionSemanticKey(submission)
+          ) {
             throw new ConflictingRecordError(
               'CIO submission',
               submission.id,
@@ -716,44 +739,59 @@ export function createSubmissionRepository(
 
         const referenceProblems = validateSubmissionReferences(submission, governance)
         if (referenceProblems.length > 0) {
-          throw new InvariantViolationError(referenceProblems[0]!.code, 'submissions.save')
+          throw new InvariantViolationError(
+            referenceProblems[0]!.code,
+            'submissions.save',
+          )
         }
 
         const rows = submissionToRows(submission)
         const root = rows.submission
-        await run(client, context, 'submissions.save', SUBMISSION_WRITE_SQL.insertSubmission, [
-          root.id,
-          root.case_id,
-          tenantId,
-          root.thesis_id,
-          root.revision_id,
-          root.submitted_by_department_id,
-          root.submitted_by_employee_id,
-          root.submitted_at,
-          root.case_version,
-          root.state,
-          root.eligibility_policy_version,
-          root.aggregation_id,
-          root.verification_review_id,
-          root.verification_sequence,
-          root.verification_status,
-          root.devils_advocate_review_id,
-          root.devils_advocate_sequence,
-          root.risk_review_id,
-          root.risk_sequence,
-          root.risk_status,
-          root.risk_requirement,
-          root.risk_rule_id,
-          root.risk_rule_version,
-          root.storage_provenance_id,
-          root.evaluated_at,
-        ])
+        await run(
+          client,
+          context,
+          'submissions.save',
+          SUBMISSION_WRITE_SQL.insertSubmission,
+          [
+            root.id,
+            root.case_id,
+            tenantId,
+            root.thesis_id,
+            root.revision_id,
+            root.submitted_by_department_id,
+            root.submitted_by_employee_id,
+            root.submitted_at,
+            root.case_version,
+            root.state,
+            root.eligibility_policy_version,
+            root.aggregation_id,
+            root.verification_review_id,
+            root.verification_sequence,
+            root.verification_status,
+            root.devils_advocate_review_id,
+            root.devils_advocate_sequence,
+            root.risk_review_id,
+            root.risk_sequence,
+            root.risk_status,
+            root.risk_requirement,
+            root.risk_rule_id,
+            root.risk_rule_version,
+            root.storage_provenance_id,
+            root.evaluated_at,
+          ],
+        )
 
-        await run(client, context, 'submissions.save', SUBMISSION_WRITE_SQL.insertRequiredWork, [
-          root.id,
-          rows.requiredWork.map((entry) => entry.playbook_entry_key),
-          rows.requiredWork.map((entry) => entry.run_id),
-        ])
+        await run(
+          client,
+          context,
+          'submissions.save',
+          SUBMISSION_WRITE_SQL.insertRequiredWork,
+          [
+            root.id,
+            rows.requiredWork.map((entry) => entry.playbook_entry_key),
+            rows.requiredWork.map((entry) => entry.run_id),
+          ],
+        )
         await run(
           client,
           context,
@@ -765,10 +803,13 @@ export function createSubmissionRepository(
             rows.disagreements.map((entry) => entry.materiality),
           ],
         )
-        await run(client, context, 'submissions.save', SUBMISSION_WRITE_SQL.insertEvidence, [
-          root.id,
-          rows.evidence.map((entry) => entry.evidence_set_id),
-        ])
+        await run(
+          client,
+          context,
+          'submissions.save',
+          SUBMISSION_WRITE_SQL.insertEvidence,
+          [root.id, rows.evidence.map((entry) => entry.evidence_set_id)],
+        )
         await run(
           client,
           context,
@@ -878,34 +919,46 @@ export function createSubmissionRepository(
 
         const rows = returnToRows(cioReturn)
         const root = rows.cioReturn
-        await run(client, context, 'returns.recordReturn', RETURN_WRITE_SQL.insertReturn, [
-          root.id,
-          root.submission_id,
-          root.case_id,
-          tenantId,
-          root.revision_id,
-          root.returned_at,
-          root.returned_by_employee_id,
-          root.returned_by_role_id,
-          root.returned_by_role_function,
-          root.returned_by_department_id,
-          root.returned_by_department_is_governance,
-          root.returned_by_department_handles,
-          root.organization_seed_version,
-          root.authentication,
-          root.authorization_basis,
-          root.returned_for,
-          root.reason,
-          root.case_version,
-        ])
-        await run(client, context, 'returns.recordReturn', RETURN_WRITE_SQL.insertConcerns, [
-          root.id,
-          rows.concerns.map((concern) => concern.ordinal),
-          rows.concerns.map((concern) => concern.concern_kind),
-          rows.concerns.map((concern) => concern.subject_kind),
-          rows.concerns.map((concern) => concern.subject_id),
-          rows.concerns.map((concern) => concern.detail),
-        ])
+        await run(
+          client,
+          context,
+          'returns.recordReturn',
+          RETURN_WRITE_SQL.insertReturn,
+          [
+            root.id,
+            root.submission_id,
+            root.case_id,
+            tenantId,
+            root.revision_id,
+            root.returned_at,
+            root.returned_by_employee_id,
+            root.returned_by_role_id,
+            root.returned_by_role_function,
+            root.returned_by_department_id,
+            root.returned_by_department_is_governance,
+            root.returned_by_department_handles,
+            root.organization_seed_version,
+            root.authentication,
+            root.authorization_basis,
+            root.returned_for,
+            root.reason,
+            root.case_version,
+          ],
+        )
+        await run(
+          client,
+          context,
+          'returns.recordReturn',
+          RETURN_WRITE_SQL.insertConcerns,
+          [
+            root.id,
+            rows.concerns.map((concern) => concern.ordinal),
+            rows.concerns.map((concern) => concern.concern_kind),
+            rows.concerns.map((concern) => concern.subject_kind),
+            rows.concerns.map((concern) => concern.subject_id),
+            rows.concerns.map((concern) => concern.detail),
+          ],
+        )
 
         // The submission leaves the queue in the same transaction.
         await run(client, context, 'returns.recordReturn', SUBMISSION_WRITE_SQL.settle, [

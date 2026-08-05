@@ -300,19 +300,28 @@ export function createDecisionRepository(
     )
   }
 
-  const readRoots = (client: Queryable, operation: string, sql: string, values: unknown[]) =>
-    run<CaseDecisionRow>(client, context, operation, sql, values)
+  const readRoots = (
+    client: Queryable,
+    operation: string,
+    sql: string,
+    values: unknown[],
+  ) => run<CaseDecisionRow>(client, context, operation, sql, values)
 
   return {
     get: (decisionId) =>
-      unitOfWork(scope, 'decisions.get', async (client) =>
-        (
-          await hydrate(
-            client,
-            'decisions.get',
-            await readRoots(client, 'decisions.get', DECISION_READ_SQL.byId, [decisionId]),
-          )
-        )[0] ?? null,
+      unitOfWork(
+        scope,
+        'decisions.get',
+        async (client) =>
+          (
+            await hydrate(
+              client,
+              'decisions.get',
+              await readRoots(client, 'decisions.get', DECISION_READ_SQL.byId, [
+                decisionId,
+              ]),
+            )
+          )[0] ?? null,
       ),
 
     getForCase: (caseId) =>
@@ -467,7 +476,10 @@ export function createDecisionRepository(
             )
           }
           if (submission.case_id !== decision.caseId) {
-            throw new InvariantViolationError('decision-submission-case', 'decisions.save')
+            throw new InvariantViolationError(
+              'decision-submission-case',
+              'decisions.save',
+            )
           }
           if (submission.revision_id !== relation.revision_id) {
             throw new InvariantViolationError(
@@ -645,7 +657,12 @@ export function createDecisionRepository(
          * where the in-memory reference fails, and restores the caller's mode
          * so unrelated deferred work is untouched.
          */
-        await run(client, context, 'decisions.save', CONSTRAINT_SQL.forceDecisionConstraints)
+        await run(
+          client,
+          context,
+          'decisions.save',
+          CONSTRAINT_SQL.forceDecisionConstraints,
+        )
         await run(
           client,
           context,

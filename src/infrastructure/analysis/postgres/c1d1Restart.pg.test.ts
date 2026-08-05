@@ -201,7 +201,10 @@ async function writeInstitutionalState(container: AnalysisContainer): Promise<vo
     deferredDecision({
       decisionId: 'restart-dec-2',
       ...outcome('case-2', two),
-      outcome: { kind: 'deferred', consideredRevisionIds: ['case-2-rev-1', 'case-2-rev-2'] },
+      outcome: {
+        kind: 'deferred',
+        consideredRevisionIds: ['case-2-rev-1', 'case-2-rev-2'],
+      },
       reconsiderationTriggers: [
         quantitativeTrigger({ id: 'restart-trg-2' }),
         qualitativeTrigger({ id: 'restart-trg-3' }),
@@ -580,12 +583,10 @@ describe('a case holding two live decisions is refused, not resolved', () => {
   })
 
   it('returns neither decision as authoritative', async () => {
-    const error = await container.repositories.decisions
-      .getForCase('case-1')
-      .then(
-        () => null,
-        (thrown: Error) => thrown,
-      )
+    const error = await container.repositories.decisions.getForCase('case-1').then(
+      () => null,
+      (thrown: Error) => thrown,
+    )
     expect(error).not.toBeNull()
     // No aggregate came back at all — not the first, not the newest, not either.
     expect(String(error?.message)).not.toContain('dec-1')
@@ -603,12 +604,10 @@ describe('a case holding two live decisions is refused, not resolved', () => {
   })
 
   it('leaks no SQL or index detail', async () => {
-    const error = await container.repositories.decisions
-      .getForCase('case-1')
-      .then(
-        () => null,
-        (thrown: Error) => thrown,
-      )
+    const error = await container.repositories.decisions.getForCase('case-1').then(
+      () => null,
+      (thrown: Error) => thrown,
+    )
     const message = String(error?.message)
     expect(message).not.toMatch(/SELECT|INSERT|INDEX/i)
     expect(message).not.toContain('case_decisions_one_live_per_case')
@@ -799,9 +798,9 @@ describe('catalogue identity and institutional state move independently', () => 
       domainContractVersion: baseline.domainContractVersion,
       commandContractVersion: baseline.commandContractVersion,
     }
-    expect(
-      deriveProvenanceId({ ...coordinates, queryCatalogHash: withExtra }),
-    ).not.toBe(deriveProvenanceId(coordinates))
+    expect(deriveProvenanceId({ ...coordinates, queryCatalogHash: withExtra })).not.toBe(
+      deriveProvenanceId(coordinates),
+    )
 
     // ...and the institutional projection is untouched by any of it.
     expect(await canonical(container)).toEqual(before)

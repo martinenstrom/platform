@@ -167,7 +167,28 @@ rewritten, so a caller learns its value was not in canonical form.
 the canonical numeric value. They are two different facts: what the value is,
 and how someone wrote it.
 
-### 4.3 What this is not
+### 4.3 The approved conversion
+
+A JavaScript number becomes a canonical decimal through exactly one function,
+`canonicalDecimalFromNumber`. No caller may use `String(value)`, `toFixed` or a
+template literal at the point of use: a dozen ad-hoc conversions is a dozen
+chances to disagree, silently, about a value nobody reads directly.
+
+It emits the shortest decimal that round-trips to the same double, so it **loses
+nothing about the number it is given**. Whatever precision the source published
+was lost earlier, when its decimal became a double — which is an argument for
+carrying such quantities as strings from the source onward, and is out of scope
+here.
+
+Exponent notation is expanded, since canonical form has none: `1e21` becomes
+`1000000000000000000000` and `1e-7` becomes `0.0000001`.
+
+A magnitude requiring more than 38 digits is refused as `decimal-out-of-range`.
+A double carries at most 17 significant digits, so only sheer magnitude can
+breach the bound — `1.5e300` expands to 301 digits — and the refusal names
+magnitude rather than blaming the fractional part.
+
+### 4.4 What this is not
 
 This is a representation, not an arithmetic system. Version 1 defines no
 addition, comparison, rounding or scale coercion. A caller needing those brings
@@ -320,6 +341,23 @@ normalization is applied that could map two distinct keys onto one. A future
 version introducing normalization must state its collision rule here.
 
 ---
+
+## 8.2 Values a static type cannot prove
+
+TypeScript will not accept an `interface` where an index signature is required:
+`{ a: string }` declared as an interface is not assignable to
+`Record<string, CanonicalValue>`, by a deliberate rule about declaration
+merging. A domain record therefore cannot simply be passed to an identity
+function even when every field it holds is canonical.
+
+The wrong resolution is widening the boundary back to `unknown`. The right one
+is `asCanonicalValue`, which **validates and throws**, then returns the narrowed
+type. The boundary stays narrow; the conversion is named, visible and checked.
+
+It is also the runtime trust boundary for everything the type system never saw:
+parsed JSON, provider payloads, JavaScript callers, unsafe casts and rows
+hydrated from the database. **The type system is not a runtime trust boundary**,
+and a stored value is external data by the time it comes back.
 
 ## 9 · Hashing and domain separation
 

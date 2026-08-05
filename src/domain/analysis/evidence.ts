@@ -25,17 +25,25 @@
 
 import { stableHashHex } from '~/domain/shared/hash'
 import type { Provenance } from '~/domain/shared/provenance'
+import { evidenceRef, type EvidenceRef, type ObservationRef } from './identity'
 import {
-  canonicalJson,
-  evidenceRef,
-  type EvidenceRef,
-  type ObservationRef,
-} from './identity'
+  canonicalIdentityInput,
+  utf8ByteOrder,
+  type CanonicalValue,
+} from '~/domain/shared/canonicalValue'
 
 export interface EvidenceItem {
   ref: ObservationRef
-  /** The normalized domain value — a MarketQuote, a GovernmentYield, a state. */
-  value: unknown
+  /**
+   * The normalized domain value — a MarketQuote, a GovernmentYield, a state.
+   *
+   * A **canonical value**, not `unknown`. `evidenceSetSemanticKey` compares
+   * these payloads to catch two writers disagreeing about one evidence set, so
+   * this is an identity input; under `unknown` it accepted the fractional
+   * doubles every market quote carries, and those cannot be canonicalized. The
+   * builders in `application/analysis/evidenceRefs.ts` convert at the boundary.
+   */
+  value: CanonicalValue
   provenance: Provenance
 }
 
@@ -115,15 +123,28 @@ function findDisagreements(items: readonly EvidenceItem[]): EvidenceDisagreement
   return disagreements
 }
 
+/** Domain tag for evidence-set identity, per `docs/canonical-value-v1.md` §9. */
+const EVIDENCE_SET_DOMAIN = 'financial-os:evidence-set:v1'
+
 export function buildEvidenceSet(args: {
   items: readonly EvidenceItem[]
   assembledAt: string
   correlationId: string
 }): EvidenceSet {
-  // Sorted so two sets holding the same evidence hash identically regardless
-  // of the order the categories happened to resolve in.
-  const items = [...args.items].sort((a, b) => a.ref.id.localeCompare(b.ref.id))
-  const id = stableHashHex(canonicalJson(items.map((i) => [i.ref.id, i.ref.contentHash])))
+  /*
+   * Sorted so two sets holding the same evidence hash identically regardless of
+   * the order the categories happened to resolve in — by canonical-value v1
+   * ordering, not by locale. The ids are hex, so every locale agrees today; the
+   * ordering is stated anyway, because an identity that depends on the host's
+   * collation is not an identity.
+   */
+  const items = [...args.items].sort((a, b) => utf8ByteOrder(a.ref.id, b.ref.id))
+  const id = stableHashHex(
+    canonicalIdentityInput(
+      EVIDENCE_SET_DOMAIN,
+      items.map((i) => [i.ref.id, i.ref.contentHash]),
+    ),
+  )
 
   return Object.freeze({
     id,

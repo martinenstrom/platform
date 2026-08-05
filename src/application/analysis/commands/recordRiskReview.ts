@@ -37,6 +37,7 @@ import {
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export interface RecordRiskReviewInput {
   caseId: string
@@ -71,7 +72,7 @@ export function recordRiskReview(
           detail: finding.detail,
           severity: finding.severity,
         }))
-        .sort((a, b) => `${a.kind}${a.detail}`.localeCompare(`${b.kind}${b.detail}`)),
+        .sort((a, b) => utf8ByteOrder(`${a.kind}${a.detail}`, `${b.kind}${b.detail}`)),
       limits: input.limits ? [...input.limits].sort() : null,
       supersedesReviewId: input.supersedesReviewId ?? null,
     }),

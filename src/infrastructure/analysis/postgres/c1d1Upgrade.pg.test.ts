@@ -84,10 +84,7 @@ beforeAll(async () => {
 }, 600_000)
 
 afterAll(async () => {
-  await Promise.all([
-    cleanApp?.end().catch(() => {}),
-    upgradedApp?.end().catch(() => {}),
-  ])
+  await Promise.all([cleanApp?.end().catch(() => {}), upgradedApp?.end().catch(() => {})])
   await clean?.drop()
   await upgraded?.drop()
   if (through0019) rmSync(through0019, { recursive: true, force: true })

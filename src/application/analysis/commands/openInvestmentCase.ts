@@ -21,6 +21,7 @@ import {
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { asCanonicalValue } from '~/domain/shared/canonicalValue'
 
 export interface OpenInvestmentCaseInput {
   caseId: string
@@ -52,7 +53,7 @@ export function openInvestmentCase(
     mandate: () => ({ kind: 'any-employee' }),
     scope: (input) => ({ caseId: input.caseId }),
     payload: (input) => ({
-      subject: input.subject,
+      subject: asCanonicalValue(input.subject),
       question: input.question,
       ownerEmployeeId: input.ownerEmployeeId,
       participatingDepartmentIds: [...input.participatingDepartmentIds].sort(),

@@ -212,7 +212,11 @@ export function submissionFromRows(
   const row = rows.submission
 
   if (row.state !== 'pending' && row.state !== 'decided' && row.state !== 'returned') {
-    malformed('CIO submission', `state "${row.state}" is not a submission state`, operation)
+    malformed(
+      'CIO submission',
+      `state "${row.state}" is not a submission state`,
+      operation,
+    )
   }
   if (row.risk_requirement === 'unresolved') {
     /*
@@ -233,11 +237,13 @@ export function submissionFromRows(
       ? null
       : {
           reviewId: row.verification_review_id,
-          sequence: row.verification_sequence ?? malformed(
-            'CIO submission',
-            'names a verification review with no sequence',
-            operation,
-          ),
+          sequence:
+            row.verification_sequence ??
+            malformed(
+              'CIO submission',
+              'names a verification review with no sequence',
+              operation,
+            ),
           status: row.verification_status as NonNullable<
             EligibilityBasis['verification']
           >['status'],
@@ -248,11 +254,13 @@ export function submissionFromRows(
       ? null
       : {
           reviewId: row.devils_advocate_review_id,
-          sequence: row.devils_advocate_sequence ?? malformed(
-            'CIO submission',
-            "names a Devil's Advocate review with no sequence",
-            operation,
-          ),
+          sequence:
+            row.devils_advocate_sequence ??
+            malformed(
+              'CIO submission',
+              "names a Devil's Advocate review with no sequence",
+              operation,
+            ),
           openChallengeIds: [...rows.openChallenges]
             .sort(challengeOrder)
             .map((entry) => entry.challenge_id),
@@ -263,11 +271,13 @@ export function submissionFromRows(
       ? null
       : {
           reviewId: row.risk_review_id,
-          sequence: row.risk_sequence ?? malformed(
-            'CIO submission',
-            'names a Risk review with no sequence',
-            operation,
-          ),
+          sequence:
+            row.risk_sequence ??
+            malformed(
+              'CIO submission',
+              'names a Risk review with no sequence',
+              operation,
+            ),
           status: row.risk_status as NonNullable<EligibilityBasis['risk']>['status'],
         }
 
@@ -295,9 +305,12 @@ export function submissionFromRows(
     })),
     materialDisagreements: [...rows.disagreements].sort(disagreementOrder).map((row) => ({
       claimId: row.claim_id,
-      materiality: row.materiality as EligibilityBasis['materialDisagreements'][number]['materiality'],
+      materiality:
+        row.materiality as EligibilityBasis['materialDisagreements'][number]['materiality'],
     })),
-    evidenceSetIds: [...rows.evidence].sort(evidenceOrder).map((row) => row.evidence_set_id),
+    evidenceSetIds: [...rows.evidence]
+      .sort(evidenceOrder)
+      .map((row) => row.evidence_set_id),
     storageProvenanceId: row.storage_provenance_id,
     evaluatedAt: row.evaluated_at,
   }
@@ -342,7 +355,11 @@ export function returnToRows(cioReturn: CioReturn): ReturnRowSet {
       returned_at: cioReturn.returnedAt,
       returned_by_employee_id:
         actor.employeeId ??
-        malformed('CIO return', 'was returned by an actor with no employee id', 'returns.save'),
+        malformed(
+          'CIO return',
+          'was returned by an actor with no employee id',
+          'returns.save',
+        ),
       returned_by_role_id: actor.roleId,
       returned_by_role_function: actor.roleFunction,
       returned_by_department_id: actor.departmentId,
@@ -366,10 +383,7 @@ export function returnToRows(cioReturn: CioReturn): ReturnRowSet {
   }
 }
 
-export function returnFromRows(
-  rows: ReturnRowSet,
-  operation = 'returns.get',
-): CioReturn {
+export function returnFromRows(rows: ReturnRowSet, operation = 'returns.get'): CioReturn {
   const row = rows.cioReturn
   return {
     id: row.id,
@@ -394,14 +408,12 @@ export function returnFromRows(
     returnedFor: row.returned_for as CioReturn['returnedFor'],
     reason: row.reason,
     caseVersion: row.case_version,
-    concerns: byOrdinal(rows.concerns).map(
-      (concern): ReturnConcern => ({
-        concernKind: concern.concern_kind,
-        subjectKind: concern.subject_kind as ReturnConcern['subjectKind'],
-        subjectId: concern.subject_id,
-        detail: concern.detail,
-      }),
-    ),
+    concerns: byOrdinal(rows.concerns).map((concern): ReturnConcern => ({
+      concernKind: concern.concern_kind,
+      subjectKind: concern.subject_kind as ReturnConcern['subjectKind'],
+      subjectId: concern.subject_id,
+      detail: concern.detail,
+    })),
   }
 }
 
@@ -459,48 +471,42 @@ export function decisionToRows(decision: CaseDecision): DecisionRowSet {
       authentication: actor.authentication,
       authorization_basis: decision.authorizationBasis,
     },
-    submissions: relations.map(
-      (relation): DecisionSubmissionRow => ({
-        decision_id: decision.decisionId,
-        submission_id:
-          submissionFor.get(relation.revisionId) ??
-          malformed(
-            'Case decision',
-            `revision "${relation.revisionId}" was considered with no submission`,
-            'decisions.save',
-          ),
-        case_id: decision.caseId,
-        revision_id: relation.revisionId,
-        relation: relation.relation,
-      }),
-    ),
-    dissent: decision.unresolvedDissent.map(
-      (dissent, ordinal): DecisionDissentRow => ({
+    submissions: relations.map((relation): DecisionSubmissionRow => ({
+      decision_id: decision.decisionId,
+      submission_id:
+        submissionFor.get(relation.revisionId) ??
+        malformed(
+          'Case decision',
+          `revision "${relation.revisionId}" was considered with no submission`,
+          'decisions.save',
+        ),
+      case_id: decision.caseId,
+      revision_id: relation.revisionId,
+      relation: relation.relation,
+    })),
+    dissent: decision.unresolvedDissent.map((dissent, ordinal): DecisionDissentRow => ({
+      decision_id: decision.decisionId,
+      ordinal,
+      source: dissent.source,
+      source_id: dissent.sourceId,
+      revision_id: dissent.revisionId,
+      claim_id: dissent.claimId ?? null,
+      materiality: dissent.materiality,
+      raised_by_employee_id: dissent.raisedByEmployeeId ?? null,
+      raised_by_department_id: dissent.raisedByDepartmentId ?? null,
+      rationale: dissent.rationale,
+      why_not_blocking: dissent.whyNotBlocking,
+      acknowledgement: dissent.acknowledgement ?? null,
+      disposition: dissent.dispositionAtDecision,
+    })),
+    dissentEvidence: decision.unresolvedDissent.flatMap((dissent, ordinal) =>
+      (dissent.evidence ?? []).map((reference): DecisionDissentEvidenceRow => ({
         decision_id: decision.decisionId,
         ordinal,
-        source: dissent.source,
-        source_id: dissent.sourceId,
-        revision_id: dissent.revisionId,
-        claim_id: dissent.claimId ?? null,
-        materiality: dissent.materiality,
-        raised_by_employee_id: dissent.raisedByEmployeeId ?? null,
-        raised_by_department_id: dissent.raisedByDepartmentId ?? null,
-        rationale: dissent.rationale,
-        why_not_blocking: dissent.whyNotBlocking,
-        acknowledgement: dissent.acknowledgement ?? null,
-        disposition: dissent.dispositionAtDecision,
-      }),
-    ),
-    dissentEvidence: decision.unresolvedDissent.flatMap((dissent, ordinal) =>
-      (dissent.evidence ?? []).map(
-        (reference): DecisionDissentEvidenceRow => ({
-          decision_id: decision.decisionId,
-          ordinal,
-          evidence_set_id: reference.setId,
-          observation_id: reference.observationId,
-          content_hash: reference.contentHash,
-        }),
-      ),
+        evidence_set_id: reference.setId,
+        observation_id: reference.observationId,
+        content_hash: reference.contentHash,
+      })),
     ),
     triggers: decision.reconsiderationTriggers.map(
       (trigger, ordinal): DecisionTriggerRow => ({
@@ -543,9 +549,16 @@ function outcomeFromRows(
   if (row.outcome_kind === 'selected') {
     const selected = ordered.find((entry) => entry.relation === 'selected')
     if (!selected) {
-      malformed('Case decision', 'is selected and no revision holds the selected relation', operation)
+      malformed(
+        'Case decision',
+        'is selected and no revision holds the selected relation',
+        operation,
+      )
     }
-    if (row.selected_revision_id !== null && row.selected_revision_id !== selected!.revision_id) {
+    if (
+      row.selected_revision_id !== null &&
+      row.selected_revision_id !== selected!.revision_id
+    ) {
       malformed(
         'Case decision',
         `names "${row.selected_revision_id}" as selected while the relations ` +
@@ -637,37 +650,36 @@ export function decisionFromRows(
       ),
       whyNotBlocking: entry.why_not_blocking as DisclosedDissent['whyNotBlocking'],
       ...optional('acknowledgement', entry.acknowledgement),
-      dispositionAtDecision: entry.disposition as DisclosedDissent['dispositionAtDecision'],
+      dispositionAtDecision:
+        entry.disposition as DisclosedDissent['dispositionAtDecision'],
     }
   })
 
-  const triggers = byOrdinal(rows.triggers).map(
-    (entry): ReconsiderationTrigger => ({
-      id: entry.id,
-      conditionType: entry.condition_type as ReconsiderationTrigger['conditionType'],
-      subject: {
-        kind: entry.subject_kind as ReconsiderationTrigger['subject']['kind'],
-        ref: entry.subject_ref,
-      },
-      ...optional('comparator', entry.comparator as ReconsiderationTrigger['comparator']),
-      ...optional(
-        'threshold',
-        entry.threshold_amount === null
-          ? undefined
-          : {
-              amount: entry.threshold_amount,
-              unit: entry.threshold_unit ?? '',
-              ...optional('currency', entry.threshold_currency),
-            },
-      ),
-      ...optional('qualitativeCondition', entry.qualitative_condition),
-      ...optional('expectedSource', entry.expected_source),
-      rationale: entry.rationale,
-      createdByEmployeeId: entry.created_by_employee_id,
-      createdAt: entry.created_at,
-      policyVersion: entry.policy_version,
-    }),
-  )
+  const triggers = byOrdinal(rows.triggers).map((entry): ReconsiderationTrigger => ({
+    id: entry.id,
+    conditionType: entry.condition_type as ReconsiderationTrigger['conditionType'],
+    subject: {
+      kind: entry.subject_kind as ReconsiderationTrigger['subject']['kind'],
+      ref: entry.subject_ref,
+    },
+    ...optional('comparator', entry.comparator as ReconsiderationTrigger['comparator']),
+    ...optional(
+      'threshold',
+      entry.threshold_amount === null
+        ? undefined
+        : {
+            amount: entry.threshold_amount,
+            unit: entry.threshold_unit ?? '',
+            ...optional('currency', entry.threshold_currency),
+          },
+    ),
+    ...optional('qualitativeCondition', entry.qualitative_condition),
+    ...optional('expectedSource', entry.expected_source),
+    rationale: entry.rationale,
+    createdByEmployeeId: entry.created_by_employee_id,
+    createdAt: entry.created_at,
+    policyVersion: entry.policy_version,
+  }))
 
   /*
    * Parallel to `consideredRevisionIds`, in the same order, so a round trip

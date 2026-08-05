@@ -99,7 +99,10 @@ describe('every material change moves the digest', () => {
   const base = content()
 
   const changes: Array<[string, BasisContent]> = [
-    ['a required-work row deleted', { ...base, requiredWork: base.requiredWork.slice(1) }],
+    [
+      'a required-work row deleted',
+      { ...base, requiredWork: base.requiredWork.slice(1) },
+    ],
     [
       'a required-work row added',
       {
@@ -119,7 +122,10 @@ describe('every material change moves the digest', () => {
         ),
       },
     ],
-    ['an evidence set removed', { ...base, evidenceSetIds: base.evidenceSetIds.slice(1) }],
+    [
+      'an evidence set removed',
+      { ...base, evidenceSetIds: base.evidenceSetIds.slice(1) },
+    ],
     ['a disagreement removed', { ...base, materialDisagreements: [] }],
     [
       "a disagreement's materiality changed",
@@ -154,7 +160,10 @@ describe('every material change moves the digest', () => {
     ['the revision changed', { ...base, revisionId: 'rev-elsewhere' }],
     ['the aggregation changed', { ...base, aggregationId: 'agg-elsewhere' }],
     ['evaluatedAt changed', { ...base, evaluatedAt: '2020-01-01T00:00:00.000Z' }],
-    ['the storage provenance changed', { ...base, storageProvenanceId: 'prov-elsewhere' }],
+    [
+      'the storage provenance changed',
+      { ...base, storageProvenanceId: 'prov-elsewhere' },
+    ],
   ]
 
   for (const [name, changed] of changes) {
@@ -198,7 +207,10 @@ describe('verification', () => {
   })
 
   it('rejects a malformed digest rather than comparing it', () => {
-    const manifest = { ...buildBasisManifest(SUBJECT, content()), digest: 'nope' as never }
+    const manifest = {
+      ...buildBasisManifest(SUBJECT, content()),
+      digest: 'nope' as never,
+    }
     expect(verifyBasisManifest(SUBJECT, content(), manifest)).toBe(
       'manifest-digest-malformed',
     )

@@ -608,10 +608,7 @@ export interface SubmissionRepository {
    * remove once. Settling an already-settled submission to a DIFFERENT state
    * fails: `decided` and `returned` describe different institutional histories.
    */
-  settle(
-    submissionIds: readonly string[],
-    state: SettledSubmissionState,
-  ): Promise<void>
+  settle(submissionIds: readonly string[], state: SettledSubmissionState): Promise<void>
 
   /** Idempotent on `id`. Records the return and settles its submission. */
   recordReturn(cioReturn: CioReturn): Promise<CioReturn>
@@ -806,7 +803,9 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   ],
   decisions: ['get', 'getForCase', 'historyForCase', 'listRecent', 'save'],
 } as const satisfies {
-  readonly [K in keyof TransactionalAnalysisRepositories]: readonly (keyof TransactionalAnalysisRepositories[K])[]
+  readonly [
+    K in keyof TransactionalAnalysisRepositories
+  ]: readonly (keyof TransactionalAnalysisRepositories[K])[]
 }
 
 /** Thrown when a container is handed out missing a capability. */

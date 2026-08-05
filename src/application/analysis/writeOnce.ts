@@ -24,7 +24,6 @@
  * Fields that are genuinely incidental are excluded and said to be excluded.
  */
 
-import { canonicalJson } from '~/domain/analysis'
 import type {
   AgentClaim,
   CaseDecision,
@@ -37,8 +36,30 @@ import type {
   TransitionEvent,
 } from '~/domain/analysis'
 import type { StoredResult } from './resultStore'
+import {
+  asCanonicalValue,
+  canonicalValueString,
+  utf8ByteOrder,
+} from '~/domain/shared/canonicalValue'
 
-const sorted = (values: readonly string[]) => [...values].sort()
+/**
+ * Canonical-value v1 ordering, stated rather than defaulted.
+ *
+ * `Array.prototype.sort` with no comparator orders by UTF-16 code unit, which
+ * is a different rule from the one the encoder uses and agrees with it only up
+ * to the astral plane. A semantic key must not depend on which of the two a
+ * reader assumed.
+ */
+/**
+ * Encode a domain record that TypeScript cannot prove is canonical.
+ *
+ * Used point-free over collections of interface-typed records. `asCanonicalValue`
+ * validates and throws, so nothing unchecked reaches the encoder.
+ */
+const asCanonicalValueString = (value: unknown) =>
+  canonicalValueString(asCanonicalValue(value))
+
+const sorted = (values: readonly string[]) => [...values].sort(utf8ByteOrder)
 
 /**
  * A claim, minus nothing.
@@ -48,7 +69,7 @@ const sorted = (values: readonly string[]) => [...values].sort()
  * challenges, so a change to any of it changes what those citations mean.
  */
 export function claimSemanticKey(claim: AgentClaim): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     id: claim.id,
     type: claim.type,
     statement: claim.statement,
@@ -90,11 +111,11 @@ export function claimSemanticKey(claim: AgentClaim): string {
  * twice by two resolution runs is the same evidence.
  */
 export function evidenceSetSemanticKey(set: EvidenceSet): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     id: set.id,
     items: [...set.items]
       .map((item) =>
-        canonicalJson({
+        asCanonicalValueString({
           id: item.ref.id,
           contentHash: item.ref.contentHash,
           value: item.value,
@@ -113,7 +134,7 @@ export function evidenceSetSemanticKey(set: EvidenceSet): string {
  * about immediately.
  */
 export function resultSemanticKey(result: StoredResult): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     key: result.key,
     claims: result.claims.map(claimSemanticKey).sort(),
     // Part of the identity, not a label on it: the same key holding a fixture
@@ -134,7 +155,7 @@ export function resultSemanticKey(result: StoredResult): string {
  * settle that by luck.
  */
 export function managerAggregationSemanticKey(aggregation: ManagerAggregation): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     id: aggregation.id,
     caseId: aggregation.caseId,
     thesisId: aggregation.thesisId,
@@ -144,12 +165,12 @@ export function managerAggregationSemanticKey(aggregation: ManagerAggregation): 
     departmentId: aggregation.departmentId,
     aggregatedAt: aggregation.aggregatedAt,
     rationale: aggregation.rationale,
-    inputs: [...aggregation.inputs].map((input) => canonicalJson(input)).sort(),
+    inputs: [...aggregation.inputs].map((input) => asCanonicalValueString(input)).sort(),
     dispositions: [...aggregation.dispositions]
-      .map((record) => canonicalJson(record))
+      .map((record) => asCanonicalValueString(record))
       .sort(),
     optionalInputs: [...aggregation.optionalInputs]
-      .map((record) => canonicalJson(record))
+      .map((record) => asCanonicalValueString(record))
       .sort(),
   })
 }
@@ -164,12 +185,12 @@ export function managerAggregationSemanticKey(aggregation: ManagerAggregation): 
  * it corrects, even where everything else about them matches.
  */
 export function decisionSemanticKey(decision: CaseDecision): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     caseId: decision.caseId,
     aggregateVersion: decision.aggregateVersion,
     decidedAt: decision.decidedAt,
     decidedByEmployeeId: decision.decidedByEmployeeId,
-    outcome: canonicalJson({
+    outcome: asCanonicalValueString({
       kind: decision.outcome.kind,
       selectedRevisionId:
         decision.outcome.kind === 'selected' ? decision.outcome.selectedRevisionId : null,
@@ -193,15 +214,17 @@ export function decisionSemanticKey(decision: CaseDecision): string {
      */
     unresolvedDissent: sorted(
       decision.unresolvedDissent.map((dissent) =>
-        canonicalJson({
+        asCanonicalValueString({
           ...dissent,
           evidence: dissent.evidence
-            ? [...dissent.evidence].map(canonicalJson).sort()
+            ? [...dissent.evidence].map(asCanonicalValueString).sort()
             : null,
         }),
       ),
     ),
-    reconsiderationTriggers: sorted(decision.reconsiderationTriggers.map(canonicalJson)),
+    reconsiderationTriggers: sorted(
+      decision.reconsiderationTriggers.map(asCanonicalValueString),
+    ),
     supersedesDecisionId: decision.supersedesDecisionId ?? null,
   })
 }
@@ -220,7 +243,7 @@ export function decisionSemanticKey(decision: CaseDecision): string {
  */
 export function cioSubmissionSemanticKey(submission: CioSubmission): string {
   const basis = submission.basis
-  return canonicalJson({
+  return asCanonicalValueString({
     id: submission.id,
     caseId: submission.caseId,
     thesisId: submission.thesisId,
@@ -229,25 +252,29 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
     submittedByEmployeeId: submission.submittedByEmployeeId,
     submittedAt: submission.submittedAt,
     caseVersion: submission.caseVersion,
-    basis: canonicalJson({
+    basis: asCanonicalValueString({
       revisionId: basis.revisionId,
       thesisId: basis.thesisId,
       aggregationId: basis.aggregationId,
       eligibilityPolicyVersion: basis.eligibilityPolicyVersion,
-      verification: basis.verification ? canonicalJson(basis.verification) : null,
+      verification: basis.verification
+        ? asCanonicalValueString(basis.verification)
+        : null,
       devilsAdvocate: basis.devilsAdvocate
-        ? canonicalJson({
+        ? asCanonicalValueString({
             reviewId: basis.devilsAdvocate.reviewId,
             sequence: basis.devilsAdvocate.sequence,
             openChallengeIds: sorted(basis.devilsAdvocate.openChallengeIds),
           })
         : null,
-      risk: basis.risk ? canonicalJson(basis.risk) : null,
+      risk: basis.risk ? asCanonicalValueString(basis.risk) : null,
       riskRequirement: basis.riskRequirement,
       riskRuleId: basis.riskRuleId,
       riskRuleVersion: basis.riskRuleVersion,
-      requiredWork: sorted(basis.requiredWork.map(canonicalJson)),
-      materialDisagreements: sorted(basis.materialDisagreements.map(canonicalJson)),
+      requiredWork: sorted(basis.requiredWork.map(asCanonicalValueString)),
+      materialDisagreements: sorted(
+        basis.materialDisagreements.map(asCanonicalValueString),
+      ),
       evidenceSetIds: sorted(basis.evidenceSetIds),
       storageProvenanceId: basis.storageProvenanceId,
       evaluatedAt: basis.evaluatedAt,
@@ -257,7 +284,7 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
        * a caller presenting a changed digest for an unchanged basis is a
        * disagreement about what was attested, not a retry.
        */
-      manifest: canonicalJson(basis.manifest),
+      manifest: asCanonicalValueString(basis.manifest),
     }),
   })
 }
@@ -271,24 +298,24 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
  * hashing.
  */
 export function cioReturnSemanticKey(cioReturn: CioReturn): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     id: cioReturn.id,
     submissionId: cioReturn.submissionId,
     caseId: cioReturn.caseId,
     revisionId: cioReturn.revisionId,
     returnedAt: cioReturn.returnedAt,
-    returnedBy: canonicalJson(cioReturn.returnedBy),
+    returnedBy: asCanonicalValueString(cioReturn.returnedBy),
     authorizationBasis: cioReturn.authorizationBasis,
     returnedFor: cioReturn.returnedFor,
     reason: cioReturn.reason,
     caseVersion: cioReturn.caseVersion,
-    concerns: cioReturn.concerns.map((concern) => canonicalJson(concern)),
+    concerns: cioReturn.concerns.map((concern) => asCanonicalValueString(concern)),
   })
 }
 
 /** An appended transition event. Identity is `eventId`; everything else is content. */
 export function transitionEventSemanticKey(event: TransitionEvent): string {
-  return canonicalJson({ ...event })
+  return asCanonicalValueString({ ...event })
 }
 
 /**
@@ -304,7 +331,7 @@ export function runEventIdentity(event: RunEvent): string {
 }
 
 export function runEventSemanticKey(event: RunEvent): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     runId: event.runId,
     at: event.at,
     state: event.state,
@@ -333,7 +360,7 @@ export function requirementResolutionIdentity(resolution: RequirementResolution)
 export function requirementResolutionSemanticKey(
   resolution: RequirementResolution,
 ): string {
-  return canonicalJson({
+  return asCanonicalValueString({
     caseId: resolution.caseId,
     playbookEntryKey: resolution.playbookEntryKey,
     revisionId: resolution.revisionId,

@@ -38,9 +38,9 @@
 
 import { stableHashHex } from '~/domain/shared/hash'
 import type { CaseId } from './cases'
-import { canonicalJson } from './identity'
 import type { ActorSnapshot } from './authority'
 import type { InvestmentImplication, RevisionId } from './theses'
+import { canonicalIdentityInput, utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 /**
  * How much a playbook entry is needed.
@@ -110,7 +110,7 @@ export const RISK_REVIEW_WHEN_IMPLEMENTABLE: ConditionalRequirementRule = Object
   ruleId: 'risk-review-when-implementable',
   ruleVersion: '1',
   evaluate({ implications }: RequirementRuleInput): RequirementRuleOutcome {
-    const declared = [...implications].sort((a, b) => a.localeCompare(b))
+    const declared = [...implications].sort(utf8ByteOrder)
     if (declared.length === 0) {
       return {
         required: false,
@@ -276,10 +276,13 @@ export function requirementStatusFor(
  * `buildThesis` already normalizes `implications` the same way, and the two
  * must agree or the stored hash would not match a re-derivation.
  */
+/** Domain tag for requirement-input identity, per `docs/canonical-value-v1.md` §9. */
+const REQUIREMENT_INPUT_DOMAIN = 'financial-os:requirement-input:v1'
+
 export function requirementInputHash(input: RequirementRuleInput): string {
   return stableHashHex(
-    canonicalJson({
-      implications: [...new Set(input.implications)].sort((a, b) => a.localeCompare(b)),
+    canonicalIdentityInput(REQUIREMENT_INPUT_DOMAIN, {
+      implications: [...new Set(input.implications)].sort(utf8ByteOrder),
     }),
   )
 }

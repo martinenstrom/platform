@@ -51,6 +51,7 @@ import { unmetRequiredWork } from '../requiredWork'
 import { deriveAggregationId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { asCanonicalValue, utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export interface ClaimDispositionInput {
   claimId: string
@@ -116,12 +117,14 @@ export function aggregateManagerConclusion(
     payload: (input) => ({
       sourceRevisionId: input.sourceRevisionId,
       departmentId: input.departmentId,
-      inputRunIds: [...input.inputRunIds].sort(),
-      dispositions: [...input.dispositions].sort((a, b) =>
-        a.claimId.localeCompare(b.claimId),
+      inputRunIds: [...input.inputRunIds].sort(utf8ByteOrder),
+      dispositions: asCanonicalValue(
+        [...input.dispositions].sort((a, b) => utf8ByteOrder(a.claimId, b.claimId)),
       ),
-      optionalInputs: [...input.optionalInputs].sort((a, b) =>
-        a.playbookEntryKey.localeCompare(b.playbookEntryKey),
+      optionalInputs: asCanonicalValue(
+        [...input.optionalInputs].sort((a, b) =>
+          utf8ByteOrder(a.playbookEntryKey, b.playbookEntryKey),
+        ),
       ),
       rationale: input.rationale,
       statement: input.statement,

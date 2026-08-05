@@ -83,6 +83,7 @@ export type CanonicalProblemCode =
   | 'object-has-non-enumerable-property'
   | 'object-has-accessor-property'
   | 'value-is-cyclic'
+  | 'decimal-out-of-range'
 
 export class NotCanonicalError extends Error {
   constructor(readonly problem: CanonicalProblem) {
@@ -236,6 +237,28 @@ export function assertCanonical(value: unknown): asserts value is CanonicalValue
   if (problem !== null) throw new NotCanonicalError(problem)
 }
 
+/**
+ * The one sanctioned way for a loosely typed value to become a canonical one.
+ *
+ * TypeScript will not accept an `interface` where an index signature is
+ * required — `{ a: string }` declared as an interface is not assignable to
+ * `Record<string, CanonicalValue>`, by a deliberate rule about declaration
+ * merging. So a domain record cannot simply be passed to an identity function
+ * even when every field it holds is canonical.
+ *
+ * The wrong fix is widening the identity boundary back to `unknown`. This is
+ * the right one: the boundary stays narrow, and a caller holding a looser type
+ * converts through a named function that **validates and throws**. The cast is
+ * sound because nothing reaches it unchecked.
+ *
+ * Use it where the static type cannot express what the value already is. Do not
+ * use it to silence a genuine mismatch.
+ */
+export function asCanonicalValue(value: unknown): CanonicalValue {
+  assertCanonical(value)
+  return value
+}
+
 /* --------------------------------------------------------- canonical decimal */
 
 /**
@@ -266,6 +289,77 @@ export function isCanonicalDecimal(value: string): value is CanonicalDecimal {
   const digits = value.replace(/[-.]/g, '').replace(/^0+/, '')
   return digits.length <= CANONICAL_DECIMAL_MAX_SIGNIFICANT_DIGITS
 }
+
+/**
+ * The one approved conversion from a JavaScript number to a canonical decimal.
+ *
+ * Every fractional quantity entering an identity goes through here. Callers must
+ * not reach for `String(value)` or `toFixed` at the point of use: a dozen
+ * ad-hoc conversions is a dozen chances to disagree, and they would disagree
+ * silently, in a value nobody reads directly.
+ *
+ * **This loses nothing that was not already lost.** `String(n)` produces the
+ * shortest decimal that round-trips to the same double, so the conversion is
+ * exact with respect to the number it is given. Whatever precision the source
+ * actually published was lost earlier, when its decimal became a double — which
+ * is the argument for carrying such quantities as strings from the source
+ * onward, and is out of scope here.
+ *
+ * Exponent notation is expanded, because canonical form has none: `1e21`
+ * becomes `1000000000000000000000` and `1e-7` becomes `0.0000001`.
+ */
+export function canonicalDecimalFromNumber(value: number): CanonicalDecimal {
+  if (!Number.isFinite(value)) {
+    throw new NotCanonicalError({ code: 'number-not-finite', path: '' })
+  }
+  if (Object.is(value, -0)) {
+    throw new NotCanonicalError({ code: 'number-negative-zero', path: '' })
+  }
+
+  const printed = String(value)
+  const expanded = printed.includes('e') ? expandExponent(printed) : printed
+
+  /*
+   * A double carries at most 17 significant digits, so the only way to exceed
+   * the 38-digit bound is sheer magnitude: 1.5e300 expands to 301 digits. Such
+   * a value is not a quantity this system represents, and refusing it keeps the
+   * encoding bounded -- but it is refused for its magnitude, and the code says
+   * so rather than blaming the fractional part.
+   */
+  if (!isCanonicalDecimal(expanded)) {
+    throw new NotCanonicalError({ code: 'decimal-out-of-range', path: '' })
+  }
+  return expanded
+}
+
+/** `1.25e-7` to `0.000000125`, without going through a float again. */
+function expandExponent(printed: string): string {
+  const negative = printed.startsWith('-')
+  const unsigned = negative ? printed.slice(1) : printed
+  const [mantissa, exponentText] = unsigned.split('e') as [string, string]
+  const exponent = Number(exponentText)
+  const [whole, fraction = ''] = mantissa.split('.') as [string, string?]
+
+  const digits = whole + fraction
+  const pointAt = whole.length + exponent
+
+  let result: string
+  if (pointAt <= 0) {
+    result = `0.${'0'.repeat(-pointAt)}${digits}`
+  } else if (pointAt >= digits.length) {
+    result = digits + '0'.repeat(pointAt - digits.length)
+  } else {
+    result = `${digits.slice(0, pointAt)}.${digits.slice(pointAt)}`
+  }
+
+  // Shortest form: no trailing fractional zeros, no bare trailing point.
+  if (result.includes('.')) result = result.replace(/0+$/, '').replace(/\.$/, '')
+  return negative ? `-${result}` : result
+}
+
+/** The same conversion for a value that may legitimately be absent. */
+export const canonicalDecimalOrNull = (value: number | null): CanonicalDecimal | null =>
+  value === null ? null : canonicalDecimalFromNumber(value)
 
 /* ---------------------------------------------------------------- encoding */
 

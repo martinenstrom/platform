@@ -149,7 +149,12 @@ export function describeRepositoryContract(name: string, options: ContractOption
         ...over,
       } as Parameters<typeof buildAssignment>[0])
 
-    const evidenceSet = (value = 4.1): EvidenceSet =>
+    /*
+     * The observation value is a canonical decimal STRING, as production now
+     * supplies. A fractional double is refused by the canonical-value model, so
+     * the fixture carries what `evidenceRefs` converts a quote into.
+     */
+    const evidenceSet = (value = '4.1'): EvidenceSet =>
       buildEvidenceSet({
         items: [
           {
@@ -472,7 +477,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const stored = await repos.evidence.get(set.id)
         expect(stored?.id).toBe(set.id)
         expect(stored?.items).toHaveLength(1)
-        expect(stored?.items[0]!.value).toEqual({ value: 4.1, unit: 'percent' })
+        expect(stored?.items[0]!.value).toEqual({ value: '4.1', unit: 'percent' })
         expect(stored?.assembledAt).toBe(AT)
       })
     })
@@ -1012,8 +1017,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
       })
 
       it('gives different evidence a different id', async () => {
-        const first = await repos.evidence.save(evidenceSet(4.1))
-        const second = await repos.evidence.save(evidenceSet(4.2))
+        const first = await repos.evidence.save(evidenceSet('4.1'))
+        const second = await repos.evidence.save(evidenceSet('4.2'))
         expect(first.id).not.toBe(second.id)
       })
 
@@ -1608,7 +1613,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('9')
+        expect(provenance.domainContractVersion).toBe('10')
       })
     })
   })

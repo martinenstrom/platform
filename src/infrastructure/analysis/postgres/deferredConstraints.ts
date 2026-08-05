@@ -43,38 +43,40 @@ export interface DeferredConstraint {
  * suggest — which is exactly the kind of thing the verification test exists to
  * catch.
  */
-export const DEFERRED_DECISION_CONSTRAINTS: readonly DeferredConstraint[] = Object.freeze([
-  Object.freeze({
-    name: 'case_decisions_supersedes_fk',
-    table: 'case_decisions',
-    invariant: 'the predecessor exists and belongs to the same case',
-  }),
-  Object.freeze({
-    name: 'case_decisions_superseded_by_fk',
-    table: 'case_decisions',
-    invariant: 'the successor exists and belongs to the same case',
-  }),
-  Object.freeze({
-    name: 'case_decisions_outcome_guard',
-    table: 'case_decisions',
-    invariant: 'the outcome agrees with the relations',
-  }),
-  Object.freeze({
-    name: 'decision_submissions_outcome_guard',
-    table: 'decision_submissions',
-    invariant: 'the outcome agrees with the relations, re-checked per relation',
-  }),
-  Object.freeze({
-    name: 'triggers_outcome_guard',
-    table: 'decision_reconsideration_triggers',
-    invariant: 'a deferral records at least one condition that would end the wait',
-  }),
-  Object.freeze({
-    name: 'case_decisions_no_supersession_cycle',
-    table: 'case_decisions',
-    invariant: 'supersession forms no ring, at any depth',
-  }),
-])
+export const DEFERRED_DECISION_CONSTRAINTS: readonly DeferredConstraint[] = Object.freeze(
+  [
+    Object.freeze({
+      name: 'case_decisions_supersedes_fk',
+      table: 'case_decisions',
+      invariant: 'the predecessor exists and belongs to the same case',
+    }),
+    Object.freeze({
+      name: 'case_decisions_superseded_by_fk',
+      table: 'case_decisions',
+      invariant: 'the successor exists and belongs to the same case',
+    }),
+    Object.freeze({
+      name: 'case_decisions_outcome_guard',
+      table: 'case_decisions',
+      invariant: 'the outcome agrees with the relations',
+    }),
+    Object.freeze({
+      name: 'decision_submissions_outcome_guard',
+      table: 'decision_submissions',
+      invariant: 'the outcome agrees with the relations, re-checked per relation',
+    }),
+    Object.freeze({
+      name: 'triggers_outcome_guard',
+      table: 'decision_reconsideration_triggers',
+      invariant: 'a deferral records at least one condition that would end the wait',
+    }),
+    Object.freeze({
+      name: 'case_decisions_no_supersession_cycle',
+      table: 'case_decisions',
+      invariant: 'supersession forms no ring, at any depth',
+    }),
+  ],
+)
 
 const NAMES = DEFERRED_DECISION_CONSTRAINTS.map(
   (constraint) => `analysis.${constraint.name}`,

@@ -114,7 +114,8 @@ async function columnsOf(table: string): Promise<Field[]> {
   }))
 }
 
-const byName = (fields: readonly Field[]) => [...fields].sort((a, b) => (a.name < b.name ? -1 : 1))
+const byName = (fields: readonly Field[]) =>
+  [...fields].sort((a, b) => (a.name < b.name ? -1 : 1))
 
 describe('every row type matches its table', () => {
   for (const [interfaceName, table] of Object.entries(MAPPED)) {

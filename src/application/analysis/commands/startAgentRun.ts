@@ -37,6 +37,7 @@ import { requirePlaybook } from '../playbookRegistry'
 import { deriveEventId, deriveRunId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { asCanonicalValue } from '~/domain/shared/canonicalValue'
 
 export interface StartAgentRunInput {
   caseId: string
@@ -94,7 +95,7 @@ export function startAgentRun(
       providerKind: input.providerKind,
       agentContractVersion: input.agentContractVersion,
       outputSchemaVersion: input.outputSchemaVersion,
-      identity: input.identity,
+      identity: asCanonicalValue(input.identity),
       evidenceSetId: input.evidenceSetId,
     }),
 

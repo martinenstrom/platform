@@ -36,11 +36,11 @@
 
 import { stableHashHex } from '~/domain/shared/hash'
 import {
-  canonicalJson,
   requirementRule,
   type DepartmentId,
   type RequirementLevel,
 } from '~/domain/analysis'
+import { canonicalIdentityInput, utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export type PlaybookId = string
 
@@ -110,20 +110,23 @@ export interface CasePlaybook {
  * playbook does not change what it instantiates. Registration compares this,
  * so one version cannot quietly mean two different things.
  */
+/** Domain tag for playbook-content identity, per `docs/canonical-value-v1.md` §9. */
+const PLAYBOOK_CONTENT_DOMAIN = 'financial-os:playbook-content:v1'
+
 export function playbookContentHash(playbook: CasePlaybook): string {
   return stableHashHex(
-    canonicalJson({
+    canonicalIdentityInput(PLAYBOOK_CONTENT_DOMAIN, {
       id: playbook.id,
       version: playbook.version,
       caseKind: playbook.caseKind,
       entries: [...playbook.entries]
-        .sort((a, b) => a.key.localeCompare(b.key))
+        .sort((a, b) => utf8ByteOrder(a.key, b.key))
         .map((entry) => ({
           key: entry.key,
           departmentId: entry.departmentId,
           brief: entry.brief,
-          blockedBy: [...entry.blockedBy].sort((a, b) => a.localeCompare(b)),
-          optionalInputs: [...entry.optionalInputs].sort((a, b) => a.localeCompare(b)),
+          blockedBy: [...entry.blockedBy].sort(utf8ByteOrder),
+          optionalInputs: [...entry.optionalInputs].sort(utf8ByteOrder),
           requirement: entry.requirement,
           conditionalRule: entry.conditionalRule
             ? `${entry.conditionalRule.ruleId}@${entry.conditionalRule.ruleVersion}`

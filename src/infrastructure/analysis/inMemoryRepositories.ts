@@ -1112,7 +1112,12 @@ export function createInMemoryRepositories(): AnalysisRepositories {
 function governanceFacts(store: Store): ReferencedGovernance {
   const reviews = new Map<
     string,
-    { caseId: string; revisionId: string | null; kind: string; challengeIds: readonly string[] }
+    {
+      caseId: string
+      revisionId: string | null
+      kind: string
+      challengeIds: readonly string[]
+    }
   >()
 
   const record = (
@@ -1130,7 +1135,8 @@ function governanceFacts(store: Store): ReferencedGovernance {
         caseId: review.caseId,
         // A case-wide review applies to every revision of its case; only a
         // revision-scoped one names an exact argument.
-        revisionId: review.scope === 'thesis-revision' ? (review.revisionId ?? null) : null,
+        revisionId:
+          review.scope === 'thesis-revision' ? (review.revisionId ?? null) : null,
         kind,
         challengeIds: (review.challenges ?? []).map((challenge) => challenge.id),
       })
@@ -1147,14 +1153,20 @@ function governanceFacts(store: Store): ReferencedGovernance {
     aggregations: new Map(
       [...store.aggregations.values()].map((aggregation) => [
         aggregation.id,
-        { caseId: aggregation.caseId, producedRevisionId: aggregation.producedRevisionId },
+        {
+          caseId: aggregation.caseId,
+          producedRevisionId: aggregation.producedRevisionId,
+        },
       ]),
     ),
     runs: new Map(
       [...store.runs.values()].map((run) => [run.id, { caseId: run.caseId }]),
     ),
     claims: new Map(
-      [...store.claims.values()].map((entry) => [entry.claim.id, { caseId: entry.caseId }]),
+      [...store.claims.values()].map((entry) => [
+        entry.claim.id,
+        { caseId: entry.caseId },
+      ]),
     ),
   }
 }
@@ -1375,7 +1387,10 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
         )
       }
       if (submission.caseId !== cioReturn.caseId) {
-        throw new InvariantViolationError('return-submission-case', 'returns.recordReturn')
+        throw new InvariantViolationError(
+          'return-submission-case',
+          'returns.recordReturn',
+        )
       }
 
       const stored = seal(cioReturn, `CIO return ${cioReturn.id}`)

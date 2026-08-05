@@ -102,7 +102,12 @@ const probeIntent = (): CommandIntent => ({
   receivedAt: AT,
 })
 
-const evidenceSet = (value = 4.1) =>
+/*
+ * A canonical decimal STRING, as production supplies after TD-61: a fractional
+ * double is refused by the canonical-value model, and `EvidenceItem.value` is
+ * an identity input.
+ */
+const evidenceSet = (value = '4.1') =>
   buildEvidenceSet({
     items: [
       {

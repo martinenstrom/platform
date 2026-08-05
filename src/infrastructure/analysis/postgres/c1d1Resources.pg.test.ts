@@ -10,7 +10,11 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { cioReturn, cioSubmission, selectedDecision } from '~/domain/analysis/decisionFixtures'
+import {
+  cioReturn,
+  cioSubmission,
+  selectedDecision,
+} from '~/domain/analysis/decisionFixtures'
 import {
   ConflictingRecordError,
   MalformedRowError,
@@ -233,7 +237,9 @@ describe('scope lifetime', () => {
       escaped = scoped
     })
 
-    await expect(escaped!.submissions.get('sub-1')).rejects.toThrow(TransactionClosedError)
+    await expect(escaped!.submissions.get('sub-1')).rejects.toThrow(
+      TransactionClosedError,
+    )
     await expect(escaped!.decisions.getForCase('case-1')).rejects.toThrow(
       TransactionClosedError,
     )

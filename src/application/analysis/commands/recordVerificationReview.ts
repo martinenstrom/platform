@@ -40,6 +40,7 @@ import {
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 /** Findings that assert the cited evidence has changed since it was cited. */
 const EVIDENCE_MOVED_KINDS: readonly VerificationFinding['kind'][] = [
@@ -86,7 +87,7 @@ export function recordVerificationReview(
           blocking: finding.blocking,
           severity: finding.severity,
         }))
-        .sort((a, b) => `${a.claimId}${a.kind}`.localeCompare(`${b.claimId}${b.kind}`)),
+        .sort((a, b) => utf8ByteOrder(`${a.claimId}${a.kind}`, `${b.claimId}${b.kind}`)),
       supersedesReviewId: input.supersedesReviewId ?? null,
     }),
 

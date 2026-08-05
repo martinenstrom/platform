@@ -1,7 +1,7 @@
 # TD-61 planning gate · deterministic canonical values
 
-**Status:** decisions ratified. TD61-1 authorised; TD61-2 and TD61-3 await their
-own approval.
+**Status:** decisions ratified. TD61-1 and TD61-2 complete; TD61-3 awaits
+approval.
 
 **The debt as filed.** `canonicalJson` (`src/domain/analysis/identity.ts:106`)
 orders object keys with `localeCompare` and no locale argument, so the ordering
