@@ -1597,10 +1597,18 @@ export function describeRepositoryContract(name: string, options: ContractOption
 
     describe('provenance', () => {
       it('reports which implementation and which domain contract', async () => {
+        /*
+         * A literal, deliberately, and a second one independent of the pin in
+         * `domainContractVersion.test.ts`. That pin proves the constant was
+         * advanced on purpose; this proves both adapters actually *report* the
+         * advanced value through provenance. Parity alone would not: the drift
+         * that left this at '6' for two phases passed a parity assertion the
+         * whole time, because both adapters read the same wrong constant.
+         */
         const provenance = await repos.provenance()
         expect(provenance.adapterId).toBeTruthy()
         expect(provenance.adapterVersion).toBeTruthy()
-        expect(provenance.domainContractVersion).toBe('9')
+        expect(provenance.domainContractVersion).toBe('10')
       })
     })
   })

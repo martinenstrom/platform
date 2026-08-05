@@ -112,6 +112,15 @@ export const DOMAIN_CONTRACT_HISTORY: readonly DomainContractRevision[] = [
       'TD-58 — an eligibility basis carries an immutable integrity manifest, so a ' +
       'stored basis can be checked against the one that was stored',
   },
+  {
+    version: '10',
+    states:
+      'TD-61 — identity canonicalization is specified rather than inherited from ' +
+      'JSON.stringify: the accepted value vocabulary narrows to null, booleans, ' +
+      'safe integers, well-formed strings, arrays and plain objects; values that ' +
+      'previously collided (NaN, the infinities, undefined, negative zero, every ' +
+      'Date) are refused; key ordering stops depending on the host locale',
+  },
 ]
 
 /**
@@ -126,4 +135,4 @@ export const DOMAIN_CONTRACT_HISTORY: readonly DomainContractRevision[] = [
  * adding an entry and advancing the version are two separate decisions. Deriving
  * it would let a documentation edit change what every provenance row records.
  */
-export const DOMAIN_CONTRACT_VERSION = '9'
+export const DOMAIN_CONTRACT_VERSION = '10'
