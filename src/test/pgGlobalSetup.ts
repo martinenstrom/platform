@@ -171,7 +171,8 @@ async function writeMarker(marker: OwnershipMarker): Promise<void> {
 async function reconcilePriorRun(): Promise<void> {
   const markerRead = parseMarker(await readOrNull(MARKER_PATH))
 
-  const directory = markerRead.kind === 'ok' ? markerRead.marker.directory : null
+  const directory =
+    markerRead.kind === 'ok' ? markerRead.marker.directory : null
   const postmaster =
     directory === null
       ? ({ kind: 'missing' } as const)
@@ -179,7 +180,8 @@ async function reconcilePriorRun(): Promise<void> {
 
   const decision = decideOwnership({
     marker: markerRead,
-    directoryUnderPrefix: directory !== null && directory.includes(DIRECTORY_PREFIX),
+    directoryUnderPrefix:
+      directory !== null && directory.includes(DIRECTORY_PREFIX),
     postmaster,
     pidAlive: markerRead.kind === 'ok' && alive(markerRead.marker.pid),
     portOccupied:
@@ -357,7 +359,9 @@ async function awaitPostmaster(
 ): Promise<{ pid: number; port: number }> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const read = parsePostmasterPid(await readOrNull(join(directory, 'postmaster.pid')))
+    const read = parsePostmasterPid(
+      await readOrNull(join(directory, 'postmaster.pid')),
+    )
     if (read.kind === 'ok') return read
     if (read.kind === 'malformed') {
       // Mid-write; give it a moment rather than failing on a torn read.
