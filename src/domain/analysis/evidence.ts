@@ -78,7 +78,12 @@ export interface EvidenceSet {
 
 function computeCoTemporality(items: readonly EvidenceItem[]): CoTemporality {
   if (items.length === 0) return { kind: 'empty' }
-  const times = items.map((i) => i.ref.observedAt).sort()
+  /*
+   * Not an identity input -- co-temporality is derived for reading, and the set
+   * id hashes membership only. The ordering is named anyway: this is an identity
+   * module, and a reader should not have to work out which sorts matter.
+   */
+  const times = items.map((i) => i.ref.observedAt).sort(utf8ByteOrder)
   const earliest = times[0]!
   const latest = times[times.length - 1]!
   if (earliest === latest) return { kind: 'co-temporal', observedAt: earliest }

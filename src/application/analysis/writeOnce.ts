@@ -121,7 +121,7 @@ export function evidenceSetSemanticKey(set: EvidenceSet): string {
           value: item.value,
         }),
       )
-      .sort(),
+      .sort(utf8ByteOrder),
   })
 }
 
@@ -136,7 +136,7 @@ export function evidenceSetSemanticKey(set: EvidenceSet): string {
 export function resultSemanticKey(result: StoredResult): string {
   return asCanonicalValueString({
     key: result.key,
-    claims: result.claims.map(claimSemanticKey).sort(),
+    claims: result.claims.map(claimSemanticKey).sort(utf8ByteOrder),
     // Part of the identity, not a label on it: the same key holding a fixture
     // replay and a live contribution is a real disagreement about what the
     // firm knows, and returning either one silently would settle it by luck.
@@ -165,13 +165,15 @@ export function managerAggregationSemanticKey(aggregation: ManagerAggregation): 
     departmentId: aggregation.departmentId,
     aggregatedAt: aggregation.aggregatedAt,
     rationale: aggregation.rationale,
-    inputs: [...aggregation.inputs].map((input) => asCanonicalValueString(input)).sort(),
+    inputs: [...aggregation.inputs]
+      .map((input) => asCanonicalValueString(input))
+      .sort(utf8ByteOrder),
     dispositions: [...aggregation.dispositions]
       .map((record) => asCanonicalValueString(record))
-      .sort(),
+      .sort(utf8ByteOrder),
     optionalInputs: [...aggregation.optionalInputs]
       .map((record) => asCanonicalValueString(record))
-      .sort(),
+      .sort(utf8ByteOrder),
   })
 }
 
@@ -217,7 +219,7 @@ export function decisionSemanticKey(decision: CaseDecision): string {
         asCanonicalValueString({
           ...dissent,
           evidence: dissent.evidence
-            ? [...dissent.evidence].map(asCanonicalValueString).sort()
+            ? [...dissent.evidence].map(asCanonicalValueString).sort(utf8ByteOrder)
             : null,
         }),
       ),

@@ -36,6 +36,7 @@ describe('fitness rules detect a planted violation', () => {
       'no-in-memory-adapter-in-durable-tests',
       'no-invisible-characters-in-source',
       'no-llm-dependency',
+      'no-locale-sensitive-identity-ordering',
       'no-outbound-network-outside-http-client',
       'no-placeholder-port-implementations',
       'no-pre-0020-decision-shape',

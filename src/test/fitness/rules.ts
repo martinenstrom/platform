@@ -995,6 +995,106 @@ const sourceCharacters: FitnessRule = {
   },
 }
 
+/* ----------------------------------------------------------------- rule 16 */
+
+/**
+ * Locale-aware comparison never decides an identity.
+ *
+ * `canonicalJson` sorted object keys with `localeCompare`, whose no-argument
+ * form reads the host's default locale. Measured under Node's ICU, `tr` and
+ * `da` order the keys `Id` and `id` opposite to `en`, `sv`, `lt`, `cs` and
+ * `et` — so two machines could derive different ids for one value. TD-61
+ * removed it from every identity path, and this keeps it out.
+ *
+ * ## Why the rule is scoped rather than global
+ *
+ * **Locale-aware sorting is correct for user-facing text**, and a rule that
+ * banned it everywhere would be turned off rather than obeyed. So this selects
+ * the identity surfaces only, and one of its fixtures is a presentation
+ * component sorting with `localeCompare` that must **pass**.
+ *
+ * ## Why the bare `.sort()` case is included
+ *
+ * `Array.prototype.sort` with no comparator orders by UTF-16 code unit. That is
+ * not locale-sensitive, but it is a *different rule* from canonical value v1's
+ * UTF-8 byte order, and the two agree only below the astral plane. In an
+ * identity path the ordering must be named, not defaulted.
+ */
+const IDENTITY_SURFACES = [
+  'domain/shared/canonicalValue.ts',
+  'domain/analysis/identity.ts',
+  'domain/analysis/evidence.ts',
+  'domain/analysis/requirements.ts',
+  'domain/analysis/theses.ts',
+  'domain/analysis/aggregation.ts',
+  'application/analysis/writeOnce.ts',
+  'application/analysis/playbooks.ts',
+  'application/analysis/evidenceRefs.ts',
+  'application/analysis/commands/envelope.ts',
+  'application/analysis/commands/eventIdentity.ts',
+]
+
+/** A command that builds an identity payload. Selected by shape, not by name. */
+const IDENTITY_PAYLOAD_MODULE = /^application\/analysis\/commands\/[a-zA-Z]+\.ts$/
+
+const selectsIdentitySurface = (file: AnalysedSource) =>
+  !file.isTest &&
+  (IDENTITY_SURFACES.includes(file.path) ||
+    (IDENTITY_PAYLOAD_MODULE.test(file.path) && /payload:\s*\(/.test(file.text)))
+
+const noLocaleSensitiveIdentityOrder: FitnessRule = {
+  id: 'no-locale-sensitive-identity-ordering',
+  states:
+    'No identity-critical module orders values with a locale-aware comparison, ' +
+    'and none leaves an identity ordering to the default sort.',
+  because:
+    'A locale-aware comparison reads the host default, so two machines derive ' +
+    'different ids for one value. The default sort is not locale-sensitive but ' +
+    'is a different order from the one the encoder specifies, and an identity ' +
+    'ordering that nobody named is one nobody can reproduce.',
+  selects: selectsIdentitySurface,
+  detect(file) {
+    const found: string[] = []
+
+    for (const node of nodes(file)) {
+      /* `x.localeCompare(y)` anywhere in an identity module. */
+      if (ts.isCallExpression(node)) {
+        const called = accessPath(node.expression)
+        if (called !== null && /(^|\.)localeCompare$/.test(called)) {
+          found.push(at(file, node, 'orders with localeCompare'))
+          continue
+        }
+
+        /*
+         * `.sort()` with no comparator. The default is UTF-16 code-unit order,
+         * which is not the encoder's rule -- name the ordering instead.
+         */
+        if (
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === 'sort' &&
+          node.arguments.length === 0
+        ) {
+          found.push(at(file, node, 'sorts without naming an ordering'))
+        }
+      }
+
+      /* `new Intl.Collator(...)`, and `Intl.Collator.prototype.compare`. */
+      if (ts.isNewExpression(node) && accessPath(node.expression) === 'Intl.Collator') {
+        found.push(at(file, node, 'constructs an Intl.Collator'))
+      }
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        accessPath(node) !== null &&
+        /^Intl\.Collator$/.test(accessPath(node)!)
+      ) {
+        found.push(at(file, node, 'reaches for Intl.Collator'))
+      }
+    }
+
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -1017,6 +1117,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noPre0020DecisionShape,
   submissionValidatorNotBypassed,
   noThrowingPortImplementations,
+  noLocaleSensitiveIdentityOrder,
 ]
 
 export function ruleById(id: string): FitnessRule {

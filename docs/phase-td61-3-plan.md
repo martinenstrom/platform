@@ -1,7 +1,7 @@
 # TD61-3 planning gate · compatibility, determinism and boundary hardening
 
-**Status:** plan only. Nothing implemented. Approval required before any code
-changes.
+**Status:** approved with amendments. The decisions in section 17 supersede the
+open questions in section 16.
 
 **Purpose.** Close TD-61 by proving that what TD61-2 built actually holds:
 every production caller accounted for, decimals validated rather than merely
@@ -351,7 +351,7 @@ One stage, or two if §12 is closed here.
 
 Reported separately if split.
 
-## 16 · Questions for the gate
+## 16 · Questions for the gate — answered in §17
 
 1. **§12** — close the payload-integrity gap here, or record it as separate
    high-priority debt?
@@ -362,3 +362,163 @@ Reported separately if split.
 4. **§3.1** — is there any fractional domain value whose *authored*
    representation is institutionally significant? If none, meaning 2 applies
    everywhere and the boundary is simpler than this plan allows for.
+
+---
+
+## 17 · Ratified decisions
+
+These supersede §16 and amend the sections named.
+
+### 17.1 The payload-integrity gap closes here (§12)
+
+Not a separate debt item: the mechanisms already exist and it belongs to
+canonical identity hardening. Hydration gains a **two-level chain**, both levels
+required.
+
+| Level | Derivation | Catches |
+| --- | --- | --- |
+| item | `value` → recomputed `contentHash` | a stored value edited while its hash is left alone |
+| set | verified `[observationId, contentHash]` pairs → recomputed set id | an item added, removed, substituted, or a stored hash edited |
+
+The set id alone is insufficient because it binds *stored* content hashes rather
+than deriving them from values.
+
+Order is fixed: validate the value, recompute its hash, compare, refuse a
+mismatch, and **only then** let the item participate in set reconstruction.
+
+**Write path:** the value is validated before persistence, the content hash is
+derived through one authoritative builder, a caller-supplied mismatching hash is
+**refused rather than silently replaced**, and root, items and hashes commit
+atomically. Replay compares the complete semantic evidence aggregate.
+
+**The scope statement, in these words and no stronger:** evidence-set membership
+and item payload-to-hash consistency are both self-validating on hydration; an
+uninformed payload edit is detected; an informed privileged actor who alters
+value, hash and set id consistently is outside this protection and belongs to
+TD-60. **Never "tamper-proof."**
+
+### 17.2 Cross-OS is construction-based, not measured (§4.3)
+
+No CI is added here. TD61-3 proves determinism across spawned processes, `LANG`,
+`LC_ALL`, `TZ` and repeated executions on the available platform.
+
+Cross-OS status is documented as **"expected by construction, not yet measured
+across an operating-system matrix"**, and the construction argument names the
+absence of: `localeCompare`, platform line endings, host timezone formatting,
+native object serialization, database collation, platform-specific crypto output
+and filesystem-dependent ordering. **It may not be called empirically verified.**
+
+**TD-63** is opened for CI matrix coverage across Linux, Windows and macOS. It
+does not block TD61-3 while no CI exists and the limitation is explicit.
+
+### 17.3 Corpus: typed values, pinned literals (§1)
+
+Constructed through the approved types, checked in as code, with
+`expectedCanonical` and `expectedHash` as **literals reviewed in source
+control**. A helper executes the corpus; it must never derive the expected
+values, and no test may generate the expectations it then verifies.
+
+Coverage: at least one entry per production identity surface — observation
+content hash, evidence-set id, requirement input hash, playbook content hash,
+command payload hash v2, event id, and every distinct write-once semantic-key
+family.
+
+A separate **rejected-value corpus** covers `undefined`, `NaN`, the infinities,
+negative zero, fractional number, unsafe integer, `Date`, `BigInt`, sparse
+array, cyclic object, class instance, `toJSON` carrier, accessor property and
+unpaired surrogate — every one failing **before any identity is emitted**.
+
+Each entry preserves the old input representation, the new canonical
+representation, the new identity, the reason for the change and the version
+coordinate governing it. **No claim of backward hash compatibility**: this is
+migration accounting.
+
+### 17.4 Decimals mean numeric value (§3.1)
+
+**Numeric meaning is the default.** Equivalent numeric forms must not create
+different identities, so `2.5`, `2.50`, `02.500`, `+2.5` and `2.5e0` may not
+enter the identity layer as five unrelated strings.
+
+The chosen shape:
+
+- **external and provider parsing** may accept approved source syntax;
+- **one shared parser** produces a branded `CanonicalDecimal`;
+- **internal constructors** accept only `CanonicalDecimal`;
+- **identity code** receives only the canonical representation.
+
+`-0` is refused. `0.0` is the canonical value `0`. Trailing zeros do not change
+numeric identity.
+
+**Where an authored representation is institutionally significant** — a direct
+quotation, filing text, contractual notation, a provider diagnostic payload, an
+exact displayed rounding — it is preserved **separately** (`rawValue`,
+`sourceText`, `providerRepresentation`), as evidence in its own right, and must
+not replace the canonical numeric identity. If a domain ever needs scale to be
+meaningful, **scale is modelled explicitly** rather than carried by string
+spelling.
+
+**Honesty constraint:** `String(number)` is not a precision-recovery mechanism.
+Where a source already supplied a floating-point number the authored precision
+was **already lost**, and no document may claim exact recovery.
+
+If every current fractional value uses numeric meaning, that conclusion is
+recorded explicitly — and **not** generalized to every future financial domain.
+
+### 17.5 Determinism testing is process-level (§4.1)
+
+Spawned child processes, not an in-process locale argument. The child imports the
+production functions, runs the checked-in corpus under explicit `LANG`, `LC_ALL`
+and `TZ`, and emits bytes and hashes; the parent compares byte for byte.
+
+Environments: English, Swedish, Danish and Turkish locales; UTC, one
+positive-offset and one negative-offset timezone.
+
+Compared outputs: canonical bytes, observation content hash, evidence-set id,
+command payload hash, semantic key.
+
+**A negative control is required** — a deliberately locale-sensitive
+implementation must differ under at least one tested environment, or the harness
+proves nothing.
+
+### 17.6 Structural rule fixtures (§11)
+
+Five, not two.
+
+| Fixture | Expected |
+| --- | --- |
+| `localeCompare` inside an identity payload | **fail** |
+| `Intl.Collator` inside identity canonicalization | **fail** |
+| user-facing table sorting with `localeCompare` | pass (near-miss) |
+| a comment mentioning `localeCompare` | pass (near-miss) |
+| an approved format-specific comparator | pass |
+
+The EligibilityBasis manifest is covered only where its own specified comparator
+applies. **No universal comparator** shared between the two formats.
+
+### 17.7 The identity chain, documented per link
+
+```
+CanonicalValue
+  → observation contentHash
+  → EvidenceItem
+  → sorted [observationId, contentHash] membership
+  → EvidenceSet id
+  → EligibilityBasis reference to EvidenceSet id
+  → EligibilityBasis manifest
+```
+
+Each link states which integrity property it verifies. The manifest binds the
+evidence-set id **as a stored reference**; it does not hydrate every referenced
+set. **No claim of transitive payload verification across an unloaded
+reference.** If CIO submission hydration does not load referenced evidence sets,
+the manifest verifies the reference id and payload verification happens when that
+set is itself loaded — and that distinction is documented.
+
+### 17.8 Staging
+
+Two stages, smallest reviewable green commits.
+
+| | |
+| --- | --- |
+| **TD61-3A** | decimal model and caller audit; migration corpus; process-level determinism; structural rule; TD-63 |
+| **TD61-3B** | EvidenceItem payload verification; corruption matrix; full chain documentation; TD-61 closure |

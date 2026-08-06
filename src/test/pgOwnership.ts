@@ -46,9 +46,7 @@ export type MarkerRead =
 
 /** What reading `postmaster.pid` from the owned directory produced. */
 export type PostmasterRead =
-  | { kind: 'missing' }
-  | { kind: 'malformed' }
-  | { kind: 'ok'; pid: number; port: number }
+  { kind: 'missing' } | { kind: 'malformed' } | { kind: 'ok'; pid: number; port: number }
 
 export interface OwnershipInput {
   marker: MarkerRead
@@ -76,7 +74,12 @@ export type OwnershipReason =
   | 'owned-process-already-gone'
 
 export type OwnershipDecision =
-  | { action: 'terminate-owned-process'; pid: number; directory: string; reason: OwnershipReason }
+  | {
+      action: 'terminate-owned-process'
+      pid: number
+      directory: string
+      reason: OwnershipReason
+    }
   | { action: 'clean-owned-stale-artifacts'; directory: string; reason: OwnershipReason }
   | { action: 'safe-no-op'; reason: OwnershipReason }
   | { action: 'refuse-ambiguous'; reason: OwnershipReason }

@@ -123,7 +123,9 @@ describe('the runtime guard refuses an incomplete container', () => {
     Object.fromEntries(
       Object.entries(ANALYSIS_REPOSITORY_CAPABILITIES).map(([port, methods]) => [
         port,
-        Object.fromEntries((methods as readonly string[]).map((name) => [name, () => {}])),
+        Object.fromEntries(
+          (methods as readonly string[]).map((name) => [name, () => {}]),
+        ),
       ]),
     )
 

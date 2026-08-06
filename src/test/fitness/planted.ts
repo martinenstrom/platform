@@ -1092,4 +1092,69 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+  {
+    ruleId: 'no-locale-sensitive-identity-ordering',
+    violations: [
+      {
+        path: 'application/analysis/commands/plantedCommand.ts',
+        what: 'localeCompare ordering a collection inside an identity payload',
+        source:
+          'export const definition = {\n' +
+          '  payload: (input: { ids: string[] }) => ({\n' +
+          '    ids: [...input.ids].sort((a, b) => a.localeCompare(b)),\n' +
+          '  }),\n' +
+          '}\n',
+      },
+      {
+        path: 'domain/shared/canonicalValue.ts',
+        what: 'Intl.Collator inside the canonicalization itself',
+        source:
+          'const collator = new Intl.Collator()\n' +
+          'export const order = (a: string, b: string) => collator.compare(a, b)\n',
+      },
+      {
+        path: 'domain/analysis/evidence.ts',
+        what: 'localeCompare ordering evidence before it is hashed',
+        source:
+          'export function build(items: { id: string }[]) {\n' +
+          '  return [...items].sort((a, b) => a.id.localeCompare(b.id))\n' +
+          '}\n',
+      },
+      {
+        path: 'application/analysis/writeOnce.ts',
+        what: 'a bare sort deciding the order of a semantic key',
+        source:
+          'export function key(values: readonly string[]) {\n' +
+          "  return [...values].sort().join('|')\n" +
+          '}\n',
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/analysis/writeOnce.ts',
+        what: 'the approved format-specific comparator, named rather than defaulted',
+        source:
+          "import { utf8ByteOrder } from '~/domain/shared/canonicalValue'\n" +
+          'export function key(values: readonly string[]) {\n' +
+          "  return [...values].sort(utf8ByteOrder).join('|')\n" +
+          '}\n',
+      },
+      {
+        path: 'domain/analysis/identity.ts',
+        what: 'a comment mentioning localeCompare, which is prose and not a call',
+        source:
+          '/* Never localeCompare: it reads the host default and two machines\n' +
+          ' * would derive different ids. Intl.Collator is out for the same reason. */\n' +
+          'export const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)\n',
+      },
+      {
+        path: 'domain/analysis/aggregation.ts',
+        what: 'a numeric comparator, which has no locale to be sensitive to',
+        source:
+          'export function bySequence(rows: readonly { seq: number }[]) {\n' +
+          '  return [...rows].sort((a, b) => a.seq - b.seq)\n' +
+          '}\n',
+      },
+    ],
+  },
 ]

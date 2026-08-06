@@ -78,7 +78,7 @@ export function recordVerificationReview(
       thesisId: input.thesisId,
       byDepartmentId: input.byDepartmentId,
       status: input.status,
-      claimsReviewed: [...input.claimsReviewed].sort(),
+      claimsReviewed: [...input.claimsReviewed].sort(utf8ByteOrder),
       findings: [...input.findings]
         .map((finding) => ({
           kind: finding.kind,

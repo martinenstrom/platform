@@ -21,7 +21,7 @@ import {
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
-import { asCanonicalValue } from '~/domain/shared/canonicalValue'
+import { asCanonicalValue, utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export interface OpenInvestmentCaseInput {
   caseId: string
@@ -56,7 +56,9 @@ export function openInvestmentCase(
       subject: asCanonicalValue(input.subject),
       question: input.question,
       ownerEmployeeId: input.ownerEmployeeId,
-      participatingDepartmentIds: [...input.participatingDepartmentIds].sort(),
+      participatingDepartmentIds: [...input.participatingDepartmentIds].sort(
+        utf8ByteOrder,
+      ),
     }),
 
     async execute(repositories, context, input) {

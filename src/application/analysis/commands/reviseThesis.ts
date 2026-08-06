@@ -30,6 +30,7 @@ import type {
 import { mintRevision, type RevisionCause } from '../revisions'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 /** Causes a revision may declare. `manager-aggregation` is not among them. */
 const PERMITTED_CAUSES: readonly RevisionCause[] = [
@@ -85,12 +86,14 @@ export function reviseThesis(
       position: input.position ?? null,
       invalidationCriteria: input.invalidationCriteria ?? null,
       horizon: input.horizon ?? null,
-      implications: input.implications ? [...input.implications].sort() : null,
+      implications: input.implications
+        ? [...input.implications].sort(utf8ByteOrder)
+        : null,
       supportingClaimIds: input.supportingClaimIds
-        ? [...input.supportingClaimIds].sort()
+        ? [...input.supportingClaimIds].sort(utf8ByteOrder)
         : null,
       opposingClaimIds: input.opposingClaimIds
-        ? [...input.opposingClaimIds].sort()
+        ? [...input.opposingClaimIds].sort(utf8ByteOrder)
         : null,
     }),
 

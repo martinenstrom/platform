@@ -1394,6 +1394,54 @@ stops failing on its own, which is the same evidence that produced this entry.
 
 ---
 
+## TD-63 · Cross-platform deterministic identity CI
+
+**Incurred:** TD61-3A, deliberately. **Severity:** medium — operational
+coverage. **Blocks:** describing cross-OS identity determinism as measured.
+
+Identity determinism is proven across **spawned processes, timezones and
+repeated executions** on the development machine. Two things are not proven,
+and both are measurements rather than arguments:
+
+**1. The process-default locale cannot be varied on this host.** Measured: on
+Windows, Node resolves the default ICU locale from the operating system and
+ignores `LANG` and `LC_ALL` entirely — `new Intl.Collator().resolvedOptions()`
+reports the system locale whatever the environment says. The determinism suite
+detects this through its own negative control and records it rather than
+claiming a coverage it does not have. `TZ` **is** honoured, so the timezone
+dimension is genuinely exercised.
+
+**2. There is no CI.** The repository has no `.github/workflows`, so "supported
+operating systems" currently means one.
+
+### The claim that is actually supported
+
+> Cross-OS determinism is **expected by construction, not yet measured across an
+> operating-system matrix.**
+
+The construction argument is that no platform-dependent input reaches an
+identity: no `localeCompare`, no `Intl.Collator`, no platform line endings, no
+host timezone formatting, no native object serialization, no database collation,
+no platform-specific cryptographic output, and no filesystem-dependent ordering.
+Rule 16 (`no-locale-sensitive-identity-ordering`) enforces the first two
+structurally.
+
+**That is an argument, and it is labelled as one.** No document may describe
+cross-OS identity behaviour as empirically verified until this is closed.
+
+### What would close it
+
+A CI matrix running the checked-in identity corpus
+(`src/test/identityCorpus.ts`) on **Linux, Windows and macOS**, comparing the
+pinned canonical bytes and hashes. Linux additionally gives what this host
+cannot: a platform where `LANG` and `LC_ALL` do change the default locale, which
+turns the locale dimension from asserted into measured.
+
+**Does not block TD61-3** while no CI exists and the limitation is stated.
+
+
+---
+
 ## C1D-1B / B2C · complete
 
 Recorded so a later phase does not have to reconstruct what was proven.

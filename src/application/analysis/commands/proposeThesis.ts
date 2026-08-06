@@ -27,6 +27,7 @@ import type {
 import { mintRevision } from '../revisions'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export interface ProposeThesisInput {
   caseId: string
@@ -80,7 +81,7 @@ export function proposeThesis(
       position: input.position,
       invalidationCriteria: input.invalidationCriteria,
       horizon: input.horizon ?? null,
-      implications: [...input.implications].sort(),
+      implications: [...input.implications].sort(utf8ByteOrder),
       proposedByDepartmentId: input.proposedByDepartmentId,
     }),
 

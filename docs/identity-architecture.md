@@ -119,3 +119,75 @@ semantics depend on the caller's assumption is the defect, not the fix.
 
 `localeCompare` is absent from every identity-critical path. It remains
 appropriate for user-facing text, and nothing here restricts that.
+
+---
+
+## 4 · Decimal audit
+
+Every fractional value that becomes part of an identity, and how it gets there.
+
+**All conversions live in one module.** `application/analysis/evidenceRefs.ts`
+holds every call to `canonicalDecimalFromNumber` and `canonicalDecimalOrNull`;
+no other production file converts a decimal, and no `String(number)` remains in
+an identity path.
+
+| Caller | Source type | Unit | Already a rounded double | Raw source kept separately |
+| --- | --- | --- | --- | --- |
+| `quoteRef` · `value` | `Price` | instrument unit | yes | no |
+| `quoteRef` · `absoluteChange` | `number \| null` | instrument unit | yes | no |
+| `quoteRef` · `percentageChange` | `Percent \| null` | percent | yes | no |
+| `quoteRef` · `previousClose` | `Price \| null` | instrument unit | yes | no |
+| `yieldRef` · `yieldPercent` | `YieldPercent` | percent p.a. | yes | no |
+| `yieldRef` · `changeBasisPoints` | `BasisPoints \| null` | basis points | yes | no |
+| `yieldCurveRef` · point yields | `YieldPercent` | percent p.a. | yes | no |
+| `policyStateRef` · target range | `PolicyRatePercent` ×2 | percent | yes | no |
+| `policyStateRef` · single rate | `PolicyRatePercent` | percent | yes | no |
+| `policyStateRef` · key rates | `PolicyRatePercent` ×3 | percent | yes | no |
+| `policyStateRef` · change | `BasisPoints` ×1–3 | basis points | yes | no |
+| `policyStateRef` · effective fed funds | `number \| null` | percent | yes | no |
+| evidence payloads | whole provider object | mixed | yes | no |
+
+### 4.1 The conclusion, recorded explicitly
+
+**Every current fractional value uses numeric meaning, not authored
+representation.** None of them needs `2.50` to be distinguishable from `2.5`;
+all are quantities a claim would cite, and two spellings of one quantity must
+not produce two identities.
+
+**This is not generalized to every future financial domain.** A domain where
+scale is meaningful — an accounting entry, a contractual rate, a filing figure —
+may deliberately choose authored-representation semantics. When one does, it
+models **scale explicitly** rather than relying on string spelling, and preserves
+the authored form in a separate field (`rawValue`, `sourceText`,
+`providerRepresentation`) alongside the canonical numeric value. The raw field
+is evidence in its own right; it never replaces the identity.
+
+### 4.2 The honest limit
+
+Every source in the table above arrives as a **JavaScript number that has
+already been rounded**. `canonicalDecimalFromNumber` emits the shortest decimal
+that round-trips to that double, so it loses nothing further — but it **does not
+recover the precision the source published**. That was lost when the provider's
+decimal became a double, upstream of anything this layer can see.
+
+`parseCanonicalDecimal` exists for the case where that loss has not yet
+happened: it takes the source *text* and normalizes it, so a provider publishing
+`0.3` yields `0.3` rather than the `0.30000000000000004` a double round-trip
+would produce. Where a provider's exact precision matters, the value should be
+carried as text from the source onward and parsed here. **No current caller does
+that**, and no document may describe the number path as recovering original
+precision.
+
+### 4.3 The two entry points
+
+| | Accepts | Refuses | Used by |
+| --- | --- | --- | --- |
+| `parseCanonicalDecimal` | broad source syntax — `2.50`, `02.5`, `+2.5`, `2.5e0` | anything not a decimal; **negative zero** | external and provider text |
+| `canonicalDecimalFromNumber` | a finite JavaScript number | non-finite; negative zero; magnitudes beyond 38 digits | values already reduced to a double |
+| `isCanonicalDecimal` | the canonical spelling only | every other spelling | internal constructors and assertions |
+
+The parser normalizes; the constructor does not. External text is normalized
+once at the edge, and everything inward carries a `CanonicalDecimal`. `-0` is
+**refused by both** rather than normalized to `0`: numeric identity has no
+negative zero, and quietly agreeing with a source that sent one is how a
+boundary stops being a boundary.

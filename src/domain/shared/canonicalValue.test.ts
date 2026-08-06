@@ -21,6 +21,7 @@ import {
   canonicalDecimalFromNumber,
   canonicalDecimalOrNull,
   isCanonicalDecimal,
+  parseCanonicalDecimal,
   isCanonicalValue,
   utf8ByteOrder,
   validateCanonical,
@@ -534,5 +535,120 @@ describe('the approved decimal conversion', () => {
   it('passes null through unchanged', () => {
     expect(canonicalDecimalOrNull(null)).toBeNull()
     expect(canonicalDecimalOrNull(2.5)).toBe('2.5')
+  })
+})
+
+describe('the decimal parser', () => {
+  it('gives equivalent numeric forms one identity', () => {
+    /*
+     * The whole reason the parser exists. These are one numeric value, and the
+     * identity layer must never see them as five unrelated strings.
+     */
+    const equivalent = ['2.5', '2.50', '02.500', '+2.5', '2.5e0', '0.25e1', '250e-2']
+    const parsed = equivalent.map((form) => parseCanonicalDecimal(form))
+
+    expect(new Set(parsed).size, `${equivalent.join(' ')} must agree`).toBe(1)
+    expect(parsed[0]).toBe('2.5')
+  })
+
+  it('normalizes each documented source form', () => {
+    const cases: Array<[string, string]> = [
+      ['2.5', '2.5'],
+      ['2.50', '2.5'],
+      ['02.500', '2.5'],
+      ['+2.5', '2.5'],
+      ['2.5e0', '2.5'],
+      ['0.0', '0'],
+      ['0', '0'],
+      ['000', '0'],
+      ['-2.50', '-2.5'],
+      ['1e3', '1000'],
+      ['1.5e-3', '0.0015'],
+      ['-0.5', '-0.5'],
+      ['100', '100'],
+      ['100.00', '100'],
+    ]
+    for (const [source, expected] of cases) {
+      expect(parseCanonicalDecimal(source), source).toBe(expected)
+    }
+  })
+
+  it('refuses negative zero rather than normalizing it', () => {
+    /*
+     * Numeric identity has no negative zero. A source that sent one is stating
+     * something this model cannot represent, and quietly agreeing with it would
+     * be worse than refusing.
+     */
+    for (const form of ['-0', '-0.0', '-0.000', '-0e0']) {
+      expect(parseCanonicalDecimal(form), form).toBeNull()
+    }
+    // Positive zero in every spelling is the canonical `0`.
+    for (const form of ['0', '0.0', '+0', '0e0', '00.00']) {
+      expect(parseCanonicalDecimal(form), form).toBe('0')
+    }
+  })
+
+  it('refuses text that is not a decimal at all', () => {
+    for (const form of [
+      '',
+      ' 2.5',
+      '2.5 ',
+      'two',
+      '1,000',
+      '.5',
+      '2.',
+      '--2',
+      '2..5',
+      '0x1f',
+      'Infinity',
+      'NaN',
+      '1e',
+      '1e+',
+    ]) {
+      expect(parseCanonicalDecimal(form), JSON.stringify(form)).toBeNull()
+    }
+  })
+
+  it('always produces something the strict constructor accepts', () => {
+    // The two halves of the boundary must agree: whatever the parser emits, the
+    // constructor takes. A disagreement would strand a value between them.
+    for (const form of ['2.50', '02.500', '+2.5', '1e3', '1.5e-3', '0.0', '-2.50']) {
+      const parsed = parseCanonicalDecimal(form)
+      expect(parsed, form).not.toBeNull()
+      expect(isCanonicalDecimal(parsed!), form).toBe(true)
+    }
+  })
+
+  it('is idempotent', () => {
+    for (const form of ['2.5', '0', '-2.5', '1000', '0.0015']) {
+      expect(parseCanonicalDecimal(parseCanonicalDecimal(form)!), form).toBe(
+        parseCanonicalDecimal(form),
+      )
+    }
+  })
+
+  it('agrees with the number conversion on values a double represents exactly', () => {
+    /*
+     * Two entry points, one answer. `canonicalDecimalFromNumber` takes a double
+     * that has already lost whatever precision the source had;
+     * `parseCanonicalDecimal` takes the source text before that loss. Where the
+     * double is exact they must not disagree.
+     */
+    for (const value of [0, 1, -1, 2.5, -2.5, 0.5, 100, 1000]) {
+      expect(parseCanonicalDecimal(String(value)), String(value)).toBe(
+        canonicalDecimalFromNumber(value),
+      )
+    }
+  })
+
+  it('preserves precision the number path would already have lost', () => {
+    /*
+     * The honest limit, stated as a test. A source publishing 0.1 + 0.2 as text
+     * says `0.3`; the same value arriving as a double is 0.30000000000000004 and
+     * no conversion can recover the `0.3`. This is why the parser exists at the
+     * text boundary rather than after a `Number()` call.
+     */
+    expect(parseCanonicalDecimal('0.3')).toBe('0.3')
+    expect(canonicalDecimalFromNumber(0.1 + 0.2)).toBe('0.30000000000000004')
   })
 })

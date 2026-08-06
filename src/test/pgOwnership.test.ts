@@ -25,20 +25,23 @@ import {
 
 const DIRECTORY = '/tmp/finos-pg-abc123'
 
-const marker = (over: Partial<OwnershipInput['marker'] & object> = {}): MarkerRead => ({
-  kind: 'ok',
-  marker: {
-    version: MARKER_VERSION,
-    runId: 'run-1',
-    directory: DIRECTORY,
-    port: 54_991,
-    pid: 4242,
-    createdAt: '2026-08-03T10:00:00.000Z',
-  },
-  ...over,
-}) as MarkerRead
+const marker = (over: Partial<OwnershipInput['marker'] & object> = {}): MarkerRead =>
+  ({
+    kind: 'ok',
+    marker: {
+      version: MARKER_VERSION,
+      runId: 'run-1',
+      directory: DIRECTORY,
+      port: 54_991,
+      pid: 4242,
+      createdAt: '2026-08-03T10:00:00.000Z',
+    },
+    ...over,
+  }) as MarkerRead
 
-const postmaster = (over: Partial<{ pid: number; port: number }> = {}): PostmasterRead => ({
+const postmaster = (
+  over: Partial<{ pid: number; port: number }> = {},
+): PostmasterRead => ({
   kind: 'ok',
   pid: 4242,
   port: 54_991,

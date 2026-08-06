@@ -291,6 +291,64 @@ export function isCanonicalDecimal(value: string): value is CanonicalDecimal {
 }
 
 /**
+ * The one parser for decimal text arriving from outside.
+ *
+ * Provider feeds, filings and configuration write decimals in whatever form
+ * they please: `2.50`, `02.5`, `+2.5`, `2.5e0`. Those are **one numeric value**,
+ * and the identity layer must never see them as five unrelated strings.
+ *
+ * So the boundary is split. This accepts the broad source syntax and returns the
+ * single canonical spelling; `isCanonicalDecimal` accepts only that spelling.
+ * External text is parsed here once, and everything inward of it carries a
+ * `CanonicalDecimal`.
+ *
+ * Returns `null` rather than throwing: a malformed provider field is an
+ * expected condition at a parsing boundary, and the caller decides whether it
+ * is a rejected row or a failed fetch.
+ *
+ * `-0` and `-0.0` are **refused**, not normalized to `0`. Numeric identity has
+ * no negative zero, and a source that sent one is stating something this model
+ * cannot represent — better to say so than to quietly agree.
+ */
+export function parseCanonicalDecimal(source: string): CanonicalDecimal | null {
+  if (!/^[+-]?(?:\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(source)) return null
+
+  const negative = source.startsWith('-')
+  const unsigned = source.replace(/^[+-]/, '')
+
+  const [mantissa, exponentText] = unsigned.split(/[eE]/) as [string, string?]
+  const exponent = exponentText === undefined ? 0 : Number(exponentText)
+  const [whole, fraction = ''] = mantissa.split('.') as [string, string?]
+
+  const digits = whole + fraction
+  const pointAt = whole.length + exponent
+
+  let result: string
+  if (pointAt <= 0) {
+    result = `0.${'0'.repeat(-pointAt)}${digits}`
+  } else if (pointAt >= digits.length) {
+    result = digits + '0'.repeat(pointAt - digits.length)
+  } else {
+    result = `${digits.slice(0, pointAt)}.${digits.slice(pointAt)}`
+  }
+
+  // Canonical spelling: no redundant zeros at either end, no bare point.
+  if (result.includes('.')) result = result.replace(/0+$/, '').replace(/\.$/, '')
+  result = result.replace(/^0+(?=\d)/, '')
+
+  /*
+   * A negative value that normalized to zero WAS a negative zero, however it
+   * was spelled -- `-0`, `-0.0`, `-0e0`. Refused rather than quietly returned
+   * as `0`: numeric identity has no negative zero, and silently agreeing with a
+   * source that sent one is how a boundary stops being a boundary.
+   */
+  if (negative && result === '0') return null
+
+  const signed = negative ? `-${result}` : result
+  return isCanonicalDecimal(signed) ? signed : null
+}
+
+/**
  * The one approved conversion from a JavaScript number to a canonical decimal.
  *
  * Every fractional quantity entering an identity goes through here. Callers must

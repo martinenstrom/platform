@@ -90,11 +90,15 @@ describe('the production registry is complete', () => {
      * by the duplicate checks below.
      */
     const declared = declaredCatalogues()
-    expect(declared.length, 'no catalogues found — the parse is wrong').toBeGreaterThan(20)
+    expect(declared.length, 'no catalogues found — the parse is wrong').toBeGreaterThan(
+      20,
+    )
 
     const registry = readFileSync(join(ADAPTER, 'postgresRepositories.ts'), 'utf8')
     const registered = new Set(
-      [...registry.matchAll(/statements:\s*([A-Z][A-Z0-9_]*)/g)].map((match) => match[1]!),
+      [...registry.matchAll(/statements:\s*([A-Z][A-Z0-9_]*)/g)].map(
+        (match) => match[1]!,
+      ),
     )
 
     const missing = declared

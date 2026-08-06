@@ -73,7 +73,7 @@ export function recordRiskReview(
           severity: finding.severity,
         }))
         .sort((a, b) => utf8ByteOrder(`${a.kind}${a.detail}`, `${b.kind}${b.detail}`)),
-      limits: input.limits ? [...input.limits].sort() : null,
+      limits: input.limits ? [...input.limits].sort(utf8ByteOrder) : null,
       supersedesReviewId: input.supersedesReviewId ?? null,
     }),
 

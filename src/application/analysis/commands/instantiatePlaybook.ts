@@ -42,6 +42,7 @@ import { UnknownPlaybookError, requirePlaybook } from '../playbookRegistry'
 import { deriveAssignmentId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
+import { utf8ByteOrder } from '~/domain/shared/canonicalValue'
 
 export interface InstantiatePlaybookInput {
   caseId: string
@@ -231,7 +232,10 @@ export function instantiatePlaybook(
       ])
 
       const pinned = pinPlaybook(
-        { ...existing, participatingDepartmentIds: [...participants].sort() },
+        {
+          ...existing,
+          participatingDepartmentIds: [...participants].sort(utf8ByteOrder),
+        },
         playbook.id,
         playbook.version,
       )

@@ -129,7 +129,7 @@ export function aggregateManagerConclusion(
       rationale: input.rationale,
       statement: input.statement,
       position: input.position,
-      implications: [...input.implications].sort(),
+      implications: [...input.implications].sort(utf8ByteOrder),
       invalidationCriteria: input.invalidationCriteria,
       horizon: input.horizon ?? null,
     }),
