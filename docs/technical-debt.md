@@ -1442,6 +1442,57 @@ turns the locale dimension from asserted into measured.
 
 ---
 
+## TD-64 · An evidence payload is not checked against its own content hash
+
+**Incurred:** TD61-3B, on discovery. **Severity: medium.** **Blocks:** claiming
+that evidence payload alteration is detectable on hydration.
+
+TD61-3B set out to close this and found it needs a schema change, which is out
+of that stage's scope.
+
+**What hydration does verify:** the stored value is a canonical value; the
+observation id matches its natural key; the membership matches the rebuilt
+evidence-set id. So an item added, removed or substituted, an id substituted,
+and an edited `content_hash` are all detected.
+
+**What it cannot verify:** a stored `value` edited into another *valid*
+canonical value while its `content_hash` is left alone.
+
+### Why not, precisely
+
+`contentHash` does not cover `EvidenceItem.value`. It covers a **curated
+projection** — for a market quote, the value and the two change figures a claim
+would cite — while `value` holds the whole provider payload, including
+`receivedAt` and `ageMs`.
+
+That is deliberate and must not be "fixed" by hashing the whole payload:
+`isRevisionOf` compares content hashes to decide whether an observation was
+revised, and a hash over the full payload would report a revision on every
+refetch as soon as a timestamp moved.
+
+So the projection is known only to the boundary builder in
+`application/analysis/evidenceRefs.ts`, and is not reconstructible from a
+hydrated row.
+
+### What would close it
+
+Store the hashed projection beside the payload — a column on
+`analysis.evidence_items` holding the exact canonical value the content hash was
+taken over — and have hydration recompute and compare it. The domain mechanism
+already exists; only the storage does not.
+
+**Requires a migration**, which is why it is recorded rather than done.
+
+### What may not be claimed until then
+
+No document may state that evidence payload alteration is detected on hydration,
+or that the `EligibilityBasis` manifest detects evidence membership alteration
+transitively through a stored id. **Kept separate from TD-60**, which concerns an
+informed actor rewriting data *and* witnesses; this is in-band self-validation.
+
+
+---
+
 ## C1D-1B / B2C · complete
 
 Recorded so a later phase does not have to reconstruct what was proven.

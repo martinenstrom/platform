@@ -191,3 +191,74 @@ once at the edge, and everything inward carries a `CanonicalDecimal`. `-0` is
 **refused by both** rather than normalized to `0`: numeric identity has no
 negative zero, and quietly agreeing with a source that sent one is how a
 boundary stops being a boundary.
+
+---
+
+## 5 · The evidence integrity chain
+
+Each link, and exactly which property it verifies.
+
+```
+CanonicalValue
+  -> observation contentHash        (a curated projection, not the whole value)
+  -> EvidenceItem
+  -> sorted [observationId, contentHash] membership
+  -> EvidenceSet id
+  -> EligibilityBasis reference to the EvidenceSet id
+  -> EligibilityBasis manifest
+```
+
+| Link | Verified on hydration | By what |
+| --- | --- | --- |
+| stored `value` is a canonical value | **yes** | `asCanonicalValue` in `toEvidenceSet` |
+| `observationId` matches its natural key | **yes** | `verifyObservationRef` in `buildEvidenceSet` |
+| `contentHash` matches the stored `value` | **no** | see §5.1 |
+| membership matches the set id | **yes** | `toEvidenceSet` rebuilds and compares `rebuilt.id !== row.id` |
+| the basis references this set id | **yes**, as a reference | the manifest binds the id |
+| the manifest describes the basis | **yes** | `verifyBasisManifest` |
+
+**What is therefore detected on hydration:** an item added, removed or
+substituted; an observation id substituted; a stored `content_hash` edited; a
+stored `value` that is not a canonical value.
+
+**What is not:** a stored `value` edited into another *valid* canonical value
+while its `content_hash` is left alone.
+
+### 5.1 Why the content hash cannot be rechecked from what is stored
+
+Not an oversight, and not closable by trying harder. `contentHash` covers a
+**curated projection** of the observation, while `EvidenceItem.value` holds the
+**whole provider payload**. For a market quote the projection is the value and
+the two change figures — the numbers a claim would actually cite — and it
+deliberately excludes `receivedAt` and `ageMs`.
+
+That asymmetry is load-bearing. Hashing the whole payload instead would make
+every refetch look like a revision the moment `receivedAt` moved, which is the
+defect the projection exists to prevent, and `isRevisionOf` is built on it.
+
+So recomputing the hash at hydration would require the **projection itself** to
+be stored beside the payload. That is a schema change, and schema changes are
+out of scope here. Recorded as **TD-64**.
+
+### 5.2 The manifest does not reach through an unloaded reference
+
+The `EligibilityBasis` manifest binds an evidence-set **id**. It does not hydrate
+the sets a basis references, so verifying a submission does **not** transitively
+verify the evidence behind it.
+
+The two verifications happen at different times: the manifest verifies the
+reference when the submission is read, and the set verifies its own membership
+when that set is read. **No claim of transitive payload verification across an
+unloaded reference** may be made anywhere.
+
+### 5.3 The scope statement
+
+- evidence-set **membership** is self-validating on hydration;
+- observation **ids** are self-validating on hydration;
+- a stored value that is not canonical is refused on hydration;
+- item **payload-to-contentHash** consistency is **not** yet self-validating —
+  TD-64;
+- an informed privileged actor who alters a value, its hash and the set id
+  consistently remains outside all of this, and belongs to TD-60.
+
+Never "tamper-proof."

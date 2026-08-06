@@ -129,6 +129,45 @@ export function observationRef(
   })
 }
 
+/** Why a stored observation reference does not match its own natural key. */
+export type ObservationRefMismatch = 'observation-id-mismatch'
+
+/**
+ * Whether a reference's id still matches the natural key stored beside it.
+ *
+ * The item-level half of evidence integrity, and **narrower than it first
+ * appears** — worth stating precisely, because the obvious stronger claim is
+ * not available.
+ *
+ * The id derives from the natural key, and the whole key is stored, so this
+ * recomputes it and catches an observation id substituted for another.
+ *
+ * **The content hash is not recomputed, and cannot be from what is stored.** It
+ * covers a curated projection of the observation — for a market quote, the value
+ * and the change figures a claim would actually cite — while `EvidenceItem.value`
+ * holds the whole provider payload. Hashing the whole payload instead would make
+ * every refetch look like a revision as soon as `receivedAt` moved, which is the
+ * defect the projection exists to avoid. Verifying it at hydration would require
+ * the projection itself to be stored, which is a schema change.
+ *
+ * Returns the reason rather than throwing, so a caller decides whether a
+ * mismatch is a caller error or a corrupt row.
+ */
+export function verifyObservationRef(ref: ObservationRef): ObservationRefMismatch | null {
+  const recomputed = stableHashHex(
+    serializeKey({
+      subjectKind: ref.subjectKind,
+      subject: ref.subject,
+      kind: ref.kind,
+      observedAt: ref.observedAt,
+      sourceId: ref.sourceId,
+      ...(ref.seriesId === undefined ? {} : { seriesId: ref.seriesId }),
+      ...(ref.methodology === undefined ? {} : { methodology: ref.methodology }),
+    }),
+  )
+  return recomputed === ref.id ? null : 'observation-id-mismatch'
+}
+
 /** True when both refs describe the same observation, revised or not. */
 export function sameObservation(a: ObservationRef, b: ObservationRef): boolean {
   return a.id === b.id

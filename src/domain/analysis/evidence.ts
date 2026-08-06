@@ -25,7 +25,12 @@
 
 import { stableHashHex } from '~/domain/shared/hash'
 import type { Provenance } from '~/domain/shared/provenance'
-import { evidenceRef, type EvidenceRef, type ObservationRef } from './identity'
+import {
+  evidenceRef,
+  verifyObservationRef,
+  type EvidenceRef,
+  type ObservationRef,
+} from './identity'
 import {
   canonicalIdentityInput,
   utf8ByteOrder,
@@ -143,6 +148,27 @@ export function buildEvidenceSet(args: {
    * ordering is stated anyway, because an identity that depends on the host's
    * collation is not an identity.
    */
+  /*
+   * Every item's REFERENCE is checked against its own natural key before it can
+   * join the set. An unverified item must not contribute to the id, or the set
+   * would attest a membership it never checked.
+   *
+   * The content hash is deliberately NOT rechecked here, and cannot be: it
+   * covers a curated projection of the observation -- for a quote, the value and
+   * the change figures a claim would cite -- while `item.value` is the whole
+   * provider payload. That asymmetry is correct and load-bearing, because
+   * hashing the whole payload would make every refetch look like a revision the
+   * moment `receivedAt` moved. See `docs/identity-architecture.md` section 5.
+   */
+  for (const item of args.items) {
+    const mismatch = verifyObservationRef(item.ref)
+    if (mismatch !== null) {
+      throw new Error(
+        `evidence item "${item.ref.id}" does not match its own natural key (${mismatch})`,
+      )
+    }
+  }
+
   const items = [...args.items].sort((a, b) => utf8ByteOrder(a.ref.id, b.ref.id))
   const id = stableHashHex(
     canonicalIdentityInput(

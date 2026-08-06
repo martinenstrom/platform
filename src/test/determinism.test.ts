@@ -8,6 +8,11 @@
  * claims and only the second is worth anything, so this spawns real processes
  * under real `LANG`, `LC_ALL` and `TZ`.
  *
+ * Runs in the unit suite, not the PostgreSQL one. An earlier version spawned the
+ * probe under the pg config, which started a second cluster per child and
+ * disturbed the harness ownership marker the pg suite asserts on. Nothing here
+ * needs a database.
+ *
  * ## The negative controls are the load-bearing part
  *
  * A determinism test that passes because the environment never actually changed
@@ -78,9 +83,7 @@ function probe(index: number): ProbeOutput {
     [
       './node_modules/vitest/vitest.mjs',
       'run',
-      '--config',
-      'vitest.pg.config.ts',
-      'src/test/determinismProbe.pg.test.ts',
+      'src/test/determinismProbe.test.ts',
     ],
     {
       env: {

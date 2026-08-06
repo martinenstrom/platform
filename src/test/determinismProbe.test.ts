@@ -2,7 +2,7 @@
  * The child half of the determinism proof.
  *
  * Computes every identity in the corpus and writes them to the path named by
- * `DETERMINISM_OUT`. `determinism.pg.test.ts` spawns this file in separate
+ * `DETERMINISM_OUT`. `determinism.test.ts` spawns this file in separate
  * processes under explicit `LANG`, `LC_ALL` and `TZ`, then compares the files
  * byte for byte.
  *
