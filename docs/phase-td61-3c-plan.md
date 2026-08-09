@@ -1,7 +1,6 @@
 # TD61-3C planning gate · observation content projection and fixture consistency
 
-**Status:** plan only. Nothing implemented. Approval required before any code
-changes.
+**Status:** approved and implemented. Rulings recorded in section 13.
 
 **Purpose.** Make the observation content hash verifiable from stored data, and
 fix the fixture inconsistency that attempting it exposed.
@@ -394,3 +393,43 @@ have not begun.
 4. **§0.2** — define a `yield-curve` projection now, given no production path
    stores one? Recommendation: yes, it is one case and a ref that exists can be
    stored.
+
+---
+
+## 13 · Rulings, and what implementation found
+
+| Ruling | Outcome |
+| --- | --- |
+| unverifiable kinds: explicit allow-list | **the allow-list is empty.** Nothing declares `fx-rate`, `series`, `news` or `sentiment` as an observation, and no caller persists a `yield-curve`. An allow-list is for required current exceptions; none were required |
+| unknown kinds fail closed | yes — a kind absent from the projection table is refused, whatever the union says |
+| `yield-curve` classification | **option B**: the ref builder stays; stored evidence of that kind is refused. `yieldCurveRef` has zero callers, so nothing breaks and no half-capability is implied |
+| visible trust state for unverifiable evidence | **not needed.** With an empty allow-list no unverifiable reference can enter a set, so there is no partly verified set to represent. Revisit the moment an entry is added |
+| version bumps | **none.** No production identity moved; every production builder was already consistent |
+
+### 13.1 Fixture migration, measured
+
+**71 inconsistent fixtures across 13 files** — including `decisionFixtures.ts`
+and `queryCount.pg.test.ts`, neither of which appeared in the original report.
+
+The dominant shape was `kind: 'yield'` paired with `{ value }` — the quote
+projection's field — or with `{ yieldPercent }` alone, a yield projection missing
+two of its three fields. One fixture stored a bare string as its payload.
+`identityCorpus.ts` itself carried a quote payload under a yield kind, and a
+policy-state payload without its `regime` wrapper.
+
+Typed fixture builders now exist per verifiable kind
+(`src/test/evidenceFixtures.ts`), constructing payload, key, reference and item
+together so the mismatch is not expressible. A deliberately inconsistent helper
+remains for negative tests, named to say so.
+
+Two corpus entries were re-pinned. The values were read from a failing run,
+reviewed, and written back as literals — the corpus rule holds: **no test derives
+the expectation it asserts.**
+
+### 13.2 No legitimate production record was refused
+
+The stated condition for reopening the version decision was a legitimate
+production record accepted before and refused now. **None was found.** Every
+refusal was a fixture that had never been internally consistent — the production
+builders always produced matching kind/payload pairs, which is why no production
+identity moved.

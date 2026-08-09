@@ -166,9 +166,24 @@ export function describeRepositoryContract(name: string, options: ContractOption
                 observedAt: AT,
                 sourceId: 'treasury',
               },
-              { value },
+              /*
+               * The yield projection, complete. It was `{ value }` -- the QUOTE
+               * projection's field -- under a `yield` kind. `unit` stays in the
+               * stored payload as metadata outside the projection, which is what
+               * proves extra fields are ignored.
+               */
+              {
+                yieldPercent: value,
+                changeBasisPoints: null,
+                observationDate: '2026-07-28',
+              },
             ),
-            value: { value, unit: 'percent' },
+            value: {
+              yieldPercent: value,
+              changeBasisPoints: null,
+              observationDate: '2026-07-28',
+              unit: 'percent',
+            },
             provenance: { source: { providerId: 'treasury' }, quality: 'ok' } as never,
           },
         ],
@@ -477,7 +492,12 @@ export function describeRepositoryContract(name: string, options: ContractOption
         const stored = await repos.evidence.get(set.id)
         expect(stored?.id).toBe(set.id)
         expect(stored?.items).toHaveLength(1)
-        expect(stored?.items[0]!.value).toEqual({ value: '4.1', unit: 'percent' })
+        expect(stored?.items[0]!.value).toEqual({
+          yieldPercent: '4.1',
+          changeBasisPoints: null,
+          observationDate: '2026-07-28',
+          unit: 'percent',
+        })
         expect(stored?.assembledAt).toBe(AT)
       })
     })

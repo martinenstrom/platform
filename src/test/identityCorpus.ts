@@ -66,10 +66,17 @@ export const YIELD_CONTENT: CanonicalValue = {
 
 /** Nested and structured, with every rate an exact decimal string. */
 export const POLICY_STATE_CONTENT: CanonicalValue = {
-  level: { kind: 'target-range', lowerPercent: '5.25', upperPercent: '5.5' },
-  effectiveDate: '2026-06-15',
-  effectiveDateConfidence: 'exact',
-  change: null,
+  /*
+   * Nested under `regime`, as the stored payload is. The projection reads
+   * `payload.regime.*`, and a corpus entry that skipped the wrapper was a
+   * kind/payload mismatch of exactly the sort TD61-3C exists to refuse.
+   */
+  regime: {
+    level: { kind: 'target-range', lowerPercent: '5.25', upperPercent: '5.5' },
+    effectiveDate: '2026-06-15',
+    effectiveDateConfidence: 'exact',
+    change: null,
+  },
 }
 
 export const evidenceItemsFor = () => [
@@ -79,8 +86,10 @@ export const evidenceItemsFor = () => [
     provenance: { source: { providerId: 'treasury' }, quality: 'ok' } as never,
   },
   {
+    // A quote payload needs a quote KIND. It used to inherit `yield` from the
+    // spread key, which is the mismatch this stage refuses.
     ref: observationRef(
-      { ...OBSERVATION_KEY, subject: 'DE10Y', sourceId: 'bundesbank' },
+      { ...OBSERVATION_KEY, subject: 'DE10Y', sourceId: 'bundesbank', kind: 'quote' },
       MARKET_QUOTE_CONTENT,
     ),
     value: MARKET_QUOTE_CONTENT,

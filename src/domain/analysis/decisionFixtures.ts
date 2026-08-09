@@ -102,9 +102,23 @@ export function evidenceSetsFor(revisionId: string): readonly EvidenceSet[] {
               observedAt: '2026-07-28T08:00:00.000Z',
               sourceId: 'treasury',
             },
-            { value: n },
+            /*
+             * The yield projection, complete. It used to be `{ value: n }` --
+             * the QUOTE projection's field, under a `yield` kind, with the
+             * number never converted to a canonical decimal. Nothing verified
+             * the relationship, so nothing noticed.
+             */
+            {
+              yieldPercent: String(n),
+              changeBasisPoints: null,
+              observationDate: '2026-07-28',
+            },
           ),
-          value: { value: n },
+          value: {
+            yieldPercent: String(n),
+            changeBasisPoints: null,
+            observationDate: '2026-07-28',
+          },
         },
       ],
       assembledAt: '2026-07-28T08:00:00.000Z',

@@ -102,9 +102,19 @@ const evidenceSet = (items: number) =>
           observedAt: AT,
           sourceId: 'treasury',
         },
-        { value: index },
+        // A complete yield projection. It was `{ value: index }` -- the quote
+        // projection's field, under a yield kind, with a raw number.
+        {
+          yieldPercent: String(index),
+          changeBasisPoints: null,
+          observationDate: '2026-07-28',
+        },
       ),
-      value: { value: index },
+      value: {
+        yieldPercent: String(index),
+        changeBasisPoints: null,
+        observationDate: '2026-07-28',
+      },
       provenance: {} as never,
     })),
     assembledAt: AT,

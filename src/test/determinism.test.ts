@@ -80,11 +80,7 @@ function probe(index: number): ProbeOutput {
 
   execFileSync(
     process.execPath,
-    [
-      './node_modules/vitest/vitest.mjs',
-      'run',
-      'src/test/determinismProbe.test.ts',
-    ],
+    ['./node_modules/vitest/vitest.mjs', 'run', 'src/test/determinismProbe.test.ts'],
     {
       env: {
         ...process.env,

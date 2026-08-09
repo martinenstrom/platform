@@ -149,22 +149,24 @@ export function buildEvidenceSet(args: {
    * collation is not an identity.
    */
   /*
-   * Every item's REFERENCE is checked against its own natural key before it can
-   * join the set. An unverified item must not contribute to the id, or the set
-   * would attest a membership it never checked.
+   * Every item is verified against what is stored with it before it can join
+   * the set: the id against its natural key, the content hash against the
+   * payload through the one authoritative projection.
    *
-   * The content hash is deliberately NOT rechecked here, and cannot be: it
-   * covers a curated projection of the observation -- for a quote, the value and
-   * the change figures a claim would cite -- while `item.value` is the whole
-   * provider payload. That asymmetry is correct and load-bearing, because
-   * hashing the whole payload would make every refetch look like a revision the
-   * moment `receivedAt` moved. See `docs/identity-architecture.md` section 5.
+   * This has to happen first. An unverified item must not contribute to the set
+   * id, or the set would attest a membership it never checked. Nor is a
+   * partially trusted set ever returned -- one bad item refuses the whole set.
+   *
+   * A caller supplying a mismatching hash is refused rather than silently
+   * corrected: replacing it would let a wrong hash become right by being
+   * stored, which is the opposite of what a content address is for.
    */
   for (const item of args.items) {
-    const mismatch = verifyObservationRef(item.ref)
+    const mismatch = verifyObservationRef(item.ref, item.value)
     if (mismatch !== null) {
       throw new Error(
-        `evidence item "${item.ref.id}" does not match its own natural key (${mismatch})`,
+        `evidence item "${item.ref.id}" of kind "${item.ref.kind}" is not ` +
+          `admissible: ${mismatch}`,
       )
     }
   }

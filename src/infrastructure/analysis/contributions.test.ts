@@ -62,9 +62,18 @@ function item(subject: string, value: string, quality: Quality): EvidenceItem {
         observedAt: '2026-07-28T00:00:00.000Z',
         sourceId: quality === 'fixture' ? 'fixture' : 'ecb',
       },
-      value,
+      /*
+       * A complete yield projection. The payload used to be the bare string
+       * `value`, which is not an object and so has no projection at all --
+       * a `yield` kind whose stored payload could never satisfy it.
+       */
+      { yieldPercent: value, changeBasisPoints: null, observationDate: '2026-07-28' },
     ),
-    value,
+    value: {
+      yieldPercent: value,
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    },
     provenance: buildProvenance({
       asOf: '2026-07-28T00:00:00.000Z',
       nowMs: Date.parse(AT),

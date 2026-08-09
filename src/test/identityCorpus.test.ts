@@ -81,27 +81,31 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     name: 'a nested policy state with a target range',
     caller: 'identity.ts · observationRef',
-    previously: 'PolicyLevel carried PolicyRatePercent doubles, nested one level deep',
+    previously:
+      'PolicyLevel carried PolicyRatePercent doubles; the corpus payload also ' +
+      'omitted the `regime` wrapper the stored payload has, which TD61-3C refuses',
     reason:
       'the encoding changed; nested rates convert through canonicalPolicyLevel at ' +
       'the boundary rather than field by field at each caller',
     governedBy: 'DOMAIN_CONTRACT_VERSION',
     expectedCanonical:
-      'financial-os:observation-content:v1|d4:s6:changens13:effectiveDates10:2026-06-15s23:effectiveDateConfidences5:exacts5:leveld3:s4:kinds12:target-ranges12:lowerPercents4:5.25s12:upperPercents3:5.5',
-    expectedHash: '423d0ea07f86b93c096762ff2bda582c',
+      'financial-os:observation-content:v1|d1:s6:regimed4:s6:changens13:effectiveDates10:2026-06-15s23:effectiveDateConfidences5:exacts5:leveld3:s4:kinds12:target-ranges12:lowerPercents4:5.25s12:upperPercents3:5.5',
+    expectedHash: '533bcfcfc2e7251342ef01b8de8681c3',
     run: observation(POLICY_STATE_CONTENT),
   },
   {
     name: 'an evidence set over two observations',
     caller: 'evidence.ts · buildEvidenceSet',
-    previously: 'items sorted with localeCompare; pairs encoded by canonicalJson',
+    previously:
+      'items sorted with localeCompare; pairs encoded by canonicalJson; and the ' +
+      'second observation carried a quote payload under a yield kind',
     reason:
       'both changed — the sort is now UTF-8 byte order and the pairs are canonical ' +
       'value v1. The id binds membership, not payloads.',
     governedBy: 'DOMAIN_CONTRACT_VERSION',
     expectedCanonical:
-      'financial-os:evidence-set:v1|l2:l2:s32:c7971f28efcb950ed3c825ed07e032bes32:502be687939c787741c42e7d8061bf67l2:s32:d4b7dc2534df61472726910297e33b77s32:3a2e7a3efb3aca5f126e060a262f81ef',
-    expectedHash: '87a52798e104636790e5f896e8f7d317',
+      'financial-os:evidence-set:v1|l2:l2:s32:d4b7dc2534df61472726910297e33b77s32:3a2e7a3efb3aca5f126e060a262f81efl2:s32:d5239e2562d5074fe3dfe2dff286a6bfs32:502be687939c787741c42e7d8061bf67',
+    expectedHash: 'f08a40eb003007ce1c3edd38932326be',
     run: () => {
       const set = buildCorpusEvidenceSet()
       return {

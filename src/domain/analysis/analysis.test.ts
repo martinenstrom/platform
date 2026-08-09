@@ -52,6 +52,7 @@ import {
   type VerificationReview,
   type VerificationVerdict,
 } from './index'
+import type { CanonicalValue } from '~/domain/shared/canonicalValue'
 
 /* ------------------------------------------------------------- test fixtures */
 
@@ -459,23 +460,47 @@ describe('observation identity', () => {
   }
 
   it('is stable across re-retrieval', () => {
-    const first = observationRef(key, { yieldPercent: '4.69' })
-    const second = observationRef(key, { yieldPercent: '4.69' })
+    const first = observationRef(key, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
+    const second = observationRef(key, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
     expect(second.id).toBe(first.id)
     expect(second.contentHash).toBe(first.contentHash)
   })
 
   it('ignores field order when hashing content', () => {
-    const a = observationRef(key, { yieldPercent: '4.69', change: '-2' })
-    const b = observationRef(key, { change: '-2', yieldPercent: '4.69' })
+    const a = observationRef(key, {
+      yieldPercent: '4.69',
+      changeBasisPoints: '-2',
+      observationDate: '2026-07-28',
+    })
+    const b = observationRef(key, {
+      observationDate: '2026-07-28',
+      changeBasisPoints: '-2',
+      yieldPercent: '4.69',
+    })
     // Without canonical ordering, a provider emitting fields differently would
     // register as a revision on every fetch.
     expect(b.contentHash).toBe(a.contentHash)
   })
 
   it('detects a revision: same identity, different content', () => {
-    const original = observationRef(key, { yieldPercent: '4.69' })
-    const revised = observationRef(key, { yieldPercent: '4.71' })
+    const original = observationRef(key, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
+    const revised = observationRef(key, {
+      yieldPercent: '4.71',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
     expect(revised.id).toBe(original.id)
     expect(isRevisionOf(revised, original)).toBe(true)
   })
@@ -483,10 +508,14 @@ describe('observation identity', () => {
   it('treats a different methodology as a different observation', () => {
     // A par yield and a fitted zero rate for the same bond on the same day are
     // two things, not one thing revised.
-    const par = observationRef(key, { yieldPercent: '4.69' })
+    const par = observationRef(key, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
     const fitted = observationRef(
       { ...key, methodology: 'zero-coupon-fitted' },
-      { yieldPercent: '4.69' },
+      { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-28' },
     )
     expect(fitted.id).not.toBe(par.id)
     expect(isRevisionOf(fitted, par)).toBe(false)
@@ -500,6 +529,25 @@ describe('observation identity', () => {
 /* ------------------------------------------------------------------ evidence */
 
 describe('the evidence set', () => {
+  /*
+   * Each reference is kept beside the payload it was built over. They used to
+   * drift -- the refs carried real projections while every item stored `{}` --
+   * which nothing checked until the content hash became verifiable.
+   */
+  const yieldPayload = {
+    yieldPercent: '4.69',
+    changeBasisPoints: null,
+    observationDate: '2026-07-28',
+  }
+  const policyPayload = {
+    regime: {
+      level: '2.25',
+      effectiveDate: '2026-06-15',
+      effectiveDateConfidence: 'exact',
+      change: null,
+    },
+  }
+
   const refA = observationRef(
     {
       subjectKind: 'instrument',
@@ -508,7 +556,7 @@ describe('the evidence set', () => {
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
     },
-    { yieldPercent: '4.69' },
+    yieldPayload,
   )
   const refB = observationRef(
     {
@@ -518,23 +566,32 @@ describe('the evidence set', () => {
       observedAt: '2026-07-26T00:00:00.000Z',
       sourceId: 'ecb',
     },
-    { level: '2.25' },
+    policyPayload.regime,
   )
   const provenance = { source: { providerId: 'x' } } as never
 
-  const setOf = (refs: (typeof refA)[]) =>
+  /*
+   * Takes each reference WITH the payload it was built over. Deriving the
+   * payload from the reference is what broke here: a helper that guessed by
+   * kind handed every yield ref one payload, so refs built over other values
+   * failed verification. A reference and its payload are one fact.
+   */
+  const setOf = (items: { ref: typeof refA; value: CanonicalValue }[]) =>
     buildEvidenceSet({
-      items: refs.map((ref) => ({ ref, value: {}, provenance })),
+      items: items.map(({ ref, value }) => ({ ref, value, provenance })),
       assembledAt: '2026-07-27T08:00:00.000Z',
       correlationId: 'corr-1',
     })
 
+  const A = { ref: refA, value: yieldPayload }
+  const B = { ref: refB, value: policyPayload }
+
   it('hashes identically regardless of assembly order', () => {
-    expect(setOf([refA, refB]).id).toBe(setOf([refB, refA]).id)
+    expect(setOf([A, B]).id).toBe(setOf([B, A]).id)
   })
 
   it('states the spread when observations are not co-temporal', () => {
-    const set = setOf([refA, refB])
+    const set = setOf([A, B])
     expect(set.coTemporality.kind).toBe('mixed')
     if (set.coTemporality.kind !== 'mixed') throw new Error('unreachable')
     // Two days apart — an agent comparing them must be told.
@@ -542,7 +599,7 @@ describe('the evidence set', () => {
   })
 
   it('reports co-temporality when everything shares a moment', () => {
-    expect(setOf([refA]).coTemporality.kind).toBe('co-temporal')
+    expect(setOf([A]).coTemporality.kind).toBe('co-temporal')
   })
 
   it('retains disagreement rather than resolving it', () => {
@@ -552,15 +609,22 @@ describe('the evidence set', () => {
       kind: 'yield' as const,
       observedAt: '2026-07-24T00:00:00.000Z',
     }
-    const bundesbank = observationRef(
-      { ...sameThingKey, sourceId: 'bundesbank' },
-      { yieldPercent: '3.24' },
-    )
-    const vendor = observationRef(
-      { ...sameThingKey, sourceId: 'riksbank' },
-      { yieldPercent: '3.31' },
-    )
-    const set = setOf([bundesbank, vendor])
+    const bundes = {
+      yieldPercent: '3.24',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const vendorValue = {
+      yieldPercent: '3.31',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const bundesbank = observationRef({ ...sameThingKey, sourceId: 'bundesbank' }, bundes)
+    const vendor = observationRef({ ...sameThingKey, sourceId: 'riksbank' }, vendorValue)
+    const set = setOf([
+      { ref: bundesbank, value: bundes },
+      { ref: vendor, value: vendorValue },
+    ])
 
     // Never averaged into 3.275. Both survive, and the conflict is named.
     expect(set.disagreements).toHaveLength(1)
@@ -579,9 +643,14 @@ describe('the evidence set', () => {
       kind: 'yield' as const,
       observedAt: '2026-07-24T00:00:00.000Z',
     }
+    const agreed = {
+      yieldPercent: '3.24',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
     const set = setOf([
-      observationRef({ ...shared, sourceId: 'a' }, { yieldPercent: '3.24' }),
-      observationRef({ ...shared, sourceId: 'b' }, { yieldPercent: '3.24' }),
+      { ref: observationRef({ ...shared, sourceId: 'a' }, agreed), value: agreed },
+      { ref: observationRef({ ...shared, sourceId: 'b' }, agreed), value: agreed },
     ])
     expect(set.disagreements).toHaveLength(0)
   })
@@ -596,10 +665,21 @@ describe('citations resolve against the set they were made in', () => {
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
     },
-    { yieldPercent: '4.69' },
+    { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-28' },
   )
   const set = buildEvidenceSet({
-    items: [{ ref, value: {}, provenance: {} as never }],
+    items: [
+      {
+        ref,
+        // The payload the ref was built over, not an empty object.
+        value: {
+          yieldPercent: '4.69',
+          changeBasisPoints: null,
+          observationDate: '2026-07-28',
+        },
+        provenance: {} as never,
+      },
+    ],
     assembledAt: '2026-07-27T08:00:00.000Z',
     correlationId: 'c',
   })
@@ -617,7 +697,7 @@ describe('citations resolve against the set they were made in', () => {
         observedAt: '2026-07-24T00:00:00.000Z',
         sourceId: 'treasury',
       },
-      { yieldPercent: '4.33' },
+      { yieldPercent: '4.33', changeBasisPoints: null, observationDate: '2026-07-28' },
     )
     expect(() => citeFrom(set, outsider)).toThrow(/not in evidence set/)
   })

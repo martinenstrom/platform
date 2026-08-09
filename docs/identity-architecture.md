@@ -199,66 +199,84 @@ boundary stops being a boundary.
 Each link, and exactly which property it verifies.
 
 ```
-CanonicalValue
-  -> observation contentHash        (a curated projection, not the whole value)
-  -> EvidenceItem
+stored CanonicalValue payload
+  -> kind-specific observation content projection
+  -> recomputed observation contentHash
+  -> verified ObservationRef
+  -> verified EvidenceItem
   -> sorted [observationId, contentHash] membership
-  -> EvidenceSet id
-  -> EligibilityBasis reference to the EvidenceSet id
-  -> EligibilityBasis manifest
+  -> recomputed EvidenceSet id
 ```
 
-| Link | Verified on hydration | By what |
+| Link | Verified | By what |
 | --- | --- | --- |
-| stored `value` is a canonical value | **yes** | `asCanonicalValue` in `toEvidenceSet` |
-| `observationId` matches its natural key | **yes** | `verifyObservationRef` in `buildEvidenceSet` |
-| `contentHash` matches the stored `value` | **no** | see §5.1 |
-| membership matches the set id | **yes** | `toEvidenceSet` rebuilds and compares `rebuilt.id !== row.id` |
-| the basis references this set id | **yes**, as a reference | the manifest binds the id |
+| the stored payload is a canonical value | **yes** | `asCanonicalValue` on hydration |
+| the payload satisfies its declared kind | **yes** | `observationContent` |
+| `observationId` matches its natural key | **yes** | `verifyObservationRef` |
+| `contentHash` matches the projection of the stored payload | **yes** | `verifyObservationRef` |
+| membership matches the set id | **yes** | `toEvidenceSet` rebuilds and compares |
+| the basis references this set id | as a reference | the manifest binds the id |
 | the manifest describes the basis | **yes** | `verifyBasisManifest` |
 
-**What is therefore detected on hydration:** an item added, removed or
-substituted; an observation id substituted; a stored `content_hash` edited; a
-stored `value` that is not a canonical value.
+**Detected:** an item added, removed or substituted; an observation id
+substituted; a stored `content_hash` edited; **a stored value edited while its
+hash was left alone**; a payload whose shape belongs to another kind; a missing
+projected field; a payload that is not a canonical value.
 
-**What is not:** a stored `value` edited into another *valid* canonical value
-while its `content_hash` is left alone.
+### 5.1 The projection is narrower than the payload, and reconstructible
 
-### 5.1 Why the content hash cannot be rechecked from what is stored
+Both halves matter and were once confused for each other.
 
-Not an oversight, and not closable by trying harder. `contentHash` covers a
-**curated projection** of the observation, while `EvidenceItem.value` holds the
-**whole provider payload**. For a market quote the projection is the value and
-the two change figures — the numbers a claim would actually cite — and it
-deliberately excludes `receivedAt` and `ageMs`.
+`contentHash` covers a **curated projection** — for a market quote, the value and
+the two change figures a claim would cite. The stored payload is **wider**,
+carrying `receivedAt`, `ageMs` and other transport and freshness fields. That is
+deliberate: `isRevisionOf` compares content hashes, and hashing the whole payload
+would report a revision every time the same data was fetched again.
 
-That asymmetry is load-bearing. Hashing the whole payload instead would make
-every refetch look like a revision the moment `receivedAt` moved, which is the
-defect the projection exists to prevent, and `isRevisionOf` is built on it.
+Narrower does **not** mean unreachable. The projection is defined over the
+**stored canonical payload** rather than over the typed domain object, so
+selecting its fields from a hydrated row reproduces the hashed value exactly.
+One implementation, `observationContent`, serves both the builder and the
+verifier.
 
-So recomputing the hash at hydration would require the **projection itself** to
-be stored beside the payload. That is a schema change, and schema changes are
-out of scope here. Recorded as **TD-64**.
+> **Correction.** An earlier version of this section claimed the projection could
+> not be recovered from storage and that verifying it needed a schema change.
+> That was wrong, and TD-64 was opened on the strength of it. The claim was
+> tested and disproved for all three production evidence builders; TD-64 is
+> retracted. The error was reasoning from type signatures instead of measuring.
 
-### 5.2 The manifest does not reach through an unloaded reference
+### 5.2 Storable kinds, and what fails closed
+
+| Kind | Status |
+| --- | --- |
+| `quote`, `yield`, `policy-state` | verifiable — projection defined |
+| `yield-curve` | **refused as evidence.** `yieldCurveRef` exists and has zero callers; a builder existing is not a decision to store what it builds |
+| `fx-rate`, `series`, `news`, `sentiment` | **refused.** Declared in the union, minted by nothing |
+
+The unverifiable allow-list is **empty**. An allow-list is for required current
+exceptions, and no code requires one — so admitting these kinds would grant an
+exemption nothing asked for. A kind added to `ObservationKind` later is not
+admissible until someone adds a projection or lists it deliberately: **declaring
+a kind is not deciding to store it.**
+
+Because the allow-list is empty, no unverifiable reference can enter an
+`EvidenceSet`, and the question of how a partly verified set represents its trust
+does not arise. It arises the moment an entry is added, and that is when the
+model needs revisiting.
+
+### 5.3 The manifest does not reach through an unloaded reference
 
 The `EligibilityBasis` manifest binds an evidence-set **id**. It does not hydrate
 the sets a basis references, so verifying a submission does **not** transitively
-verify the evidence behind it.
+verify the evidence behind it. The manifest verifies the reference when the
+submission is read; the set verifies itself when that set is read. **No claim of
+transitive payload verification across an unloaded reference.**
 
-The two verifications happen at different times: the manifest verifies the
-reference when the submission is read, and the set verifies its own membership
-when that set is read. **No claim of transitive payload verification across an
-unloaded reference** may be made anywhere.
+### 5.4 The scope statement
 
-### 5.3 The scope statement
-
-- evidence-set **membership** is self-validating on hydration;
-- observation **ids** are self-validating on hydration;
-- a stored value that is not canonical is refused on hydration;
-- item **payload-to-contentHash** consistency is **not** yet self-validating —
-  TD-64;
-- an informed privileged actor who alters a value, its hash and the set id
-  consistently remains outside all of this, and belongs to TD-60.
+Evidence-set membership, observation ids and item payload-to-hash consistency are
+all self-validating on hydration. An uninformed edit to a stored payload is
+detected. An informed privileged actor who alters a value, its hash and the set
+id consistently remains outside this protection and belongs to TD-60.
 
 Never "tamper-proof."

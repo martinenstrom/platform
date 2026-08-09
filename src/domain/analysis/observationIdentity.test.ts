@@ -31,7 +31,10 @@ const unchecked = (value: unknown) => observationRef(KEY, value as CanonicalValu
 
 describe('values the boundary accepts', () => {
   const accepted: Array<[string, CanonicalValue]> = [
-    ['a decimal string, as the market boundary supplies', { yieldPercent: '4.69' }],
+    [
+      'a decimal string, as the market boundary supplies',
+      { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-28' },
+    ],
     ['a safe integer', { tenorMonths: 120 }],
     ['a boolean', { provisional: true }],
     ['an explicit null', { changeBasisPoints: null }],
@@ -55,8 +58,18 @@ describe('values the boundary accepts', () => {
   }
 
   it('gives one value one hash', () => {
-    expect(observationRef(KEY, { yieldPercent: '4.69' }).contentHash).toBe(
-      observationRef(KEY, { yieldPercent: '4.69' }).contentHash,
+    expect(
+      observationRef(KEY, {
+        yieldPercent: '4.69',
+        changeBasisPoints: null,
+        observationDate: '2026-07-28',
+      }).contentHash,
+    ).toBe(
+      observationRef(KEY, {
+        yieldPercent: '4.69',
+        changeBasisPoints: null,
+        observationDate: '2026-07-28',
+      }).contentHash,
     )
   })
 
@@ -129,7 +142,11 @@ describe('the revision defect this closes', () => {
     expect(() => unchecked({ yieldPercent: undefined })).toThrow(NotCanonicalError)
 
     const absent = observationRef(KEY, { yieldPercent: null })
-    const present = observationRef(KEY, { yieldPercent: '4.69' })
+    const present = observationRef(KEY, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
     expect(absent.contentHash).not.toBe(present.contentHash)
     expect(isRevisionOf(present, absent)).toBe(true)
   })
@@ -137,8 +154,16 @@ describe('the revision defect this closes', () => {
   it('still treats the same observation as the same observation', () => {
     // The identity comes from the natural key and is untouched by any of this:
     // `serializeKey` was already a fixed-field-order serializer.
-    const a = observationRef(KEY, { yieldPercent: '4.69' })
-    const b = observationRef(KEY, { yieldPercent: '4.71' })
+    const a = observationRef(KEY, {
+      yieldPercent: '4.69',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
+    const b = observationRef(KEY, {
+      yieldPercent: '4.71',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    })
     expect(sameObservation(a, b)).toBe(true)
     expect(isRevisionOf(b, a)).toBe(true)
   })

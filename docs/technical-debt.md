@@ -1442,53 +1442,39 @@ turns the locale dimension from asserted into measured.
 
 ---
 
-## TD-64 · An evidence payload is not checked against its own content hash
+## TD-64 · RETRACTED — based on a false premise
 
-**Incurred:** TD61-3B, on discovery. **Severity: medium.** **Blocks:** claiming
-that evidence payload alteration is detectable on hydration.
+**Opened:** TD61-3B. **Retracted:** TD61-3C. **Not completed — withdrawn.**
 
-TD61-3B set out to close this and found it needs a schema change, which is out
-of that stage's scope.
+**Original premise.** That an `EvidenceItem`'s content hash could not be
+recomputed at hydration, because it covers a curated projection of the
+observation while the stored `value` holds the whole provider payload — so the
+projection was said to be unreachable from storage, and closing the gap was said
+to need a new column and a migration.
 
-**What hydration does verify:** the stored value is a canonical value; the
-observation id matches its natural key; the membership matches the rebuilt
-evidence-set id. So an item added, removed or substituted, an id substituted,
-and an edited `content_hash` are all detected.
+**Mechanical finding.** The premise is false. The stored payload is
+`canonicalPayload(x)`, whose numbers are converted by exactly the rule the
+projection uses, so **selecting the projected fields out of the stored payload
+reproduces the hashed value byte for byte**. Tested for all three production
+evidence builders — `quoteEvidence`, `yieldEvidence`, `policyStateEvidence` —
+each reconstructing its stored content hash exactly. That test is kept as
+`src/domain/analysis/observationContent.test.ts`.
 
-**What it cannot verify:** a stored `value` edited into another *valid*
-canonical value while its `content_hash` is left alone.
+**Conclusion.** The debt item rested on reasoning from type signatures rather
+than on a measurement. No schema change was ever required.
 
-### Why not, precisely
+**Replacement defect.** The real gap was that **verification was absent**, and
+that fixtures paired declared observation kinds with payloads belonging to other
+kinds — `kind: 'yield'` beside `{ value }`, which is the *quote* projection's
+field. Nothing verified the relationship, so nothing noticed. 71 fixtures were
+inconsistent.
 
-`contentHash` does not cover `EvidenceItem.value`. It covers a **curated
-projection** — for a market quote, the value and the two change figures a claim
-would cite — while `value` holds the whole provider payload, including
-`receivedAt` and `ageMs`.
+**Replacement work.** TD61-3C: one authoritative projection per storable kind,
+`ObservationRef` verification of both the id and the content hash from persisted
+values, fixture migration, and the corruption matrix.
 
-That is deliberate and must not be "fixed" by hashing the whole payload:
-`isRevisionOf` compares content hashes to decide whether an observation was
-revised, and a hash over the full payload would report a revision on every
-refetch as soon as a timestamp moved.
-
-So the projection is known only to the boundary builder in
-`application/analysis/evidenceRefs.ts`, and is not reconstructible from a
-hydrated row.
-
-### What would close it
-
-Store the hashed projection beside the payload — a column on
-`analysis.evidence_items` holding the exact canonical value the content hash was
-taken over — and have hydration recompute and compare it. The domain mechanism
-already exists; only the storage does not.
-
-**Requires a migration**, which is why it is recorded rather than done.
-
-### What may not be claimed until then
-
-No document may state that evidence payload alteration is detected on hydration,
-or that the `EligibilityBasis` manifest detects evidence membership alteration
-transitively through a stored id. **Kept separate from TD-60**, which concerns an
-informed actor rewriting data *and* witnesses; this is in-band self-validation.
+> The mistaken analysis is left in the TD61-3B commit message, which is history.
+> The correction lives here and in `docs/identity-architecture.md`.
 
 
 ---
