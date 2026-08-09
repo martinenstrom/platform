@@ -81,7 +81,8 @@ const SUBMISSION_COLUMNS = `
   s.devils_advocate_review_id, s.devils_advocate_sequence,
   s.risk_review_id, s.risk_sequence, s.risk_status,
   s.risk_requirement, s.risk_rule_id, s.risk_rule_version,
-  s.storage_provenance_id, ${ts('s.evaluated_at')}
+  s.storage_provenance_id, ${ts('s.evaluated_at')},
+  s.manifest_algorithm, s.manifest_canon_version, s.manifest_digest
 `
 
 /**
@@ -195,9 +196,10 @@ export const SUBMISSION_WRITE_SQL = catalog({
        devils_advocate_review_id, devils_advocate_sequence,
        risk_review_id, risk_sequence, risk_status,
        risk_requirement, risk_rule_id, risk_rule_version,
-       storage_provenance_id, evaluated_at)
+       storage_provenance_id, evaluated_at,
+       manifest_algorithm, manifest_canon_version, manifest_digest)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-            $19,$20,$21,$22,$23,$24,$25)`,
+            $19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
 
   /* One statement per child TABLE, never one per row. */
   insertRequiredWork: `
@@ -778,6 +780,9 @@ export function createSubmissionRepository(
             root.risk_rule_version,
             root.storage_provenance_id,
             root.evaluated_at,
+            root.manifest_algorithm,
+            root.manifest_canon_version,
+            root.manifest_digest,
           ],
         )
 

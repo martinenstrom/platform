@@ -307,6 +307,16 @@ export interface CioSubmissionRow {
   risk_rule_id: string | null
   risk_rule_version: string | null
   storage_provenance_id: string
+  /**
+   * The eligibility-basis witness, as three columns rather than a document.
+   *
+   * A field inside a JSON blob is a field nothing can constrain; as columns the
+   * algorithm, the canonicalisation version and the digest shape are all held
+   * by CHECKs. Migration 0022.
+   */
+  manifest_algorithm: string
+  manifest_canon_version: string
+  manifest_digest: string
   evaluated_at: string
 }
 

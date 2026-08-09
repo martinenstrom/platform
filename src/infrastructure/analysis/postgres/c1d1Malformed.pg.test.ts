@@ -206,7 +206,15 @@ describe('submissions — H: stored by privilege, refused on hydration', () => {
     const message = String(error?.message)
     expect(message).not.toMatch(/SELECT|UPDATE|INSERT/i)
     expect(message).not.toMatch(/Key \(/)
-    expect(message).toContain('submission-review-wrong-revision')
+    /*
+     * A bounded reason code, not a specific one. Since TD58-2 the manifest
+     * check runs during mapping and catches this corruption first, reporting
+     * `manifest-digest-mismatch` rather than the structural validator's
+     * `submission-review-wrong-revision`. Both are bounded codes and neither
+     * leaks SQL, which is what this test is actually for -- pinning which one
+     * wins would be asserting an ordering nobody chose.
+     */
+    expect(message).toMatch(/manifest-digest-mismatch|submission-review-wrong-revision/)
   })
 })
 
@@ -280,40 +288,106 @@ describe('submissions — P: the runtime role cannot reach it', () => {
   })
 })
 
-describe('submissions — N: not detectable, and no test pretends otherwise', () => {
-  it('cannot tell a deleted required-work row from a smaller basis (TD-58)', async () => {
-    /*
-     * Deliberately NOT an assertion that corruption is refused, because it is
-     * not. `cio_submissions` carries no expected count, manifest or hash; the
-     * child rows are the entire representation; and zero required-work rows is
-     * a legitimate basis. A deleted row therefore produces another internally
-     * valid submission.
-     *
-     * This test records the gap so it cannot be forgotten, and it FAILS if the
-     * representation ever gains the witness that would close TD-58 — at which
-     * point the case moves to category H and this test is replaced by a real
-     * refusal.
-     */
+describe('submissions — H: a deleted basis row is refused on hydration (TD-58)', () => {
+  /*
+   * This case used to live in category N — not detectable — and said so. The
+   * comment there stated the condition for moving: "it FAILS if the
+   * representation ever gains the witness that would close TD-58, at which
+   * point the case moves to category H and this test is replaced by a real
+   * refusal."
+   *
+   * Migration 0022 gave it the witness. This is that replacement, and the
+   * category change is the proof TD-58 actually closed rather than being
+   * declared closed.
+   */
+
+  it('refuses a submission whose required-work row was deleted', async () => {
     await repositories.submissions.save(cioSubmission())
+
+    /* Privileged deletion: exactly what an accidental DELETE or a partial
+     * restore does, and what the runtime role itself cannot do. */
     await db.owner.query(
       `DELETE FROM analysis.submission_required_work
         WHERE submission_id = 'sub-1' AND playbook_entry_key = 'macro-scan'`,
     )
 
-    const smaller = await repositories.submissions.get('sub-1')
-    expect(smaller).not.toBeNull()
-    expect(smaller!.basis.requiredWork).toHaveLength(1)
-
-    const columns = await db.owner.query(
-      `SELECT column_name FROM information_schema.columns
-       WHERE table_schema = 'analysis' AND table_name = 'cio_submissions'
-         AND (column_name LIKE '%manifest%' OR column_name LIKE '%hash%'
-              OR column_name LIKE '%expected%')`,
+    const remaining = await db.owner.query(
+      `SELECT count(*)::int AS n FROM analysis.submission_required_work
+        WHERE submission_id = 'sub-1'`,
     )
-    expect(
-      columns.rows,
-      'a basis witness now exists — TD-58 can close and this case becomes H',
-    ).toEqual([])
+    expect(remaining.rows[0].n, 'the malformed state was not created').toBe(1)
+
+    /*
+     * The failure this refuses ran in the dangerous direction: a smaller basis
+     * hydrates as an internally valid submission that looks MORE eligible than
+     * it was, because less work appears to have been required.
+     */
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
+      MalformedRowError,
+    )
+  })
+
+  it('refuses a submission that gained a required-work row', async () => {
+    // The opposite corruption, and the reason a count alone would not do: a
+    // deletion and an unrelated insertion preserve it.
+    await repositories.submissions.save(cioSubmission())
+    // Reuses an existing run: run_id carries a foreign key, and the point here
+    // is a smuggled BASIS row, not a smuggled run.
+    await db.owner.query(
+      `INSERT INTO analysis.submission_required_work (submission_id, playbook_entry_key, run_id)
+       SELECT 'sub-1', 'smuggled-entry', run_id
+         FROM analysis.submission_required_work
+        WHERE submission_id = 'sub-1' LIMIT 1`,
+    )
+
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
+      MalformedRowError,
+    )
+  })
+
+  it('refuses a submission whose risk rule version was edited', async () => {
+    // A root-row basis field with no foreign key -- the digest covers it, so
+    // editing it is caught even though nothing else about the row objects.
+    await repositories.submissions.save(cioSubmission())
+    await db.owner.query(
+      `UPDATE analysis.cio_submissions SET risk_rule_version = '99'
+        WHERE id = 'sub-1'`,
+    )
+
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
+      MalformedRowError,
+    )
+  })
+
+  it('accepts the submission it actually stored', async () => {
+    /*
+     * The control. Without it the three refusals above would pass just as
+     * happily against a reader that refused everything.
+     */
+    await repositories.submissions.save(cioSubmission())
+    const stored = await repositories.submissions.get('sub-1')
+    expect(stored).not.toBeNull()
+    expect(stored!.basis.requiredWork).toHaveLength(2)
+  })
+
+  it('leaks no basis content in the refusal', async () => {
+    await repositories.submissions.save(cioSubmission())
+    await db.owner.query(
+      `DELETE FROM analysis.submission_required_work WHERE submission_id = 'sub-1'`,
+    )
+
+    const error = await repositories.submissions
+      .get('sub-1')
+      .then(
+        () => null,
+        (thrown: unknown) => thrown,
+      )
+
+    const message = (error as Error).message
+    expect(message).toContain('manifest')
+    // A refusal about evidence must not become a way to read evidence.
+    expect(message).not.toContain('macro-scan')
+    expect(message).not.toContain('SELECT')
   })
 })
 

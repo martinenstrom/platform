@@ -110,9 +110,12 @@ async function submit(
        (id, case_id, tenant_id, thesis_id, revision_id, submitted_by_department_id,
         submitted_by_employee_id, submitted_at, case_version, state,
         eligibility_policy_version, risk_requirement, storage_provenance_id,
-        evaluated_at)
+        evaluated_at, manifest_algorithm, manifest_canon_version, manifest_digest)
      VALUES ($1, $2, 'system', $3, $4, 'research-office', 'research-director',
-             now(), 1, 'pending', $5, 'not-required', 'c1d1-prov', now())`,
+             now(), 1, 'pending', $5, 'not-required', 'c1d1-prov', now(),
+             -- Synthetic: this seed never hydrates through the mapper, so the
+             -- witness is never verified. It satisfies the real CHECKs.
+             'sha256', '1', '0000000000000000000000000000000000000000000000000000000000000000')`,
     [submissionId, caseId, thesisId, revisionId, policy],
   )
   return submissionId

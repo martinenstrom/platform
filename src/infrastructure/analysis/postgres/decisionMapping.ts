@@ -29,7 +29,8 @@
  */
 
 import {
-  buildBasisManifest,
+  verifyBasisManifest,
+  type EligibilityBasisManifest,
   relationsOf,
   type ActorSnapshot,
   type BasisContent,
@@ -46,6 +47,7 @@ import {
 import { MalformedRowError } from '~/application/analysis/repositories'
 import type {
   CaseDecisionRow,
+  CioSubmissionRow,
   DecisionDissentEvidenceRow,
   DecisionDissentRow,
   DecisionRowSet,
@@ -165,6 +167,14 @@ export function submissionToRows(submission: CioSubmission): SubmissionRowSet {
       risk_rule_version: basis.riskRuleVersion,
       storage_provenance_id: basis.storageProvenanceId,
       evaluated_at: basis.evaluatedAt,
+      /*
+       * The witness travels with the root row, written once and never updated
+       * -- the role holds SELECT and INSERT on this table and no UPDATE, so the
+       * runtime cannot rewrite a digest even if the code tried.
+       */
+      manifest_algorithm: basis.manifest.algorithm,
+      manifest_canon_version: String(basis.manifest.canonicalizationVersion),
+      manifest_digest: basis.manifest.digest,
     },
     requiredWork: basis.requiredWork.map((work) => ({
       submission_id: submission.id,
@@ -327,18 +337,56 @@ export function submissionFromRows(
     state: row.state,
     basis: {
       ...content,
-      /*
-       * Computed from the hydrated rows, not read from the database. TD58-2
-       * adds the stored columns and turns this into a COMPARISON; until then
-       * it always agrees with itself and detects nothing, which is stated
-       * rather than left to look like verification.
-       */
-      manifest: buildBasisManifest(
-        { submissionId: row.id, caseId: row.case_id },
-        content,
-      ),
+      manifest: verifiedManifest(row, content),
     },
   }
+}
+
+/**
+ * The stored witness, checked against the basis that came back with it.
+ *
+ * This is the read half of TD-58 and the reason the column exists. Hydration
+ * used to **recompute** the manifest and return it, which agreed with itself by
+ * construction and detected nothing -- a deleted child row produced a smaller
+ * basis, a matching digest, and a submission that looked more eligible than it
+ * was.
+ *
+ * Now the digest is read, the canonical input is reconstructed from the
+ * hydrated basis, and the two are compared. A mismatch is a **refusal**: the row
+ * is left exactly as found and nothing is normalised into agreement.
+ *
+ * An algorithm or canonicalisation version this build does not implement is
+ * also a refusal, never a best-effort recomputation under a different shape. A
+ * row written by a newer build is not corrupt; this reader is old, and saying
+ * so is the difference between a useful error and a misleading one.
+ */
+function verifiedManifest(
+  row: CioSubmissionRow,
+  content: BasisContent,
+): EligibilityBasisManifest {
+  const stored = {
+    algorithm: row.manifest_algorithm,
+    canonicalizationVersion: Number(row.manifest_canon_version),
+    digest: row.manifest_digest,
+  } as EligibilityBasisManifest
+
+  const mismatch = verifyBasisManifest(
+    { submissionId: row.id, caseId: row.case_id },
+    content,
+    stored,
+  )
+
+  if (mismatch !== null) {
+    throw new MalformedRowError(
+      'cio submission',
+      `stored eligibility-basis manifest does not describe the basis that was ` +
+        `hydrated with it (${mismatch}) -- the basis may have gained or lost a ` +
+        `child row since it was written`,
+      'submissions',
+    )
+  }
+
+  return stored
 }
 
 /* ---------------------------------------------------------------- returns */

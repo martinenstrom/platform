@@ -183,10 +183,15 @@ describe('the query the index was added for', () => {
         (id, case_id, tenant_id, thesis_id, revision_id,
          submitted_by_department_id, submitted_by_employee_id, submitted_at,
          case_version, state, eligibility_policy_version, risk_requirement,
-         storage_provenance_id, evaluated_at)
+         storage_provenance_id, evaluated_at,
+         manifest_algorithm, manifest_canon_version, manifest_digest)
       SELECT 'plan-sub-' || n, 'plan-case-' || n, 'system', 'plan-thesis-' || n,
              'plan-rev-' || n, 'global-macro', 'research-director', now(), 1,
-             'decided', '1', 'not-required', 'plan-prov', now()
+             'decided', '1', 'not-required', 'plan-prov', now(),
+             -- A synthetic witness. Nothing here hydrates through the mapper,
+             -- so it is never verified; it exists so the seed satisfies the
+             -- real CHECKs rather than a relaxed schema.
+             'sha256', '1', '0000000000000000000000000000000000000000000000000000000000000000'
       FROM generate_series(0, 999) AS n`)
 
     /*
