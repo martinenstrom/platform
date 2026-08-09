@@ -23,7 +23,11 @@
 -- defect class this codebase has already found twice. Recorded honestly rather
 -- than approximated.
 
-BEGIN;
+-- The runner wraps each migration in its own transaction (`migration.transactional`),
+-- so this file must not open one. An explicit BEGIN here nests inside that and
+-- PostgreSQL warns "there is already a transaction in progress" -- the COMMIT
+-- then closes the RUNNER's transaction early, leaving the rest of the migration
+-- outside it. No other migration in this tree opens one either.
 
 -- ---------------------------------------------------------------- the guard
 --
@@ -84,5 +88,3 @@ ALTER TABLE analysis.cio_submissions
 -- them here keeps the intent visible beside the columns they cover.
 
 GRANT SELECT, INSERT ON analysis.cio_submissions TO finos_app;
-
-COMMIT;

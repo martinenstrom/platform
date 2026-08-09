@@ -46,6 +46,7 @@ import {
   selectedDecision,
   verificationIdFor,
 } from '~/domain/analysis/decisionFixtures'
+import { buildBasisManifest, verifyBasisManifest } from '~/domain/analysis'
 
 /**
  * Every shared case this contract defines, recorded as it defines them.
@@ -78,6 +79,8 @@ function sharedCase(name: string, body: () => Promise<void> | void): void {
  */
 export const SHARED_CONTRACT_CASES: readonly string[] = Object.freeze([
   'round-trips a fully populated submission',
+  'returns a submission whose witness still describes its basis',
+  'refuses a submission whose witness describes another basis',
   'accepts a submission with no blockers',
   'refuses a submission carrying a blocker, before storing anything',
   'never silently drops blockers instead of refusing',
@@ -266,6 +269,59 @@ function buildContract(name: string, options: DecisionContractOptions): void {
         expect(read?.basis.eligibilityPolicyVersion).toBe('1')
         expect(read?.state).toBe('pending')
         expect(saved.id).toBe('sub-1')
+      })
+
+      sharedCase('returns a submission whose witness still describes its basis', async () => {
+        /*
+         * Parity for TD-58, and the two adapters reach it differently. The
+         * in-memory store returns the object it was given; PostgreSQL rebuilds
+         * the basis from rows and verifies the stored digest against it. The
+         * contract asserts the OUTCOME both must produce -- a manifest that
+         * describes what came back -- rather than the mechanism, which is the
+         * only way one body of tests can hold both.
+         */
+        await repositories.submissions.save(cioSubmission())
+        const read = await repositories.submissions.get('sub-1')
+
+        expect(read).not.toBeNull()
+        expect(read!.basis.manifest.algorithm).toBe('sha256')
+        expect(read!.basis.manifest.canonicalizationVersion).toBe(1)
+        expect(read!.basis.manifest.digest).toMatch(/^[0-9a-f]{64}$/)
+
+        const { manifest, ...content } = read!.basis
+        expect(
+          verifyBasisManifest(
+            { submissionId: read!.id, caseId: read!.caseId },
+            content,
+            manifest,
+          ),
+          'the stored witness does not describe the basis it came back with',
+        ).toBeNull()
+      })
+
+      sharedCase('refuses a submission whose witness describes another basis', async () => {
+        /*
+         * The write-path half. A caller presenting an attestation that does not
+         * attest to what it is attached to is not a smaller failure than a
+         * corrupt row -- and it is refused before anything is stored, by the
+         * same domain validator in both adapters.
+         */
+        const submission = cioSubmission()
+        const foreign = {
+          ...submission,
+          basis: {
+            ...submission.basis,
+            // A real witness, for a different basis.
+            manifest: buildBasisManifest(
+              { submissionId: submission.id, caseId: submission.caseId },
+              { ...submission.basis, requiredWork: [] },
+            ),
+          },
+        }
+
+        await expect(repositories.submissions.save(foreign)).rejects.toThrow(
+          InvariantViolationError,
+        )
       })
 
       sharedCase('accepts a submission with no blockers', async () => {

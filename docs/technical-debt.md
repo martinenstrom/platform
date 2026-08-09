@@ -1197,69 +1197,67 @@ from many processes, measure whether five attempts is still generous.
 
 ---
 
-## TD-58 · A CIO submission is not self-validating against row deletion
+## TD-58 · RESOLVED — a CIO submission validates its own basis
 
-**Incurred:** C1D-1B B2C-2B, on discovery. **Severity: HIGH.** **Blocks:**
-describing the eligibility basis as tamper-evident.
+**Incurred:** C1D-1B B2C-2B, on discovery. **Resolved:** TD58-1 / TD58-2 /
+TD58-3. **Was:** HIGH.
 
-Deleting a `submission_required_work`, `submission_disagreements`,
-`submission_evidence` or `submission_open_challenges` row produces **another
-apparently valid submission**. Hydration cannot tell the difference, and the
-repository must not try.
+**The defect.** Deleting a `submission_required_work`, `submission_disagreements`,
+`submission_evidence` or `submission_open_challenges` row produced **another
+apparently valid submission**. Hydration could not tell the difference, and the
+failure ran in the dangerous direction: fewer required-work rows means less work
+appears to have been required, so the submission looks *more* eligible than it
+was.
 
-**Answered mechanically, not by judgement:**
+**The resolution.** An eligibility-basis manifest — a SHA-256 digest over a
+canonical rendering of the exact basis — written once with the submission
+(migration 0022, three columns with CHECKs) and **recomputed on every read**. A
+deleted child, an added one, a substituted identity or an edited root field all
+change the rendering, and the digests disagree.
 
-| Question | Answer |
+| Detected | |
 | --- | --- |
-| Is there a declared expected set or count on the submission? | No. `cio_submissions` has no count, manifest or hash column. |
-| Can the mapper know which row should have existed? | No. The child rows are the entire representation. |
-| Is required-work completeness represented independently? | No. |
-| Can the absence be distinguished from a valid empty set? | No. Zero required-work rows is a legitimate basis. |
+| a required-work row deleted | yes |
+| a row added | yes |
+| a stored basis field edited | yes |
+| a witness that does not describe its basis, at write | yes — refused before storage |
 
-The only source of "which entries should be required" is the playbook's
-requirement levels, and deriving completeness from those is
-`requirementStatusFor` — a domain computation. A repository doing it would be
-recalculating a gate result, which this layer has consistently refused to do.
+**The proof it closed is a test that changed category.** The case recorded here
+lived under *"N: not detectable, and no test pretends otherwise"*, and its
+comment stated the exit condition: it FAILS if the representation ever gains the
+witness that would close TD-58, at which point it moves to category H and is
+replaced by a real refusal. It failed. It is now four refusals and a control
+under category H in `c1d1Malformed.pg.test.ts`.
 
-**No test exists for this**, deliberately. One that passed would be asserting
-something the stored state cannot express, which is worse than an explicit gap.
+**Query budgets unchanged**, measured rather than assumed: `submissions.save`
+stays at 7 statements, `submissions.get` at 6, at one child row and at
+twenty-five.
 
-### Why high severity
+### What this does NOT claim
 
-Corruption moves the result in the dangerous direction. Fewer required-work rows
-means **less work appears to have been required**, so the submission looks *more*
-eligible than it was and the audit record understates the firm's own gating.
-This is not a read-quality problem; it is the trustworthiness of the captured
-eligibility basis.
+**Corruption-evident, never tamper-proof.** It catches a writer that changed the
+data without recomputing the witness — an accidental `DELETE`, a partial
+restore, a broken migration, an import that did not know about the child tables.
+It cannot survive an actor who edits a child row **and** rewrites the digest.
+Nothing stored beside the data can; that is **TD-60**, still open.
 
-### What would close it
+**It attests storage, not capture.** If the basis was wrong when captured —
+missing work the firm actually required — the manifest faithfully attests the
+wrong thing. Whether the composition was correct to capture is the command's
+job.
 
-An **immutable eligibility-basis manifest or semantic hash**, written once with
-the submission, covering the exact expected composition: required playbook
-entries, accepted contribution identities, governance review identities,
-conditional requirement resolution, expected child-row identities, policy
-version, revision id and case id.
+**No database backstop exists**, and none is possible: PostgreSQL cannot
+recompute a domain canonicalisation, and a trigger that tried would be a second
+implementation free to disagree with the first.
 
-It must detect a missing row, an **added** row, a changed row identity, and
-changed semantic content where intended. A count alone is weaker — a deletion
-and an unrelated insertion preserve it.
+**The manifest binds an evidence-set id as a reference.** It does not hydrate
+the sets a basis cites, so verifying a submission does not transitively verify
+the evidence behind it — those verify when loaded. See
+`docs/identity-architecture.md` §5.
 
-**Not to be added without a focused planning gate** covering the domain
-contract, canonicalisation, the migration, historical rows, write-time
-generation, read-time verification, and revision and policy versioning.
-
-**Until this is resolved, no document may describe CIO eligibility submissions
-as fully self-validating against privileged row deletion.**
-
-### Progress
-
-**TD58-1 (domain manifest) is in the tree; TD-58 remains open.** The digest, the
-canonical encoding, its normative specification
-(`docs/eligibility-basis-canonicalization-v1.md`) and the hashing-architecture
-decision (`docs/decision-integrity-hashing.md`) exist and are tested. Nothing is
-persisted yet: there is no migration and no repository write or read
-verification, so **a deleted child row is still undetectable in storage today**.
-The sentence above continues to apply in full until TD58-2 and TD58-3 land.
+Documents may now describe a CIO eligibility submission as **self-validating
+against uninformed row deletion**. They may not describe it as tamper-proof,
+cryptographically immutable, or proof against a privileged administrator.
 
 
 ---
