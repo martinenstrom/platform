@@ -59,7 +59,12 @@ export function submitForCioDecision(
     type: 'SubmitForCioDecision',
     versionPolicy: 'requires-expected-version',
     reasonPolicy: 'optional',
-    category: 'governance',
+    /*
+     * Workflow, not governance. Asking for a decision is moving work; filing
+     * the request as governance would make it look like the verdict it asks
+     * for -- the same reason `SubmitForVerification` is not governance either.
+     */
+    category: 'workflow',
     /*
      * A desk act, not a CIO act. Submitting is asking for a decision; making
      * one is `RecordCaseDecision`, and it carries the CIO mandate.

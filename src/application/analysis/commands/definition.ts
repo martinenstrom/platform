@@ -152,6 +152,7 @@ export const VERSION_GUARDED_COMMANDS: readonly string[] = [
   'SubmitForVerification',
   'SubmitForCioDecision',
   'RecordCaseDecision',
+  'ReturnFromCioReview',
   'CloseCase',
   'ReopenCase',
 ] as const
@@ -178,6 +179,7 @@ export const REASON_REQUIRED_COMMANDS: readonly string[] = [
   'WithdrawThesis',
   'SupersedeThesisRevision',
   'RecordCaseDecision',
+  'ReturnFromCioReview',
   'ResolveConditionalRequirement',
   'OverrideGovernanceBlock',
   'ResolveException',

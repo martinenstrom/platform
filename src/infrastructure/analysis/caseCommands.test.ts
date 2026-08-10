@@ -278,13 +278,16 @@ describe('command declarations', () => {
       'InstantiatePlaybook',
       'OpenInvestmentCase',
       'ProposeThesis',
+      'RecordCaseDecision',
       'RecordContribution',
       'RecordDevilsAdvocateReview',
       'RecordRiskReview',
       'RecordVerificationReview',
       'ResolveConditionalRequirement',
+      'ReturnFromCioReview',
       'ReviseThesis',
       'StartAgentRun',
+      'SubmitForCioDecision',
       'SubmitForVerification',
     ])
   })
@@ -327,7 +330,9 @@ describe('command declarations', () => {
           'RecordRiskReview',
         ].includes(command.type),
       )
-      expect(['analysis', 'workflow', 'governance']).toContain(command.category)
+      expect(['analysis', 'workflow', 'governance', 'decision']).toContain(
+        command.category,
+      )
     }
   })
 })

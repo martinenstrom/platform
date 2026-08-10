@@ -47,7 +47,6 @@ export interface ReturnFromCioReviewInput {
   /** The submission being sent back. One return answers one submission. */
   submissionId: string
   returnedFor: CioReturn['returnedFor']
-  reason: string
   authorizationBasis: string
   /**
    * What must change before this comes back.
@@ -65,19 +64,23 @@ export function returnFromCioReview(
     type: 'ReturnFromCioReview',
     versionPolicy: 'requires-expected-version',
     /*
-     * The prose reason is required, not optional. `transitionCase` refuses a
-     * move to `returned` without one, and the desk reading it needs the
+     * Required, and on REASON_REQUIRED_COMMANDS. `transitionCase` refuses a
+     * move to `returned` without a reason, and the desk reading it needs the
      * sentence as much as the structured concerns.
+     *
+     * It comes from the envelope rather than a field of this input: a command
+     * carrying its own `reason` beside `context.reason` would give the firm two
+     * reasons for one act, free to disagree.
      */
-    reasonPolicy: 'optional',
-    category: 'governance',
+    reasonPolicy: 'required',
+    /* `chief-decision`, like the decision it declines to make. */
+    category: 'decision',
     /* The same mandate as deciding. Sending work back is deciding not to. */
     mandate: () => ({ kind: 'chief-decision' }),
     scope: (input) => ({ caseId: input.caseId }),
     payload: (input) => ({
       submissionId: input.submissionId,
       returnedFor: input.returnedFor,
-      reason: input.reason,
       authorizationBasis: input.authorizationBasis,
       concerns: asCanonicalValue(input.concerns),
     }),
@@ -153,7 +156,13 @@ export function returnFromCioReview(
         returnedBy: context.actor,
         authorizationBasis: input.authorizationBasis,
         returnedFor: input.returnedFor,
-        reason: input.reason,
+        /*
+         * Guaranteed by `reasonPolicy: 'required'`, which the runner enforces
+         * before `execute` is reached -- the same guarantee `expectedVersion`
+         * rests on below. The end-to-end flow exercises the refusal, so the
+         * assertion is checked by something that runs rather than assumed.
+         */
+        reason: context.reason!,
         caseVersion: investmentCase.version,
         concerns: [...input.concerns],
       })
@@ -168,7 +177,7 @@ export function returnFromCioReview(
           employeeId: accountable,
           departmentId: actingDepartment,
           at: context.occurredAt,
-          reason: input.reason,
+          reason: context.reason!,
         }),
         context.expectedVersion!,
       )
@@ -190,7 +199,7 @@ export function returnFromCioReview(
           actorDepartmentId: actingDepartment,
           correlationId: context.correlationId,
           aggregateVersion: savedCase.version,
-          reason: input.reason,
+          reason: context.reason!,
         }),
       )
 

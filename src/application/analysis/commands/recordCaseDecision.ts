@@ -66,8 +66,10 @@ export function recordCaseDecision(
   return {
     type: 'RecordCaseDecision',
     versionPolicy: 'requires-expected-version',
-    reasonPolicy: 'optional',
-    category: 'governance',
+    /* On REASON_REQUIRED_COMMANDS: the firm says why it decided. */
+    reasonPolicy: 'required',
+    /* `chief-decision` supports exactly this category, and no other. */
+    category: 'decision',
     /*
      * A CIO act. The most important refusal in the group: a decision recorded
      * by someone without the mandate is worse than no decision, because it

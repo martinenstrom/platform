@@ -26,6 +26,9 @@ import { submitForVerification } from './submitForVerification'
 import { recordVerificationReview } from './recordVerificationReview'
 import { recordDevilsAdvocateReview } from './recordDevilsAdvocateReview'
 import { recordRiskReview } from './recordRiskReview'
+import { submitForCioDecision } from './submitForCioDecision'
+import { recordCaseDecision } from './recordCaseDecision'
+import { returnFromCioReview } from './returnFromCioReview'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a heterogeneous list of
    definitions has no useful common Input/Result; every consumer reads only the
@@ -50,5 +53,8 @@ export function productionCommands(
     recordVerificationReview(organization),
     recordDevilsAdvocateReview(organization),
     recordRiskReview(organization),
+    submitForCioDecision(organization),
+    recordCaseDecision(organization),
+    returnFromCioReview(organization),
   ]
 }
