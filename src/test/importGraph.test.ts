@@ -898,6 +898,7 @@ describe('Phase C1A — the command foundation', () => {
       'registry.ts',
       'resolveCommand.ts',
       'resolveConditionalRequirement.ts',
+      'returnFromCioReview.ts',
       'reviseThesis.ts',
       'runCommand.ts',
       'startAgentRun.ts',
