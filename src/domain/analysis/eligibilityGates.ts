@@ -27,7 +27,7 @@
  * contract change, not copy-editing.
  */
 
-import { eligibilityPolicy } from './eligibilityPolicy'
+import type { EligibilityPolicy } from './eligibilityPolicy'
 import { disagreementBlocksEligibility } from './aggregation'
 import type { BasisContent } from './basisCanonical'
 
@@ -84,8 +84,34 @@ export interface EligibilityGateReport {
  * stored**. A report derived from anything else could disagree with the record
  * it accompanies.
  */
-export function evaluateEligibilityGates(basis: BasisContent): EligibilityGateReport {
-  const policy = eligibilityPolicy(basis.eligibilityPolicyVersion)
+export function evaluateEligibilityGates(
+  basis: BasisContent,
+  /**
+   * The policy in force, supplied by the caller.
+   *
+   * **This evaluator does not resolve its own policy.** It used to, reading the
+   * version off the basis and looking it up -- which is the same shape the
+   * ruling rejected elsewhere: an evaluator that can reach for a policy is an
+   * evaluator that can reach for the wrong one, and it cannot be exercised
+   * against a policy the registry has not yet been taught.
+   *
+   * The caller selects; the evaluator applies. One answer to "which policy
+   * applied", and it lives with whoever chose it.
+   */
+  policy: EligibilityPolicy,
+): EligibilityGateReport {
+  if (policy.version !== basis.eligibilityPolicyVersion) {
+    /*
+     * The basis records which policy the submission selected. Evaluating it
+     * under a different one would produce a verdict the record cannot explain,
+     * so the mismatch is refused rather than silently preferred either way.
+     */
+    throw new Error(
+      `Basis cites eligibility policy "${basis.eligibilityPolicyVersion}" but was ` +
+        `evaluated under "${policy.version}".`,
+    )
+  }
+
   const gates: GateOutcome[] = []
 
   /* ------------------------------------------------------------ verification */
