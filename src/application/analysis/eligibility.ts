@@ -38,7 +38,7 @@ import {
   type ThesisEligibility,
   type EligibilityPolicy,
 } from '~/domain/analysis'
-import type { AnalysisRepositories } from './repositories'
+import type { TransactionalAnalysisRepositories } from './repositories'
 import { requirePlaybook } from './playbookRegistry'
 import { unmetRequiredWork } from './requiredWork'
 import { RISK_ENTRY_KEY } from './reviewRecording'
@@ -79,7 +79,7 @@ export interface RevisionEligibility {
  * cannot pin and a restart cannot reproduce.
  */
 export async function revisionEligibility(
-  repositories: AnalysisRepositories,
+  repositories: TransactionalAnalysisRepositories,
   caseId: CaseId,
   now: string,
   /**

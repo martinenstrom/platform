@@ -37,7 +37,7 @@ import {
   unresolvedChallenges,
   type EligibilityPolicy,
 } from '~/domain/analysis'
-import type { AnalysisRepositories } from './repositories'
+import type { StorageProvenance, TransactionalAnalysisRepositories } from './repositories'
 import { revisionEligibility } from './eligibility'
 
 export interface AssembledBasis {
@@ -53,7 +53,7 @@ export interface AssembledBasis {
  * revision is a caller error to report, not an empty basis to assemble.
  */
 export async function assembleEligibilityBasis(input: {
-  repositories: AnalysisRepositories
+  repositories: TransactionalAnalysisRepositories
   caseId: string
   revisionId: string
   /**
@@ -64,10 +64,18 @@ export async function assembleEligibilityBasis(input: {
    * caller would inherit it without noticing.
    */
   policy: EligibilityPolicy
+  /**
+   * The storage provenance of the code doing the writing.
+   *
+   * Supplied rather than fetched: assembly runs inside a command's transaction,
+   * which deliberately exposes no `provenance()`, and the value stamped on the
+   * basis must be the one the command is running under.
+   */
+  provenance: StorageProvenance
   /** Domain time, from the Clock. Never the database's. */
   now: string
 }): Promise<AssembledBasis | null> {
-  const { repositories, caseId, revisionId, policy, now } = input
+  const { repositories, caseId, revisionId, policy, provenance, now } = input
 
   /*
    * Reuses the existing gatherer rather than re-reading the same six
@@ -81,12 +89,11 @@ export async function assembleEligibilityBasis(input: {
   const revision = await repositories.theses.get(revisionId)
   if (!revision) return null
 
-  const [verifications, challenges, risks, runs, provenance] = await Promise.all([
+  const [verifications, challenges, risks, runs] = await Promise.all([
     repositories.reviews.verificationsForCase(caseId),
     repositories.reviews.challengesForCase(caseId),
     repositories.reviews.riskForCase(caseId),
     repositories.runs.listForCase(caseId),
-    repositories.provenance(),
   ])
 
   const { verificationReviewId, devilsAdvocateReviewId, riskReviewId } =

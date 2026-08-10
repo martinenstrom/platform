@@ -900,6 +900,7 @@ describe('Phase C1A — the command foundation', () => {
       'reviseThesis.ts',
       'runCommand.ts',
       'startAgentRun.ts',
+      'submitForCioDecision.ts',
       'submitForVerification.ts',
     ])
   })
