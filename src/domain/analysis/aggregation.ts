@@ -111,16 +111,25 @@ const MATERIALITY_ORDER: Readonly<Record<DisagreementMateriality, number>> =
  * Whether a disagreement at this level stops the CIO seeing the revision as
  * eligible.
  *
- * **The only producer of `blocksEligibility`.** It is stored on the disposition
- * so a reader does not have to re-derive it, and derived here so the stored
- * value and the rule cannot drift. The eligibility DECISION stays in
- * `evaluateRevisionEligibility`; this only says what one disagreement
- * contributes to it.
+ * **The only implementation of that comparison**, and it must stay so: a second
+ * one in a handler, in assembly, in SQL or in a view would be free to drift.
+ *
+ * **The threshold is not domain law -- it is policy.** It arrives as an argument
+ * from the versioned `EligibilityPolicy` the submission selected
+ * (`disagreementBlocksAtOrAbove`), because different policies may draw the line
+ * differently and the firm is entitled to change where it draws it.
+ *
+ * Nothing derived from this is stored. `blocks_eligibility` used to be, computed
+ * at aggregation time from materiality alone -- a policy judgement written
+ * before its governing policy was known, and quietly wrong for any policy that
+ * disagreed with the one hardcoded rule. Migration 0023 removed it. The
+ * judgement is made where the policy is known, and nowhere else.
  */
 export function disagreementBlocksEligibility(
   materiality: DisagreementMateriality,
+  threshold: DisagreementMateriality,
 ): boolean {
-  return materiality === 'decision-critical'
+  return MATERIALITY_ORDER[materiality] >= MATERIALITY_ORDER[threshold]
 }
 
 /**
@@ -164,7 +173,6 @@ export interface ClaimDispositionRecord {
   materiality?: DisagreementMateriality
   /** Derived from materiality. Present exactly when `materiality` is. */
   escalationRequired?: boolean
-  blocksEligibility?: boolean
   /**
    * The highest materiality this claim was previously recorded at, when this
    * aggregation records a lower one.
@@ -422,14 +430,6 @@ export function buildManagerAggregation(
             `not follow from its materiality.`,
         )
       }
-      if (
-        record.blocksEligibility !== disagreementBlocksEligibility(record.materiality)
-      ) {
-        throw new Error(
-          `Claim "${record.claimId}" records an eligibility effect that does not ` +
-            `follow from its materiality. The rule is the only producer of it.`,
-        )
-      }
 
       const previous = context.priorMateriality?.[record.claimId]
       if (previous && isMaterialityDowngrade(previous, record.materiality)) {
@@ -447,11 +447,7 @@ export function buildManagerAggregation(
             `"${record.downgradedFrom}" that did not happen.`,
         )
       }
-    } else if (
-      record.materiality ||
-      record.escalationRequired ||
-      record.blocksEligibility
-    ) {
+    } else if (record.materiality || record.escalationRequired) {
       throw new Error(
         `Claim "${record.claimId}" is ${record.disposition} and carries ` +
           `materiality. Materiality belongs to unresolved disagreement.`,
@@ -533,11 +529,24 @@ export function revisionClaimIds(aggregation: ManagerAggregation): {
   return { supporting, opposing }
 }
 
-/** Unresolved disagreements that stop the revision reaching the CIO. */
+/**
+ * Unresolved disagreements that stop the revision reaching the CIO **under a
+ * given policy threshold**.
+ *
+ * The threshold is required rather than defaulted. A default would be a second
+ * place the firm's line is drawn, and callers would inherit it without noticing
+ * -- which is how the stored `blocksEligibility` came to disagree with the
+ * policy registry in the first place.
+ */
 export function blockingDisagreements(
   aggregation: ManagerAggregation,
+  threshold: DisagreementMateriality,
 ): readonly ClaimDispositionRecord[] {
-  return aggregation.dispositions.filter((record) => record.blocksEligibility === true)
+  return aggregation.dispositions.filter(
+    (record) =>
+      record.materiality !== undefined &&
+      disagreementBlocksEligibility(record.materiality, threshold),
+  )
 }
 
 /** Unresolved disagreements owed an escalation or an acknowledgement. */

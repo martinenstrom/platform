@@ -866,7 +866,6 @@ export function toManagerAggregation(
         supersededByClaimId: record.superseded_by_claim_id,
         materiality: record.materiality as DisagreementMateriality | null,
         escalationRequired: record.escalation_required,
-        blocksEligibility: record.blocks_eligibility,
         downgradedFrom: record.downgraded_from as DisagreementMateriality | null,
       }) as unknown as ClaimDispositionRecord,
   )

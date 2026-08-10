@@ -35,6 +35,7 @@ import { runCommand } from '~/application/analysis/commands/runCommand'
 import { recordVerificationReview } from '~/application/analysis/commands/recordVerificationReview'
 import { deriveRevisionId } from '~/application/analysis/commands/eventIdentity'
 import { aggregateManagerConclusion } from '~/application/analysis/commands/aggregateManagerConclusion'
+import { eligibilityPolicy } from '~/domain/analysis'
 
 let db: TestDatabase
 let appUrl: string
@@ -70,6 +71,7 @@ const eligibilityOf = async (runtime: Runtime, macro: MacroCase) => {
     runtime.container.repositories,
     macro.caseId,
     LATEST,
+    eligibilityPolicy('1'),
   )
   return all.find((entry) => entry.revisionId === macro.revisionId)!
 }
@@ -434,7 +436,7 @@ describe('Scenario E — a new revision inherits nothing', () => {
     expect(result.outcome).toBe('committed')
 
     const nextRevisionId = deriveRevisionId(secondAggregate, macro.thesisId)
-    const all = await revisionEligibility(repositories, caseId, LATEST)
+    const all = await revisionEligibility(repositories, caseId, LATEST, eligibilityPolicy('1'))
     const fresh = all.find((entry) => entry.revisionId === nextRevisionId)!
 
     expect(fresh.eligibility.eligibleForDecision).toBe(false)

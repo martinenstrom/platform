@@ -123,6 +123,18 @@ export const DOMAIN_CONTRACT_HISTORY: readonly DomainContractRevision[] = [
       'canonical value rather than unknown, decimals are exact strings rather ' +
       'than doubles, and key ordering no longer depends on the host locale.',
   },
+  {
+    version: '11',
+    states:
+      'TD-61 follow-up — a claim disposition records materiality and nothing ' +
+      'about its consequence for eligibility. `blocks_eligibility` was derived ' +
+      'at aggregation time from materiality alone, but whether a materiality ' +
+      'blocks is a POLICY judgement and the policy is chosen later, at ' +
+      'submission. A stored value written before its governing policy is known ' +
+      'is a future judgement, not a historical fact. Migration 0023 removed it; ' +
+      'the judgement is derived through disagreementBlocksEligibility with the ' +
+      'threshold from the versioned policy in force.',
+  },
 ]
 
 /**
@@ -137,4 +149,4 @@ export const DOMAIN_CONTRACT_HISTORY: readonly DomainContractRevision[] = [
  * adding an entry and advancing the version are two separate decisions. Deriving
  * it would let a documentation edit change what every provenance row records.
  */
-export const DOMAIN_CONTRACT_VERSION = '10'
+export const DOMAIN_CONTRACT_VERSION = '11'

@@ -716,7 +716,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0022')
+    expect(provenance.schemaVersion).toBe('0023')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

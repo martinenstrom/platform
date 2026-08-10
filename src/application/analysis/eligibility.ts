@@ -36,6 +36,7 @@ import {
   type RevisionEligibilityInput,
   type RiskRequirementState,
   type ThesisEligibility,
+  type EligibilityPolicy,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 import { requirePlaybook } from './playbookRegistry'
@@ -81,6 +82,20 @@ export async function revisionEligibility(
   repositories: AnalysisRepositories,
   caseId: CaseId,
   now: string,
+  /**
+   * The policy in force, supplied by the caller.
+   *
+   * **Required, and never defaulted.** This service does not choose a policy,
+   * fall back to v1, or look up "the current one": a default would be a second
+   * place the firm's line is drawn, and callers would inherit it without
+   * noticing. That is exactly how the stored `blocksEligibility` came to
+   * disagree with the policy registry.
+   *
+   * The whole policy rather than a bare threshold, so that whatever consumes
+   * the result can name WHICH policy produced it -- one answer to "which policy
+   * applied, what did it contain, what did it decide".
+   */
+  policy: EligibilityPolicy,
 ): Promise<RevisionEligibility[]> {
   const investmentCase = await repositories.cases.get(caseId)
   if (!investmentCase) return []
@@ -173,7 +188,9 @@ export async function revisionEligibility(
       riskEntryKey: RISK_ENTRY_KEY,
       missingRequiredContributions: missing,
       blockingDisagreements: aggregation
-        ? blockingDisagreements(aggregation).map((d) => d.claimId)
+        ? blockingDisagreements(aggregation, policy.disagreementBlocksAtOrAbove).map(
+            (d) => d.claimId,
+          )
         : [],
     })
   }

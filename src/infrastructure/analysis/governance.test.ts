@@ -26,6 +26,7 @@ import { revisionEligibility } from '~/application/analysis/eligibility'
 import { createInMemoryRepositories } from './inMemoryRepositories'
 import { TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
 import { AT, LATER, seedAggregatableCase, type Seeded } from './aggregationHarness'
+import { eligibilityPolicy } from '~/domain/analysis'
 
 const organization = TEST_ORGANIZATION
 const EVEN_LATER = '2026-07-30T13:00:00.000Z'
@@ -212,7 +213,7 @@ const riskReview = (
 
 /** Eligibility for the aggregated revision, through the approved path only. */
 const eligibilityOf = async () => {
-  const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER)
+  const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER, eligibilityPolicy('1'))
   return all.find((entry) => entry.revisionId === aggregated)!
 }
 const blockerKinds = async () =>
@@ -764,7 +765,7 @@ describe('eligibility is derived, never stored', () => {
     )
 
     const next = deriveRevisionId('cmd-aggregate-2', seeded.thesisId)
-    const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER)
+    const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER, eligibilityPolicy('1'))
     const fresh = all.find((entry) => entry.revisionId === next)!
 
     expect(fresh.eligibility.eligibleForDecision).toBe(false)

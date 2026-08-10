@@ -31,7 +31,7 @@ import { DOMAIN_CONTRACT_HISTORY, DOMAIN_CONTRACT_VERSION } from './index'
  * `DOMAIN_CONTRACT_HISTORY` entry, and only when a contract change alters what
  * a stored record means.
  */
-const EXPECTED_CONTRACT_VERSION = '10'
+const EXPECTED_CONTRACT_VERSION = '11'
 
 describe('the domain contract version is pinned', () => {
   it('is the version this build is declared to record', () => {

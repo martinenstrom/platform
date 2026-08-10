@@ -75,6 +75,7 @@ describe('a clean database reaches the expected schema', () => {
       '0020',
       '0021',
       '0022',
+      '0023',
     ])
   })
 

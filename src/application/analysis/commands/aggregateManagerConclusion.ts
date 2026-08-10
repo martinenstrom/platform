@@ -30,9 +30,7 @@
  */
 
 import {
-  blockingDisagreements,
   buildManagerAggregation,
-  disagreementBlocksEligibility,
   disagreementRequiresEscalation,
   revisionClaimIds,
   type AgentClaim,
@@ -361,7 +359,6 @@ export function aggregateManagerConclusion(
                 // Derived here and nowhere else, so the stored consequence and
                 // the rule that produced it cannot drift apart.
                 escalationRequired: disagreementRequiresEscalation(materiality),
-                blocksEligibility: disagreementBlocksEligibility(materiality),
                 ...(priorMateriality[given.claimId] &&
                 priorMateriality[given.claimId] !== materiality &&
                 isDowngrade(priorMateriality[given.claimId]!, materiality)
@@ -457,18 +454,18 @@ export function aggregateManagerConclusion(
        * aggregation whose revision rolled back would describe a synthesis that
        * never happened.
        */
-      const saved = await repositories.aggregations.save(
+      await repositories.aggregations.save(
         { ...aggregation, producedRevisionId: revision.revisionId },
         context.provenance,
       )
 
-      if (blockingDisagreements(saved).length > 0) {
-        /*
-         * Recorded, not enforced here. Whether the revision reaches the CIO is
-         * `evaluateRevisionEligibility`'s decision, and duplicating it in a
-         * handler is how two answers to one question appear.
-         */
-      }
+      /*
+       * Nothing here asks whether a disagreement blocks. Aggregation records
+       * what the research organization concluded; whether that conclusion
+       * permits progression to the CIO is a policy judgement made at
+       * submission, under the eligibility policy in force then. Migration 0023
+       * removed the stored answer for the same reason.
+       */
 
       return { value: revision, resultKind: 'revision', resultRef: revision.revisionId }
     },

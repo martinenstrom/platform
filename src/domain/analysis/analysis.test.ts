@@ -1037,11 +1037,11 @@ describe('the governance gate', () => {
      * `decision-critical`.
      */
     expect(challengeBlocks('material')).toBe(true)
-    expect(disagreementBlocksEligibility('material')).toBe(false)
+    expect(disagreementBlocksEligibility('material', 'decision-critical')).toBe(false)
     expect(challengeBlocks('decision-critical')).toBe(true)
-    expect(disagreementBlocksEligibility('decision-critical')).toBe(true)
+    expect(disagreementBlocksEligibility('decision-critical', 'decision-critical')).toBe(true)
     expect(challengeBlocks('non-material')).toBe(false)
-    expect(disagreementBlocksEligibility('non-material')).toBe(false)
+    expect(disagreementBlocksEligibility('non-material', 'decision-critical')).toBe(false)
   })
 
   it('reports every blocker at once, so one pass fixes them all', () => {

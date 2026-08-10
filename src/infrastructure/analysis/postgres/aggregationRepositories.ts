@@ -55,7 +55,7 @@ export const AGGREGATION_SQL = catalog({
 
   dispositions: `SELECT aggregation_id, claim_id, run_id, disposition, explanation,
                         superseded_by_claim_id, materiality, escalation_required,
-                        blocks_eligibility, downgraded_from
+                        downgraded_from
                  FROM analysis.aggregation_claim_dispositions
                  WHERE aggregation_id = ANY($1::text[])
                  ORDER BY aggregation_id COLLATE "C", claim_id COLLATE "C"`,
@@ -84,12 +84,12 @@ export const AGGREGATION_SQL = catalog({
   saveDispositions: `INSERT INTO analysis.aggregation_claim_dispositions
                        (aggregation_id, claim_id, run_id, disposition, explanation,
                         superseded_by_claim_id, materiality, escalation_required,
-                        blocks_eligibility, downgraded_from)
-                     SELECT $1, c, r, d, e, s, m, er, be, df
+                        downgraded_from)
+                     SELECT $1, c, r, d, e, s, m, er, df
                      FROM unnest($2::text[], $3::text[], $4::text[], $5::text[],
                                  $6::text[], $7::text[], $8::boolean[],
-                                 $9::boolean[], $10::text[])
-                       AS t(c, r, d, e, s, m, er, be, df)
+                                 $9::text[])
+                       AS t(c, r, d, e, s, m, er, df)
                      ON CONFLICT DO NOTHING`,
 
   saveOptionalInputs: `INSERT INTO analysis.aggregation_optional_inputs
@@ -253,7 +253,6 @@ export function createAggregationRepository(
               ),
               aggregation.dispositions.map((record) => record.materiality ?? null),
               aggregation.dispositions.map((record) => record.escalationRequired ?? null),
-              aggregation.dispositions.map((record) => record.blocksEligibility ?? null),
               aggregation.dispositions.map((record) => record.downgradedFrom ?? null),
             ],
           )

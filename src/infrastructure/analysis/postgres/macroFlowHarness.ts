@@ -46,6 +46,7 @@ import {
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { buildEvidenceSet } from '~/domain/analysis'
 import type { AgentClaim, InvestmentImplication } from '~/domain/analysis'
+import { eligibilityPolicy } from '~/domain/analysis'
 
 export const AT = '2026-08-01T09:00:00.000Z'
 export const LATER = '2026-08-01T11:00:00.000Z'
@@ -622,7 +623,7 @@ export async function institutionalState(
   const challenges = await repositories.reviews.challengesForCase(caseId)
   const risks = await repositories.reviews.riskForCase(caseId)
   const events = await repositories.events.listForCase(caseId)
-  const eligibility = await revisionEligibility(repositories, caseId, LATEST)
+  const eligibility = await revisionEligibility(repositories, caseId, LATEST, eligibilityPolicy('1'))
 
   const aggregations = []
   for (const thesis of theses) {
@@ -698,7 +699,6 @@ export async function institutionalState(
         disposition: d.disposition,
         materiality: d.materiality ?? null,
         escalationRequired: d.escalationRequired ?? null,
-        blocksEligibility: d.blocksEligibility ?? null,
         explanation: d.explanation ?? null,
       })),
       optionalInputs: by(aggregation.optionalInputs, (o) => o.playbookEntryKey).map(

@@ -522,7 +522,6 @@ describe('unresolved disagreement', () => {
       (d) => d.claimId === seeded.quantClaimId,
     )!
 
-    expect(record.blocksEligibility).toBe(false)
     expect(record.escalationRequired).toBe(false)
   })
 
@@ -534,7 +533,6 @@ describe('unresolved disagreement', () => {
     )!
 
     expect(record.escalationRequired).toBe(true)
-    expect(record.blocksEligibility).toBe(false)
   })
 
   it('blocks the CIO when it is decision-critical', async () => {
@@ -543,7 +541,15 @@ describe('unresolved disagreement', () => {
     const record = aggregation.dispositions.find(
       (d) => d.claimId === seeded.quantClaimId,
     )!
-    expect(record.blocksEligibility).toBe(true)
+
+    /*
+     * Materiality is the fact aggregation records -- and now the ONLY thing it
+     * records about consequence. Whether it blocks is a policy judgement made
+     * at submission, under the policy in force then; migration 0023 removed the
+     * stored boolean that pre-empted it.
+     */
+    expect(record.materiality).toBe('decision-critical')
+    expect(record).not.toHaveProperty('blocksEligibility')
 
     /*
      * And the eligibility DECISION is the domain's, not the handler's. The

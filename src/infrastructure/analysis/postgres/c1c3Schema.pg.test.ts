@@ -259,8 +259,8 @@ describe('claim dispositions', () => {
       `INSERT INTO analysis.aggregation_claim_dispositions
          (aggregation_id, claim_id, run_id, disposition, explanation,
           superseded_by_claim_id, materiality, escalation_required,
-          blocks_eligibility, downgraded_from)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          downgraded_from)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         aggregationId,
         claimId,
@@ -270,10 +270,97 @@ describe('claim dispositions', () => {
         (over.supersededByClaimId as string) ?? null,
         (over.materiality as string) ?? null,
         (over.escalationRequired as boolean) ?? null,
-        (over.blocksEligibility as boolean) ?? null,
         (over.downgradedFrom as string) ?? null,
       ],
     )
+
+
+  /*
+   * The guard for migration 0023's positional shift.
+   *
+   * Removing `blocks_eligibility` renumbered every parameter after it, and the
+   * columns either side of the gap include several `text` fields. PostgreSQL
+   * would accept a value landing in the wrong one of those without complaint,
+   * so a one-slot slide is not a type error -- it is silently wrong data.
+   *
+   * Every field therefore carries a value that could only have come from its
+   * own parameter, and each is asserted **column by column** rather than
+   * through a hydrated aggregate. A hydrated read would map columns back onto
+   * fields and could hide a swap that is symmetrical in both directions.
+   */
+  it('writes every disposition field into its own column', async () => {
+    const seeded = await seed()
+    const aggregationId = await insertAggregation(seeded)
+
+    await insertDisposition(aggregationId, seeded.claimA, seeded.runId, {
+      // Supersession is the only disposition permitted to name a superseding
+      // claim, so it is the one that exercises that column at all.
+      disposition: 'superseded-by-stronger-evidence',
+      explanation: 'SENTINEL-explanation',
+      supersededByClaimId: seeded.claimB,
+      materiality: null,
+      escalationRequired: null,
+      downgradedFrom: null,
+    })
+
+    const stored = await sql.query(
+      `SELECT claim_id, run_id, disposition, explanation, superseded_by_claim_id,
+              materiality, escalation_required, downgraded_from
+         FROM analysis.aggregation_claim_dispositions
+        WHERE aggregation_id = $1`,
+      [aggregationId],
+    )
+
+    const row = stored.rows[0]
+    expect(row.claim_id).toBe(seeded.claimA)
+    expect(row.run_id).toBe(seeded.runId)
+    expect(row.disposition).toBe('superseded-by-stronger-evidence')
+    expect(row.explanation).toBe('SENTINEL-explanation')
+    expect(row.superseded_by_claim_id).toBe(seeded.claimB)
+    expect(row.materiality).toBeNull()
+    expect(row.escalation_required).toBeNull()
+    expect(row.downgraded_from).toBeNull()
+  })
+
+  it('writes the materiality group into its own columns', async () => {
+    /*
+     * The second half, because the first leaves the three trailing fields null
+     * and a shift among nulls is invisible. Here each carries a distinct value
+     * and a distinct TYPE boundary: text, boolean, text.
+     */
+    const seeded = await seed()
+    const aggregationId = await insertAggregation(seeded)
+
+    await insertDisposition(aggregationId, seeded.claimA, seeded.runId, {
+      disposition: 'retained-unresolved',
+      explanation: 'SENTINEL-why-unresolved',
+      materiality: 'material',
+      escalationRequired: true,
+      downgradedFrom: 'decision-critical',
+    })
+
+    const stored = await sql.query(
+      `SELECT explanation, materiality, escalation_required, downgraded_from
+         FROM analysis.aggregation_claim_dispositions
+        WHERE aggregation_id = $1`,
+      [aggregationId],
+    )
+
+    const row = stored.rows[0]
+    expect(row.explanation).toBe('SENTINEL-why-unresolved')
+    expect(row.materiality).toBe('material')
+    expect(row.escalation_required).toBe(true)
+    expect(row.downgraded_from).toBe('decision-critical')
+
+    // And the dropped column is gone, not merely unwritten.
+    const columns = await sql.query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'analysis'
+          AND table_name = 'aggregation_claim_dispositions'
+          AND column_name = 'blocks_eligibility'`,
+    )
+    expect(columns.rows).toEqual([])
+  })
 
   it('refuses an exclusion with no explanation', async () => {
     const seeded = await seed()

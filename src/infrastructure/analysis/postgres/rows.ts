@@ -581,7 +581,6 @@ export interface AggregationClaimDispositionRow {
   /** Present exactly for `retained-unresolved`. */
   materiality: string | null
   escalation_required: boolean | null
-  blocks_eligibility: boolean | null
   downgraded_from: string | null
 }
 

@@ -1183,14 +1183,37 @@ describe('Phase C1C-3 — aggregation and revision minting', () => {
     expect(offenders).toEqual([])
   })
 
-  it('derives the eligibility effect of a disagreement in one function', () => {
-    const offenders = FILES.filter(
-      (f) =>
-        !isTest(f) &&
-        !f.path.endsWith('domain/analysis/aggregation.ts') &&
-        /blocksEligibility:\s*(true|false)/.test(codeOnly(sourceOf(f))),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
+  it('never persists or literalises a blocking judgement again', () => {
+    /*
+     * Strengthened rather than removed. The rule used to forbid a LITERAL
+     * `blocksEligibility: true|false` outside the domain, on the reasoning that
+     * one function should derive the effect.
+     *
+     * Migration 0023 went further: the judgement is no longer stored at all.
+     * Whether a materiality blocks is a POLICY question, and the policy is
+     * chosen at submission -- later than aggregation, by a different actor,
+     * possibly at a different threshold. A value written before its governing
+     * policy is known is a future judgement, not a historical fact.
+     *
+     * So this now forbids the field itself, in either casing, anywhere in
+     * production code. The approved derivation
+     * `disagreementBlocksEligibility(materiality, threshold)` remains legal --
+     * it is a function call taking a policy threshold, not a stored or
+     * literalised verdict.
+     */
+    const offenders = FILES.filter((f) => {
+      if (isTest(f)) return false
+      const code = codeOnly(sourceOf(f))
+      // The function is the sanctioned form; ignore its call sites and its own
+      // definition before looking for the field.
+      const withoutTheFunction = code.replace(/disagreementBlocksEligibility/g, '')
+      return /blocksEligibility|blocks_eligibility/.test(withoutTheFunction)
+    }).map((f) => f.path)
+
+    expect(
+      offenders,
+      'a blocking judgement may be derived under a policy, never stored',
+    ).toEqual([])
   })
 
   it('reads the Risk rule nowhere but the domain', () => {
