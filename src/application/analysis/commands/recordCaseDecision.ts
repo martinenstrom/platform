@@ -33,6 +33,7 @@ import {
   type DisclosedDissent,
   type Organization,
   type ReconsiderationTrigger,
+  transitionCase,
 } from '~/domain/analysis'
 import type { CommandDefinition } from './definition'
 import { reject } from './envelope'
@@ -92,11 +93,13 @@ export function recordCaseDecision(
       }
 
       const accountable = context.actor.employeeId
-      if (accountable === null) {
+      const actingDepartment = context.actor.departmentId
+      if (accountable === null || actingDepartment === null) {
         reject(
           'unknown-actor',
-          'A case decision must name the employee who made it. An unattributed ' +
-            'decision records that the firm decided without recording who decided.',
+          'A case decision must name the employee who made it and the department ' +
+            'they acted for. An unattributed decision records that the firm ' +
+            'decided without recording who decided.',
         )
       }
 
@@ -183,19 +186,57 @@ export function recordCaseDecision(
        */
       await repositories.submissions.settle([...input.submissionIds], 'decided')
 
+      /*
+       * The case reaches its terminal stage.
+       *
+       * `deferred` is its own stage, not a variety of `decision`: "nobody has
+       * looked at this yet" and "the CIO looked and chose to wait" are opposite
+       * institutional facts, and a floor that could not tell them apart would
+       * show a waiting decision as an idle one.
+       *
+       * A SUPERSEDING decision does not move the case. It replaces the live
+       * decision while the stage stays where it is -- which is why the stage
+       * table has no `decided -> decided`, and why attempting the move here
+       * would refuse a correction the firm is entitled to make.
+       */
+      const terminalStage = input.outcome.kind === 'deferred' ? 'deferred' : 'decided'
+      const moves = !input.supersedesDecisionId && investmentCase.stage !== terminalStage
+
+      const savedCase = moves
+        ? await repositories.cases.save(
+            transitionCase(investmentCase, terminalStage, {
+              employeeId: accountable,
+              departmentId: actingDepartment,
+              at: context.occurredAt,
+            }),
+            context.expectedVersion!,
+          )
+        : investmentCase
+
       await repositories.events.append(
         buildTransitionEvent({
-          id: deriveEventId({
+          eventId: deriveEventId({
             commandId: context.commandId,
-            recordType: 'transition',
+            recordType: 'cio-decision-recorded',
             entityId: input.caseId,
           }),
           caseId: input.caseId,
+          subject: 'case',
+          /*
+           * A supersession is recorded as a movement that stayed put, rather
+           * than omitted. The firm did act, and an event missing from the
+           * timeline would make a corrected decision look like it appeared
+           * without anyone deciding anything.
+           */
+          fromState: investmentCase.stage,
+          toState: savedCase.stage,
           occurredAt: context.occurredAt,
-          actor: context.actor,
-          kind: 'cio-decision-recorded',
-          detail: `CIO decision recorded: ${input.outcome.kind}.`,
-        } as never),
+          actorEmployeeId: accountable,
+          actorDepartmentId: actingDepartment,
+          correlationId: context.correlationId,
+          aggregateVersion: savedCase.version,
+          ...(context.reason ? { reason: context.reason } : {}),
+        }),
       )
 
       return { value: saved, resultKind: 'case-decision', resultRef: saved.decisionId }

@@ -29,6 +29,7 @@ import {
   assertCioSubmissionWellFormed,
   buildTransitionEvent,
   eligibilityPolicy,
+  transitionCase,
   type CioSubmission,
   type Organization,
 } from '~/domain/analysis'
@@ -141,8 +142,14 @@ export function submitForCioDecision(
        * that the firm asked for a decision without recording who asked.
        */
       const accountable = context.actor.employeeId
-      if (accountable === null) {
-        reject('unknown-actor', 'A CIO submission must name the employee making it.')
+      const actingDepartment = context.actor.departmentId
+      if (accountable === null || actingDepartment === null) {
+        reject(
+          'unknown-actor',
+          'A CIO submission must name the employee making it and the department ' +
+            'they acted for. A department acts through a person, and the case ' +
+            'movement this records cannot name an actor it was not given.',
+        )
       }
 
       const investmentCase = await repositories.cases.get(input.caseId)
@@ -172,19 +179,46 @@ export function submitForCioDecision(
 
       const saved = await repositories.submissions.save(submission)
 
+      /*
+       * The case moves `review -> decision`, and this is the point of the whole
+       * command.
+       *
+       * The CIO's queue *is* `stage === 'decision'`. A submission that did not
+       * move the case would be a request for a decision that never reaches the
+       * desk that makes one -- the record would show a case still in review
+       * while a submission sat pending against it, and the two would disagree
+       * about where the work actually is.
+       *
+       * `transitionCase` refuses anything the stage table does not permit, so a
+       * revision that never passed governance cannot arrive here sideways.
+       */
+      const movedCase = transitionCase(investmentCase, 'decision', {
+        employeeId: accountable,
+        departmentId: actingDepartment,
+        at: context.occurredAt,
+      })
+      const savedCase = await repositories.cases.save(movedCase, context.expectedVersion!)
+
       await repositories.events.append(
         buildTransitionEvent({
-          id: deriveEventId({
+          eventId: deriveEventId({
             commandId: context.commandId,
-            recordType: 'transition',
+            recordType: 'cio-submission-recorded',
             entityId: input.caseId,
           }),
           caseId: input.caseId,
+          subject: 'case',
+          thesisId: input.thesisId,
+          revisionId: input.revisionId,
+          fromState: investmentCase.stage,
+          toState: savedCase.stage,
           occurredAt: context.occurredAt,
-          actor: context.actor,
-          kind: 'cio-submission-recorded',
-          detail: `Revision ${input.revisionId} submitted for CIO decision.`,
-        } as never),
+          actorEmployeeId: accountable,
+          actorDepartmentId: actingDepartment,
+          correlationId: context.correlationId,
+          aggregateVersion: savedCase.version,
+          ...(context.reason ? { reason: context.reason } : {}),
+        }),
       )
 
       return {
