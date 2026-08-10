@@ -890,6 +890,7 @@ describe('Phase C1A — the command foundation', () => {
       'instantiatePlaybook.ts',
       'openInvestmentCase.ts',
       'proposeThesis.ts',
+      'recordCaseDecision.ts',
       'recordContribution.ts',
       'recordDevilsAdvocateReview.ts',
       'recordRiskReview.ts',
