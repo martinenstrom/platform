@@ -38,6 +38,9 @@ import { submitForVerification } from '~/application/analysis/commands/submitFor
 import { recordVerificationReview } from '~/application/analysis/commands/recordVerificationReview'
 import { recordDevilsAdvocateReview } from '~/application/analysis/commands/recordDevilsAdvocateReview'
 import { recordRiskReview } from '~/application/analysis/commands/recordRiskReview'
+import { submitForCioDecision } from '~/application/analysis/commands/submitForCioDecision'
+import { recordCaseDecision } from '~/application/analysis/commands/recordCaseDecision'
+import { returnFromCioReview } from '~/application/analysis/commands/returnFromCioReview'
 import { revisionEligibility } from '~/application/analysis/eligibility'
 import {
   deriveAggregationId,
@@ -623,7 +626,12 @@ export async function institutionalState(
   const challenges = await repositories.reviews.challengesForCase(caseId)
   const risks = await repositories.reviews.riskForCase(caseId)
   const events = await repositories.events.listForCase(caseId)
-  const eligibility = await revisionEligibility(repositories, caseId, LATEST, eligibilityPolicy('1'))
+  const eligibility = await revisionEligibility(
+    repositories,
+    caseId,
+    LATEST,
+    eligibilityPolicy('1'),
+  )
 
   const aggregations = []
   for (const thesis of theses) {
@@ -857,4 +865,107 @@ export async function institutionalState(
       commandContractVersion: runtime.container.provenance.commandContractVersion,
     },
   }
+}
+
+/* ------------------------------------------------------------ the CIO desk */
+
+/**
+ * Puts the current revision in front of the CIO.
+ *
+ * A desk act under `thesis-owner`, which is why the actor is the research
+ * director and not the CIO: asking for a decision and making one are different
+ * authorities, and a harness that used the CIO for both would hide that.
+ */
+export async function submitToCio(runtime: Runtime, macro: MacroCase, suffix = '') {
+  const deps = await runtime.container.commandDeps()
+  const version = (await runtime.container.repositories.cases.get(macro.caseId))!.version
+  return runCommand(
+    submitForCioDecision(deps.organization),
+    {
+      caseId: macro.caseId,
+      thesisId: macro.thesisId,
+      revisionId: macro.revisionId,
+      submittedByDepartmentId: 'research-office',
+      eligibilityPolicyVersion: '1',
+    },
+    envelope(`${macro.caseId}-cio-submit${suffix}`, 'research-director', {
+      occurredAt: LATEST,
+      expectedVersion: version,
+    }),
+    deps,
+  )
+}
+
+/** The CIO deciding. Defaults to selecting the position. */
+export async function decide(
+  runtime: Runtime,
+  macro: MacroCase,
+  submissionIds: readonly string[],
+  over: Record<string, unknown> = {},
+  env: Partial<CommandEnvelope> = {},
+  suffix = '',
+) {
+  const deps = await runtime.container.commandDeps()
+  const version = (await runtime.container.repositories.cases.get(macro.caseId))!.version
+  return runCommand(
+    recordCaseDecision(deps.organization),
+    {
+      caseId: macro.caseId,
+      submissionIds,
+      outcome: {
+        kind: 'selected',
+        selectedRevisionId: macro.revisionId,
+        consideredRevisionIds: [macro.revisionId],
+      },
+      evidenceSetId: macro.evidenceSetId,
+      rationale: 'The regime call is supported and the risk is sized.',
+      authorizationBasis: 'chief-investment-officer',
+      ...over,
+    },
+    envelope(`${macro.caseId}-cio-decide${suffix}`, 'cio', {
+      occurredAt: LATEST,
+      expectedVersion: version,
+      reason: 'Committing the firm to the position.',
+      ...env,
+    }),
+    deps,
+  )
+}
+
+/** The CIO sending the work back instead. */
+export async function returnToDesk(
+  runtime: Runtime,
+  macro: MacroCase,
+  submissionId: string,
+  over: Record<string, unknown> = {},
+  env: Partial<CommandEnvelope> = {},
+  suffix = '',
+) {
+  const deps = await runtime.container.commandDeps()
+  const version = (await runtime.container.repositories.cases.get(macro.caseId))!.version
+  return runCommand(
+    returnFromCioReview(deps.organization),
+    {
+      caseId: macro.caseId,
+      submissionId,
+      returnedFor: 'insufficient-evidence',
+      authorizationBasis: 'chief-investment-officer',
+      concerns: [
+        {
+          concernKind: 'evidence-thin',
+          subjectKind: 'claim',
+          subjectId: macro.macroClaimId,
+          detail: 'One source for the central rate path.',
+        },
+      ],
+      ...over,
+    },
+    envelope(`${macro.caseId}-cio-return${suffix}`, 'cio', {
+      occurredAt: LATEST,
+      expectedVersion: version,
+      reason: 'The central claim rests on a single source.',
+      ...env,
+    }),
+    deps,
+  )
 }
