@@ -42,7 +42,7 @@
 import { utf8ByteLength } from '../shared/sha256'
 import type { EligibilityBasis } from './decisions'
 
-export const BASIS_CANONICALIZATION_VERSION = 1
+export const BASIS_CANONICALIZATION_VERSION = 2
 
 /**
  * Separates this attestation from every other digest in the system.
@@ -182,8 +182,31 @@ export function canonicalBasisInput(subject: BasisSubject, basis: BasisContent):
       : list([
           str(basis.devilsAdvocate.reviewId),
           int(basis.devilsAdvocate.sequence),
-          int(basis.devilsAdvocate.openChallengeIds.length),
-          list([...basis.devilsAdvocate.openChallengeIds].sort(codeUnitOrder).map(str)),
+          int(basis.devilsAdvocate.openChallenges.length),
+          /*
+           * v2. Each open challenge carries its materiality, so the gate can
+           * apply the firm's threshold instead of restating it.
+           *
+           * Ordered by `challengeId` ALONE, as in v1. Ids are unique, so the
+           * key is already total; sorting on materiality as well would make
+           * the byte order -- and the digest -- move when a materiality is
+           * corrected, which is a change to a fact and not to an ordering.
+           *
+           * Nested lists rather than a joined string: an id may not contain
+           * the separator today, and a format whose safety rests on that is a
+           * format waiting for the id that does.
+           *
+           * Materiality as a STRING, never an ordinal: the three values are a
+           * named domain, and an integer encoding would silently reinterpret
+           * every stored digest if `DISAGREEMENT_MATERIALITIES` were reordered.
+           */
+          list(
+            [...basis.devilsAdvocate.openChallenges]
+              .sort((a, b) => codeUnitOrder(a.challengeId, b.challengeId))
+              .map((challenge) =>
+                list([str(challenge.challengeId), str(challenge.materiality)]),
+              ),
+          ),
         ]),
 
     // 6 — Risk: the three-state resolution, its rule, and the review if required

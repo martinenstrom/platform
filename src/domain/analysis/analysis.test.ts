@@ -20,6 +20,8 @@ import {
   buildVerificationFinding,
   canTransition,
   challengeBlocks,
+  DISAGREEMENT_MATERIALITIES,
+  eligibilityPolicy,
   disagreementBlocksEligibility,
   citeFrom,
   composeConfidence,
@@ -889,19 +891,27 @@ describe('the governance gate', () => {
 
   it('blocks when verification has not happened at all', () => {
     // A missing check must not be a pass, or skipping it is the way through.
-    const result = evaluateGate(riskSettled)
+    const result = evaluateGate({
+      ...riskSettled,
+      challengeBlocksAtOrAbove: 'material',
+    })
     expect(result.passed).toBe(false)
     expect(kinds(result)).toContain('verification-missing')
   })
 
   it('passes a verified case', () => {
-    expect(evaluateGate({ ...riskSettled, verification: verification() }).passed).toBe(
-      true,
-    )
+    expect(
+      evaluateGate({
+        challengeBlocksAtOrAbove: 'material',
+        ...riskSettled,
+        verification: verification(),
+      }).passed,
+    ).toBe(true)
   })
 
   it('blocks on a correction requirement', () => {
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification({ status: 'correction-required' }),
     })
@@ -915,6 +925,7 @@ describe('the governance gate', () => {
      * claim; it does not parse a sentence to find one.
      */
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification({
         status: 'correction-required',
@@ -954,7 +965,13 @@ describe('the governance gate', () => {
         }),
       ],
     })
-    expect(evaluateGate({ ...riskSettled, verification: review }).passed).toBe(false)
+    expect(
+      evaluateGate({
+        challengeBlocksAtOrAbove: 'material',
+        ...riskSettled,
+        verification: review,
+      }).passed,
+    ).toBe(false)
   })
 
   it('refuses a blocking finding that does not say what would clear it', () => {
@@ -994,6 +1011,7 @@ describe('the governance gate', () => {
 
   it('blocks while a material challenge is unresolved', () => {
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: challengeReview([challenge()]),
@@ -1010,6 +1028,7 @@ describe('the governance gate', () => {
   it('does not block on a non-material challenge, and keeps it visible', () => {
     const review = challengeReview([challenge({ materiality: 'non-material' })])
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: review,
@@ -1017,11 +1036,12 @@ describe('the governance gate', () => {
     expect(result.passed).toBe(true)
     // Not a blocker, and not gone: the CIO reads it beside the thesis.
     expect(unresolvedChallenges(review)).toHaveLength(1)
-    expect(blockingChallenges(review)).toEqual([])
+    expect(blockingChallenges(review, 'material')).toEqual([])
   })
 
   it('blocks on a decision-critical challenge', () => {
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: challengeReview([challenge({ materiality: 'decision-critical' })]),
@@ -1036,16 +1056,42 @@ describe('the governance gate', () => {
      * manager noting that two desks disagreed blocks only at
      * `decision-critical`.
      */
-    expect(challengeBlocks('material')).toBe(true)
+    expect(challengeBlocks('material', 'material')).toBe(true)
     expect(disagreementBlocksEligibility('material', 'decision-critical')).toBe(false)
-    expect(challengeBlocks('decision-critical')).toBe(true)
-    expect(disagreementBlocksEligibility('decision-critical', 'decision-critical')).toBe(true)
-    expect(challengeBlocks('non-material')).toBe(false)
+    expect(challengeBlocks('decision-critical', 'material')).toBe(true)
+    expect(disagreementBlocksEligibility('decision-critical', 'decision-critical')).toBe(
+      true,
+    )
+    expect(challengeBlocks('non-material', 'material')).toBe(false)
     expect(disagreementBlocksEligibility('non-material', 'decision-critical')).toBe(false)
+  })
+
+  it('answers exactly as it did before the threshold became a parameter', () => {
+    /*
+     * `challengeBlocks` used to hardcode `!== 'non-material'`. Making the
+     * threshold an input must not move the firm's line -- this stage exists to
+     * stop a threshold being changed silently, and would be self-defeating if
+     * it changed one on the way.
+     *
+     * Under policy v1's `challengeBlocksAtOrAbove: 'material'`, every value
+     * gives the answer the constant gave.
+     */
+    const v1 = eligibilityPolicy('1').challengeBlocksAtOrAbove
+    expect(v1).toBe('material')
+    for (const materiality of DISAGREEMENT_MATERIALITIES) {
+      expect(challengeBlocks(materiality, v1)).toBe(materiality !== 'non-material')
+    }
+  })
+
+  it('reads the threshold rather than agreeing with it by coincidence', () => {
+    // A stricter policy blocks what v1 lets through; a looser one does not.
+    expect(challengeBlocks('non-material', 'non-material')).toBe(true)
+    expect(challengeBlocks('material', 'decision-critical')).toBe(false)
   })
 
   it('reports every blocker at once, so one pass fixes them all', () => {
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       ...riskSettled,
       verification: verification({ status: 'unresolved-discrepancy' }),
       compliance: {
@@ -1143,15 +1189,23 @@ describe('the conditional Risk gate', () => {
 
   it('treats an unresolved requirement as unsatisfied', () => {
     expect(
-      kinds(evaluateGate({ verification: verified(), riskRequirement: 'unresolved' })),
+      kinds(
+        evaluateGate({
+          challengeBlocksAtOrAbove: 'material',
+          verification: verified(),
+          riskRequirement: 'unresolved',
+        }),
+      ),
     ).toEqual(['risk-requirement-unresolved'])
   })
 
   it('defaults to unresolved when nothing supplies the requirement', () => {
     // The safe direction: forgetting to supply it must be visible, not silent.
-    expect(kinds(evaluateGate({ verification: verified() }))).toEqual([
-      'risk-requirement-unresolved',
-    ])
+    expect(
+      kinds(
+        evaluateGate({ challengeBlocksAtOrAbove: 'material', verification: verified() }),
+      ),
+    ).toEqual(['risk-requirement-unresolved'])
   })
 
   it('lets no Risk approval satisfy a gate whose requirement was never resolved', () => {
@@ -1160,6 +1214,7 @@ describe('the conditional Risk gate', () => {
      * needed is not evidence that the question was asked.
      */
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       verification: verified(),
       riskRequirement: 'unresolved',
       risk: risk('accepted'),
@@ -1170,6 +1225,7 @@ describe('the conditional Risk gate', () => {
 
   it('satisfies the gate with an explicit not-required and no review', () => {
     const result = evaluateGate({
+      challengeBlocksAtOrAbove: 'material',
       verification: verified(),
       riskRequirement: 'not-required',
     })
@@ -1182,6 +1238,7 @@ describe('the conditional Risk gate', () => {
     expect(
       kinds(
         evaluateGate({
+          challengeBlocksAtOrAbove: 'material',
           verification: verified(),
           riskRequirement: 'not-required',
           risk: risk('accepted'),
@@ -1192,7 +1249,13 @@ describe('the conditional Risk gate', () => {
 
   it('blocks when required and missing', () => {
     expect(
-      kinds(evaluateGate({ verification: verified(), riskRequirement: 'required' })),
+      kinds(
+        evaluateGate({
+          challengeBlocksAtOrAbove: 'material',
+          verification: verified(),
+          riskRequirement: 'required',
+        }),
+      ),
     ).toEqual(['risk-review-missing'])
   })
 
@@ -1200,6 +1263,7 @@ describe('the conditional Risk gate', () => {
     expect(
       kinds(
         evaluateGate({
+          challengeBlocksAtOrAbove: 'material',
           verification: verified(),
           riskRequirement: 'required',
           risk: risk('rejected'),
@@ -1212,6 +1276,7 @@ describe('the conditional Risk gate', () => {
     for (const status of ['accepted', 'accepted-with-limits'] as const) {
       expect(
         evaluateGate({
+          challengeBlocksAtOrAbove: 'material',
           verification: verified(),
           riskRequirement: 'required',
           risk: risk(status),

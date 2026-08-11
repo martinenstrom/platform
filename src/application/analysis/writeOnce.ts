@@ -266,7 +266,9 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
         ? asCanonicalValueString({
             reviewId: basis.devilsAdvocate.reviewId,
             sequence: basis.devilsAdvocate.sequence,
-            openChallengeIds: sorted(basis.devilsAdvocate.openChallengeIds),
+            openChallenges: [...basis.devilsAdvocate.openChallenges]
+              .sort((a, b) => (a.challengeId < b.challengeId ? -1 : 1))
+              .map((c) => `${c.challengeId}:${c.materiality}`),
           })
         : null,
       risk: basis.risk ? asCanonicalValueString(basis.risk) : null,

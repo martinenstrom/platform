@@ -29,6 +29,7 @@
  */
 
 import { verifyBasisManifest } from './basisManifest'
+import { DISAGREEMENT_MATERIALITIES } from './aggregation'
 import {
   dissentRequiresAcknowledgement,
   type CaseDecision,
@@ -662,7 +663,16 @@ export function validateSubmissionReferences(
      */
     if (review) {
       const known = new Set(review.challengeIds)
-      for (const challengeId of basis.devilsAdvocate.openChallengeIds) {
+      for (const { challengeId, materiality } of basis.devilsAdvocate.openChallenges) {
+        if (!DISAGREEMENT_MATERIALITIES.includes(materiality)) {
+          found.push(
+            problem(
+              'submission-challenge-materiality-unknown',
+              `Submission "${submission.id}" gives challenge "${challengeId}" a ` +
+                `materiality the firm does not define.`,
+            ),
+          )
+        }
         if (!known.has(challengeId)) {
           found.push(
             problem(

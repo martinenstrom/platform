@@ -197,7 +197,12 @@ export async function revisionEligibility(
 
   /* ----------------------------------------------------- the decision */
 
-  const decided = evaluateRevisionEligibility(inputs, caseId, reviews)
+  const decided = evaluateRevisionEligibility(
+    inputs,
+    caseId,
+    reviews,
+    policy.challengeBlocksAtOrAbove,
+  )
 
   return decided.map((eligibility, index) => {
     const revision = revisions[index]!

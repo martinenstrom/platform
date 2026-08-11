@@ -322,9 +322,7 @@ describe('submissions — H: a deleted basis row is refused on hydration (TD-58)
      * hydrates as an internally valid submission that looks MORE eligible than
      * it was, because less work appears to have been required.
      */
-    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
-      MalformedRowError,
-    )
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(MalformedRowError)
   })
 
   it('refuses a submission that gained a required-work row', async () => {
@@ -340,9 +338,7 @@ describe('submissions — H: a deleted basis row is refused on hydration (TD-58)
         WHERE submission_id = 'sub-1' LIMIT 1`,
     )
 
-    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
-      MalformedRowError,
-    )
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(MalformedRowError)
   })
 
   it('refuses a submission whose risk rule version was edited', async () => {
@@ -354,9 +350,7 @@ describe('submissions — H: a deleted basis row is refused on hydration (TD-58)
         WHERE id = 'sub-1'`,
     )
 
-    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(
-      MalformedRowError,
-    )
+    await expect(repositories.submissions.get('sub-1')).rejects.toThrow(MalformedRowError)
   })
 
   it('accepts the submission it actually stored', async () => {
@@ -376,12 +370,10 @@ describe('submissions — H: a deleted basis row is refused on hydration (TD-58)
       `DELETE FROM analysis.submission_required_work WHERE submission_id = 'sub-1'`,
     )
 
-    const error = await repositories.submissions
-      .get('sub-1')
-      .then(
-        () => null,
-        (thrown: unknown) => thrown,
-      )
+    const error = await repositories.submissions.get('sub-1').then(
+      () => null,
+      (thrown: unknown) => thrown,
+    )
 
     const message = (error as Error).message
     expect(message).toContain('manifest')

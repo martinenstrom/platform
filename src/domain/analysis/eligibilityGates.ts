@@ -29,6 +29,7 @@
 
 import type { EligibilityPolicy } from './eligibilityPolicy'
 import { disagreementBlocksEligibility } from './aggregation'
+import { challengeBlocks } from './review'
 import type { BasisContent } from './basisCanonical'
 
 /** The stable vocabulary. Codes, never user-facing strings. */
@@ -154,18 +155,39 @@ export function evaluateEligibilityGates(
       status: 'failed',
       detail: "no devil's advocate review is recorded for this revision",
     })
-  } else if (basis.devilsAdvocate.openChallengeIds.length > 0) {
-    gates.push({
-      code: 'CHALLENGE_UNRESOLVED',
-      status: 'failed',
-      detail: `${basis.devilsAdvocate.openChallengeIds.length} challenge(s) remain open`,
-    })
   } else {
-    gates.push({
-      code: 'CHALLENGE_UNRESOLVED',
-      status: 'passed',
-      detail: 'every challenge raised has been resolved',
-    })
+    /*
+     * The policy decides which open challenges block. `challengeBlocks` owns
+     * that rule and this applies it -- it does not restate it. Counting every
+     * open challenge, which is what this did until the threshold was made an
+     * input, silently raised the firm's bar above what the policy declares.
+     *
+     * Non-material objections stay in the basis and stay unmentioned by this
+     * gate: recorded, visible to the CIO, and not blocking.
+     */
+    const blocking = basis.devilsAdvocate.openChallenges.filter((challenge) =>
+      challengeBlocks(challenge.materiality, policy.challengeBlocksAtOrAbove),
+    )
+    const open = basis.devilsAdvocate.openChallenges.length
+    if (blocking.length > 0) {
+      gates.push({
+        code: 'CHALLENGE_UNRESOLVED',
+        status: 'failed',
+        detail:
+          `${blocking.length} of ${open} open challenge(s) block at or above ` +
+          `"${policy.challengeBlocksAtOrAbove}"`,
+      })
+    } else {
+      gates.push({
+        code: 'CHALLENGE_UNRESOLVED',
+        status: 'passed',
+        detail:
+          open === 0
+            ? 'every challenge raised has been resolved'
+            : `${open} open challenge(s), none at or above ` +
+              `"${policy.challengeBlocksAtOrAbove}"`,
+      })
+    }
   }
 
   /* -------------------------------------------------------------------- risk */

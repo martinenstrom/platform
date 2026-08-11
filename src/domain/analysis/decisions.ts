@@ -325,7 +325,19 @@ export interface EligibilityBasis {
   devilsAdvocate: {
     reviewId: string
     sequence: number
-    openChallengeIds: readonly string[]
+    /**
+     * Every open challenge, with the weight the Devil's Advocate gave it.
+     *
+     * All of them, never a filtered subset: which ones BLOCK is a policy
+     * question the gate answers from `challengeBlocksAtOrAbove`, and a basis
+     * storing only the blocking ones would be a stored policy conclusion that
+     * a later policy could make wrong. It would also lose the non-material
+     * objections the CIO is entitled to read beside the thesis.
+     */
+    openChallenges: ReadonlyArray<{
+      challengeId: string
+      materiality: DisagreementMateriality
+    }>
   } | null
   risk: { reviewId: string; sequence: number; status: RiskStatus } | null
   riskRequirement: RiskRequirementState

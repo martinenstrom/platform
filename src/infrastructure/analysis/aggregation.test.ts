@@ -568,6 +568,7 @@ describe('unresolved disagreement', () => {
       ],
       'case-1',
       {},
+      'material',
     )
     expect(eligibility!.eligibleForDecision).toBe(false)
     expect(eligibility!.blockedBy.map((blocker) => blocker.kind)).toContain(

@@ -78,10 +78,15 @@ describe('a submission survives the round trip', () => {
       sequence: 1,
       status: 'accepted',
     })
-    // Byte order on read, whatever order the caller listed them in.
-    expect(basis.devilsAdvocate?.openChallengeIds).toEqual([
-      'challenge-a-rev-1',
-      'challenge-b-rev-1',
+    /*
+     * Byte order on read, whatever order the caller listed them in -- and the
+     * materiality travels with each one. The fixture gives them DIFFERENT
+     * weights on purpose: two rows carrying the same value would round-trip
+     * identically through a mapping that had lost the association.
+     */
+    expect(basis.devilsAdvocate?.openChallenges).toEqual([
+      { challengeId: 'challenge-a-rev-1', materiality: 'material' },
+      { challengeId: 'challenge-b-rev-1', materiality: 'non-material' },
     ])
   })
 

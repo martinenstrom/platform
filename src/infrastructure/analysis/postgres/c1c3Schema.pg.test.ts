@@ -274,7 +274,6 @@ describe('claim dispositions', () => {
       ],
     )
 
-
   /*
    * The guard for migration 0023's positional shift.
    *

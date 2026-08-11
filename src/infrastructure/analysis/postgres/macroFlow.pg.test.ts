@@ -436,7 +436,12 @@ describe('Scenario E — a new revision inherits nothing', () => {
     expect(result.outcome).toBe('committed')
 
     const nextRevisionId = deriveRevisionId(secondAggregate, macro.thesisId)
-    const all = await revisionEligibility(repositories, caseId, LATEST, eligibilityPolicy('1'))
+    const all = await revisionEligibility(
+      repositories,
+      caseId,
+      LATEST,
+      eligibilityPolicy('1'),
+    )
     const fresh = all.find((entry) => entry.revisionId === nextRevisionId)!
 
     expect(fresh.eligibility.eligibleForDecision).toBe(false)

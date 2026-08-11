@@ -363,27 +363,42 @@ describe('governance runs per revision', () => {
   }
 
   it('clears one revision while blocking another', () => {
-    const results = evaluateRevisionGates([buy, sell], 'case-1', {
-      verification: [
-        revisionVerification('th-buy', 'buy-r1', 'verified'),
-        revisionVerification('th-sell', 'sell-r1', 'correction-required'),
-      ],
-    })
+    const results = evaluateRevisionGates(
+      [buy, sell],
+      'case-1',
+      {
+        verification: [
+          revisionVerification('th-buy', 'buy-r1', 'verified'),
+          revisionVerification('th-sell', 'sell-r1', 'correction-required'),
+        ],
+      },
+      'material',
+    )
     expect(results.find((r) => r.revisionId === 'buy-r1')?.passed).toBe(true)
     expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
   })
 
   it('applies a case-wide review to every revision', () => {
-    const results = evaluateRevisionGates([buy, sell], 'case-1', {
-      verification: [caseVerification('verified')],
-    })
+    const results = evaluateRevisionGates(
+      [buy, sell],
+      'case-1',
+      {
+        verification: [caseVerification('verified')],
+      },
+      'material',
+    )
     expect(results.every((r) => r.passed)).toBe(true)
   })
 
   it('blocks a revision nobody verified', () => {
-    const results = evaluateRevisionGates([buy, sell], 'case-1', {
-      verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
-    })
+    const results = evaluateRevisionGates(
+      [buy, sell],
+      'case-1',
+      {
+        verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
+      },
+      'material',
+    )
     expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
   })
 
@@ -394,15 +409,21 @@ describe('governance runs per revision', () => {
       [{ thesisId: 'th-buy', revisionId: 'buy-r2', riskRequirement: 'not-required' }],
       'case-1',
       { verification: [revisionVerification('th-buy', 'buy-r1', 'verified')] },
+      'material',
     )
     expect(results[0]!.passed).toBe(false)
     expect(results[0]!.blockers.map((b) => b.kind)).toContain('verification-missing')
   })
 
   it('ignores a review belonging to another case', () => {
-    const results = evaluateRevisionGates([buy], 'case-2', {
-      verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
-    })
+    const results = evaluateRevisionGates(
+      [buy],
+      'case-2',
+      {
+        verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
+      },
+      'material',
+    )
     expect(results[0]!.passed).toBe(false)
   })
 })

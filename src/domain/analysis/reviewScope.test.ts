@@ -163,18 +163,28 @@ describe('reviewApplies', () => {
 
 describe('a superseding revision inherits nothing', () => {
   it('does not treat verification of revision 1 as verification of revision 2', () => {
-    const gates = evaluateRevisionGates(scoped([rev2]), CASE, {
-      verification: [verification(rev1)],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev2]),
+      CASE,
+      {
+        verification: [verification(rev1)],
+      },
+      'material',
+    )
     expect(gates[0]!.passed).toBe(false)
     expect(gates[0]!.blockers.map((b) => b.kind)).toContain('verification-missing')
   })
 
   it('keeps revision 1 verified as a historical record', () => {
     // The old verdict remains true about the argument it examined.
-    const gates = evaluateRevisionGates(scoped([rev1, rev2]), CASE, {
-      verification: [verification(rev1)],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev1, rev2]),
+      CASE,
+      {
+        verification: [verification(rev1)],
+      },
+      'material',
+    )
     expect(gates.find((g) => g.revisionId === 'buy-r1')?.passed).toBe(true)
     expect(gates.find((g) => g.revisionId === 'buy-r2')?.passed).toBe(false)
   })
@@ -183,10 +193,15 @@ describe('a superseding revision inherits nothing', () => {
     // Symmetry matters as much as the approval case: an inherited objection
     // would block work nobody has actually objected to, and the record would
     // show a challenge against an argument that was never made.
-    const gates = evaluateRevisionGates(scoped([rev1, rev2]), CASE, {
-      verification: [verification(rev1), verification(rev2)],
-      devilsAdvocate: [challengeReview(rev1)],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev1, rev2]),
+      CASE,
+      {
+        verification: [verification(rev1), verification(rev2)],
+        devilsAdvocate: [challengeReview(rev1)],
+      },
+      'material',
+    )
     expect(
       gates.find((g) => g.revisionId === 'buy-r1')?.blockers.map((b) => b.kind),
     ).toContain('unresolved-material-challenge')
@@ -199,9 +214,14 @@ describe('a superseding revision inherits nothing', () => {
       ...challengeReview(rev1),
       outcomes: { 'ch-1': 'resolved' },
     }
-    const gates = evaluateRevisionGates(scoped([rev2]), CASE, {
-      devilsAdvocate: [resolved],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev2]),
+      CASE,
+      {
+        devilsAdvocate: [resolved],
+      },
+      'material',
+    )
     expect(gates[0]!.passed).toBe(false)
   })
 
@@ -218,10 +238,15 @@ describe('a superseding revision inherits nothing', () => {
       status: 'rejected',
       findings: [{ kind: 'downside', detail: 'duration exposure', severity: 'critical' }],
     }
-    const gates = evaluateRevisionGates(scoped([rev1, rev2]), CASE, {
-      verification: [verification(rev1), verification(rev2)],
-      risk: [risk],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev1, rev2]),
+      CASE,
+      {
+        verification: [verification(rev1), verification(rev2)],
+        risk: [risk],
+      },
+      'material',
+    )
     expect(gates.find((g) => g.revisionId === 'buy-r1')?.passed).toBe(false)
     expect(gates.find((g) => g.revisionId === 'buy-r2')?.passed).toBe(true)
   })
@@ -239,25 +264,35 @@ describe('a superseding revision inherits nothing', () => {
       status: 'rejected',
       findings: [{ rule: 'disclosure', detail: 'no risk disclosure' }],
     }
-    const gates = evaluateRevisionGates(scoped([rev1, rev2]), CASE, {
-      verification: [verification(rev1), verification(rev2)],
-      compliance: [compliance],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev1, rev2]),
+      CASE,
+      {
+        verification: [verification(rev1), verification(rev2)],
+        compliance: [compliance],
+      },
+      'material',
+    )
     expect(
       gates.every((g) => g.blockers.some((b) => b.kind === 'compliance-block')),
     ).toBe(true)
   })
 
   it('reads the latest verdict when a control function re-reviews', () => {
-    const gates = evaluateRevisionGates(scoped([rev1]), CASE, {
-      verification: [
-        verification(rev1, { at: '2026-07-28T09:00:00.000Z', status: 'verified' }),
-        verification(rev1, {
-          at: '2026-07-28T11:00:00.000Z',
-          status: 'correction-required',
-        }),
-      ],
-    })
+    const gates = evaluateRevisionGates(
+      scoped([rev1]),
+      CASE,
+      {
+        verification: [
+          verification(rev1, { at: '2026-07-28T09:00:00.000Z', status: 'verified' }),
+          verification(rev1, {
+            at: '2026-07-28T11:00:00.000Z',
+            status: 'correction-required',
+          }),
+        ],
+      },
+      'material',
+    )
     // Changing its mind is a new review; the gate reads the current one and
     // the record keeps both.
     expect(gates[0]!.passed).toBe(false)
@@ -305,6 +340,7 @@ describe('the CIO decision', () => {
       ],
       CASE,
       reviews,
+      'material',
     )
 
   it('refuses a revision whose only reviews belong to its predecessor', () => {

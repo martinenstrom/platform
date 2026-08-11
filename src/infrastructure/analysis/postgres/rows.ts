@@ -340,6 +340,13 @@ export interface SubmissionEvidenceRow {
 export interface SubmissionOpenChallengeRow {
   submission_id: string
   challenge_id: string
+  /**
+   * The weight the Devil's Advocate gave it, stored as a fact.
+   *
+   * Not "does it block": that is the gate's answer under the policy in force,
+   * and a stored conclusion would be wrong the moment the policy changed.
+   */
+  materiality: string
 }
 
 /* ----------------------------------------------------------------- returns */

@@ -115,7 +115,7 @@ async function submit(
              now(), 1, 'pending', $5, 'not-required', 'c1d1-prov', now(),
              -- Synthetic: this seed never hydrates through the mapper, so the
              -- witness is never verified. It satisfies the real CHECKs.
-             'sha256', '1', '0000000000000000000000000000000000000000000000000000000000000000')`,
+             'sha256', '2', '0000000000000000000000000000000000000000000000000000000000000000')`,
     [submissionId, caseId, thesisId, revisionId, policy],
   )
   return submissionId

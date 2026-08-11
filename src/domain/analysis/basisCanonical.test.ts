@@ -61,7 +61,10 @@ const POPULATED: BasisContent = {
   devilsAdvocate: {
     reviewId: 'review-d',
     sequence: 2,
-    openChallengeIds: ['challenge-b', 'challenge-a'],
+    openChallenges: [
+      { challengeId: 'challenge-b', materiality: 'material' },
+      { challengeId: 'challenge-a', materiality: 'non-material' },
+    ],
   },
   risk: { reviewId: 'review-r', sequence: 3, status: 'accepted' },
   riskRequirement: 'required',
@@ -79,7 +82,7 @@ describe('golden canonical bytes', () => {
   it('encodes the minimal basis exactly', () => {
     expect(canonicalBasisInput(SUBJECT, MINIMAL)).toBe(
       'l21:' +
-        'i1' +
+        'i2' +
         's5:sub-1s6:case-1s8:thesis-1s5:rev-1' +
         's1:1s24:2026-07-28T08:59:00.000Zns6:prov-1' +
         'n' +
@@ -95,11 +98,13 @@ describe('golden canonical bytes', () => {
   it('encodes the populated basis exactly', () => {
     expect(canonicalBasisInput(SUBJECT, POPULATED)).toBe(
       'l21:' +
-        'i1' +
+        'i2' +
         's5:sub-1s6:case-1s8:thesis-1s5:rev-1' +
         's1:1s24:2026-07-28T08:59:00.000Zs5:agg-1s6:prov-1' +
         'l3:s8:review-vi1s8:verified' +
-        'l4:s8:review-di2i2l2:s11:challenge-as11:challenge-b' +
+        'l4:s8:review-di2i2l2:' +
+        'l2:s11:challenge-as12:non-material' +
+        'l2:s11:challenge-bs8:material' +
         's8:requireds6:rule-1s1:1' +
         'l3:s8:review-ri3s8:accepted' +
         'i2l2:l2:s10:macro-scans5:run-1l2:s12:credit-checks5:run-2' +
@@ -109,8 +114,8 @@ describe('golden canonical bytes', () => {
   })
 
   it('pins the domain-separation prefix', () => {
-    expect(BASIS_DOMAIN_SEPARATION).toBe('financial-os:eligibility-basis:v1|')
-    expect(BASIS_CANONICALIZATION_VERSION).toBe(1)
+    expect(BASIS_DOMAIN_SEPARATION).toBe('financial-os:eligibility-basis:v2|')
+    expect(BASIS_CANONICALIZATION_VERSION).toBe(2)
   })
 
   it('carries no control character in the prefix', () => {
@@ -337,7 +342,7 @@ describe('order never changes the bytes', () => {
       evidenceSetIds: [...POPULATED.evidenceSetIds].reverse(),
       devilsAdvocate: {
         ...POPULATED.devilsAdvocate!,
-        openChallengeIds: [...POPULATED.devilsAdvocate!.openChallengeIds].reverse(),
+        openChallenges: [...POPULATED.devilsAdvocate!.openChallenges].reverse(),
       },
     })
     expect(backwards).toBe(forwards)
@@ -372,9 +377,17 @@ describe('order never changes the bytes', () => {
     expect(encoded.indexOf('macro-scan')).toBeLessThan(encoded.indexOf('credit-check'))
   })
 
-  it('keeps a v1 rendering readable once a v2 exists', () => {
-    // The version leads the encoding, so a reader can dispatch on it without
-    // parsing the rest — which is what lets v1 rows stay verifiable later.
-    expect(canonicalBasisInput(SUBJECT, MINIMAL).startsWith('l21:i1')).toBe(true)
+  it('leads with the version, so a reader can dispatch before parsing', () => {
+    /*
+     * The version is element 1 so a reader can tell which specification
+     * applies without decoding the rest.
+     *
+     * It does NOT mean v1 records stay verifiable. The v2 cutover shipped no
+     * v1 reader, which was permitted only because migration 0025 proved no v1
+     * record existed. Should a future version need to accept its predecessor,
+     * this leading element is what makes that possible — the capability is
+     * preserved, the compatibility is not claimed.
+     */
+    expect(canonicalBasisInput(SUBJECT, MINIMAL).startsWith('l21:i2')).toBe(true)
   })
 })

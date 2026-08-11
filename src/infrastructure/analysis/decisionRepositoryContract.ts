@@ -285,7 +285,7 @@ function buildContract(name: string, options: DecisionContractOptions): void {
 
         expect(read).not.toBeNull()
         expect(read!.basis.manifest.algorithm).toBe('sha256')
-        expect(read!.basis.manifest.canonicalizationVersion).toBe(1)
+        expect(read!.basis.manifest.canonicalizationVersion).toBe(2)
         expect(read!.basis.manifest.digest).toMatch(/^[0-9a-f]{64}$/)
 
         const { manifest, ...content } = read!.basis
@@ -504,7 +504,7 @@ function buildContract(name: string, options: DecisionContractOptions): void {
             devilsAdvocate: {
               reviewId: devilsAdvocateIdFor('rev-2'),
               sequence: 1,
-              openChallengeIds: [],
+              openChallenges: [],
             },
           }),
         ).rejects.toThrow(InvariantViolationError)
@@ -524,7 +524,12 @@ function buildContract(name: string, options: DecisionContractOptions): void {
             devilsAdvocate: {
               reviewId: devilsAdvocateIdFor('rev-1'),
               sequence: 1,
-              openChallengeIds: [challengeIdsFor('rev-2')[0]],
+              openChallenges: [
+                {
+                  challengeId: challengeIdsFor('rev-2')[0]!,
+                  materiality: 'material' as const,
+                },
+              ],
             },
           }),
         ).rejects.toThrow(InvariantViolationError)

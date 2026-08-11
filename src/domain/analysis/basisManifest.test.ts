@@ -87,7 +87,7 @@ describe('order does not change meaning', () => {
       ...basis,
       devilsAdvocate: {
         ...basis.devilsAdvocate!,
-        openChallengeIds: [...basis.devilsAdvocate!.openChallengeIds].reverse(),
+        openChallenges: [...basis.devilsAdvocate!.openChallenges].reverse(),
       },
     }))
     expect(backwards).toBe(forwards)
@@ -153,7 +153,7 @@ describe('every material change moves the digest', () => {
     ],
     [
       'an open challenge removed',
-      { ...base, devilsAdvocate: { ...base.devilsAdvocate!, openChallengeIds: [] } },
+      { ...base, devilsAdvocate: { ...base.devilsAdvocate!, openChallenges: [] } },
     ],
     ['the Risk requirement changed', { ...base, riskRequirement: 'not-required' }],
     ['the policy version changed', { ...base, eligibilityPolicyVersion: '2' }],

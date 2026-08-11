@@ -148,7 +148,7 @@ export const SUBMISSION_READ_SQL = catalog({
                 WHERE submission_id = ANY($1)
                 ORDER BY evidence_set_id COLLATE "C"`,
 
-  openChallengesFor: `SELECT submission_id, challenge_id
+  openChallengesFor: `SELECT submission_id, challenge_id, materiality
                       FROM analysis.submission_open_challenges
                       WHERE submission_id = ANY($1)
                       ORDER BY challenge_id COLLATE "C"`,
@@ -217,8 +217,9 @@ export const SUBMISSION_WRITE_SQL = catalog({
     SELECT $1, * FROM unnest($2::text[])`,
 
   insertOpenChallenges: `
-    INSERT INTO analysis.submission_open_challenges (submission_id, challenge_id)
-    SELECT $1, * FROM unnest($2::text[])`,
+    INSERT INTO analysis.submission_open_challenges
+      (submission_id, challenge_id, materiality)
+    SELECT $1, * FROM unnest($2::text[], $3::text[])`,
 
   /** Current states, so settle can tell missing from replayed from conflicting. */
   statesOf: `SELECT id, state FROM analysis.cio_submissions WHERE id = ANY($1)`,
@@ -820,7 +821,11 @@ export function createSubmissionRepository(
           context,
           'submissions.save',
           SUBMISSION_WRITE_SQL.insertOpenChallenges,
-          [root.id, rows.openChallenges.map((entry) => entry.challenge_id)],
+          [
+            root.id,
+            rows.openChallenges.map((entry) => entry.challenge_id),
+            rows.openChallenges.map((entry) => entry.materiality),
+          ],
         )
 
         /*

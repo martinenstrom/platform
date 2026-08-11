@@ -153,10 +153,16 @@ export async function assembleEligibilityBasis(input: {
            * `unresolvedChallenges` is the domain's own answer to what remains
            * open. Filtering the list here would be a second definition of
            * "open", free to drift from the one the gate report consults.
+           *
+           * Materiality travels with each one and NOTHING is filtered by it.
+           * Which of these block is the gate's answer under the policy in
+           * force; deciding it here would store a policy conclusion and lose
+           * the non-material objections the CIO reads beside the thesis.
            */
-          openChallengeIds: unresolvedChallenges(devilsAdvocate).map(
-            (challenge) => challenge.id,
-          ),
+          openChallenges: unresolvedChallenges(devilsAdvocate).map((challenge) => ({
+            challengeId: challenge.id,
+            materiality: challenge.materiality,
+          })),
         }
       : null,
     risk: risk

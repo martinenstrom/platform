@@ -28,7 +28,7 @@ import {
   type ThesisEligibility,
   type ThesisLifecycleState,
 } from './lifecycle'
-import type { DisagreementMateriality } from './aggregation'
+import { DISAGREEMENT_MATERIALITIES, type DisagreementMateriality } from './aggregation'
 import type { RevisionId, ThesisId } from './theses'
 
 /**
@@ -430,14 +430,30 @@ export function unresolvedChallenges(review: DevilsAdvocateReview): Challenge[] 
  *
  * A non-material open challenge does not block, does not disappear, and is read
  * by the CIO alongside the thesis.
+ *
+ * The threshold is a PARAMETER, taken from the policy in force. It is not
+ * defaulted and not looked up here: this function is where the firm's rule is
+ * applied, not where it is chosen, and a default would be a second place the
+ * line is drawn.
  */
-export function challengeBlocks(materiality: DisagreementMateriality): boolean {
-  return materiality !== 'non-material'
+export function challengeBlocks(
+  materiality: DisagreementMateriality,
+  blocksAtOrAbove: DisagreementMateriality,
+): boolean {
+  return (
+    DISAGREEMENT_MATERIALITIES.indexOf(materiality) >=
+    DISAGREEMENT_MATERIALITIES.indexOf(blocksAtOrAbove)
+  )
 }
 
-/** Open challenges at or above the blocking threshold. */
-export function blockingChallenges(review: DevilsAdvocateReview): Challenge[] {
-  return unresolvedChallenges(review).filter((c) => challengeBlocks(c.materiality))
+/** Open challenges at or above the blocking threshold the caller supplies. */
+export function blockingChallenges(
+  review: DevilsAdvocateReview,
+  blocksAtOrAbove: DisagreementMateriality,
+): Challenge[] {
+  return unresolvedChallenges(review).filter((c) =>
+    challengeBlocks(c.materiality, blocksAtOrAbove),
+  )
 }
 
 /* ----------------------------------------------------------------- compliance */
@@ -590,6 +606,14 @@ export interface GovernanceGate {
   riskRequirement?: RiskRequirementState
   /** The conditional entry Risk is declared under, for the blocker to name. */
   riskEntryKey?: string
+  /**
+   * The challenge threshold in force, from the policy the caller selected.
+   *
+   * Required, like every other threshold in this codebase: a default here
+   * would be a second place the firm's line is drawn, and callers would
+   * inherit it without noticing.
+   */
+  challengeBlocksAtOrAbove: DisagreementMateriality
 }
 
 export interface GateResult {
@@ -650,7 +674,10 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
   /* ---------------------------------------------------- devil's advocate */
 
   if (gate.devilsAdvocate) {
-    for (const challenge of blockingChallenges(gate.devilsAdvocate)) {
+    for (const challenge of blockingChallenges(
+      gate.devilsAdvocate,
+      gate.challengeBlocksAtOrAbove,
+    )) {
       blockers.push({
         kind: 'unresolved-material-challenge',
         reviewId: gate.devilsAdvocate.reviewId,
@@ -767,6 +794,7 @@ export function evaluateRevisionGates(
   }>,
   caseId: CaseId,
   reviews: CaseReviews,
+  challengeBlocksAtOrAbove: DisagreementMateriality,
 ): RevisionGateResult[] {
   return revisions.map((revision) => {
     const result = evaluateGate({
@@ -780,6 +808,7 @@ export function evaluateRevisionGates(
       risk: latestApplicable(reviews.risk, caseId, revision.revisionId),
       riskRequirement: revision.riskRequirement,
       riskEntryKey: revision.riskEntryKey,
+      challengeBlocksAtOrAbove,
     })
     return { thesisId: revision.thesisId, revisionId: revision.revisionId, ...result }
   })
@@ -847,8 +876,15 @@ export function evaluateRevisionEligibility(
   revisions: readonly RevisionEligibilityInput[],
   caseId: CaseId,
   reviews: CaseReviews,
+  /** From the policy the application layer selected. Never defaulted here. */
+  challengeBlocksAtOrAbove: DisagreementMateriality,
 ): ThesisEligibility[] {
-  const gates = evaluateRevisionGates(revisions, caseId, reviews)
+  const gates = evaluateRevisionGates(
+    revisions,
+    caseId,
+    reviews,
+    challengeBlocksAtOrAbove,
+  )
 
   return revisions.map((revision, index) => {
     const gate = gates[index]!

@@ -10,6 +10,7 @@
 
 import { buildBasisManifest, buildEvidenceSet, observationRef } from './index'
 import type { BasisContent } from './basisManifest'
+import type { DisagreementMateriality } from './aggregation'
 import type {
   ActorSnapshot,
   CaseDecision,
@@ -162,7 +163,17 @@ export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): Eligibil
     devilsAdvocate: {
       reviewId: devilsAdvocateIdFor(revisionId),
       sequence: 1,
-      openChallengeIds: [...challengeIdsFor(revisionId)],
+      /*
+       * Deliberately mixed: the whole point of v2 is that materiality is a
+       * fact the gate reads, so a fixture where every challenge weighs the
+       * same would exercise the new shape without exercising the change.
+       */
+      openChallenges: challengeIdsFor(revisionId).map((challengeId, index) => ({
+        challengeId,
+        materiality: (index === 0
+          ? 'non-material'
+          : 'material') satisfies DisagreementMateriality,
+      })),
     },
     risk: { reviewId: riskIdFor(revisionId), sequence: 1, status: 'accepted' },
     riskRequirement: 'required',

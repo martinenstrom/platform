@@ -29,6 +29,10 @@
  */
 
 import {
+  DISAGREEMENT_MATERIALITIES,
+  type DisagreementMateriality,
+} from '~/domain/analysis'
+import {
   verifyBasisManifest,
   type EligibilityBasisManifest,
   relationsOf,
@@ -190,9 +194,10 @@ export function submissionToRows(submission: CioSubmission): SubmissionRowSet {
       submission_id: submission.id,
       evidence_set_id: evidenceSetId,
     })),
-    openChallenges: (basis.devilsAdvocate?.openChallengeIds ?? []).map((challengeId) => ({
+    openChallenges: (basis.devilsAdvocate?.openChallenges ?? []).map((challenge) => ({
       submission_id: submission.id,
-      challenge_id: challengeId,
+      challenge_id: challenge.challengeId,
+      materiality: challenge.materiality,
     })),
   }
 }
@@ -209,6 +214,29 @@ const disagreementOrder = (
 
 const evidenceOrder = (left: SubmissionEvidenceRow, right: SubmissionEvidenceRow) =>
   byteOrder(left.evidence_set_id, right.evidence_set_id)
+
+/**
+ * A stored materiality, or a malformed row.
+ *
+ * The column has a CHECK behind it, so a value outside the domain means the
+ * row was written by something that bypassed it. Refused on read rather than
+ * widened into the domain type -- a basis carrying a materiality the firm does
+ * not define cannot be evaluated against any threshold.
+ */
+function asMateriality(
+  value: string,
+  challengeId: string,
+  operation: string,
+): DisagreementMateriality {
+  if (!(DISAGREEMENT_MATERIALITIES as readonly string[]).includes(value)) {
+    malformed(
+      'CIO submission',
+      `gives challenge "${challengeId}" a materiality the firm does not define`,
+      operation,
+    )
+  }
+  return value as DisagreementMateriality
+}
 
 const challengeOrder = (
   left: SubmissionOpenChallengeRow,
@@ -271,9 +299,10 @@ export function submissionFromRows(
               "names a Devil's Advocate review with no sequence",
               operation,
             ),
-          openChallengeIds: [...rows.openChallenges]
-            .sort(challengeOrder)
-            .map((entry) => entry.challenge_id),
+          openChallenges: [...rows.openChallenges].sort(challengeOrder).map((entry) => ({
+            challengeId: entry.challenge_id,
+            materiality: asMateriality(entry.materiality, entry.challenge_id, operation),
+          })),
         }
 
   const risk =

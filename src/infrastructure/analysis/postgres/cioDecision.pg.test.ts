@@ -112,16 +112,16 @@ async function toDecisionReady(runtime: Runtime, caseId: string): Promise<MacroC
   await submit(runtime, macro)
   expect((await verify(runtime, macro)).outcome).toBe('committed')
   /*
-   * The Devil's Advocate raised an objection and the desk answered it.
+   * The Devil's Advocate raised an objection and judged it immaterial.
    *
-   * A review with no challenge at all is refused -- the control function whose
-   * mandate is to attack the argument does not discharge it by filing nothing.
-   * So the realistic decision-ready state is a challenge that was RESOLVED, and
-   * it names who resolved it.
+   * It stays OPEN and unresolved, and the case still reaches a decision. That
+   * is the whole point of basis canonicalization v2: materiality is a fact the
+   * record carries, and whether it blocks is the policy's answer, not the
+   * gate's opinion. Until v2 this exact state was refused, and this suite had
+   * to route around it.
    *
-   * Deliberately not a non-material OPEN challenge: `challengeBlocks` and
-   * `evaluateEligibilityGates` currently disagree about whether that blocks,
-   * and this suite proves the path rather than settling a contested threshold.
+   * The objection does not disappear -- the CIO reads it beside the thesis,
+   * and the assertions below check it survived to the decision.
    */
   expect(
     (
@@ -130,12 +130,10 @@ async function toDecisionReady(runtime: Runtime, caseId: string): Promise<MacroC
           {
             contests: macro.macroClaimId,
             kind: 'fragile-assumption',
-            argument: 'The path assumes no fiscal impulse.',
+            argument: 'The wording overstates confidence slightly.',
             counterEvidence: [],
-            wouldBeResolvedBy: 'A fiscal impulse estimate for the next two quarters.',
-            materiality: 'material',
-            outcome: 'resolved',
-            resolvedBy: 'macro-head',
+            wouldBeResolvedBy: 'A softer qualifier.',
+            materiality: 'non-material',
           },
         ],
       })
@@ -201,6 +199,17 @@ describe('The First Defensible Decision', () => {
     const stored = await repositories.submissions.get(submissionId)
     expect(stored!.basis.eligibilityPolicyVersion).toBe('1')
     expect(stored!.basis.blockers).toEqual([])
+
+    /*
+     * The non-material objection is IN the basis the CIO decided on. Not
+     * blocking and not dropped -- a basis that had filtered it would make the
+     * record of this decision quieter than the firm's own rule allows.
+     */
+    expect(stored!.basis.devilsAdvocate!.openChallenges).toHaveLength(1)
+    expect(stored!.basis.devilsAdvocate!.openChallenges[0]!.materiality).toBe(
+      'non-material',
+    )
+    expect(stored!.basis.manifest.canonicalizationVersion).toBe(2)
   })
 
   it('writes a case movement the timeline can be read from', async () => {

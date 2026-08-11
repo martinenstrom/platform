@@ -444,7 +444,7 @@ function behaviouralChecks(name: string, get: () => { db: TestDatabase; app: Cli
               manifest_algorithm, manifest_canon_version, manifest_digest)
            VALUES ($1, $2, 'system', $3, $4, 'research-office',
                    'research-director', now(), 1, 'pending', '1', 'not-required',
-                   'parity-prov', now(), 'sha256', '1', '0000000000000000000000000000000000000000000000000000000000000000')`,
+                   'parity-prov', now(), 'sha256', '2', '0000000000000000000000000000000000000000000000000000000000000000')`,
           [submissionId, caseId, id('thesis'), revisionId],
         )
         submissions.push(submissionId)
