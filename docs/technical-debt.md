@@ -1497,3 +1497,42 @@ Recorded so a later phase does not have to reconstruct what was proven.
 and TD-59 (low, test infrastructure).
 
 **Not to be reopened** unless a later phase finds a concrete defect.
+
+
+---
+
+## TD-70 · the disagreement threshold is restated in the validator · open
+
+**Found by** `challenge-threshold-only-in-the-gate`, on the day that rule was
+written — while it was being verified for the *challenge* threshold.
+
+`domain/analysis/aggregateValidation.ts` hardcodes:
+
+```ts
+if (disagreement.materiality === 'decision-critical') { … blocks eligibility … }
+```
+
+That is the **disagreement** threshold, which `EligibilityPolicy` already owns
+as `disagreementBlocksAtOrAbove` and which `disagreementBlocksEligibility`
+already applies. So the firm's line on aggregation disagreement is drawn in two
+places, and the validator's copy is the one nobody would think to change.
+
+Exactly the defect the challenge-materiality stage was authorised to fix, in the
+sibling field. It is recorded rather than fixed because closing it needs an
+`EligibilityPolicy` threaded into a validator that receives none — the caller
+must select it, per the standing rule that no evaluator resolves its own policy
+— and that is a design change beyond the ruling that authorised this stage.
+
+**Why it is not urgent.** The two values agree today: policy v1 sets
+`disagreementBlocksAtOrAbove: 'decision-critical'`, which is what the literal
+says. The debt is that they agree by coincidence rather than by construction,
+and a second policy version would separate them silently.
+
+**Closing it.** Thread the policy into `assertCioSubmissionWellFormed`, replace
+the literal with `disagreementBlocksEligibility`, and delete the
+`aggregateValidation.ts` exclusion from `challengeThresholdOnlyInTheGate` in
+`src/test/fitness/rules.ts` — the rule already detects it and is being held off
+that one file deliberately.
+
+> The exclusion is written into the rule with this reference beside it, so the
+> debt is visible where someone would otherwise wonder why the file is exempt.

@@ -1,4 +1,4 @@
-# Eligibility-basis canonicalization, version 1
+# Eligibility-basis canonicalization, version 2
 
 **Status:** normative. **Applies to:** `EligibilityBasisManifest` where
 `canonicalizationVersion = 1` and `algorithm = "sha256"`.
@@ -194,25 +194,69 @@ elements, in this order:
 The status is encoded as its literal string, not as an ordinal. An ordinal would
 silently change meaning if the union were ever reordered.
 
-### 4.3 Element 11 — devil's advocate
+### 4.3 Element 11 - devil's advocate
 
 `null` when there is no devil's-advocate review. Otherwise a list of exactly
 four elements, in this order:
 
-1. `reviewId` — string
-2. `sequence` — integer
-3. open-challenge count — integer
-4. open-challenge ids — list of strings, sorted per §6.8
+1. `reviewId` - string
+2. `sequence` - integer
+3. open-challenge count - integer
+4. open challenges - list of two-element lists, sorted per §6.8
+
+**This is the only element that differs from version 1.** Each open challenge is
+a nested list of exactly two strings:
+
+1. `challengeId` - string
+2. `materiality` - string, one of `non-material`, `material`,
+   `decision-critical`
 
 The count is bound **in addition to** the list, and the same pattern appears at
 elements 16/17, 18/19 and 20/21. It is deliberate redundancy: a truncated or
 extended collection disagrees with its own count, so the two most likely
-corruptions of a child table — losing a row, gaining a row — are each detectable
+corruptions of a child table - losing a row, gaining a row - are each detectable
 by two independent parts of the input rather than one.
 
-Challenge **status** is not encoded, because the basis does not carry one. The
-collection is `openChallengeIds`: membership *is* the status. A challenge that
-closed leaves the list, which changes both the count and the list.
+Challenge **status** is not encoded, because the basis does not carry one.
+Membership *is* the status. A challenge that closed leaves the list, which
+changes both the count and the list.
+
+#### Why materiality is here at all
+
+Whether an open challenge **blocks** is a policy question, answered by
+`evaluateEligibilityGates` from `EligibilityPolicy.challengeBlocksAtOrAbove`.
+The basis carries the *weight the Devil's Advocate assigned*, which is a fact
+about a past review, and never the conclusion drawn from it.
+
+Version 1 carried ids alone. A gate given only ids cannot apply a threshold, so
+it treated every open challenge as blocking - silently stricter than the policy
+it was handed. The fix is a fact in the record, not a rule in the evaluator.
+
+The same record already resolves this exact problem once, at element 21: a
+disagreement carries its materiality and the gate applies
+`disagreementBlocksAtOrAbove`. Challenges now match.
+
+#### Four encoding decisions, stated as decisions
+
+**Ordering is by `challengeId` alone**, per §6.8, exactly as in version 1.
+Materiality is *not* part of the sort key. Ids are unique, so the key is already
+total; sorting on materiality as well would move the byte order - and the digest
+- when a materiality is corrected, which is a change to a fact, not to an order.
+
+**Each challenge is a nested list, not a joined string.** A `challengeId` may
+not contain a separator today. A format whose safety depends on that is a format
+waiting for the first id that does.
+
+**Materiality is a string, never an ordinal.** The three values are a named
+domain. An integer encoding would silently reinterpret every stored digest if
+the declaration order of `DISAGREEMENT_MATERIALITIES` were ever edited - a
+source change with no visible relationship to any manifest.
+
+**A materiality outside the domain is refused, not encoded.** The column carries
+a CHECK and the PostgreSQL mapper rejects an unknown value as a malformed row.
+A basis carrying a weight the firm does not define cannot be evaluated against
+any threshold, so admitting one would produce a digest over a record no gate
+can read.
 
 ### 4.4 Element 15 — risk
 
@@ -495,7 +539,7 @@ BASIS_DOMAIN_SEPARATION  ||  <canonical input>
 where the prefix is the ASCII string:
 
 ```
-financial-os:eligibility-basis:v1|
+financial-os:eligibility-basis:v2|
 ```
 
 — thirty-four bytes, ending in a vertical bar. The version in the prefix is the
@@ -597,7 +641,7 @@ evidenceSetIds           = []
 Canonical input:
 
 ```
-l21:i1s5:sub-1s6:case-1s8:thesis-1s5:rev-1s1:1s24:2026-07-28T08:59:00.000Zns6:prov-1nns12:not-requirednnni0l0:i0l0:i0l0:
+l21:i2s5:sub-1s6:case-1s8:thesis-1s5:rev-1s1:1s24:2026-07-28T08:59:00.000Zns6:prov-1nns12:not-requirednnni0l0:i0l0:i0l0:
 ```
 
 ### 9.3 Populated basis
@@ -608,7 +652,10 @@ As above, but:
 aggregationId         = "agg-1"
 verification          = { reviewId: "review-v", sequence: 1, status: "verified" }
 devilsAdvocate        = { reviewId: "review-d", sequence: 2,
-                          openChallengeIds: ["challenge-b", "challenge-a"] }
+                          openChallenges: [
+                            { challengeId: "challenge-b", materiality: "material" },
+                            { challengeId: "challenge-a", materiality: "non-material" },
+                          ] }
 risk                  = { reviewId: "review-r", sequence: 3, status: "accepted" }
 riskRequirement       = "required"
 riskRuleId            = "rule-1"
@@ -624,11 +671,11 @@ breaks:
 
 ```
 l21:
-i1
+i2
 s5:sub-1 s6:case-1 s8:thesis-1 s5:rev-1
 s1:1 s24:2026-07-28T08:59:00.000Z s5:agg-1 s6:prov-1
 l3:s8:review-vi1s8:verified
-l4:s8:review-di2i2l2:s11:challenge-as11:challenge-b
+l4:s8:review-di2i2l2:l2:s11:challenge-as12:non-materiall2:s11:challenge-bs8:material
 s8:required s6:rule-1 s1:1
 l3:s8:review-ri3s8:accepted
 i2 l2:l2:s10:macro-scans5:run-1l2:s12:credit-checks5:run-2
@@ -649,38 +696,49 @@ Three things to check an implementation against, all visible above:
 ## 10. Changing this specification
 
 Any change to §4 or §6 changes the digest of every basis, and therefore is a new
-**canonicalization version**, never an edit to version 1.
+**canonicalization version**, never an edit to version 2.
 
 A new version requires: a new integer constant; element 1 emitting it; this
-document preserved as the definition of version 1; and a reader that continues
-to accept version 1 records — subject to the rule below.
+document preserved as the definition of version 2; and a reader that continues
+to accept version 2 records — subject to §10.1.
 
-Records already written under version 1 are **never** re-canonicalized and their
+Records already written under version 2 are **never** re-canonicalized and their
 digests are never recomputed. A stored manifest is a statement about a past
 write, and rewriting it would replace a fact with an assertion.
 
-### 10.1 Legacy verification, and the one case that does not need it
+### 10.1 Legacy verification
 
 **Legacy verification must remain supported whenever legacy records may exist.**
 
 A clean cutover without a legacy reader is permitted **only** when the absence
 of legacy records is *mechanically proven before the migration runs*, and the
-migration **fails loudly** if that premise turns out to be false. Proof means a
-guard in the migration itself, not a belief about the environment: "the table
-should be empty" is an assumption, and `SELECT count(*)` refusing at one row is
-a proof.
+migration **fails loudly** if that premise is false. Proof means a guard inside
+the migration, not a belief about the environment: "the table should be empty"
+is an assumption; `SELECT count(*)` refusing at one row is a proof.
 
 Absent that proof, a new version ships a reader that verifies its predecessor
-under that predecessor's rules. There is no third option in which old records
-simply stop being verifiable.
+under that predecessor's rules. There is no third option in which stored records
+quietly stop being verifiable.
 
-**Version 1 was retired under this rule.** Basis canonicalization v2 shipped no
-version-1 reader, because migration `0025_challenge_materiality.sql` proved
-`analysis.cio_submissions` empty before the cutover and refuses to apply if it
-is not. Had one version-1 submission existed, that migration would have failed
-and the cutover could not have occurred until a compatibility strategy was
+### 10.2 How version 2 came to exist
+
+Version 1 encoded open challenges as ids alone. The gate could not apply the
+firm's threshold to a list with no materiality in it, so it blocked on every
+open challenge — stricter than `challengeBlocks` and
+`EligibilityPolicy.challengeBlocksAtOrAbove` declare, and stricter than the
+scenario suite already asserted elsewhere. Two parts of one system disagreed
+about the same question, and only one of them was written down as policy.
+
+The correction had to be a **fact in the record**, not a rule in the evaluator:
+a gate that reaches its own conclusion about weight is a second place the firm's
+line is drawn.
+
+Version 1 shipped no forward-compatibility reader here, under §10.1. Migration
+`0025_challenge_materiality.sql` proved `analysis.cio_submissions` empty before
+the cutover and refuses to apply if it is not. One version-1 submission and that
+migration fails, and no cutover occurs until a compatibility strategy is
 designed.
 
-This document therefore remains the definition of version 1 as **historical
-documentation**. It describes a format the running code no longer verifies, and
-it says so here rather than leaving a reader to discover it.
+`docs/eligibility-basis-canonicalization-v1.md` is preserved as historical
+documentation of a format the running code no longer verifies, and says so in
+its own §10.1.

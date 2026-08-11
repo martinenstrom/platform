@@ -1157,4 +1157,55 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+
+  /* ------------------------------- challenge-threshold-only-in-the-gate */
+  {
+    ruleId: 'challenge-threshold-only-in-the-gate',
+    violations: [
+      {
+        path: 'application/analysis/submissionProjection.ts',
+        what: 'a projection deciding for itself which challenges block',
+        source:
+          'export function blocking(open: readonly { materiality: string }[]) {\n' +
+          "  return open.filter((c) => c.materiality !== 'non-material')\n" +
+          '}\n',
+      },
+      {
+        path: 'infrastructure/analysis/postgres/submissionRepositories.ts',
+        what: 'an adapter reconstructing the threshold on read',
+        source:
+          'export function severe(row: { materiality: string }) {\n' +
+          "  return row.materiality === 'decision-critical'\n" +
+          '}\n',
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/analysis/assembleEligibilityBasis.ts',
+        what: 'carrying the materiality through without judging it',
+        source:
+          'export function carry(cs: readonly { id: string; materiality: string }[]) {\n' +
+          '  return cs.map((c) => ({ challengeId: c.id, materiality: c.materiality }))\n' +
+          '}\n',
+      },
+      {
+        path: 'infrastructure/analysis/postgres/decisionMapping.ts',
+        what: 'refusing an UNKNOWN materiality, which is validation and not a threshold',
+        source:
+          "const KNOWN = ['non-material', 'material', 'decision-critical']\n" +
+          'export function read(value: string) {\n' +
+          '  if (!KNOWN.includes(value)) throw new Error("malformed row")\n' +
+          '  return value\n' +
+          '}\n',
+      },
+      {
+        path: 'application/analysis/notes.ts',
+        what: "prose naming 'non-material', which is a comment and not a comparison",
+        source:
+          '/* A non-material open challenge does not block: the gate applies\n' +
+          ' * challengeBlocksAtOrAbove, and nothing here restates it. */\n' +
+          'export const note = 1\n',
+      },
+    ],
+  },
 ]

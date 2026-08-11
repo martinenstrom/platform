@@ -1095,6 +1095,82 @@ const noLocaleSensitiveIdentityOrder: FitnessRule = {
   },
 }
 
+/**
+ * `openChallenges` carries materiality so the GATE can apply the firm's
+ * threshold. Anything else that compares a materiality is a second threshold.
+ *
+ * The rule this stage exists to protect. `evaluateEligibilityGates` blocked on
+ * every open challenge while `challengeBlocks` said a non-material one does
+ * not, and nothing caught the disagreement because both looked reasonable in
+ * isolation. Comparing materiality is exactly what that mistake looked like.
+ */
+const challengeThresholdOnlyInTheGate: FitnessRule = {
+  id: 'challenge-threshold-only-in-the-gate',
+  states:
+    'Nothing but `challengeBlocks` decides whether an open challenge blocks; ' +
+    'everywhere else reads the materiality and passes it on.',
+  because:
+    'A threshold restated anywhere is a second place the firm draws its line, ' +
+    'and the two will disagree without either being obviously wrong. The gate ' +
+    'silently outranked the policy for exactly this reason.',
+  selects: (file) =>
+    !file.isTest &&
+    /* The two functions that ARE the thresholds. */
+    !file.path.endsWith('domain/analysis/review.ts') &&
+    !file.path.endsWith('domain/analysis/aggregation.ts') &&
+    /*
+     * A KNOWN violation, excluded openly rather than silently.
+     *
+     * `aggregateValidation.ts` hardcodes `materiality === 'decision-critical'`
+     * for the DISAGREEMENT threshold -- the same defect this rule exists to
+     * prevent, in the sibling field, found by this rule on the day it was
+     * written. Fixing it needs a policy threaded into a validator that has
+     * none, which is a design change beyond the ruling this stage implements.
+     *
+     * Recorded as TD-70. When that closes, delete this line: the rule already
+     * catches it.
+     */
+    !file.path.endsWith('domain/analysis/aggregateValidation.ts'),
+  detect(file) {
+    const found: string[] = []
+    for (const node of nodes(file)) {
+      /*
+       * A comparison against one of the named weights. Reading `.materiality`
+       * is fine and necessary -- carrying it is the whole design. Comparing it
+       * is deciding.
+       */
+      if (!ts.isBinaryExpression(node)) continue
+      const operator = node.operatorToken.kind
+      const comparing =
+        operator === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        operator === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+        operator === ts.SyntaxKind.LessThanToken ||
+        operator === ts.SyntaxKind.GreaterThanToken ||
+        operator === ts.SyntaxKind.LessThanEqualsToken ||
+        operator === ts.SyntaxKind.GreaterThanEqualsToken
+      if (!comparing) continue
+
+      /*
+       * Structural, not textual. The analysed AST blanks string contents so a
+       * rule cannot be tripped by prose -- which also means the literal's VALUE
+       * is unavailable here. Comparing `.materiality` against any string
+       * literal is the shape that matters; which weight it names does not
+       * change the fact that a threshold is being restated.
+       */
+      const sides = [node.left, node.right]
+      const readsMateriality = sides.some(
+        (side) =>
+          ts.isPropertyAccessExpression(side) && nameOf(side.name) === 'materiality',
+      )
+      const againstLiteral = sides.some((side) => ts.isStringLiteral(side))
+      if (!readsMateriality || !againstLiteral) continue
+
+      found.push(at(file, node, 'compares a materiality against a literal weight'))
+    }
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -1118,6 +1194,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   submissionValidatorNotBypassed,
   noThrowingPortImplementations,
   noLocaleSensitiveIdentityOrder,
+  challengeThresholdOnlyInTheGate,
 ]
 
 export function ruleById(id: string): FitnessRule {

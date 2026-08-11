@@ -30,6 +30,7 @@ describe('fitness rules detect a planted violation', () => {
      * it and leave nothing behind to notice.
      */
     expect([...LOAD_BEARING_RULES.map((rule) => rule.id)].sort()).toEqual([
+      'challenge-threshold-only-in-the-gate',
       'eligibility-decided-only-in-the-domain',
       'no-caller-supplied-or-invented-identity',
       'no-eligibility-in-sql',
