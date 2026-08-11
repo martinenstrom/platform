@@ -131,6 +131,18 @@ const ALLOWED_TRANSITIONS: Readonly<Record<CaseStage, readonly CaseStage[]>> =
     withdrawn: [],
   })
 
+/**
+ * Every stage, as data.
+ *
+ * Derived from the transition table rather than written out again, so it cannot
+ * fall behind `CaseStage`. Adapters validating a stored stage read this instead
+ * of keeping a list of their own -- the PostgreSQL mapper kept one, and it was
+ * still refusing `decided` long after the domain had declared it.
+ */
+export const CASE_STAGES: readonly CaseStage[] = Object.freeze(
+  Object.keys(ALLOWED_TRANSITIONS) as CaseStage[],
+)
+
 export function canTransition(from: CaseStage, to: CaseStage): boolean {
   return ALLOWED_TRANSITIONS[from].includes(to)
 }

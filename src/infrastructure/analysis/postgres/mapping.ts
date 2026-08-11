@@ -19,6 +19,7 @@
  */
 
 import {
+  CASE_STAGES,
   buildAssignment,
   buildChallenge,
   buildRequirementResolution,
@@ -123,17 +124,12 @@ function expectArray(value: unknown, record: string, field: string): unknown[] {
 
 /* ------------------------------------------------------------------ cases */
 
-const CASE_STAGES = new Set([
-  'intake',
-  'research',
-  'aggregation',
-  'review',
-  'returned',
-  'blocked',
-  'decision',
-  'published',
-  'withdrawn',
-])
+/*
+ * From the domain, never a copy. A second list here is a second definition of
+ * what stages exist, and it drifted: it refused `decided` for as long as the
+ * domain had one.
+ */
+const KNOWN_CASE_STAGES: ReadonlySet<string> = new Set<string>(CASE_STAGES)
 
 /**
  * A case, with its participants and its movement history.
@@ -147,7 +143,7 @@ export function toCase(
   participants: readonly string[],
   transitions: readonly TransitionEventRow[],
 ): InvestmentCase {
-  if (!CASE_STAGES.has(row.stage)) {
+  if (!KNOWN_CASE_STAGES.has(row.stage)) {
     throw new MalformedRowError('case', `unknown stage "${row.stage}"`, 'cases')
   }
 
