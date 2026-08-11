@@ -57,6 +57,16 @@ export async function assembleEligibilityBasis(input: {
   caseId: string
   revisionId: string
   /**
+   * The id the submission will carry.
+   *
+   * Supplied, because assembly cannot derive it: the id comes from the command
+   * that is performing the act. The manifest is bound to this identity and the
+   * validator checks it against `submission.id`, so a manifest built for
+   * anything else -- the revision, say -- attests to a record that does not
+   * exist.
+   */
+  submissionId: string
+  /**
    * The policy in force for THIS submission, selected by the caller.
    *
    * Required. No default, no fallback to v1, no "current policy" lookup: a
@@ -75,7 +85,8 @@ export async function assembleEligibilityBasis(input: {
   /** Domain time, from the Clock. Never the database's. */
   now: string
 }): Promise<AssembledBasis | null> {
-  const { repositories, caseId, revisionId, policy, provenance, now } = input
+  const { repositories, caseId, revisionId, submissionId, policy, provenance, now } =
+    input
 
   /*
    * Reuses the existing gatherer rather than re-reading the same six
@@ -175,7 +186,7 @@ export async function assembleEligibilityBasis(input: {
   return {
     basis: {
       ...basisContent,
-      manifest: buildBasisManifest({ submissionId: revisionId, caseId }, basisContent),
+      manifest: buildBasisManifest({ submissionId, caseId }, basisContent),
     },
     gates: evaluateEligibilityGates(basisContent, policy),
   }

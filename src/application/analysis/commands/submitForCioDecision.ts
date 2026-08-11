@@ -97,10 +97,24 @@ export function submitForCioDecision(
 
       /* ---------------------------------------------------- the facts */
 
+      /*
+       * Derived before assembly, because the basis manifest is bound to it.
+       * Building the manifest against anything else -- the revision id, which
+       * is what this did until the end-to-end flow ran -- produces an
+       * attestation for a record that does not exist, and the submission is
+       * refused by its own validator.
+       */
+      const submissionId = deriveEventId({
+        commandId: context.commandId,
+        recordType: 'cio-submission',
+        entityId: input.revisionId,
+      })
+
       const assembled = await assembleEligibilityBasis({
         repositories,
         caseId: input.caseId,
         revisionId: input.revisionId,
+        submissionId,
         policy: eligibilityPolicy(input.eligibilityPolicyVersion),
         provenance: context.provenance,
         now: context.occurredAt,
@@ -135,12 +149,6 @@ export function submitForCioDecision(
       }
 
       /* ---------------------------------------------------- the record */
-
-      const submissionId = deriveEventId({
-        commandId: context.commandId,
-        recordType: 'cio-submission',
-        entityId: input.revisionId,
-      })
 
       /*
        * A submission is an act by a person. An unattributed one would record
