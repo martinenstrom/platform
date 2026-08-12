@@ -1536,3 +1536,51 @@ that one file deliberately.
 
 > The exclusion is written into the rule with this reference beside it, so the
 > debt is visible where someone would otherwise wonder why the file is exempt.
+
+
+---
+
+## TD-71 · the Headquarters queue reads each case separately · open
+
+`caseListing` derives standing per case by calling `standingForCase`, which
+runs several queries — theses, three review kinds, the live decision, a
+submission lookup per revision, and `revisionEligibility` on top. Cases are
+processed **sequentially**, so a queue of N cases costs roughly N × that.
+
+**This was chosen, not overlooked.** The alternative was a cheaper derivation
+for the list, and that is precisely how a queue starts disagreeing with the case
+it links to: the shortcut stays invisible until a case sits in a state the
+shortcut gets wrong, and then the firm holds two beliefs about where its own
+work is. `caseListing.pg.test.ts` asserts list and case page produce identical
+standing for every case, which is only true because both call one derivation.
+
+Sequential rather than parallel is also deliberate: firing every case's queries
+at once would take the connection pool from the request path, so the page would
+degrade fastest under the load that makes it matter.
+
+**Why it is not urgent.** The firm holds a handful of cases. The cost is linear
+and predictable, and the page is read by people rather than by a poller.
+
+**What would make it urgent.** A case count in the hundreds, or the queue being
+polled. Either changes this from "linear and small" to "linear and constantly
+paid".
+
+**Closing it without reintroducing the divergence.** Not by writing a second,
+lighter standing. Either batch the underlying reads — one query per record kind
+across all cases, then derive standing per case from the batched results, which
+keeps the single derivation — or introduce a read-through cache keyed on the
+case aggregate version, so a case that has not moved is not re-derived.
+
+> The single-derivation property is the thing to preserve. Any fix that ends
+> with two ways to compute standing has traded a performance problem for a
+> correctness one.
+
+**The governing principle, ruled 2026-08-13:**
+
+> Performance improvements may change how institutional state is **obtained**,
+> but never how institutional state is **derived**.
+
+Batching, caching, parallelisation and indexing all change how the facts are
+fetched, and are permitted. A second derivation for a particular caller is not,
+at any speed. The queue and the case page must always answer the same question
+in exactly the same way.

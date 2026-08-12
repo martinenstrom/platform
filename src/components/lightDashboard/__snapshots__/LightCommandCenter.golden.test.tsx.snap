@@ -225,6 +225,48 @@ exports[`Overview — golden baseline (Phase 0 gate G1) > renders the full Overv
           </a>
           <a
             class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
+            href="/cases"
+          >
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-landmark h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10 18v-7"
+              />
+              <path
+                d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z"
+              />
+              <path
+                d="M14 18v-7"
+              />
+              <path
+                d="M18 18v-7"
+              />
+              <path
+                d="M3 22h18"
+              />
+              <path
+                d="M6 18v-7"
+              />
+            </svg>
+            <span
+              class="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+            >
+              Huvudkontor
+            </span>
+          </a>
+          <a
+            class="flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200 border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white"
             href="/reports"
           >
             <svg

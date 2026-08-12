@@ -1,0 +1,307 @@
+[
+  {
+    "investmentCase": {
+      "id": "hq-queue-awaiting",
+      "version": 5,
+      "subject": {
+        "kind": "macro-regime",
+        "ref": "ecb",
+        "displayName": "ECB path"
+      },
+      "question": "Does the ECB cut before Q2?",
+      "stage": "decision",
+      "openedAt": "2026-08-01T09:00:00.000Z",
+      "ownerEmployeeId": "research-director",
+      "participatingDepartmentIds": [
+        "devils-advocate",
+        "global-macro",
+        "quant-technical",
+        "research-office",
+        "risk",
+        "verification"
+      ],
+      "transitions": [
+        {
+          "caseId": "hq-queue-awaiting",
+          "from": "intake",
+          "to": "research",
+          "at": "2026-08-01T09:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-awaiting",
+          "from": "aggregation",
+          "to": "review",
+          "at": "2026-08-01T11:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-awaiting",
+          "from": "research",
+          "to": "aggregation",
+          "at": "2026-08-01T11:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-awaiting",
+          "from": "review",
+          "to": "decision",
+          "at": "2026-08-01T13:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        }
+      ],
+      "playbookId": "macro-regime",
+      "playbookVersion": "1"
+    },
+    "standing": {
+      "stage": "decision",
+      "settled": false,
+      "ownership": {
+        "kind": "chief",
+        "departmentId": null,
+        "employeeId": "cio"
+      },
+      "steps": [
+        {
+          "step": "thesis-proposed",
+          "status": "complete"
+        },
+        {
+          "step": "work-aggregated",
+          "status": "complete"
+        },
+        {
+          "step": "verification",
+          "status": "complete"
+        },
+        {
+          "step": "devils-advocate",
+          "status": "complete"
+        },
+        {
+          "step": "risk",
+          "status": "complete"
+        },
+        {
+          "step": "cio-submission",
+          "status": "complete"
+        },
+        {
+          "step": "cio-decision",
+          "status": "outstanding"
+        }
+      ],
+      "blockers": [],
+      "nextAct": {
+        "act": "decide-or-return",
+        "owningDepartmentId": null
+      }
+    }
+  },
+  {
+    "investmentCase": {
+      "id": "hq-queue-inflight",
+      "version": 2,
+      "subject": {
+        "kind": "macro-regime",
+        "ref": "ecb",
+        "displayName": "ECB path"
+      },
+      "question": "Does the ECB cut before Q2?",
+      "stage": "research",
+      "openedAt": "2026-08-01T09:00:00.000Z",
+      "ownerEmployeeId": "research-director",
+      "participatingDepartmentIds": [
+        "devils-advocate",
+        "global-macro",
+        "quant-technical",
+        "research-office",
+        "risk",
+        "verification"
+      ],
+      "transitions": [
+        {
+          "caseId": "hq-queue-inflight",
+          "from": "intake",
+          "to": "research",
+          "at": "2026-08-01T09:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        }
+      ],
+      "playbookId": "macro-regime",
+      "playbookVersion": "1"
+    },
+    "standing": {
+      "stage": "research",
+      "settled": false,
+      "ownership": {
+        "kind": "department",
+        "departmentId": "devils-advocate",
+        "employeeId": "research-director"
+      },
+      "steps": [
+        {
+          "step": "thesis-proposed",
+          "status": "complete"
+        },
+        {
+          "step": "work-aggregated",
+          "status": "complete"
+        },
+        {
+          "step": "verification",
+          "status": "outstanding"
+        },
+        {
+          "step": "devils-advocate",
+          "status": "outstanding"
+        },
+        {
+          "step": "risk",
+          "status": "outstanding"
+        },
+        {
+          "step": "cio-submission",
+          "status": "outstanding"
+        },
+        {
+          "step": "cio-decision",
+          "status": "outstanding"
+        }
+      ],
+      "blockers": [
+        {
+          "kind": "verification-missing",
+          "severity": "blocks-decision"
+        },
+        {
+          "kind": "risk-requirement-unresolved",
+          "playbookEntryKey": "risk-review",
+          "severity": "blocks-decision"
+        }
+      ],
+      "nextAct": {
+        "act": "record-verification-review",
+        "owningDepartmentId": "verification"
+      }
+    }
+  },
+  {
+    "investmentCase": {
+      "id": "hq-queue-decided",
+      "version": 6,
+      "subject": {
+        "kind": "macro-regime",
+        "ref": "ecb",
+        "displayName": "ECB path"
+      },
+      "question": "Does the ECB cut before Q2?",
+      "stage": "decided",
+      "openedAt": "2026-08-01T09:00:00.000Z",
+      "ownerEmployeeId": "research-director",
+      "participatingDepartmentIds": [
+        "devils-advocate",
+        "global-macro",
+        "quant-technical",
+        "research-office",
+        "risk",
+        "verification"
+      ],
+      "transitions": [
+        {
+          "caseId": "hq-queue-decided",
+          "from": "intake",
+          "to": "research",
+          "at": "2026-08-01T09:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-decided",
+          "from": "aggregation",
+          "to": "review",
+          "at": "2026-08-01T11:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-decided",
+          "from": "research",
+          "to": "aggregation",
+          "at": "2026-08-01T11:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-decided",
+          "from": "review",
+          "to": "decision",
+          "at": "2026-08-01T13:00:00.000Z",
+          "byEmployeeId": "research-director",
+          "byDepartmentId": "research-office"
+        },
+        {
+          "caseId": "hq-queue-decided",
+          "from": "decision",
+          "to": "decided",
+          "at": "2026-08-01T13:00:00.000Z",
+          "byEmployeeId": "cio",
+          "byDepartmentId": "executive",
+          "reason": "Committing the firm to the position."
+        }
+      ],
+      "closedAt": "2026-08-01T13:00:00.000Z",
+      "playbookId": "macro-regime",
+      "playbookVersion": "1"
+    },
+    "standing": {
+      "stage": "decided",
+      "settled": true,
+      "ownership": {
+        "kind": "settled",
+        "departmentId": null,
+        "employeeId": null
+      },
+      "steps": [
+        {
+          "step": "thesis-proposed",
+          "status": "complete"
+        },
+        {
+          "step": "work-aggregated",
+          "status": "complete"
+        },
+        {
+          "step": "verification",
+          "status": "complete"
+        },
+        {
+          "step": "devils-advocate",
+          "status": "complete"
+        },
+        {
+          "step": "risk",
+          "status": "complete"
+        },
+        {
+          "step": "cio-submission",
+          "status": "complete"
+        },
+        {
+          "step": "cio-decision",
+          "status": "complete"
+        }
+      ],
+      "blockers": [],
+      "nextAct": {
+        "act": "none-settled",
+        "owningDepartmentId": null
+      }
+    }
+  }
+]

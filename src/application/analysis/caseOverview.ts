@@ -28,7 +28,6 @@
  */
 
 import {
-  caseStanding,
   evaluateEligibilityGates,
   eligibilityPolicy,
   UnknownEligibilityPolicyError,
@@ -50,7 +49,7 @@ import {
   type VerificationReview,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
-import { revisionEligibility } from './eligibility'
+import { standingFrom } from './caseStandingFor'
 
 /**
  * What the firm concluded at submission, and under which policy.
@@ -166,18 +165,25 @@ export async function caseOverview(input: {
   const current = revisions[revisions.length - 1] ?? null
 
   return {
-    standing: await standingOf({
+    /*
+     * The SAME derivation the Headquarters list uses, given the records this
+     * function has already read so nothing is fetched twice. Two paths to
+     * standing would be two answers to where the case is.
+     */
+    standing: await standingFrom({
       repositories,
       organization,
-      investmentCase,
-      revisions,
-      aggregations,
-      verification,
-      devilsAdvocate,
-      risk,
-      submissions,
-      decision,
       now,
+      facts: {
+        investmentCase,
+        revisions,
+        submissions,
+        hasAggregation: aggregations.length > 0,
+        hasVerification: verification.length > 0,
+        hasDevilsAdvocate: devilsAdvocate.length > 0,
+        hasRisk: risk.length > 0,
+        hasDecision: decision !== null,
+      },
     }),
     investmentCase,
     revisions,
@@ -234,61 +240,4 @@ function recordedEligibility(
     }
     throw error
   }
-}
-
-async function standingOf(input: {
-  repositories: AnalysisRepositories
-  organization: Organization
-  investmentCase: InvestmentCase
-  revisions: readonly InvestmentThesis[]
-  aggregations: readonly ManagerAggregation[]
-  verification: readonly VerificationReview[]
-  devilsAdvocate: readonly DevilsAdvocateReview[]
-  risk: readonly RiskReview[]
-  submissions: readonly CioSubmission[]
-  decision: CaseDecision | null
-  now: string
-}): Promise<CaseStanding> {
-  const current = input.revisions[input.revisions.length - 1] ?? null
-
-  /*
-   * Blockers and the risk requirement come from the existing evaluator rather
-   * than being re-derived here. A second reading of "what is stopping this"
-   * would be a second answer, free to disagree with the one the workflow acts
-   * on.
-   *
-   * The policy is the one the current submission names where there is one;
-   * otherwise the case has not been submitted and the standing is about work
-   * still to do, not about a verdict.
-   */
-  const pending = input.submissions.find((entry) => entry.state === 'pending')
-  const policyVersion = pending?.basis.eligibilityPolicyVersion ?? '1'
-  let evaluated: Awaited<ReturnType<typeof revisionEligibility>> = []
-  try {
-    evaluated = await revisionEligibility(
-      input.repositories,
-      input.investmentCase.id,
-      input.now,
-      eligibilityPolicy(policyVersion),
-    )
-  } catch (error) {
-    if (!(error instanceof UnknownEligibilityPolicyError)) throw error
-  }
-  const forCurrent = current
-    ? evaluated.find((entry) => entry.revisionId === current.revisionId)
-    : undefined
-
-  return caseStanding({
-    investmentCase: input.investmentCase,
-    organization: input.organization,
-    hasThesis: input.revisions.length > 0,
-    hasAggregation: input.aggregations.length > 0,
-    hasVerification: input.verification.length > 0,
-    hasDevilsAdvocate: input.devilsAdvocate.length > 0,
-    hasRisk: input.risk.length > 0,
-    riskRequirement: forCurrent?.riskRequirement ?? 'unresolved',
-    hasSubmission: input.submissions.length > 0,
-    hasDecision: input.decision !== null,
-    blockers: forCurrent?.eligibility.blockedBy ?? [],
-  })
 }

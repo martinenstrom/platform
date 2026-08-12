@@ -29,6 +29,7 @@
 
 import { createServerFn } from '@tanstack/react-start'
 import { caseOverview, type CaseOverview } from '~/application/analysis/caseOverview'
+import { caseListing, type CaseListing } from '~/application/analysis/caseListing'
 import { createAnalysisContainer, type AnalysisContainer } from './container'
 import { systemClock } from '~/domain/shared/clock'
 
@@ -37,6 +38,9 @@ export type CaseOverviewFailure = 'NOT_CONFIGURED' | 'SERVICE_UNAVAILABLE' | 'NO
 
 export type CaseOverviewResponse =
   { ok: true; overview: CaseOverview } | { ok: false; code: CaseOverviewFailure }
+
+export type CaseListResponse =
+  { ok: true; cases: readonly CaseListing[] } | { ok: false; code: CaseOverviewFailure }
 
 let container: Promise<AnalysisContainer> | null = null
 
@@ -114,3 +118,34 @@ export const getCaseOverviewFn = createServerFn({ method: 'POST' })
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
     }
   })
+
+/**
+ * Every case the firm is holding, with where each one stands.
+ *
+ * `NOT_FOUND` is not among its outcomes: a firm with no open cases has an
+ * empty queue, which is a fact about the firm rather than a failure to find
+ * something.
+ */
+export const getCaseListFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<CaseListResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      return {
+        ok: true,
+        cases: await caseListing({
+          repositories: analysis.repositories,
+          organization: deps.organization,
+          now: systemClock.isoNow(),
+        }),
+      }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] case list failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)

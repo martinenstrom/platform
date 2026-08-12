@@ -140,6 +140,11 @@ const NAV_ITEMS = [
   { to: '/watchlist', label: 'Bevakning', icon: Star },
   { to: '/portfolio', label: 'Portfölj', icon: Briefcase },
   { to: '/agents', label: 'Analys', icon: BarChart3 },
+  /*
+   * Headquarters. Placed after Analys because it is where analysis ends up:
+   * the cases the firm is holding, and where each one stands.
+   */
+  { to: '/cases', label: 'Huvudkontor', icon: Landmark },
   { to: '/reports', label: 'Nyheter', icon: Newspaper },
   { to: '/reports', label: 'Rapporter', icon: FileText },
   { to: '/settings', label: 'Aviseringar', icon: BellRing },

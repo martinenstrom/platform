@@ -446,3 +446,62 @@ describe('live mode', () => {
     expect(serialized).not.toContain('"quality":"fixture"')
   })
 })
+
+/* --------------------------------------------------------- navigation */
+
+describe('navigation', () => {
+  it('offers Headquarters, and points it at the case queue', async () => {
+    /*
+     * An approved intentional change, asserted here rather than absorbed into
+     * the golden snapshot — the same treatment D5/D10 had. The snapshot proves
+     * nothing else moved; this states what was added and why it is there.
+     *
+     * Headquarters is the entry point to the institution: without a nav item
+     * the case queue exists but is reachable only by typing a URL, which is a
+     * capability nobody has.
+     */
+    await renderOverview()
+
+    const link = screen.getByRole('link', { name: /Huvudkontor/ })
+    expect(link.getAttribute('href')).toBe('/cases')
+  })
+
+  it('keeps the existing entries and their order', async () => {
+    /*
+     * The nav is finished work. This names the order so an addition cannot
+     * quietly reshuffle it, which a snapshot diff would show but not explain.
+     */
+    await renderOverview()
+
+    const labels = screen
+      .getAllByRole('link')
+      .map((node) => node.textContent?.trim())
+      .filter((label): label is string =>
+        [
+          'Översikt',
+          'Marknader',
+          'Bevakning',
+          'Portfölj',
+          'Analys',
+          'Huvudkontor',
+          'Nyheter',
+          'Rapporter',
+          'Aviseringar',
+          'Inställningar',
+        ].includes(label ?? ''),
+      )
+
+    expect(labels).toEqual([
+      'Översikt',
+      'Marknader',
+      'Bevakning',
+      'Portfölj',
+      'Analys',
+      'Huvudkontor',
+      'Nyheter',
+      'Rapporter',
+      'Aviseringar',
+      'Inställningar',
+    ])
+  })
+})
