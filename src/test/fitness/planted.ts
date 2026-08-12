@@ -329,6 +329,16 @@ export const PLANTED: readonly RuleFixtures[] = [
     ],
     nearMisses: [
       {
+        path: 'routes/cases.$caseId.tsx',
+        what: 'a TYPE from the application layer, which is erased at compile time',
+        source: `
+          import type { CaseOverview } from '~/application/analysis/caseOverview'
+          export function Page(overview: CaseOverview) {
+            return overview
+          }
+        `,
+      },
+      {
         path: 'routes/markets.tsx',
         what: 'the published server-function boundary, which is a port',
         source: `

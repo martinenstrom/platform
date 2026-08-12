@@ -317,9 +317,15 @@ const noUiImportOfInfrastructure: FitnessRule = {
     for (const reference of file.imports) {
       const specifier = reference.specifier
       if (!specifier.startsWith('~/infrastructure')) {
-        // The analysis runtime has no server-function boundary at all yet, so
-        // the application layer is off limits from the UI outright.
-        if (specifier.startsWith('~/application/analysis')) {
+        /*
+         * The application layer is reachable for TYPES only. `import type` is
+         * erased at compile time: it is not a bundle edge and nothing can be
+         * called through it, which is the entire hazard this rule names.
+         *
+         * A value import stays forbidden — that is how assembly logic, and a
+         * second answer to "is this eligible", would arrive in a component.
+         */
+        if (specifier.startsWith('~/application/analysis') && !reference.typeOnly) {
           found.push(`${file.path} — imports ${specifier}`)
         }
         continue

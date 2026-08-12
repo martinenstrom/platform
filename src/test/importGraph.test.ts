@@ -39,6 +39,14 @@ interface SourceFile {
   /** Repo-relative, forward-slashed: 'domain/market/quote.ts'. */
   path: string
   imports: string[]
+  /**
+   * Imports that survive compilation.
+   *
+   * `import type` is erased, so it is neither a bundle edge nor a way to call
+   * anything. Where a rule exists to stop code crossing a boundary, this is the
+   * list it should read.
+   */
+  valueImports: string[]
   /** The names each import binds, keyed by specifier. */
   bindings: ReadonlyMap<string, readonly string[]>
 }
@@ -46,6 +54,9 @@ interface SourceFile {
 const FILES: SourceFile[] = TREE.map((file) => ({
   path: file.path,
   imports: file.imports.map((reference) => reference.specifier),
+  valueImports: file.imports
+    .filter((reference) => !reference.typeOnly)
+    .map((reference) => reference.specifier),
   bindings: new Map(
     file.imports.map((reference) => [reference.specifier, reference.names]),
   ),
@@ -574,11 +585,24 @@ describe('AI Phase A guards — an organization, and no runtime', () => {
    * See the Phase B guards below.
    */
 
-  it('keeps the Agents UI untouched by Phase A', () => {
+  it('lets no component or route EXECUTE domain analysis logic', () => {
+    /*
+     * Written for Phase A as "no analysis imports at all", when no interface to
+     * the institution was authorised and any such import meant somebody had
+     * started building one early.
+     *
+     * The Headquarters view is now a commissioned surface, so the rule says
+     * what was actually dangerous: a component that CALLS a domain function is
+     * a second place eligibility, blocking or standing gets decided. Rendering
+     * a `CaseStanding` is not that; computing one is.
+     *
+     * `import type` is erased at compile time — no bundle edge, nothing
+     * callable — so only value imports are counted.
+     */
     const offenders = FILES.filter(
       (f) =>
         (f.path.startsWith('components/') || f.path.startsWith('routes/')) &&
-        f.imports.some((s) => s.startsWith('~/domain/analysis')),
+        f.valueImports.some((s) => s.startsWith('~/domain/analysis')),
     ).map((f) => f.path)
     expect(offenders).toEqual([])
   })
