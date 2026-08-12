@@ -1,0 +1,914 @@
+{
+  "standing": {
+    "stage": "review",
+    "settled": false,
+    "ownership": {
+      "kind": "department",
+      "departmentId": "devils-advocate",
+      "employeeId": "research-director"
+    },
+    "steps": [
+      {
+        "step": "thesis-proposed",
+        "status": "complete"
+      },
+      {
+        "step": "work-aggregated",
+        "status": "complete"
+      },
+      {
+        "step": "verification",
+        "status": "complete"
+      },
+      {
+        "step": "devils-advocate",
+        "status": "outstanding"
+      },
+      {
+        "step": "risk",
+        "status": "not-applicable"
+      },
+      {
+        "step": "cio-submission",
+        "status": "outstanding"
+      },
+      {
+        "step": "cio-decision",
+        "status": "outstanding"
+      }
+    ],
+    "blockers": [],
+    "nextAct": {
+      "act": "record-devils-advocate-review",
+      "owningDepartmentId": "devils-advocate"
+    }
+  },
+  "investmentCase": {
+    "id": "hq-fixture-norisk",
+    "version": 4,
+    "subject": {
+      "kind": "macro-regime",
+      "ref": "ecb",
+      "displayName": "ECB path"
+    },
+    "question": "Does the ECB cut before Q2?",
+    "stage": "review",
+    "openedAt": "2026-08-01T09:00:00.000Z",
+    "ownerEmployeeId": "research-director",
+    "participatingDepartmentIds": [
+      "devils-advocate",
+      "global-macro",
+      "quant-technical",
+      "research-office",
+      "risk",
+      "verification"
+    ],
+    "transitions": [
+      {
+        "caseId": "hq-fixture-norisk",
+        "from": "intake",
+        "to": "research",
+        "at": "2026-08-01T09:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "hq-fixture-norisk",
+        "from": "research",
+        "to": "aggregation",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "hq-fixture-norisk",
+        "from": "aggregation",
+        "to": "review",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      }
+    ],
+    "playbookId": "macro-regime",
+    "playbookVersion": "1"
+  },
+  "revisions": [
+    {
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3b4a21c32a5a2d7db1e175e334537a0d",
+      "revisionNumber": 1,
+      "revisionCause": "initial-proposal",
+      "caseId": "hq-fixture-norisk",
+      "statement": "The ECB holds through Q1 and cuts in June.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T09:00:00.000Z",
+      "implications": [],
+      "supportingClaimIds": [],
+      "opposingClaimIds": [],
+      "citedByClaimIds": [],
+      "lifecycle": "superseded",
+      "invalidationCriteria": "Core inflation prints below 2.0% for two months."
+    },
+    {
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "revisionNumber": 2,
+      "supersedesRevisionId": "rev-3b4a21c32a5a2d7db1e175e334537a0d",
+      "revisedAt": "2026-08-01T11:00:00.000Z",
+      "revisionReason": "Macro and the office agree on direction; quant disagrees on timing.",
+      "revisionCause": "manager-aggregation",
+      "caseId": "hq-fixture-norisk",
+      "statement": "The ECB holds through Q2 and cuts in September.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T09:00:00.000Z",
+      "implications": [],
+      "supportingClaimIds": [
+        "clm-108dd92006a01994688aa15b5f00a2a4",
+        "clm-34b9a5ef5108c0cdeb632eb670335c3d"
+      ],
+      "opposingClaimIds": [
+        "clm-9614ce2aef362fd375d73c643bb80a63"
+      ],
+      "citedByClaimIds": [],
+      "lifecycle": "verified",
+      "aggregationId": "agg-2d0755ee2278792a0ee2fb89eef8db7a",
+      "invalidationCriteria": "Core inflation prints below 2.0% for two months."
+    }
+  ],
+  "aggregations": [
+    {
+      "id": "agg-2d0755ee2278792a0ee2fb89eef8db7a",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "sourceRevisionId": "rev-3b4a21c32a5a2d7db1e175e334537a0d",
+      "producedRevisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "managerEmployeeId": "research-director",
+      "departmentId": "research-office",
+      "aggregatedAt": "2026-08-01T11:00:00.000Z",
+      "rationale": "Macro and the office agree on direction; quant disagrees on timing.",
+      "inputs": [
+        {
+          "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+          "playbookEntryKey": "aggregation",
+          "requirementLevel": "required"
+        },
+        {
+          "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+          "playbookEntryKey": "quant-validation",
+          "requirementLevel": "optional"
+        },
+        {
+          "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+          "playbookEntryKey": "macro-analysis",
+          "requirementLevel": "required"
+        }
+      ],
+      "dispositions": [
+        {
+          "claimId": "clm-108dd92006a01994688aa15b5f00a2a4",
+          "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+          "disposition": "adopted-supporting"
+        },
+        {
+          "claimId": "clm-34b9a5ef5108c0cdeb632eb670335c3d",
+          "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+          "disposition": "adopted-supporting"
+        },
+        {
+          "claimId": "clm-9614ce2aef362fd375d73c643bb80a63",
+          "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+          "disposition": "adopted-opposing"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "playbookEntryKey": "quant-validation",
+          "availability": "received-and-used",
+          "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+          "scope": "in-scope",
+          "materiallyRelevant": true
+        }
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "clm-108dd92006a01994688aa15b5f00a2a4",
+      "type": "observation",
+      "statement": "The two desks disagree only about timing.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      }
+    },
+    {
+      "id": "clm-34b9a5ef5108c0cdeb632eb670335c3d",
+      "type": "observation",
+      "statement": "Policy rates stay restrictive through Q1.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      }
+    },
+    {
+      "id": "clm-9614ce2aef362fd375d73c643bb80a63",
+      "type": "observation",
+      "statement": "The forward curve prices a cut two months earlier.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      },
+      "opposesThesisId": "hq-fixture-norisk-thesis"
+    }
+  ],
+  "runs": [
+    {
+      "id": "run-398b73541372d5ffb6d85c231ab4306f",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "departmentId": "research-office",
+      "employeeId": "research-director",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-108dd92006a01994688aa15b5f00a2a4",
+          "type": "observation",
+          "statement": "The two desks disagree only about timing.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          }
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "aggregation",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "run-5afc3086d20f59f06cc0d14819dd8a40",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "departmentId": "quant-technical",
+      "employeeId": "quant-head",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-9614ce2aef362fd375d73c643bb80a63",
+          "type": "observation",
+          "statement": "The forward curve prices a cut two months earlier.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          },
+          "opposesThesisId": "hq-fixture-norisk-thesis"
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "quant-validation",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "run-79137c1d41c1e7c8e5f6dca280091998",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "departmentId": "global-macro",
+      "employeeId": "macro-head",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-34b9a5ef5108c0cdeb632eb670335c3d",
+          "type": "observation",
+          "statement": "Policy rates stay restrictive through Q1.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          }
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "macro-analysis",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    }
+  ],
+  "evidenceSets": [
+    {
+      "id": "a9a15a02a1edfdc2703a71d2346ee552",
+      "items": [],
+      "coTemporality": {
+        "kind": "empty"
+      },
+      "disagreements": [],
+      "assembledAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow"
+    }
+  ],
+  "verification": [
+    {
+      "scope": "thesis-revision",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "byEmployeeId": "verification-head",
+      "byDepartmentId": "verification",
+      "at": "2026-08-01T11:00:00.000Z",
+      "reviewId": "rvw-bb5d7e369b6eb3214c0fbb7918c56c51",
+      "sequence": 1,
+      "status": "verified",
+      "findings": [],
+      "claimsReviewed": [
+        "clm-108dd92006a01994688aa15b5f00a2a4",
+        "clm-34b9a5ef5108c0cdeb632eb670335c3d"
+      ]
+    }
+  ],
+  "devilsAdvocate": [],
+  "risk": [],
+  "submissions": [],
+  "returns": [],
+  "decision": null,
+  "decisionHistory": [],
+  "timeline": [
+    {
+      "eventId": "evt-030101ab767c8d3ff68b13be2702db4f",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-cef4e79030bb421a01fbf7ee13abf5ea",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-2749c2cd55a305e43976d9f40b375194",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+      "toState": "running",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-2cb46f2afa5b6178381d3842a02c6608",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-4c66f54aa0db3f36a8f409915e3f9d46",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "runId": "run-79137c1d41c1e7c8e5f6dca280091998",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-4ef51166261857b8dfdc90677ecb0248",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-716dd8e565f71873cf28947493633643",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-55065b38ab9e7cf144ef99738ef0c3e1",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-db6a80a583d122d2ab7fd930b38e2f42",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-55967aafd12ce97ab2a53d12e5da36ea",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "toState": "active",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-2749c2cd55a305e43976d9f40b375194",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-71a55eb4be714f3a063bb660fa44580a",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+      "toState": "running",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-8e5a9477b644944a563de5ed2a3d4e9a",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-adbea14f0f50dc0f797ec70f7bfd5b7f",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-98948c0d31e447ccd13e7e4b3363179c",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d9fc805ef6597434d76dbb9201ceeb64",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-994e5c5fc7849e62d8f8283cfcdd4152",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "toState": "active",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-71a55eb4be714f3a063bb660fa44580a",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-9f5f49aa663123045eaf3fbeb11c56d4",
+      "subject": "case",
+      "caseId": "hq-fixture-norisk",
+      "toState": "intake",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 1,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-a7ee18b51397fb1e81e408449e925a4e",
+      "subject": "thesis",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3b4a21c32a5a2d7db1e175e334537a0d",
+      "toState": "proposed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-cef4e79030bb421a01fbf7ee13abf5ea",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+      "toState": "running",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-d700aa1072e307cf225ab41f80cb967f",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-4c66f54aa0db3f36a8f409915e3f9d46",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-d9fc805ef6597434d76dbb9201ceeb64",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-c3951191d444469b8173ec7be30e3b2b",
+      "runId": "run-398b73541372d5ffb6d85c231ab4306f",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-db6a80a583d122d2ab7fd930b38e2f42",
+      "subject": "run",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "runId": "run-5afc3086d20f59f06cc0d14819dd8a40",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "subject": "case",
+      "caseId": "hq-fixture-norisk",
+      "toState": "research",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "intake"
+    },
+    {
+      "eventId": "evt-e86bdc0753150d76af271da34165ae26",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-ded196e10cda41397db04e9afb3dbdc9",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-ef49fccbec7eaba3d9b0bcf4237fbef3",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-37a84aaf130c7a2b1147b9a5830fc55b",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-f1e9a00b5d78e54df57436f622ddf79d",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-e5459a981f8637530df89c8e18648d23",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-e1486e465268786ee556aab43aa43bbe",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-18c0074de0123c11dcf40a68a928a421",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-e5459a981f8637530df89c8e18648d23",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-1d7cd13618d42d7135a7c9cae5431141",
+      "subject": "case",
+      "caseId": "hq-fixture-norisk",
+      "toState": "aggregation",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "research"
+    },
+    {
+      "eventId": "evt-34589594a3f5910ccac100e3ffe4831c",
+      "subject": "case",
+      "caseId": "hq-fixture-norisk",
+      "toState": "review",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "aggregation"
+    },
+    {
+      "eventId": "evt-5b811461e8d92421bfe051ea6e36f5f1",
+      "subject": "thesis",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "toState": "awaiting-verification",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "under-analysis"
+    },
+    {
+      "eventId": "evt-7148cdfc11326c3981e879010a1f6569",
+      "subject": "thesis",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "toState": "under-analysis",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-747dfc9c99ff46a149c631786d947531",
+      "subject": "assignment",
+      "caseId": "hq-fixture-norisk",
+      "assignmentId": "asg-716dd8e565f71873cf28947493633643",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-76761c00e872d8caef55354f5b1eadba",
+      "subject": "requirement",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "toState": "not-required",
+      "actorEmployeeId": "chief-risk-officer",
+      "actorDepartmentId": "risk",
+      "reason": "Deterministic rule over the declared implications.",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-8ff39ea19ed67e080b72546619a98058",
+      "subject": "review",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "reviewId": "rvw-bb5d7e369b6eb3214c0fbb7918c56c51",
+      "toState": "verified",
+      "actorEmployeeId": "verification-head",
+      "actorDepartmentId": "verification",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-b296c08c2a058b49053a73b896009819",
+      "subject": "thesis",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3b4a21c32a5a2d7db1e175e334537a0d",
+      "toState": "superseded",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "reason": "Macro and the office agree on direction; quant disagrees on timing.",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-7148cdfc11326c3981e879010a1f6569",
+      "aggregateVersion": 2,
+      "fromState": "proposed"
+    },
+    {
+      "eventId": "evt-efde724f18cb2aebf98da187817a42bb",
+      "subject": "requirement",
+      "caseId": "hq-fixture-norisk",
+      "thesisId": "hq-fixture-norisk-thesis",
+      "revisionId": "rev-3c62257f4f15774a9de76103e169a15a",
+      "toState": "not-required",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "pending"
+    }
+  ],
+  "eligibility": {
+    "kind": "not-submitted"
+  }
+}

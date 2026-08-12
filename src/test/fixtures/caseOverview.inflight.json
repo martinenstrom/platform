@@ -1,0 +1,908 @@
+{
+  "standing": {
+    "stage": "review",
+    "settled": false,
+    "ownership": {
+      "kind": "department",
+      "departmentId": "devils-advocate",
+      "employeeId": "research-director"
+    },
+    "steps": [
+      {
+        "step": "thesis-proposed",
+        "status": "complete"
+      },
+      {
+        "step": "work-aggregated",
+        "status": "complete"
+      },
+      {
+        "step": "verification",
+        "status": "outstanding"
+      },
+      {
+        "step": "devils-advocate",
+        "status": "outstanding"
+      },
+      {
+        "step": "risk",
+        "status": "outstanding"
+      },
+      {
+        "step": "cio-submission",
+        "status": "outstanding"
+      },
+      {
+        "step": "cio-decision",
+        "status": "outstanding"
+      }
+    ],
+    "blockers": [
+      {
+        "kind": "verification-missing",
+        "severity": "blocks-decision"
+      },
+      {
+        "kind": "risk-review-missing",
+        "playbookEntryKey": "risk-review",
+        "severity": "blocks-decision"
+      }
+    ],
+    "nextAct": {
+      "act": "record-verification-review",
+      "owningDepartmentId": "verification"
+    }
+  },
+  "investmentCase": {
+    "id": "hq-fixture-inflight",
+    "version": 4,
+    "subject": {
+      "kind": "macro-regime",
+      "ref": "ecb",
+      "displayName": "ECB path"
+    },
+    "question": "Does the ECB cut before Q2?",
+    "stage": "review",
+    "openedAt": "2026-08-01T09:00:00.000Z",
+    "ownerEmployeeId": "research-director",
+    "participatingDepartmentIds": [
+      "devils-advocate",
+      "global-macro",
+      "quant-technical",
+      "research-office",
+      "risk",
+      "verification"
+    ],
+    "transitions": [
+      {
+        "caseId": "hq-fixture-inflight",
+        "from": "intake",
+        "to": "research",
+        "at": "2026-08-01T09:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "hq-fixture-inflight",
+        "from": "research",
+        "to": "aggregation",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "hq-fixture-inflight",
+        "from": "aggregation",
+        "to": "review",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      }
+    ],
+    "playbookId": "macro-regime",
+    "playbookVersion": "1"
+  },
+  "revisions": [
+    {
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-3f7253c12699f5a5c5ea745b86f2b6b5",
+      "revisionNumber": 1,
+      "revisionCause": "initial-proposal",
+      "caseId": "hq-fixture-inflight",
+      "statement": "The ECB holds through Q1 and cuts in June.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T09:00:00.000Z",
+      "implications": [
+        "position-sizing"
+      ],
+      "supportingClaimIds": [],
+      "opposingClaimIds": [],
+      "citedByClaimIds": [],
+      "lifecycle": "superseded",
+      "invalidationCriteria": "Core inflation prints below 2.0% for two months."
+    },
+    {
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "revisionNumber": 2,
+      "supersedesRevisionId": "rev-3f7253c12699f5a5c5ea745b86f2b6b5",
+      "revisedAt": "2026-08-01T11:00:00.000Z",
+      "revisionReason": "Macro and the office agree on direction; quant disagrees on timing.",
+      "revisionCause": "manager-aggregation",
+      "caseId": "hq-fixture-inflight",
+      "statement": "The ECB holds through Q2 and cuts in September.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T09:00:00.000Z",
+      "implications": [
+        "position-sizing"
+      ],
+      "supportingClaimIds": [
+        "clm-1c397547209a770752f63d2f8fe84017",
+        "clm-57705f0b3f9399e99cd0b0d62394f0d9"
+      ],
+      "opposingClaimIds": [
+        "clm-d4670ebec4589902f2cd0c4fc7341072"
+      ],
+      "citedByClaimIds": [],
+      "lifecycle": "awaiting-verification",
+      "aggregationId": "agg-14d12e99c2bd2ae48245d3c3c0741734",
+      "invalidationCriteria": "Core inflation prints below 2.0% for two months."
+    }
+  ],
+  "aggregations": [
+    {
+      "id": "agg-14d12e99c2bd2ae48245d3c3c0741734",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "sourceRevisionId": "rev-3f7253c12699f5a5c5ea745b86f2b6b5",
+      "producedRevisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "managerEmployeeId": "research-director",
+      "departmentId": "research-office",
+      "aggregatedAt": "2026-08-01T11:00:00.000Z",
+      "rationale": "Macro and the office agree on direction; quant disagrees on timing.",
+      "inputs": [
+        {
+          "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+          "playbookEntryKey": "aggregation",
+          "requirementLevel": "required"
+        },
+        {
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "playbookEntryKey": "quant-validation",
+          "requirementLevel": "optional"
+        },
+        {
+          "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+          "playbookEntryKey": "macro-analysis",
+          "requirementLevel": "required"
+        }
+      ],
+      "dispositions": [
+        {
+          "claimId": "clm-1c397547209a770752f63d2f8fe84017",
+          "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+          "disposition": "adopted-supporting"
+        },
+        {
+          "claimId": "clm-57705f0b3f9399e99cd0b0d62394f0d9",
+          "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+          "disposition": "adopted-supporting"
+        },
+        {
+          "claimId": "clm-d4670ebec4589902f2cd0c4fc7341072",
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "disposition": "adopted-opposing"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "playbookEntryKey": "quant-validation",
+          "availability": "received-and-used",
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "scope": "in-scope",
+          "materiallyRelevant": true
+        }
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "clm-1c397547209a770752f63d2f8fe84017",
+      "type": "observation",
+      "statement": "Policy rates stay restrictive through Q1.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      }
+    },
+    {
+      "id": "clm-57705f0b3f9399e99cd0b0d62394f0d9",
+      "type": "observation",
+      "statement": "The two desks disagree only about timing.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      }
+    },
+    {
+      "id": "clm-d4670ebec4589902f2cd0c4fc7341072",
+      "type": "observation",
+      "statement": "The forward curve prices a cut two months earlier.",
+      "status": "insufficient-evidence",
+      "evidenceRefs": [],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "insufficient",
+        "basis": [
+          "deterministic fixture; no evidence was examined"
+        ],
+        "cappedBy": "no-evidence"
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      },
+      "opposesThesisId": "hq-fixture-inflight-thesis"
+    }
+  ],
+  "runs": [
+    {
+      "id": "run-46227ab2d244938c2ffb1f9ea58da41c",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "departmentId": "research-office",
+      "employeeId": "research-director",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-57705f0b3f9399e99cd0b0d62394f0d9",
+          "type": "observation",
+          "statement": "The two desks disagree only about timing.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          }
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "aggregation",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "run-65954d082c7d2a7603093c10348cbd66",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "departmentId": "quant-technical",
+      "employeeId": "quant-head",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-d4670ebec4589902f2cd0c4fc7341072",
+          "type": "observation",
+          "statement": "The forward curve prices a cut two months earlier.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          },
+          "opposesThesisId": "hq-fixture-inflight-thesis"
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "quant-validation",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "run-84c3e5973a4de01850bf05cc6d8c4128",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "departmentId": "global-macro",
+      "employeeId": "macro-head",
+      "agentContractVersion": "0",
+      "outputSchemaVersion": "0",
+      "evidenceSetId": "a9a15a02a1edfdc2703a71d2346ee552",
+      "state": "completed",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-1c397547209a770752f63d2f8fe84017",
+          "type": "observation",
+          "statement": "Policy rates stay restrictive through Q1.",
+          "status": "insufficient-evidence",
+          "evidenceRefs": [],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "insufficient",
+            "basis": [
+              "deterministic fixture; no evidence was examined"
+            ],
+            "cappedBy": "no-evidence"
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          }
+        }
+      ],
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "1",
+        "playbookEntryKey": "macro-analysis",
+        "providerId": "stub",
+        "providerVersion": "1",
+        "providerKind": "stub",
+        "identity": {
+          "kind": "scenario",
+          "scenarioId": "success",
+          "stubVersion": "1"
+        }
+      }
+    }
+  ],
+  "evidenceSets": [
+    {
+      "id": "a9a15a02a1edfdc2703a71d2346ee552",
+      "items": [],
+      "coTemporality": {
+        "kind": "empty"
+      },
+      "disagreements": [],
+      "assembledAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow"
+    }
+  ],
+  "verification": [],
+  "devilsAdvocate": [],
+  "risk": [],
+  "submissions": [],
+  "returns": [],
+  "decision": null,
+  "decisionHistory": [],
+  "timeline": [
+    {
+      "eventId": "evt-0556dbeb55195f6d75a4aaeca3f41d1d",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-4df63ff99309a91dd5f5d75720c798cd",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-1c13e8dbf85833802d5931b1a7671750",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-21bf32ed33721920e13ecd1993d81330",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "toState": "active",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-fbd5abe2742b2afbb5b3180c64df92eb",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-2e78af201623e951eefe5b38d25538e1",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "runId": "run-65954d082c7d2a7603093c10348cbd66",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-3a1f225f42c114f152c5c3e90d892381",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+      "toState": "running",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-4bfbc989c2d9f66a83cf175392f897da",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "toState": "active",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-c4e1d0f796411dc56cc6f5285af687b5",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-4df63ff99309a91dd5f5d75720c798cd",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-645e372eec1cf974c80ce08aaf8d5864",
+      "subject": "thesis",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-3f7253c12699f5a5c5ea745b86f2b6b5",
+      "toState": "proposed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-64c3acb304024ff3609a131d154b75c3",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-77c24833e554671ecdb2a1b93971664e",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-3a1f225f42c114f152c5c3e90d892381",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-915c947f02cc1be33a05c65bcfb7b853",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-954030e638c72f6da6f8dafe0b2a90bd",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-2e78af201623e951eefe5b38d25538e1",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-9ab21dd36c4d52244fcafbba130bee74",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-a3c6ccca0e33e467a0d1a119b2e3ba97",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-64c3acb304024ff3609a131d154b75c3",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-bcfdde6859f463b129147cc117fb6081",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-25d76a782bde49d21e1289af2889ab22",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-c3f8775be81872d6d2ac227cbe70c626",
+      "subject": "case",
+      "caseId": "hq-fixture-inflight",
+      "toState": "intake",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 1,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-c4e1d0f796411dc56cc6f5285af687b5",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+      "toState": "running",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "subject": "case",
+      "caseId": "hq-fixture-inflight",
+      "toState": "research",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "intake"
+    },
+    {
+      "eventId": "evt-eef3a3b8fae307f5663c6d87b6aea225",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-849f95957b6badcc6547e01d9468277c",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-f2d64f4f40c89298ff18aa07367bfe48",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-2a12e247cb466674957858a7f0d654e4",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-fbd5abe2742b2afbb5b3180c64df92eb",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "runId": "run-65954d082c7d2a7603093c10348cbd66",
+      "toState": "running",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-03fbd4990e2b4ede20d733f63cddd5ce",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-2a12e247cb466674957858a7f0d654e4",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-064af7bd2453d4f0a4fdcc9189966760",
+      "subject": "case",
+      "caseId": "hq-fixture-inflight",
+      "toState": "aggregation",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "research"
+    },
+    {
+      "eventId": "evt-3e30440761905c51fbfa1c6422f6b2a1",
+      "subject": "thesis",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "toState": "awaiting-verification",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "under-analysis"
+    },
+    {
+      "eventId": "evt-3f8d1c475acc66881d66b76bcfd53158",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-25d76a782bde49d21e1289af2889ab22",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-4d210cba9f946e9b9ba2c250deaade6b",
+      "subject": "requirement",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "toState": "required",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "pending"
+    },
+    {
+      "eventId": "evt-4e0d08d5932e7006935bb6628fdb36b6",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-849f95957b6badcc6547e01d9468277c",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-7da371394d0affcbfc3c1e38551cc4db",
+      "subject": "thesis",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-3f7253c12699f5a5c5ea745b86f2b6b5",
+      "toState": "superseded",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "reason": "Macro and the office agree on direction; quant disagrees on timing.",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "causationId": "evt-c61cb5f8ef0906176e66028db5f83e47",
+      "aggregateVersion": 2,
+      "fromState": "proposed"
+    },
+    {
+      "eventId": "evt-c61cb5f8ef0906176e66028db5f83e47",
+      "subject": "thesis",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "toState": "under-analysis",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-d7db1595321d0a75844a57c458651ba5",
+      "subject": "case",
+      "caseId": "hq-fixture-inflight",
+      "toState": "review",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 4,
+      "fromState": "aggregation"
+    },
+    {
+      "eventId": "evt-f4c764be7fc19cf6398c47e86cc52786",
+      "subject": "requirement",
+      "caseId": "hq-fixture-inflight",
+      "thesisId": "hq-fixture-inflight-thesis",
+      "revisionId": "rev-56fa54efec89e68e4f397ec1c70dde5e",
+      "toState": "required",
+      "actorEmployeeId": "chief-risk-officer",
+      "actorDepartmentId": "risk",
+      "reason": "Deterministic rule over the declared implications.",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": null
+    }
+  ],
+  "eligibility": {
+    "kind": "not-submitted"
+  }
+}

@@ -4,6 +4,37 @@ PostgreSQL schema, plain SQL migrations, and the seeded investment
 organization. The design and its reasoning are in
 [`docs/durable-storage-plan.md`](../docs/durable-storage-plan.md).
 
+## Two connection strings, never one
+
+| Variable | Role | Used by |
+| --- | --- | --- |
+| `DATABASE_URL` | schema **owner** | `npm run db:migrate`, nothing else |
+| `ANALYSIS_DATABASE_URL` | `finos_app` | the running application |
+
+```sh
+# migrations — the owner, which can create and alter tables
+DATABASE_URL=postgres://owner:…@host/finos npm run db:migrate
+
+# the app — the runtime role, which deliberately cannot
+ANALYSIS_DATABASE_URL=postgres://finos_app:…@host/finos npm run dev
+```
+
+Separate on purpose. The request path serves pages to people, and the
+Headquarters view reads institutional records through it; handing that path the
+owner connection would give a page request the privilege to drop a table. The
+whole point of `finos_app` (see **Roles**, below) is that it cannot alter the
+schema or rewrite history — a privilege it does not hold cannot be misused by a
+bug, and reusing `DATABASE_URL` for convenience would return it silently.
+
+Without `ANALYSIS_DATABASE_URL` the analysis runtime does not start and the
+Headquarters view reports `NOT_CONFIGURED`. It does not fall back to
+`DATABASE_URL`, and it has no in-memory mode: a store that cannot keep what the
+firm decides is not a store the institution may run on.
+
+The test suites need neither variable. `npm run test:db` starts real PostgreSQL
+binaries (`embedded-postgres`) and creates both roles itself; set
+`TEST_DATABASE_URL` to point it at an existing server instead.
+
 ## Applying migrations
 
 ```sh

@@ -45,8 +45,18 @@ const FAILURE_TEXT: Record<string, string> = {
 }
 
 function CasePage() {
-  const response = Route.useLoaderData() as CaseOverviewResponse
+  return <CaseOverviewPage response={Route.useLoaderData() as CaseOverviewResponse} />
+}
 
+/**
+ * The page itself, taking its data as a prop.
+ *
+ * Separated from the route so it can be rendered without a router. The point is
+ * not tidiness: the human-visible page has to be provable against the same
+ * institutional record the read model was verified with, and a component that
+ * can only be reached through a loader cannot be put in front of one.
+ */
+export function CaseOverviewPage({ response }: { response: CaseOverviewResponse }) {
   if (!response.ok) {
     return (
       <PageShell>
@@ -173,6 +183,17 @@ function CasePage() {
                       <code className="ml-2 font-mono text-xs">
                         {dissent.materiality}
                       </code>
+                      {/*
+                       * And the CIO's answer to it. The domain calls this the
+                       * field that matters: an objection shown without the
+                       * reason it was overridden leaves the reader believing
+                       * nobody responded to it.
+                       */}
+                      {dissent.acknowledgement && (
+                        <span className="mt-1 block text-content-muted">
+                          Bemötande: {dissent.acknowledgement}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
