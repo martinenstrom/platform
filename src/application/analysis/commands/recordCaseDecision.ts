@@ -33,6 +33,7 @@ import {
   type DisclosedDissent,
   type Organization,
   type ReconsiderationTrigger,
+  canTransition,
   transitionCase,
 } from '~/domain/analysis'
 import type { CommandDefinition } from './definition'
@@ -202,7 +203,21 @@ export function recordCaseDecision(
        * would refuse a correction the firm is entitled to make.
        */
       const terminalStage = input.outcome.kind === 'deferred' ? 'deferred' : 'decided'
-      const moves = !input.supersedesDecisionId && investmentCase.stage !== terminalStage
+      /*
+       * The stage table decides, not the presence of a supersession.
+       *
+       * This read `!supersedesDecisionId && ...`, which was right while the
+       * only supersession was a correction to an already-`decided` case: there
+       * is no `decided -> decided`, so the case must not move. It is wrong the
+       * moment a case is reopened -- a reconsideration decision supersedes the
+       * deferral and DOES have to move `decision -> decided`, and under the old
+       * rule the case would sit in `decision` forever.
+       *
+       * `canTransition` gives the same answer in the first case and the right
+       * one in the second, because it asks the question the firm actually
+       * answers: does the stage table permit this movement.
+       */
+      const moves = canTransition(investmentCase.stage, terminalStage)
 
       const savedCase = moves
         ? await repositories.cases.save(
