@@ -1,6 +1,6 @@
 # Planning gate — Reconsideration
 
-**Status:** awaiting approval. Nothing implemented.
+**Status:** approved, with all open questions ruled. See §5.
 
 **Objective.** Close TD-50. A deferred case can return to the CIO, be decided,
 and remain one continuous institutional history.
@@ -10,10 +10,23 @@ condition for ending the wait ([aggregateValidation.ts:401](../src/domain/analys
 stores those conditions, canonicalises them into the payload — and has no way to
 act on them. It records an obligation it cannot fulfil.
 
-**Governing principle for this stage.** A reconsidered case is the
-**continuation of the same institutional history, not a new one**. The original
-decision, the reasons for deferral, the triggers, and the eventual decision all
-belong to one case history, and the timeline stays continuous.
+## Governing principles (ruled)
+
+**1. A reconsidered case is the continuation of the same institutional history,
+not a new one.** The original decision, the reasons for deferral, the triggers,
+and the eventual decision all belong to one case history, and the timeline stays
+continuous.
+
+**2. Reconsideration inherits institutional history, but never institutional
+judgement.** Facts may be reused. **Every governance conclusion must be produced
+again from a newly assembled basis under the governing policy.** The previous
+decision remains part of the record and contributes no implicit approval to the
+new one.
+
+The second principle is what makes reconsideration safe. A case that came back
+carrying its old verdict would be a case the firm approved once and never
+re-examined — and the trigger fired precisely because the world stopped matching
+the assumptions that verdict rested on.
 
 ---
 
@@ -126,7 +139,58 @@ Six things must hold, and each is an exit criterion:
 
 ---
 
-## 5. Questions needing a ruling
+## 5. Rulings
+
+All three questions from the first draft are settled. They are kept here with
+their reasoning rather than deleted, so a later reader sees what was decided and
+why rather than only what was built.
+
+**5.0 Fresh basis, always.** Reconsideration assembles a new `EligibilityBasis`
+and re-evaluates eligibility under the governing policy. If the new basis fails
+the gates, **reopening is refused with the complete gate report and the case
+stays deferred** until the work is redone. That is the institution behaving
+correctly rather than trying to honour an earlier expectation.
+
+**5.1 Trigger lineage stays TD-52.** Valuable, but a refinement of continuity
+rather than a prerequisite for reconsideration. A second deferral restates its
+conditions; TD-52 remains open with its reason recorded.
+
+**5.2 Only the CIO may reopen** — `chief-decision`. Deferral and the decision to
+end a deferral are both governance acts and stay under one authority.
+
+### 5.3 What "re-run the governance process" means — stated, not assumed
+
+The ruling says facts may be reused and every governance **conclusion** must be
+produced again from a newly assembled basis. Two readings exist and they differ
+enormously in cost, so this plan states which one it implements:
+
+**Implemented reading.** The recorded governance *verdicts* — Verification,
+Devil's Advocate, Risk — are **facts about a revision** and are reused. What is
+produced again is the **conclusion drawn from them**: the basis is assembled
+fresh, and eligibility is evaluated again under the governing policy, which may
+be a different policy version with different thresholds than the one the
+deferral was judged under.
+
+**The alternative, not implemented.** Requiring *new* governance reviews before
+a case may be reconsidered — Verification verifying again, and so on.
+
+**Why the first.** Reviews are already scoped to an exact revision, and the
+domain is explicit that an objection raised against revision 1 stays attached to
+revision 1 and is never carried silently to revision 2. So a review is a
+statement about a specific argument, and that statement has not stopped being
+true. Where the *argument* needs to change, the desk revises the thesis — which
+mints a new revision, reopens every gate, and requires new reviews through the
+ordinary path. Reconsideration of the same revision reuses its reviews; revision
+of the argument does not.
+
+**The consequence to be aware of.** A revision reconsidered a year later is
+decided on year-old governance verdicts, re-judged under today's policy. If that
+is not what the firm intends, the rule to add is a staleness bound on reviews —
+which is its own stage and is not assumed here.
+
+---
+
+## 5A. Questions already answered above
 
 ### 5.1 Trigger lineage on a second deferral (TD-52)
 
@@ -140,11 +204,11 @@ independent records. Options:
   "this is the same condition, re-expressed" is distinguishable from "this is a
   new condition". Closes TD-52.
 
-**Recommendation: (b), but as its own stage.** The continuity principle argues
-for it, and it is a change to a stored, canonicalised structure — the same class
-as the challenge-materiality work, and it deserves the same treatment rather
-than being folded into this one. This stage would then be explicit that a second
-deferral restates its conditions, and TD-52 stays open with the reason recorded.
+**Ruled: (a) for this stage; (b) stays TD-52.** Trigger lineage is a refinement
+of continuity rather than a prerequisite for reconsideration. It is also a
+change to a stored, canonicalised structure — the same class as the
+challenge-materiality work — and deserves that treatment rather than being
+folded in here.
 
 ### 5.2 Who may reopen
 
@@ -153,10 +217,11 @@ deferral restates its conditions, and TD-52 stays open with the reason recorded.
 - **The desk that owns the thesis** — the trigger fired in their domain and they
   are the ones watching it.
 
-**Recommendation: the CIO (`chief-decision`).** Deferring is a governance act
-and so is ending it; a desk that could reopen at will could put work back in
-front of the CIO repeatedly. The desk's route stays what it already is — revise
-the thesis, which produces a new revision and a normal submission.
+**Ruled: the CIO (`chief-decision`).** Deferral and the decision to end a
+deferral are both governance acts and stay under one authority. A desk that
+could reopen at will could put work back in front of the CIO repeatedly. The
+desk's route stays what it already is — revise the thesis, which produces a new
+revision and a normal submission.
 
 ### 5.3 Does reconsideration re-assess eligibility?
 
@@ -168,13 +233,11 @@ fired because the world changed.
 - **(b) Reuse the stored basis.** The CIO decides on the same material, having
   only learned that a condition fired.
 
-**Recommendation: (a), re-assemble.** Deciding on the original basis would
-answer the question as it stood before the trigger fired, which is the question
-the deferral already answered. Note the consequence, which is real: the fresh
-basis may **fail** the gates, and the honest outcome is that reopening is
-refused with the complete gate report — the case stays deferred until the work
-is redone. That is the institution behaving correctly, but it should be an
-explicit decision rather than a surprise.
+**Ruled: (a), re-assemble, always.** Deciding on the original basis would answer
+the question as it stood before the trigger fired — the question the deferral
+already answered. The fresh basis may **fail** the gates, and the honest outcome
+is that reopening is refused with the complete gate report and the case stays
+deferred until the work is redone.
 
 ---
 
@@ -211,6 +274,9 @@ explicit decision rather than a surprise.
 - [ ] A `decided` case cannot be reopened
 - [ ] Reopening is refused, with the gate report, when the fresh basis fails
 - [ ] Headquarters shows the case as outstanding again, and the history as one
+- [ ] The reopened case's basis is newly assembled, and its
+      `eligibilityPolicyVersion` is the policy in force at reopening
+- [ ] No gate verdict is carried over from the deferral
 - [ ] TD-50 closed; TD-52 restated with its reason
 - [ ] Both suites green; typecheck clean
 
@@ -219,5 +285,6 @@ explicit decision rather than a surprise.
 - No publication — the next milestone, deliberately after this loop closes
 - No reopening of `decided` cases
 - No trigger monitoring (TD-53); a human observes the trigger and reopens
-- No `supersedesTriggerId` unless §5.1 is ruled otherwise
+- No `supersedesTriggerId` — TD-52, ruled separate
+- No staleness bound on reviews (§5.3) — its own stage if wanted
 - No agents, no LLM
