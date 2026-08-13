@@ -139,6 +139,22 @@ number:
 comment was written to make possible — while `not-applicable` stops local
 providers being blocked by a limit that was never relevant to them.
 
+#### The run records limits, not their sources
+
+**Ruled: the budget recorded on a run is the effective execution limit, not the
+policy sources that produced it.** A historical run must remain self-describing
+even after playbooks, case policy or firm-wide policy change.
+
+So the run stores "this was allowed 40,000 tokens and 90 seconds", never
+"playbook X proposed, case Y constrained, policy Z capped". Storing the sources
+would make an old run's limits re-derivable only from documents that have since
+moved — and a run whose limits could not be read without reconstructing three
+policies would not be a record of what the firm permitted, it would be a
+reference to it.
+
+The same rule the eligibility basis already follows: the record carries what was
+in force, not a pointer to wherever it currently lives.
+
 ### 4.3 Caching
 
 **Proposed: no response cache for institutional work.** A cache would make two
@@ -420,6 +436,8 @@ this gate has not made.
 - [ ] A budget dimension that does not apply is distinguishable from one nobody
       measured; a local provider is not refused for having no monetary cost
 - [ ] The **effective** budget is recorded with the run, not reconstructed
+- [ ] A historical run reads back its own limits unchanged after the playbook,
+      case policy and firm-wide policy that produced them have all been altered
 - [ ] `rejected` is distinguishable from `failed` in every read path
 - [ ] **A rejected run's claims are readable on the run and absent from
       `repositories.claims`** — and a citation of one is refused by the
