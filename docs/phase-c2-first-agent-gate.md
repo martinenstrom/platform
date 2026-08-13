@@ -130,16 +130,69 @@ Applied to what exists:
 
 | Act | Who | Why |
 |---|---|---|
-| `RecordContribution` | **agent may** | Analysis. Already attributed to the employee whose department owns the work; the agent is the mechanism, the department is accountable |
+| Producing a contribution | **agent may** | Analysis is what agents own |
+| **Recording it as institutional work** | **human** | Ruled in §5.1. The agent produces; a person accepts |
 | `AggregateManagerConclusion` | **human** | A manager deciding what the work means |
 | Verification / Devil's Advocate / Risk verdicts | **human** | Governance |
 | `SubmitForCioDecision` | **human** | Asking the firm to commit |
 | CIO decision, return, reopen | **human** | Explicitly excluded by the ruling |
 
-**One question this raises, and §9 asks it:** a contribution is attributed to an
-employee who did not personally write it. Is attribution sufficient, or must a
-human **accept** an agent's claim before it enters the record? Both are
-defensible; they are different institutions.
+### 5.1 Ruled: attribution is not sufficient
+
+**An agent contribution does not enter the institutional record automatically.**
+It may be generated automatically and displayed automatically, but **recording
+it as institutional work requires an explicit human acceptance.**
+
+Once there is operational experience, the firm may deliberately decide that some
+classes of agent record autonomously. **Relaxing that boundary later is safe;
+tightening it after the institution has begun relying on autonomous records is
+not.**
+
+This ruling forces a design change, and §5.2 is that change.
+
+---
+
+### 5.2 Where unaccepted work lives — the design the ruling forces
+
+Measured, not assumed: **`RecordContribution` today does two things in one
+act.** It saves the claims into `repositories.claims` *and* transitions the run
+to `completed`, and that coupling is deliberate — its own header says a
+"completed run with half its claims" is the worst outcome available.
+
+So the agent's output needs somewhere to live between *produced* and *accepted*.
+It cannot live in the operator's browser: the firm paid for that work, and a
+page refresh would lose it.
+
+**Proposal — one new run state, `awaiting-acceptance`:**
+
+```
+running ──► awaiting-acceptance ──► completed   (a human accepted)
+                    │
+                    └──────────────► failed | cancelled
+```
+
+- The provider finishes; the run holds its claims and enters
+  `awaiting-acceptance`. `AgentRunRecord.claims` **already exists**, so the
+  work is durably stored and visible.
+- Nothing is in `repositories.claims` yet, so nothing is verifiable, gateable,
+  aggregatable or citable. It is not institutional work.
+- A human accepts. That act commits the claims and completes the run —
+  `RecordContribution` unchanged, still atomic, now invoked by a person.
+
+**Why not a separate "proposed contribution" record:** the run already *is* the
+record of work produced. A second store for the same claims would be two places
+answering "what did this run produce".
+
+**All provider kinds go through acceptance, including recorded and stub.** The
+port's own rule is that "a recorded contribution goes through exactly the same
+validation, lifecycle, review and gating code a live one will" — an acceptance
+step that only live work traversed would be untested by every existing test.
+
+**The cost, stated plainly:** every existing test that records a contribution
+gains an acceptance step, and the run state table, its transitions and both
+adapters change. This is real domain work, not presentation. It is in scope
+because it was ruled, and it is the kind of change that is far cheaper now than
+after the institution depends on autonomous records.
 
 ---
 
@@ -202,11 +255,12 @@ agent-run governance, TD-8 authentication.
 
 ## 9. Questions needing a ruling
 
-1. **Human acceptance of agent claims (§5).** Is attribution to the owning
-   employee sufficient, or must a human accept an agent's claim before it enters
-   the record? *My view: attribution is sufficient for contributions —
-   governance already reviews every claim downstream, and requiring acceptance
-   before verification would duplicate the Devil's Advocate.*
+1. **Acceptance is ruled (§5.1) and its design is §5.2.** Remaining question:
+   should acceptance carry a **reason** when the operator rejects the work
+   rather than accepting it? A rejected agent run that records no reason tells a
+   later reader the firm paid for analysis and discarded it silently. *My view:
+   yes — a rejection is an institutional judgement about the work's quality and
+   is the primary evidence for whether an agent is worth running.*
 2. **Model client and provider** — which, and does the choice belong in this
    gate or to whoever implements it?
 3. **Budget authority.** Who sets a run's budget: the playbook entry, the case,
@@ -221,6 +275,10 @@ agent-run governance, TD-8 authentication.
 ## 10. Exit criteria
 
 - [ ] A live agent produces a real claim for a real case, end to end
+- [ ] **Nothing enters `repositories.claims` without an explicit human act** —
+      asserted by driving a run to `awaiting-acceptance` and confirming the case
+      has no claim, no eligibility change and nothing to verify
+- [ ] Recorded and stub runs traverse the same acceptance path
 - [ ] The claim is verified, challenged, aggregated and gated by the existing
       workflow, unchanged
 - [ ] The run records its exact model and prompt; a live run cannot present any
@@ -239,6 +297,12 @@ agent-run governance, TD-8 authentication.
 ---
 
 ## 11. What I am explicitly flagging
+
+**The acceptance ruling is the most consequential decision in this gate**, and
+it is deliberately the conservative direction. It costs a run state, a command
+signature, both adapters and every existing contribution test. It buys the
+property that the institution never contains work no human agreed to, at the
+moment before anything starts depending on the opposite.
 
 **This gate lifts a guard that has held all phase.** `no-llm-dependency` should
 not be deleted — it should be **narrowed** to "nothing outside the provider
