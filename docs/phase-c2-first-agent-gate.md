@@ -7,6 +7,12 @@ constraints, so it should not be approved casually.
 agent. Agent HQ ships **when there is a live agent to show** — a roster of
 non-operational agents unlocks nothing a user can do.
 
+> **The standing principle this phase establishes**
+>
+> **Generated work is operational until a human explicitly accepts it. Accepted
+> work becomes institutional. Rejected work remains durable operational history
+> and never becomes institutional evidence.**
+
 ---
 
 ## 1. What this phase crosses
@@ -87,17 +93,51 @@ is a new run producing a new claim, never a silent overwrite.
 institution already handles that — it is what aggregation and the Devil's
 Advocate exist for.
 
-### 4.2 Cost
+### 4.2 Budget — governs execution, not payment
 
-`ContributionBudget` already models tokens, cost, currency and deadline, and
-already states that `null` means *not measured*, never unlimited, so that **"a
-live runtime must refuse to begin work when a required authorization is
-absent."**
+**Ruled: the abstraction is not tied to monetary cost.** A budget governs
+execution. A provider may consume a token budget, an execution deadline, a
+monetary budget where one applies, or **no monetary cost at all** — local and
+simulated providers are first-class, and stub, recorded, local and commercial
+providers all execute through one contract.
 
-**Proposed:** a live run **refuses to start** without a budget. Not a default,
-not unlimited — the same shape as every policy decision in this codebase. The
-budget is recorded on the run, and exceeding it fails the run through
-`failAgentRun`, which already exists and already refuses to record a claim.
+**Resolution, ruled:**
+
+```
+Playbook proposes  ->  Case may constrain  ->  Firm-wide policy is the hard ceiling
+```
+
+The **effective** budget is resolved before execution and **recorded with the
+run**, so "what was this allowed to spend" is answerable from the record rather
+than reconstructed from three sources that may since have changed. The same
+shape as every policy decision here: resolved by the caller, recorded with the
+act, never looked up again afterwards.
+
+#### A gap this ruling exposes
+
+`ContributionBudget` today is four nullable numbers, with `null` documented as
+**"not measured, never unlimited"**, and the rule that a live runtime must
+refuse to begin when a required authorization is absent.
+
+**There is no way to say "this provider incurs no monetary cost, by
+construction".** A local provider setting `costMinorUnits: null` is
+indistinguishable from an unbudgeted one, and would be refused. That is the
+same distinction the eligibility gates already draw between `not-applicable`
+and `passed`, for the same reason: a limit that does not apply and a limit
+nobody measured are different facts.
+
+**Proposal** — each dimension becomes a small union rather than a nullable
+number:
+
+| Shape | Meaning |
+|---|---|
+| `{ kind: 'limit', amount }` | Bounded. Exceeding it fails the run |
+| `{ kind: 'not-applicable' }` | The provider cannot consume this. A local model has no monetary cost |
+| `{ kind: 'not-measured' }` | Unknown, and therefore **refuses to start** a live run |
+
+`not-measured` keeps its present meaning exactly — the refusal the original
+comment was written to make possible — while `not-applicable` stops local
+providers being blocked by a limit that was never relevant to them.
 
 ### 4.3 Caching
 
@@ -224,15 +264,27 @@ reclassified a blocker.
 | `misread-the-brief` | Answered a different question |
 | `internally-inconsistent` | The reasoning contradicts itself |
 | `duplicates-existing-work` | Already known; adds nothing |
-| `below-quality-bar` | Right shape, not good enough |
+| `insufficient-analysis` | The work did not go far enough |
 | `out-of-scope` | Correct, and not this department's work |
 
-Plus a required prose `detail`, because a code alone cannot teach anyone
-anything, and a rejection nobody can learn from is the discarded history this
-ruling exists to prevent.
+`insufficient-analysis` replaces an earlier `below-quality-bar`, ruled: the
+vocabulary exists to be **measured over years**, not merely read, and "below the
+bar" describes a verdict rather than a deficiency. A code naming *what was
+wrong* can be improved against; one naming *how it scored* cannot.
 
-The codes are **stable vocabulary**, like `RejectionCode` and `BlockerKind`
-before them, so a later capability can count them without parsing anything.
+**One primary code per rejection, plus mandatory prose.** Multi-code tagging is
+deliberately not built. If operational evidence later shows one code is
+insufficient, it is extended deliberately.
+
+> *My reading of that ruling, stated so it can be corrected: the vocabulary is
+> these six and a rejection carries exactly one of them — not that v1 ships a
+> single code with no vocabulary. The five kept plus the replacement only make
+> sense as a set to count over.*
+
+The prose is **required**, not optional: a code alone teaches nobody anything,
+and a rejection nobody can learn from is the discarded history this ruling
+exists to prevent. The codes are stable vocabulary like `RejectionCode` and
+`BlockerKind` before them, so a later capability counts them without parsing.
 
 ### 5.4 Rejected work is never citable
 
@@ -318,14 +370,42 @@ agent-run governance, TD-8 authentication.
    rejection codes the right six? They are a first vocabulary, not a
    discovery — and unlike most vocabularies here, this one is meant to be
    *counted*, so getting the categories wrong is expensive to correct later.
-2. **Model client and provider** — which, and does the choice belong in this
-   gate or to whoever implements it?
-3. **Budget authority.** Who sets a run's budget: the playbook entry, the case,
-   or firm-wide configuration?
+2. **The client decision is a measured step, not a preference** — see 9A. It
+   runs before implementation, and if it exposes another architectural choice
+   this gate returns for review rather than proceeding.
+3. **Budget shape (4.2).** Ruled in principle; the three-state proposal changes
+   an existing type and both adapters, so the shape itself needs approval.
 4. **Failure visibility.** A failed run costs money and produces nothing.
    Should it appear in Headquarters as an institutional act, or as operational
    noise? *My view: an act. The firm spent money and learned nothing, and that
    is a fact worth seeing.*
+
+---
+
+## 9A. The client decision, measured
+
+**Ruled: do not choose a client by preference.** Before implementation, evaluate
+candidates against what the provider contract actually requires, and record the
+comparison rather than only the conclusion.
+
+The requirements are already knowable from the port and the record it must fill:
+
+| Requirement | Why the provider needs it |
+|---|---|
+| **Usage reporting** | `RunUsage` is required — "we did not record this" is a state, not an absence |
+| **Timeout and cancellation** | `ContributionRequest.signal` is an `AbortSignal`; a deadline must be enforceable |
+| **Retry semantics** | A retry must be distinguishable from a second run, or the record double-counts work |
+| **Model identity** | `ExecutionIdentity` needs the exact model that **answered**, not the one requested |
+| **Request provenance** | The prompt must be content-addressable |
+| **Error taxonomy** | `RunFailure` and `failAgentRun` need bounded categories, not driver strings |
+| **Streaming** | Only if it changes cancellation or usage accounting; otherwise irrelevant |
+
+**The SDK stays confined to the live provider implementation.** Nothing in
+domain, application or presentation may import it — enforced by the narrowed
+rule rather than by convention.
+
+**Return before implementing** if the evaluation exposes an architectural choice
+this gate has not made.
 
 ---
 
@@ -336,7 +416,10 @@ agent-run governance, TD-8 authentication.
       asserted by driving a run to `awaiting-acceptance` and confirming the case
       has no claim, no eligibility change and nothing to verify
 - [ ] Recorded and stub runs traverse the same acceptance path
-- [ ] A rejected run records a bounded reason code **and** prose
+- [ ] A rejected run records one bounded reason code **and** mandatory prose
+- [ ] A budget dimension that does not apply is distinguishable from one nobody
+      measured; a local provider is not refused for having no monetary cost
+- [ ] The **effective** budget is recorded with the run, not reconstructed
 - [ ] `rejected` is distinguishable from `failed` in every read path
 - [ ] **A rejected run's claims are readable on the run and absent from
       `repositories.claims`** — and a citation of one is refused by the
