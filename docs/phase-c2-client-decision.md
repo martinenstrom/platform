@@ -127,11 +127,74 @@ the work.
 
 ---
 
-## 6. What I need
+## 6. RULED: an analysis-specific pipeline
 
-1. **The §5 choice** — (a), (b) or (c).
-2. **Confirmation that no SDK is acceptable**, given it is a departure from the
-   default expectation even though it matches this codebase's own precedent.
+Ruled: **do not generalise the market-data pipeline simply because both are
+called providers.** Build an analysis-specific execution pipeline, and reuse or
+extract an existing primitive only where measurement shows the semantics are
+genuinely identical.
 
-If (c) — the smallest, and the one that starts no refactor — implementation can
-begin immediately, as agreed.
+> **Generalize shared semantics, not shared vocabulary.**
+
+### 6.1 The measurement, primitive by primitive
+
+| Primitive | Market-data semantics | Analysis semantics | Verdict |
+|---|---|---|---|
+| `withTimeout` | Wall-clock deadline on an in-flight call | Wall-clock deadline on an in-flight call | **Identical — extract** |
+| `backoffDelayMs` | Exponential backoff, full jitter, injected `Random` so a seeded test reproduces the sequence | The same maths, and the same need for reproducibility | **Identical — extract** |
+| `isRetryable` | Keyed on market-data's `ErrorCode` | A different error vocabulary entirely | **Different — own it** |
+| Deadline *policy* | Per attempt | Per **run**, with attempts inside it | **Different — own it** |
+| `DailyBudget` | A **daily request quota** for a provider, shared across instances, counted per attempt | A **per-run allowance** across tokens, deadline and possibly money, resolved from three policy sources and recorded on the run | **Different — do not reuse** |
+| `TokenBucket` | Many small calls against a published rate limit | One long infrequent call per run | **Not needed** |
+| `CircuitBreaker` | High frequency; a bad minute must not hammer a provider | Infrequent runs; see §6.2 | **Not needed — and its analogue is not operational** |
+
+**`DailyBudget` is the clearest case of the rule.** It shares the word "budget"
+with the execution budget and shares almost nothing else: one is a global daily
+counter of requests, the other a per-run multi-dimensional allowance that must
+be recorded with the run and stay self-describing. Reusing it because both are
+called "budget" is exactly the trap.
+
+### 6.2 The finding worth stating
+
+**The analysis analogue of a circuit breaker is not operational — it is
+institutional.**
+
+A market-data provider failing repeatedly is an operational fact, and tripping a
+breaker on it is right: stop calling, recover, resume.
+
+An agent whose work is repeatedly *rejected* has not failed operationally at
+all. Every call succeeded. What is wrong is the quality of the work, and that is
+an institutional judgement the firm has just built a record for — one primary
+rejection code plus mandatory prose, counted over years.
+
+So the right response to "this agent keeps producing work we decline" is **for a
+person to see it in Agent Headquarters and decide**, not for a breaker to
+silently stop invoking it. A breaker here would hide the very signal the
+rejection vocabulary exists to surface.
+
+That is the same distinction as `failed` versus `rejected`, one layer down.
+
+### 6.3 What this means for implementation
+
+- **Extract two pure primitives** — `withTimeout` and `backoffDelayMs` — to a
+  shared location, used by both pipelines unchanged. Pure functions with
+  injected time and randomness; nothing to diverge.
+- **Build an analysis execution pipeline** owning: run deadline, attempts within
+  it, retryability against the analysis error vocabulary, and enforcement of the
+  effective execution budget.
+- **Build no rate limiter and no breaker.** If concurrent agent load later needs
+  one, that is a measured decision then, not speculative infrastructure now.
+- **Retries stay attempts within one run.** A retry must never become a second
+  institutional run — the market-data layer states the same rule for the same
+  reason, and it is the one piece of accounting both pipelines genuinely share.
+
+---
+
+## 7. What I need
+
+Both original questions are ruled: **no SDK**, and **an analysis-specific
+pipeline** rather than a generalisation.
+
+The remaining item is capacity, not architecture. §6.3 is the implementation
+plan, and it starts no refactor of the market-data pipeline — only the
+extraction of two pure functions that both callers use unchanged.
