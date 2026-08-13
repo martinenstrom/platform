@@ -6,14 +6,22 @@
  * conditions, and had no way to act on them — it recorded an obligation it
  * could not fulfil. This is the fulfilment.
  *
- * ## It inherits history, never judgement
+ * ## What is kept, and what is produced again
  *
- * Reopening assembles a **fresh** `EligibilityBasis` and evaluates it under the
- * policy named here, which may not be the policy the deferral was judged under.
- * The deferral stays in the record and grants no approval to what follows: the
- * trigger fired precisely because the world stopped matching the assumptions
- * the deferral rested on, so the conclusions drawn under those assumptions are
- * exactly what must not carry over.
+ * A reopened case keeps its history and its revision-specific recorded
+ * findings, but **no eligibility or CIO conclusion is inherited**.
+ *
+ * That is the precise boundary, and it is narrower than "inherits no
+ * judgement": a Verification verdict *is* a judgement, and it does carry over,
+ * because it is a finding recorded about an exact revision that has not
+ * changed. What must not carry over is what the firm concluded FROM those
+ * findings — the eligibility verdict and the decision — because the trigger
+ * fired precisely when the world stopped matching the assumptions those
+ * conclusions rested on.
+ *
+ * So reopening assembles a **fresh** `EligibilityBasis` and evaluates it under
+ * the policy named here, which may not be the policy the deferral was judged
+ * under. The deferral stays readable and grants no approval to what follows.
  *
  * **If the fresh basis fails the gates, the reopening is refused** and the case
  * stays deferred until the work is redone. That is the institution behaving
