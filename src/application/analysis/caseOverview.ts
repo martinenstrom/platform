@@ -35,6 +35,7 @@ import {
   type AgentRunRecord,
   type CaseDecision,
   type CaseStanding,
+  type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type DevilsAdvocateReview,
@@ -93,6 +94,15 @@ export interface CaseOverview {
   decision: CaseDecision | null
   /** Every decision, oldest first: a correction never erases its predecessor. */
   decisionHistory: readonly CaseDecision[]
+  /**
+   * Every reopening, oldest first.
+   *
+   * Beside the decisions rather than folded into them: a reopening is an act in
+   * its own right, and the reader has to be able to see the deferral, the thing
+   * that ended it, and the decision that followed as three separate moments in
+   * one history.
+   */
+  reconsiderations: readonly CaseReconsideration[]
   timeline: readonly TransitionEvent[]
   eligibility: RecordedEligibility
 }
@@ -116,17 +126,27 @@ export async function caseOverview(input: {
   const investmentCase = await repositories.cases.get(caseId)
   if (!investmentCase) return null
 
-  const [revisions, claims, runs, verification, devilsAdvocate, risk, timeline, returns] =
-    await Promise.all([
-      repositories.theses.listForCase(caseId),
-      repositories.claims.listForCase(caseId),
-      repositories.runs.listForCase(caseId),
-      repositories.reviews.verificationsForCase(caseId),
-      repositories.reviews.challengesForCase(caseId),
-      repositories.reviews.riskForCase(caseId),
-      repositories.events.listForCase(caseId),
-      repositories.submissions.returnsForCase(caseId),
-    ])
+  const [
+    revisions,
+    claims,
+    runs,
+    verification,
+    devilsAdvocate,
+    risk,
+    timeline,
+    returns,
+    reconsiderations,
+  ] = await Promise.all([
+    repositories.theses.listForCase(caseId),
+    repositories.claims.listForCase(caseId),
+    repositories.runs.listForCase(caseId),
+    repositories.reviews.verificationsForCase(caseId),
+    repositories.reviews.challengesForCase(caseId),
+    repositories.reviews.riskForCase(caseId),
+    repositories.events.listForCase(caseId),
+    repositories.submissions.returnsForCase(caseId),
+    repositories.submissions.reconsiderationsForCase(caseId),
+  ])
 
   const aggregations: ManagerAggregation[] = []
   for (const revision of revisions) {
@@ -198,6 +218,7 @@ export async function caseOverview(input: {
     returns,
     decision,
     decisionHistory,
+    reconsiderations,
     timeline,
     eligibility: recordedEligibility(submissions, current),
   }

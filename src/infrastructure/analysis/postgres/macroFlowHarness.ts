@@ -55,6 +55,15 @@ import { eligibilityPolicy } from '~/domain/analysis'
 export const AT = '2026-08-01T09:00:00.000Z'
 export const LATER = '2026-08-01T11:00:00.000Z'
 export const LATEST = '2026-08-01T13:00:00.000Z'
+/*
+ * A deferral waits for something. These are days later, not minutes, because
+ * that is what a reconsideration is: the firm stopped, a condition was met, and
+ * it looked again. Fixtures sharing one timestamp would make the decision
+ * history order fall back to identifiers, which is not the order anything
+ * happened in.
+ */
+export const AFTER_DEFERRAL = '2026-08-14T09:00:00.000Z'
+export const AFTER_RECONSIDERATION = '2026-08-14T11:00:00.000Z'
 
 export const CLOCK = {
   isoNow: () => AT,

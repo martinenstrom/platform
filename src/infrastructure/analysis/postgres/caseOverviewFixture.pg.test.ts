@@ -26,6 +26,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 import {
+  AFTER_DEFERRAL,
+  AFTER_RECONSIDERATION,
   challenge,
   decide,
   LATEST,
@@ -34,6 +36,8 @@ import {
   runMacroToAggregation,
   startRuntime,
   submit,
+  defer,
+  reopen,
   submitToCio,
   verify,
   type MacroCase,
@@ -271,6 +275,74 @@ describe('institutional fixtures for the Headquarters render suite', () => {
     expect(risk.status).toBe('not-applicable')
 
     const written = capture('caseOverview.noRisk', overview)
+    expect(
+      written.changed && written.current !== null,
+      `${written.path} was out of date and has been regenerated.`,
+    ).toBe(false)
+  })
+
+  it('captures a case that was deferred, reopened and then decided', async () => {
+    /*
+     * The whole reconsideration loop in one record, so the rendered page is
+     * proved against a case that actually travelled it. Three acts on the
+     * decision boundary — a deferral, the reopening that ended it, and the
+     * decision that followed — which is the shape the history has to render as
+     * one sequence rather than as a single live decision.
+     */
+    const runtime = await start()
+    const caseId = 'hq-reconsidered'
+    const macro = await decisionReady(runtime, caseId)
+
+    const submitted = await submitToCio(runtime, macro)
+    const deferral = await defer(runtime, macro, [
+      (submitted as { resultRef: string }).resultRef,
+    ])
+    if (deferral.outcome === 'rejected') {
+      throw new Error(`${deferral.rejection.code}: ${deferral.rejection.detail}`)
+    }
+    if (deferral.outcome !== 'committed') throw new Error(deferral.outcome)
+
+    /* Days later: the condition was met, and the firm looked again. */
+    const reopened = await reopen(
+      runtime,
+      macro,
+      deferral.resultRef,
+      {},
+      {
+        occurredAt: AFTER_DEFERRAL,
+      },
+    )
+    if (reopened.outcome === 'rejected') {
+      throw new Error(`${reopened.rejection.code}: ${reopened.rejection.detail}`)
+    }
+    if (reopened.outcome !== 'committed') throw new Error(reopened.outcome)
+
+    const record = (await runtime.container.repositories.submissions.getReconsideration(
+      reopened.resultRef,
+    ))!
+    const final = await decide(
+      runtime,
+      macro,
+      [record.submissionId],
+      { supersedesDecisionId: deferral.resultRef },
+      { occurredAt: AFTER_RECONSIDERATION },
+      '-final',
+    )
+    if (final.outcome !== 'committed') throw new Error(final.outcome)
+
+    const deps = await runtime.container.commandDeps()
+    const overview = await caseOverview({
+      repositories: runtime.container.repositories,
+      organization: deps.organization,
+      caseId,
+      now: LATEST,
+    })
+
+    expect(overview!.standing.stage).toBe('decided')
+    expect(overview!.decisionHistory).toHaveLength(2)
+    expect(overview!.reconsiderations).toHaveLength(1)
+
+    const written = capture('caseOverview.reconsidered', overview)
     expect(
       written.changed && written.current !== null,
       `${written.path} was out of date and has been regenerated.`,

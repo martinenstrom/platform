@@ -23,6 +23,7 @@ import { DashboardCard } from '~/components/ui/DashboardCard'
 import { EmptyState } from '~/components/ui/EmptyState'
 import { StatusBadge } from '~/components/ui/StatusBadge'
 import { CaseStandingPanel } from '~/components/headquarters/CaseStandingPanel'
+import { DecisionHistory } from '~/components/headquarters/DecisionHistory'
 import { getCaseOverviewFn } from '~/infrastructure/analysis/serverFns'
 import {
   eligibilityText,
@@ -135,73 +136,12 @@ export function CaseOverviewPage({ response }: { response: CaseOverviewResponse 
         </div>
       </DashboardCard>
 
-      {/* ============================================ the decision =========== */}
-      <DashboardCard title="Beslut">
-        {overview.decision === null ? (
-          <p className="text-sm text-content-muted">Inget beslut är fattat ännu.</p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-              <Labelled label="Utfall">
-                <code className="font-mono text-xs">
-                  {overview.decision.outcome.kind}
-                </code>
-              </Labelled>
-              <Labelled label="Beslutad av">
-                {overview.decision.decidedByEmployeeId}
-              </Labelled>
-              <Labelled label="Tidpunkt">
-                {formatDateTime(overview.decision.decidedAt)}
-              </Labelled>
-              <Labelled label="Mandat">{overview.decision.authorizationBasis}</Labelled>
-            </div>
-
-            <p className="text-sm">{overview.decision.rationale}</p>
-
-            {/*
-             * Dissent is part of the record, not a comment on it. The firm
-             * decided KNOWING somebody disagreed, and a page that omitted this
-             * would describe an agreement that never happened.
-             */}
-            {overview.decision.unresolvedDissent.length > 0 && (
-              <div className="rounded-lg bg-warning-soft p-4">
-                <span className="type-label">Kvarstående avvikande mening</span>
-                <ul className="mt-2 flex flex-col gap-2">
-                  {overview.decision.unresolvedDissent.map((dissent, index) => (
-                    <li key={index} className="text-sm">
-                      {dissent.raisedByDepartmentId && (
-                        <span className="font-medium">
-                          {dissent.raisedByDepartmentId}:{' '}
-                        </span>
-                      )}
-                      {dissent.rationale}
-                      {/*
-                       * The weight it was raised at, verbatim. A dissent
-                       * without its materiality reads as a footnote, and the
-                       * whole point of recording it is that it was not one.
-                       */}
-                      <code className="ml-2 font-mono text-xs">
-                        {dissent.materiality}
-                      </code>
-                      {/*
-                       * And the CIO's answer to it. The domain calls this the
-                       * field that matters: an objection shown without the
-                       * reason it was overridden leaves the reader believing
-                       * nobody responded to it.
-                       */}
-                      {dissent.acknowledgement && (
-                        <span className="mt-1 block text-content-muted">
-                          Bemötande: {dissent.acknowledgement}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </DashboardCard>
+      {/* ======================================= the decision history ======== */}
+      <DecisionHistory
+        history={overview.decisionHistory}
+        reconsiderations={overview.reconsiderations}
+        liveDecisionId={overview.decision?.decisionId ?? null}
+      />
 
       {/* ============================================ the record ============= */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -316,15 +256,6 @@ export function CaseOverviewPage({ response }: { response: CaseOverviewResponse 
 }
 
 /* ------------------------------------------------------------- small parts */
-
-function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="type-metadata">{label}</span>
-      <span className="text-sm">{children}</span>
-    </div>
-  )
-}
 
 function Section({
   title,

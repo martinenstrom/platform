@@ -27,6 +27,7 @@ import decided from '~/test/fixtures/caseOverview.decided.json'
 import awaiting from '~/test/fixtures/caseOverview.awaiting.json'
 import inflight from '~/test/fixtures/caseOverview.inflight.json'
 import noRisk from '~/test/fixtures/caseOverview.noRisk.json'
+import reconsidered from '~/test/fixtures/caseOverview.reconsidered.json'
 import type { CaseOverview } from '~/application/analysis/caseOverview'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 
@@ -116,9 +117,16 @@ describe('a decided case shows every institutional item', () => {
   it('renders the decision, its author and its mandate', () => {
     renderCase(decided)
     const decision = card(/^Beslut$/)
-    expect(within(decision).getByText('selected')).toBeInTheDocument()
-    expect(within(decision).getByText('cio')).toBeInTheDocument()
-    expect(within(decision).getByText('chief-investment-officer')).toBeInTheDocument()
+
+    /*
+     * The outcome as a label, not the raw code. `selected` is the firm's
+     * identifier for the fact; "Position tagen" is what a person reads. The
+     * code stays the identifier everywhere it travels — the mapping is the one
+     * place it becomes Swedish.
+     */
+    expect(within(decision).getByText('Position tagen')).toBeInTheDocument()
+    expect(within(decision).getByText(/cio/)).toBeInTheDocument()
+    expect(within(decision).getByText(/chief-investment-officer/)).toBeInTheDocument()
   })
 
   it('renders the timeline with its actors', () => {
@@ -326,5 +334,105 @@ describe('failures say what happened and nothing about how', () => {
     render(<CaseOverviewPage response={{ ok: false, code: 'SERVICE_UNAVAILABLE' }} />)
     expect(screen.getByText('Analysmiljön svarar inte just nu.')).toBeInTheDocument()
     expect(screen.queryByText(/postgres|SERVICE_UNAVAILABLE/)).not.toBeInTheDocument()
+  })
+})
+
+/* ------------------------------------------------ the reconsideration loop */
+
+describe('a case that was deferred, reopened and then decided', () => {
+  it('renders all three acts as one history, in the order they happened', () => {
+    renderCase(reconsidered)
+    const history = card(/^Beslutshistorik/)
+
+    /* Three acts on the decision boundary, not one live decision. */
+    expect(within(history).getByText('Bordlagt')).toBeInTheDocument()
+    expect(within(history).getByText('Återupptaget')).toBeInTheDocument()
+    expect(within(history).getByText('Position tagen')).toBeInTheDocument()
+
+    /*
+     * In the order they happened, read from the rendered document rather than
+     * from the data — a page can hold the right records and still show them
+     * backwards.
+     */
+    const text = history.textContent ?? ''
+    expect(text.indexOf('Bordlagt')).toBeLessThan(text.indexOf('Återupptaget'))
+    expect(text.indexOf('Återupptaget')).toBeLessThan(text.indexOf('Position tagen'))
+  })
+
+  it('keeps the deferral’s own reasons and its conditions', () => {
+    renderCase(reconsidered)
+    const history = card(/^Beslutshistorik/)
+    const fixture = asOverview(reconsidered)
+    const deferral = fixture.decisionHistory.find(
+      (decision) => decision.outcome.kind === 'deferred',
+    )!
+
+    /* The rationale the CIO gave for waiting. */
+    expect(within(history).getByText(deferral.rationale)).toBeInTheDocument()
+
+    /* And what would end the wait — the whole point of a deferral. */
+    expect(within(history).getByText('Villkor för omprövning')).toBeInTheDocument()
+    expect(within(history).getByText(/June staff projections/)).toBeInTheDocument()
+  })
+
+  it('says why the case came back', () => {
+    renderCase(reconsidered)
+    const history = card(/^Beslutshistorik/)
+
+    expect(within(history).getByText('Villkor som uppfylldes')).toBeInTheDocument()
+    expect(within(history).getByText(/June projections published/)).toBeInTheDocument()
+    /* And who reopened it, under what mandate. */
+    expect(within(history).getAllByText(/cio/).length).toBeGreaterThan(0)
+  })
+
+  it('shows the superseded deferral as a real act, not a correction', () => {
+    renderCase(reconsidered)
+    const history = card(/^Beslutshistorik/)
+
+    /*
+     * Said in words. Striking the text out would read as a mistake being
+     * fixed, and the firm did decide to wait — it stayed decided until a
+     * condition ended it.
+     */
+    expect(within(history).getByText('Ersatt av ett senare beslut')).toBeInTheDocument()
+    expect(history.querySelector('s, del, .line-through')).toBeNull()
+  })
+
+  it('shows no new governance verdict was created for the unchanged revision', () => {
+    renderCase(reconsidered)
+    const fixture = asOverview(reconsidered)
+
+    /*
+     * One of each, for one revision, across the whole loop. A reopening that
+     * had re-run governance would show more — and the page would be describing
+     * work the firm never did.
+     */
+    expect(
+      screen.getByRole('heading', {
+        name: `Faktagranskning (${fixture.verification.length})`,
+      }),
+    ).toBeInTheDocument()
+    expect(fixture.verification).toHaveLength(1)
+    expect(fixture.devilsAdvocate).toHaveLength(1)
+    expect(fixture.risk).toHaveLength(1)
+
+    /* And every one of them belongs to the revision that was reconsidered. */
+    const revisionId = fixture.reconsiderations[0]!.revisionId
+    for (const review of [
+      ...fixture.verification,
+      ...fixture.devilsAdvocate,
+      ...fixture.risk,
+    ]) {
+      expect(review.revisionId).toBe(revisionId)
+    }
+  })
+
+  it('renders the reopening in the timeline as a case movement', () => {
+    renderCase(reconsidered)
+    const timeline = card(/^Händelseförlopp$/)
+
+    expect(within(timeline).getAllByText(/decision → deferred/).length).toBeGreaterThan(0)
+    expect(within(timeline).getAllByText(/deferred → decision/).length).toBeGreaterThan(0)
+    expect(within(timeline).getAllByText(/decision → decided/).length).toBeGreaterThan(0)
   })
 })

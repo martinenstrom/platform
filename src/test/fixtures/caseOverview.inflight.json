@@ -474,6 +474,7 @@
   "returns": [],
   "decision": null,
   "decisionHistory": [],
+  "reconsiderations": [],
   "timeline": [
     {
       "eventId": "evt-0556dbeb55195f6d75a4aaeca3f41d1d",

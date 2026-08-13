@@ -16,9 +16,11 @@ import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 import {
   challenge,
   decide,
+  defer,
   LATEST,
   resolveRisk,
   riskReview,
+  reopen,
   runMacroToAggregation,
   startRuntime,
   submit,
@@ -192,5 +194,58 @@ describe('the Headquarters queue', () => {
     expect(settled.ownership.kind).toBe('settled')
     expect(settled.ownership.employeeId).toBeNull()
     expect(settled.nextAct.act).toBe('none-settled')
+  })
+
+  it('moves a reconsidered case out of settled and back into outstanding', async () => {
+    /*
+     * The queue half of reconsideration, and the reason it needs no new
+     * plumbing: a deferred case is settled, a reopened one is not, and the
+     * standing derivation already answers that. What is proved here is that
+     * the queue actually reflects it — a firm whose queue still showed a
+     * reopened case as finished would have work nobody could see was owed.
+     */
+    const runtime = await start()
+    const caseId = 'q-reconsidered'
+    const macro = await decisionReady(runtime, caseId)
+    const submitted = await submitToCio(runtime, macro)
+
+    const deferral = await defer(runtime, macro, [
+      (submitted as { resultRef: string }).resultRef,
+    ])
+    if (deferral.outcome !== 'committed') throw new Error(deferral.outcome)
+
+    /* Deferred: the CIO chose to wait, so nothing is owed. */
+    const whileDeferred = (await listOf(runtime)).find(
+      (entry) => entry.investmentCase.id === caseId,
+    )!
+    expect(whileDeferred.standing.stage).toBe('deferred')
+    expect(whileDeferred.standing.settled).toBe(true)
+    expect(whileDeferred.standing.ownership.kind).toBe('settled')
+    expect(whileDeferred.standing.nextAct.act).toBe('none-settled')
+
+    const reopened = await reopen(runtime, macro, deferral.resultRef)
+    if (reopened.outcome !== 'committed') throw new Error(reopened.outcome)
+
+    /* Reopened: owed again, and on the chief's desk. */
+    const listed = await listOf(runtime)
+    const afterReopen = listed.find((entry) => entry.investmentCase.id === caseId)!
+    expect(afterReopen.standing.stage).toBe('decision')
+    expect(afterReopen.standing.settled).toBe(false)
+    expect(afterReopen.standing.ownership.kind).toBe('chief')
+    expect(afterReopen.standing.nextAct.act).toBe('decide-or-return')
+
+    /*
+     * And it sorts with the outstanding work. Stated as "before every settled
+     * case" rather than as an index comparison, which would pass vacuously in
+     * a run where no other test happened to leave a settled case behind.
+     */
+    const settledPositions = listed
+      .map((entry, index) => ({ settled: entry.standing.settled, index }))
+      .filter((entry) => entry.settled)
+      .map((entry) => entry.index)
+    expect(settledPositions.length).toBeGreaterThan(0)
+    for (const position of settledPositions) {
+      expect(listed.indexOf(afterReopen)).toBeLessThan(position)
+    }
   })
 })
