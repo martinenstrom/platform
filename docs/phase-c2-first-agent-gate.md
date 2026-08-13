@@ -168,8 +168,16 @@ page refresh would lose it.
 ```
 running ──► awaiting-acceptance ──► completed   (a human accepted)
                     │
+                    ├──────────────► rejected   (a human declined, with a reason)
+                    │
                     └──────────────► failed | cancelled
 ```
+
+**`rejected` is its own terminal state, not a kind of `failed`.** A failed run
+produced nothing; a rejected run produced work the firm declined. Collapsing
+them would make "how often does this agent fail" and "how often is its work not
+good enough" the same number, and they are the two different questions worth
+asking about an employee.
 
 - The provider finishes; the run holds its claims and enters
   `awaiting-acceptance`. `AgentRunRecord.claims` **already exists**, so the
@@ -193,6 +201,57 @@ gains an acceptance step, and the run state table, its transitions and both
 adapters change. This is real domain work, not presentation. It is in scope
 because it was ruled, and it is the kind of change that is far cheaper now than
 after the institution depends on autonomous records.
+
+### 5.3 Rejection is institutional knowledge
+
+**Ruled: a rejected agent contribution must record a reason**, and rejection
+becomes institutional knowledge rather than discarded history. The purpose is
+auditability *and* continuous improvement — the firm should be able to ask which
+agents are rejected most, why, whether rejections cluster by capability, prompt,
+task or market regime, and whether an agent improves.
+
+**That makes the reason a code, not a sentence.** None of those questions can be
+answered over prose. This codebase already paid for that lesson once: `Blocker`
+carried `detail: string`, prose became a data channel, the category was
+recovered by matching sentence prefixes, and renaming a message silently
+reclassified a blocker.
+
+**Proposal — a bounded `RejectionReason`, prose alongside rather than instead:**
+
+| Code | What it means |
+|---|---|
+| `unsupported-by-evidence` | The claim outruns what the evidence shows |
+| `misread-the-brief` | Answered a different question |
+| `internally-inconsistent` | The reasoning contradicts itself |
+| `duplicates-existing-work` | Already known; adds nothing |
+| `below-quality-bar` | Right shape, not good enough |
+| `out-of-scope` | Correct, and not this department's work |
+
+Plus a required prose `detail`, because a code alone cannot teach anyone
+anything, and a rejection nobody can learn from is the discarded history this
+ruling exists to prevent.
+
+The codes are **stable vocabulary**, like `RejectionCode` and `BlockerKind`
+before them, so a later capability can count them without parsing anything.
+
+### 5.4 Rejected work is never citable
+
+**Ruled: rejected work must never become citable institutional evidence.** It
+remains part of the operational history of the run; only accepted work enters
+the institutional record.
+
+**This is already structural, and the phase must keep it so.** A rejected run's
+claims live on `AgentRunRecord.claims` and never reach `repositories.claims`.
+Every citation in the institution — `contests`, `evidenceRefs`, an aggregation
+disposition, a challenge subject — references a claim id in that table, and
+PostgreSQL holds those as foreign keys. **A citation of rejected work fails at
+the database**, not at a rule somebody remembered to write.
+
+Two things must therefore be true and asserted:
+
+- acceptance is the **only** path into `repositories.claims`
+- a rejected run's claims remain readable on the run, so the firm can study what
+  it declined and why
 
 ---
 
@@ -255,12 +314,10 @@ agent-run governance, TD-8 authentication.
 
 ## 9. Questions needing a ruling
 
-1. **Acceptance is ruled (§5.1) and its design is §5.2.** Remaining question:
-   should acceptance carry a **reason** when the operator rejects the work
-   rather than accepting it? A rejected agent run that records no reason tells a
-   later reader the firm paid for analysis and discarded it silently. *My view:
-   yes — a rejection is an institutional judgement about the work's quality and
-   is the primary evidence for whether an agent is worth running.*
+1. **Rejection is ruled (§5.3, §5.4).** Remaining question: are the six
+   rejection codes the right six? They are a first vocabulary, not a
+   discovery — and unlike most vocabularies here, this one is meant to be
+   *counted*, so getting the categories wrong is expensive to correct later.
 2. **Model client and provider** — which, and does the choice belong in this
    gate or to whoever implements it?
 3. **Budget authority.** Who sets a run's budget: the playbook entry, the case,
@@ -279,6 +336,11 @@ agent-run governance, TD-8 authentication.
       asserted by driving a run to `awaiting-acceptance` and confirming the case
       has no claim, no eligibility change and nothing to verify
 - [ ] Recorded and stub runs traverse the same acceptance path
+- [ ] A rejected run records a bounded reason code **and** prose
+- [ ] `rejected` is distinguishable from `failed` in every read path
+- [ ] **A rejected run's claims are readable on the run and absent from
+      `repositories.claims`** — and a citation of one is refused by the
+      database, not by application code
 - [ ] The claim is verified, challenged, aggregated and gated by the existing
       workflow, unchanged
 - [ ] The run records its exact model and prompt; a live run cannot present any
