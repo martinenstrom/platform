@@ -1,7 +1,8 @@
 # C2 — the measured client decision
 
-**Status:** for review. **One architectural choice surfaced (§5)** — per the
-standing instruction, this returns before implementation rather than proceeding.
+**Status:** complete and approved. Every question here is ruled — §5 was the
+one architectural choice this evaluation surfaced, and §6 rules it. Nothing in
+this document is awaiting a decision.
 
 **Method.** Evaluate candidates against what the provider contract actually
 requires (§9A of the C2 gate), measuring the codebase first rather than

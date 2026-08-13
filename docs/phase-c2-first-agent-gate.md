@@ -1,7 +1,11 @@
 # Planning gate — C2: the first operational agent
 
-**Status:** for review. Nothing implemented. This gate lifts two standing
-constraints, so it should not be approved casually.
+**Status:** approved. Nothing implemented — C2-1 begins in a fresh session,
+sized so the domain change, both adapters, contract parity and the
+contribution-test migration reach a green boundary in one effort.
+
+This gate lifts two standing constraints, and the four decisions the guard
+demanded (§4) are made.
 
 **Chosen capability.** Agent Headquarters together with the first operational
 agent. Agent HQ ships **when there is a live agent to show** — a roster of
