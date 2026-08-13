@@ -212,55 +212,86 @@ This ruling forces a design change, and §5.2 is that change.
 
 ---
 
-### 5.2 Where unaccepted work lives — the design the ruling forces
+### 5.2 Where unaccepted work lives — CORRECTED
 
-Measured, not assumed: **`RecordContribution` today does two things in one
-act.** It saves the claims into `repositories.claims` *and* transitions the run
-to `completed`, and that coupling is deliberate — its own header says a
-"completed run with half its claims" is the worst outcome available.
+> **The first version of this section was wrong, and implementation found it.**
+> It claimed `AgentRunRecord.claims` was durable storage the run could hold work
+> in. It is not: in **both** adapters `claims` is a *projection of the claims
+> table filtered by `run_id`* — in-memory `hydrateRun` builds it from
+> `store.claims` ("Claims live in their own repository"), and PostgreSQL
+> groups `CLAIM_SQL.forRuns` by run.
+>
+> So "hold the claims on the run" and "put the claims in the institutional
+> record" were the same operation, and there was nowhere for produced work to
+> live. Recorded here rather than quietly fixed, because the plan was approved
+> on a false premise and the correction changes scope.
 
-So the agent's output needs somewhere to live between *produced* and *accepted*.
-It cannot live in the operator's browser: the firm paid for that work, and a
-page refresh would lose it.
+**Ruled: produced-but-unaccepted claims get their own durable operational
+store**, separate from the institutional claims repository.
 
-**Proposal — one new run state, `awaiting-acceptance`:**
+Two designs were rejected, each for a stated reason:
+
+- **An `accepted` flag on the institutional claims table.** Cheapest, and it
+  turns non-citability from a database property into a filter every consumer
+  must remember. The whole point of the FK boundary is that nobody has to
+  remember it.
+- **Denormalising claims onto `AgentRunRecord`.** Breaks the existing claim
+  identity and repository model, which stays intact.
+
+### 5.2.1 The lifecycle
 
 ```
-running ──► awaiting-acceptance ──► completed   (a human accepted)
-                    │
-                    ├──────────────► rejected   (a human declined, with a reason)
-                    │
-                    └──────────────► failed | cancelled
+provider produces claims
+        │
+        ▼
+operational produced-claim store        ← durable, readable, NOT citable
+        │
+        ▼
+run = awaiting-acceptance
+        │
+        ├── human accepts ──► atomically:
+        │                       create institutional claims
+        │                     + complete the run
+        │                     + populate the reusable result store
+        │
+        └── human rejects ──► produced claims stay durable in operational
+                              history; run = rejected with one primary code and
+                              mandatory prose; NOTHING is copied into the
+                              institutional claims repository, and the result
+                              store is NOT populated
 ```
 
-**`rejected` is its own terminal state, not a kind of `failed`.** A failed run
-produced nothing; a rejected run produced work the firm declined. Collapsing
-them would make "how often does this agent fail" and "how often is its work not
-good enough" the same number, and they are the two different questions worth
-asking about an employee.
+**A rejected result must never become reusable merely because the model
+produced it successfully.** The result store is for work the firm stands behind.
 
-- The provider finishes; the run holds its claims and enters
-  `awaiting-acceptance`. `AgentRunRecord.claims` **already exists**, so the
-  work is durably stored and visible.
-- Nothing is in `repositories.claims` yet, so nothing is verifiable, gateable,
-  aggregatable or citable. It is not institutional work.
-- A human accepts. That act commits the claims and completes the run —
-  `RecordContribution` unchanged, still atomic, now invoked by a person.
+### 5.2.2 Claim identity is preserved, not re-derived
 
-**Why not a separate "proposed contribution" record:** the run already *is* the
-record of work produced. A second store for the same claims would be two places
-answering "what did this run produce".
+Moving a claim from operational to institutional storage **must not create a
+second canonicalisation or a second content-hash implementation.** The identity
+and content semantics are the ones that already exist; the claim crosses a
+storage boundary, it is not rebuilt on the other side.
 
-**All provider kinds go through acceptance, including recorded and stub.** The
-port's own rule is that "a recorded contribution goes through exactly the same
-validation, lifecycle, review and gating code a live one will" — an acceptance
-step that only live work traversed would be untested by every existing test.
+A second hasher would mean the same claim could hash differently depending on
+which side of acceptance it was read from — and content-addressed identity that
+depends on where you look is not content-addressed.
 
-**The cost, stated plainly:** every existing test that records a contribution
-gains an acceptance step, and the run state table, its transitions and both
-adapters change. This is real domain work, not presentation. It is in scope
-because it was ruled, and it is the kind of change that is far cheaper now than
-after the institution depends on autonomous records.
+### 5.2.3 What this adds to the stage
+
+| | |
+|---|---|
+| **Migration** | A produced-claims table, with a foreign key to the run and none to anything institutional |
+| **Both adapters** | In-memory and PostgreSQL implementations of the produced-claim store |
+| **Contract parity** | Shared cases for produce → accept and produce → reject, so neither adapter defines its own acceptance semantics |
+| **The FK boundary** | Citations continue to reference the institutional claims table only. Nothing changes there, which is the point: a produced claim is not in it, so citing one cannot resolve |
+
+**All provider kinds traverse acceptance, including recorded and stub.** An
+acceptance path only live work went through would be untested by every existing
+test.
+
+**The cost, restated:** a table, a migration, both adapters, contract parity,
+two commands, the run state table, and every existing contribution test gaining
+an acceptance step. Larger than the approved plan, because the approved plan was
+wrong about where work could live.
 
 ### 5.3 Rejection is institutional knowledge
 
@@ -435,6 +466,16 @@ this gate has not made.
 - [ ] **Nothing enters `repositories.claims` without an explicit human act** —
       asserted by driving a run to `awaiting-acceptance` and confirming the case
       has no claim, no eligibility change and nothing to verify
+- [ ] **Before acceptance, citing a produced claim fails structurally** — not by
+      a filter, by the citation resolving against a table the claim is not in
+- [ ] **After acceptance, the newly institutional claim is citable** through the
+      existing foreign-key model, unchanged
+- [ ] **After rejection, the produced claim stays readable from the run and
+      remains structurally non-citable**
+- [ ] A rejected run populates neither the institutional claims repository nor
+      the reusable result store
+- [ ] Claim identity and content hashing are the existing implementation on both
+      sides of the boundary — no second canonicalisation exists
 - [ ] Recorded and stub runs traverse the same acceptance path
 - [ ] A rejected run records one bounded reason code **and** mandatory prose
 - [ ] A budget dimension that does not apply is distinguishable from one nobody
