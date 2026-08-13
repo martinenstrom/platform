@@ -30,10 +30,12 @@
 
 import {
   subjectKey,
+  validateCaseReconsideration,
   validateCioReturn,
   validateCioSubmission,
   validateReturnReferences,
   validateSubmissionReferences,
+  type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type ReferencedGovernance,
@@ -48,19 +50,24 @@ import {
   type SubmissionRepository,
 } from '~/application/analysis/repositories'
 import {
+  caseReconsiderationSemanticKey,
   cioReturnSemanticKey,
   cioSubmissionSemanticKey,
 } from '~/application/analysis/writeOnce'
 import { seal } from '../seal'
 import {
   returnFromRows,
+  reconsiderationToRows,
   returnToRows,
+  toCaseReconsideration,
   submissionFromRows,
   submissionToRows,
 } from './decisionMapping'
 import type {
   CioReturnConcernRow,
+  CaseReconsiderationRow,
   CioReturnRow,
+  ReconsiderationFiredTriggerRow,
   CioSubmissionRow,
   SubmissionDisagreementRow,
   SubmissionEvidenceRow,
@@ -148,6 +155,37 @@ export const SUBMISSION_READ_SQL = catalog({
                 WHERE submission_id = ANY($1)
                 ORDER BY evidence_set_id COLLATE "C"`,
 
+  /*
+   * Columns named, and `reopened_at` rendered as an ISO string by `ts`.
+   * `SELECT *` returns timestamptz as a Date, which stringifies differently
+   * from the value handed in -- and an idempotent replay was then refused as a
+   * conflict. The contract parity case caught it; the adapter looked fine
+   * alone.
+   */
+  reconsiderationById: `SELECT id, case_id, revision_id, reconsiders_decision_id, submission_id,
+                            ${ts('reopened_at')}, reopened_by_employee_id, reopened_by_role_id,
+                            reopened_by_role_function, reopened_by_department_id,
+                            reopened_by_department_is_governance,
+                            reopened_by_department_handles, organization_seed_version,
+                            authentication, authorization_basis, case_version
+                        FROM analysis.case_reconsiderations WHERE id = $1`,
+
+  reconsiderationsByCase: `SELECT id, case_id, revision_id, reconsiders_decision_id, submission_id,
+                            ${ts('reopened_at')}, reopened_by_employee_id, reopened_by_role_id,
+                            reopened_by_role_function, reopened_by_department_id,
+                            reopened_by_department_is_governance,
+                            reopened_by_department_handles, organization_seed_version,
+                            authentication, authorization_basis, case_version
+                           FROM analysis.case_reconsiderations
+                           WHERE case_id = $1
+                           ORDER BY reopened_at, id COLLATE "C"`,
+
+  firedTriggersFor: `SELECT reconsideration_id, ordinal, trigger_id,
+                            reconsiders_decision_id, observation
+                     FROM analysis.case_reconsideration_fired_triggers
+                     WHERE reconsideration_id = ANY($1)
+                     ORDER BY reconsideration_id, ordinal`,
+
   openChallengesFor: `SELECT submission_id, challenge_id, materiality
                       FROM analysis.submission_open_challenges
                       WHERE submission_id = ANY($1)
@@ -220,6 +258,20 @@ export const SUBMISSION_WRITE_SQL = catalog({
     INSERT INTO analysis.submission_open_challenges
       (submission_id, challenge_id, materiality)
     SELECT $1, * FROM unnest($2::text[], $3::text[])`,
+
+  insertReconsideration: `
+    INSERT INTO analysis.case_reconsiderations
+      (id, case_id, tenant_id, revision_id, reconsiders_decision_id, submission_id,
+       reopened_at, reopened_by_employee_id, reopened_by_role_id,
+       reopened_by_role_function, reopened_by_department_id,
+       reopened_by_department_is_governance, reopened_by_department_handles,
+       organization_seed_version, authentication, authorization_basis, case_version)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+
+  insertFiredTriggers: `
+    INSERT INTO analysis.case_reconsideration_fired_triggers
+      (reconsideration_id, ordinal, trigger_id, reconsiders_decision_id, observation)
+    SELECT * FROM unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[])`,
 
   /** Current states, so settle can tell missing from replayed from conflicting. */
   statesOf: `SELECT id, state FROM analysis.cio_submissions WHERE id = ANY($1)`,
@@ -541,6 +593,36 @@ export function createSubmissionRepository(
       })
     }
     return { byKindAndId }
+  }
+
+  /**
+   * Reopenings with their fired triggers, in one round trip for the batch.
+   *
+   * Not one query per reopening: the case page and the queue both read these,
+   * and a per-row fetch would put an N+1 on a path a person waits for.
+   */
+  async function hydrateReconsiderations(
+    client: Queryable,
+    operation: string,
+    rows: readonly CaseReconsiderationRow[],
+  ): Promise<CaseReconsideration[]> {
+    if (rows.length === 0) return []
+    const fired = await run<ReconsiderationFiredTriggerRow>(
+      client,
+      context,
+      operation,
+      SUBMISSION_READ_SQL.firedTriggersFor,
+      [rows.map((row) => row.id)],
+    )
+    const byReconsideration = new Map<string, ReconsiderationFiredTriggerRow[]>()
+    for (const entry of fired) {
+      const list = byReconsideration.get(entry.reconsideration_id) ?? []
+      list.push(entry)
+      byReconsideration.set(entry.reconsideration_id, list)
+    }
+    return rows.map((row) =>
+      toCaseReconsideration(row, byReconsideration.get(row.id) ?? [], operation),
+    )
   }
 
   async function hydrateReturns(
@@ -1001,6 +1083,122 @@ export function createSubmissionRepository(
             context,
             'returns.returnsForCase',
             RETURN_READ_SQL.forCase,
+            [caseId],
+          ),
+        ),
+      ),
+
+    recordReconsideration: (reconsideration) =>
+      unitOfWork(scope, 'returns.recordReconsideration', async (client) => {
+        const problems = validateCaseReconsideration(reconsideration)
+        if (problems.length > 0) {
+          throw new InvariantViolationError(
+            problems[0]!.code,
+            'returns.recordReconsideration',
+          )
+        }
+
+        const existing = await hydrateReconsiderations(
+          client,
+          'returns.recordReconsideration',
+          await run<CaseReconsiderationRow>(
+            client,
+            context,
+            'returns.recordReconsideration',
+            SUBMISSION_READ_SQL.reconsiderationById,
+            [reconsideration.id],
+          ),
+        )
+        if (existing[0]) {
+          if (
+            caseReconsiderationSemanticKey(existing[0]) !==
+            caseReconsiderationSemanticKey(reconsideration)
+          ) {
+            throw new ConflictingRecordError(
+              'case reconsideration',
+              reconsideration.id,
+              'returns.recordReconsideration',
+            )
+          }
+          return existing[0]
+        }
+
+        const rows = reconsiderationToRows(reconsideration)
+        const root = rows.reconsideration
+        await run(
+          client,
+          context,
+          'returns.recordReconsideration',
+          SUBMISSION_WRITE_SQL.insertReconsideration,
+          [
+            root.id,
+            root.case_id,
+            tenantId,
+            root.revision_id,
+            root.reconsiders_decision_id,
+            root.submission_id,
+            root.reopened_at,
+            root.reopened_by_employee_id,
+            root.reopened_by_role_id,
+            root.reopened_by_role_function,
+            root.reopened_by_department_id,
+            root.reopened_by_department_is_governance,
+            root.reopened_by_department_handles,
+            root.organization_seed_version,
+            root.authentication,
+            root.authorization_basis,
+            root.case_version,
+          ],
+        )
+
+        /*
+         * The composite foreign key on (trigger_id, reconsiders_decision_id)
+         * refuses a trigger belonging to another decision here, so the rule is
+         * held by the database rather than remembered by this function.
+         */
+        await run(
+          client,
+          context,
+          'returns.recordReconsideration',
+          SUBMISSION_WRITE_SQL.insertFiredTriggers,
+          [
+            rows.firedTriggers.map((fired) => fired.reconsideration_id),
+            rows.firedTriggers.map((fired) => fired.ordinal),
+            rows.firedTriggers.map((fired) => fired.trigger_id),
+            rows.firedTriggers.map((fired) => fired.reconsiders_decision_id),
+            rows.firedTriggers.map((fired) => fired.observation),
+          ],
+        )
+
+        return reconsideration
+      }),
+
+    getReconsideration: (reconsiderationId) =>
+      unitOfWork(scope, 'returns.getReconsideration', async (client) => {
+        const found = await hydrateReconsiderations(
+          client,
+          'returns.getReconsideration',
+          await run<CaseReconsiderationRow>(
+            client,
+            context,
+            'returns.getReconsideration',
+            SUBMISSION_READ_SQL.reconsiderationById,
+            [reconsiderationId],
+          ),
+        )
+        return found[0] ?? null
+      }),
+
+    reconsiderationsForCase: (caseId) =>
+      unitOfWork(scope, 'returns.reconsiderationsForCase', async (client) =>
+        hydrateReconsiderations(
+          client,
+          'returns.reconsiderationsForCase',
+          await run<CaseReconsiderationRow>(
+            client,
+            context,
+            'returns.reconsiderationsForCase',
+            SUBMISSION_READ_SQL.reconsiderationsByCase,
             [caseId],
           ),
         ),

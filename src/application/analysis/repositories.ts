@@ -32,6 +32,7 @@ import type {
   AgentRunRecord,
   Assignment,
   CaseDecision,
+  CaseReconsideration,
   CioReturn,
   CioSubmission,
   ComplianceReview,
@@ -617,6 +618,25 @@ export interface SubmissionRepository {
   returnsForCase(caseId: string): Promise<CioReturn[]>
   /** Same ordering, for one exact revision. */
   returnsForRevision(revisionId: string): Promise<CioReturn[]>
+
+  /**
+   * Records the CIO reopening a deferred case, with the submission it created.
+   *
+   * Idempotent on `id`; a second write with different content throws
+   * `ConflictingRecordError`. The submission must already exist — the reopening
+   * explains a request for a decision, and one that referred to no request
+   * would explain nothing.
+   *
+   * A cited trigger must belong to the decision being reconsidered. Both stores
+   * enforce it; PostgreSQL does so with a composite foreign key, so it is a
+   * fact the database holds rather than a rule the application remembers.
+   */
+  recordReconsideration(
+    reconsideration: CaseReconsideration,
+  ): Promise<CaseReconsideration>
+  getReconsideration(reconsiderationId: string): Promise<CaseReconsideration | null>
+  /** Ordered by `reopenedAt`, then `id`, so the history reads as it happened. */
+  reconsiderationsForCase(caseId: string): Promise<CaseReconsideration[]>
 }
 
 /* ---------------------------------------------------------------- decisions */
@@ -800,6 +820,9 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
     'getReturn',
     'returnsForCase',
     'returnsForRevision',
+    'recordReconsideration',
+    'getReconsideration',
+    'reconsiderationsForCase',
   ],
   decisions: ['get', 'getForCase', 'historyForCase', 'listRecent', 'save'],
 } as const satisfies {

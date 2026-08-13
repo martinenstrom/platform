@@ -31,6 +31,7 @@ import { isDeeplyFrozen } from './seal'
 import {
   aggregationIdFor,
   challengeIdsFor,
+  caseReconsideration,
   cioReturn,
   cioSubmission,
   claimIdFor,
@@ -105,6 +106,14 @@ export const SHARED_CONTRACT_CASES: readonly string[] = Object.freeze([
   'refuses a disagreement about a claim from another case',
   'refuses a review that does not exist at all',
   'stores none of it',
+  /* --------------------------------------------------- reconsideration */
+  'round-trips a reopening with the triggers that fired',
+  'is idempotent on id, and refuses a changed rewrite',
+  'refuses a trigger belonging to another decision',
+  'refuses a reopening that names no condition',
+  'refuses a fired trigger with no observation',
+  'refuses two reopenings of one submission',
+  'lists a case’s reopenings oldest first',
   'round-trips a return with its concerns in order',
   'settles the submission it returns',
   'returns the stored return on an identical replay',
@@ -251,6 +260,115 @@ function buildContract(name: string, options: DecisionContractOptions): void {
       ),
     ]
 
+    /* --------------------------------------------------- reconsideration */
+
+    describe('reconsideration', () => {
+      const seedDeferral = async () => {
+        await seedSubmissions()
+        await repositories.decisions.save(deferredDecision())
+      }
+
+      sharedCase('round-trips a reopening with the triggers that fired', async () => {
+        await seedDeferral()
+        await repositories.submissions.recordReconsideration(caseReconsideration())
+
+        const read = await repositories.submissions.getReconsideration('rec-1')
+        expect(read?.reconsidersDecisionId).toBe('dec-deferred')
+        expect(read?.reopenedByEmployeeId).toBe('cio')
+        expect(read?.firedTriggers).toHaveLength(1)
+        expect(read?.firedTriggers[0]?.triggerId).toBe('trg-1')
+        expect(read?.firedTriggers[0]?.observation).toContain('June projections')
+      })
+
+      sharedCase('is idempotent on id, and refuses a changed rewrite', async () => {
+        await seedDeferral()
+        await repositories.submissions.recordReconsideration(caseReconsideration())
+        /* Same content, same id: a replay, not a conflict. */
+        await repositories.submissions.recordReconsideration(caseReconsideration())
+
+        await expect(
+          repositories.submissions.recordReconsideration(
+            caseReconsideration({ authorizationBasis: 'mandate:something-else' }),
+          ),
+        ).rejects.toThrow(ConflictingRecordError)
+      })
+
+      sharedCase('refuses a trigger belonging to another decision', async () => {
+        /*
+         * The rule PostgreSQL holds as a composite foreign key. The reference
+         * store has to reach the same answer or the two adapters disagree about
+         * which reopenings the firm permits.
+         */
+        await seedDeferral()
+        await expect(
+          repositories.submissions.recordReconsideration(
+            caseReconsideration({
+              firedTriggers: [
+                { triggerId: 'trg-not-on-this-decision', observation: 'Seen.' },
+              ],
+            }),
+          ),
+        ).rejects.toThrow()
+      })
+
+      sharedCase('refuses a reopening that names no condition', async () => {
+        await seedDeferral()
+        await expect(
+          repositories.submissions.recordReconsideration(
+            caseReconsideration({ firedTriggers: [] }),
+          ),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      sharedCase('refuses a fired trigger with no observation', async () => {
+        await seedDeferral()
+        await expect(
+          repositories.submissions.recordReconsideration(
+            caseReconsideration({
+              firedTriggers: [{ triggerId: 'trg-1', observation: '   ' }],
+            }),
+          ),
+        ).rejects.toThrow(InvariantViolationError)
+      })
+
+      sharedCase('refuses two reopenings of one submission', async () => {
+        /*
+         * A reopening creates the submission it explains. Two naming the same
+         * one would be two acts claiming to have created a single request for
+         * a decision, and whichever was read second would look like a
+         * duplicate of the first.
+         */
+        await seedDeferral()
+        await repositories.submissions.recordReconsideration(caseReconsideration())
+        await expect(
+          repositories.submissions.recordReconsideration(
+            caseReconsideration({ id: 'rec-other' }),
+          ),
+        ).rejects.toThrow()
+      })
+
+      sharedCase('lists a case’s reopenings oldest first', async () => {
+        await seedDeferral()
+        /*
+         * Two reopenings, two submissions. A reopening creates the submission
+         * it explains, so two sharing one would be two acts claiming to have
+         * created the same request for a decision — which the schema refuses.
+         */
+        await repositories.submissions.recordReconsideration(
+          caseReconsideration({
+            id: 'rec-2',
+            submissionId: 'sub-2',
+            revisionId: 'rev-2',
+            reopenedAt: '2026-07-28T16:00:00.000Z',
+          }),
+        )
+        await repositories.submissions.recordReconsideration(caseReconsideration())
+
+        const listed = await repositories.submissions.reconsiderationsForCase('case-1')
+        expect(listed.map((entry) => entry.id)).toEqual(['rec-1', 'rec-2'])
+      })
+    })
+
     /* ------------------------------------------------------- submissions */
 
     describe('submissions', () => {
@@ -271,58 +389,64 @@ function buildContract(name: string, options: DecisionContractOptions): void {
         expect(saved.id).toBe('sub-1')
       })
 
-      sharedCase('returns a submission whose witness still describes its basis', async () => {
-        /*
-         * Parity for TD-58, and the two adapters reach it differently. The
-         * in-memory store returns the object it was given; PostgreSQL rebuilds
-         * the basis from rows and verifies the stored digest against it. The
-         * contract asserts the OUTCOME both must produce -- a manifest that
-         * describes what came back -- rather than the mechanism, which is the
-         * only way one body of tests can hold both.
-         */
-        await repositories.submissions.save(cioSubmission())
-        const read = await repositories.submissions.get('sub-1')
+      sharedCase(
+        'returns a submission whose witness still describes its basis',
+        async () => {
+          /*
+           * Parity for TD-58, and the two adapters reach it differently. The
+           * in-memory store returns the object it was given; PostgreSQL rebuilds
+           * the basis from rows and verifies the stored digest against it. The
+           * contract asserts the OUTCOME both must produce -- a manifest that
+           * describes what came back -- rather than the mechanism, which is the
+           * only way one body of tests can hold both.
+           */
+          await repositories.submissions.save(cioSubmission())
+          const read = await repositories.submissions.get('sub-1')
 
-        expect(read).not.toBeNull()
-        expect(read!.basis.manifest.algorithm).toBe('sha256')
-        expect(read!.basis.manifest.canonicalizationVersion).toBe(2)
-        expect(read!.basis.manifest.digest).toMatch(/^[0-9a-f]{64}$/)
+          expect(read).not.toBeNull()
+          expect(read!.basis.manifest.algorithm).toBe('sha256')
+          expect(read!.basis.manifest.canonicalizationVersion).toBe(2)
+          expect(read!.basis.manifest.digest).toMatch(/^[0-9a-f]{64}$/)
 
-        const { manifest, ...content } = read!.basis
-        expect(
-          verifyBasisManifest(
-            { submissionId: read!.id, caseId: read!.caseId },
-            content,
-            manifest,
-          ),
-          'the stored witness does not describe the basis it came back with',
-        ).toBeNull()
-      })
-
-      sharedCase('refuses a submission whose witness describes another basis', async () => {
-        /*
-         * The write-path half. A caller presenting an attestation that does not
-         * attest to what it is attached to is not a smaller failure than a
-         * corrupt row -- and it is refused before anything is stored, by the
-         * same domain validator in both adapters.
-         */
-        const submission = cioSubmission()
-        const foreign = {
-          ...submission,
-          basis: {
-            ...submission.basis,
-            // A real witness, for a different basis.
-            manifest: buildBasisManifest(
-              { submissionId: submission.id, caseId: submission.caseId },
-              { ...submission.basis, requiredWork: [] },
+          const { manifest, ...content } = read!.basis
+          expect(
+            verifyBasisManifest(
+              { submissionId: read!.id, caseId: read!.caseId },
+              content,
+              manifest,
             ),
-          },
-        }
+            'the stored witness does not describe the basis it came back with',
+          ).toBeNull()
+        },
+      )
 
-        await expect(repositories.submissions.save(foreign)).rejects.toThrow(
-          InvariantViolationError,
-        )
-      })
+      sharedCase(
+        'refuses a submission whose witness describes another basis',
+        async () => {
+          /*
+           * The write-path half. A caller presenting an attestation that does not
+           * attest to what it is attached to is not a smaller failure than a
+           * corrupt row -- and it is refused before anything is stored, by the
+           * same domain validator in both adapters.
+           */
+          const submission = cioSubmission()
+          const foreign = {
+            ...submission,
+            basis: {
+              ...submission.basis,
+              // A real witness, for a different basis.
+              manifest: buildBasisManifest(
+                { submissionId: submission.id, caseId: submission.caseId },
+                { ...submission.basis, requiredWork: [] },
+              ),
+            },
+          }
+
+          await expect(repositories.submissions.save(foreign)).rejects.toThrow(
+            InvariantViolationError,
+          )
+        },
+      )
 
       sharedCase('accepts a submission with no blockers', async () => {
         await expect(

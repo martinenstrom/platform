@@ -78,6 +78,7 @@ describe('a clean database reaches the expected schema', () => {
       '0023',
       '0024',
       '0025',
+      '0026',
     ])
   })
 
@@ -100,6 +101,8 @@ describe('a clean database reaches the expected schema', () => {
       'assignments',
       'case_decisions',
       'case_participants',
+      'case_reconsideration_fired_triggers',
+      'case_reconsiderations',
       'cases',
       'challenge_evidence',
       'challenges',

@@ -283,6 +283,7 @@ describe('command declarations', () => {
       'RecordDevilsAdvocateReview',
       'RecordRiskReview',
       'RecordVerificationReview',
+      'ReopenForReconsideration',
       'ResolveConditionalRequirement',
       'ReturnFromCioReview',
       'ReviseThesis',

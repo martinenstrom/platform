@@ -395,6 +395,70 @@ export interface CioSubmission {
   basis: EligibilityBasis
 }
 
+/* --------------------------------------------------- reconsideration */
+
+/**
+ * A condition that fired, and what was seen.
+ *
+ * The observation is required. A reopening that named a trigger without saying
+ * what satisfied it would record that the firm believed a condition was met
+ * without recording why anybody thought so — and the trigger exists precisely
+ * so that belief is checkable later.
+ */
+export interface FiredTrigger {
+  /** A trigger id from the deferral being reconsidered. Never from elsewhere. */
+  triggerId: string
+  /** What was observed. The answer the trigger's `expectedSource` was for. */
+  observation: string
+}
+
+/**
+ * The CIO bringing a deferred case back.
+ *
+ * The counterpart to `CioReturn`, and stored the same way for the same reason:
+ * moving a case across the decision boundary is an institutional act, and an
+ * act the record cannot explain is an act nobody can review.
+ *
+ * ## It inherits history, never judgement
+ *
+ * Reopening produces a **new** submission carrying a **freshly assembled**
+ * basis, evaluated under the policy named at reopening. The deferral stays in
+ * the record and grants no approval to what follows: the trigger fired because
+ * the world stopped matching the assumptions the deferral rested on, so the
+ * conclusions drawn under those assumptions are exactly what must not carry
+ * over.
+ *
+ * Governance verdicts DO carry over, and are not judgement in this sense —
+ * they are facts about an exact revision, and the revision has not changed. A
+ * changed argument is a new revision, which reopens every gate through the
+ * ordinary path and inherits nothing.
+ */
+export interface CaseReconsideration {
+  id: string
+  caseId: CaseId
+  /** The exact revision returning. Never a lineage. */
+  revisionId: RevisionId
+  /** The deferral this reconsiders. It remains readable afterwards. */
+  reconsidersDecisionId: string
+  /** The new submission this reopening created for the CIO to decide. */
+  submissionId: string
+  reopenedAt: string
+  /** The CIO as the organization described them then. */
+  reopenedBy: ActorSnapshot
+  reopenedByEmployeeId: EmployeeId
+  /** Why the ledger allowed it, carried alongside the snapshot. */
+  authorizationBasis: string
+  /**
+   * The conditions that brought it back. Non-empty.
+   *
+   * A reopening citing nothing would be "the CIO changed their mind" — a
+   * legitimate act, but a different one, and recording it as reconsideration
+   * would make the stored triggers decorative for a second time.
+   */
+  firedTriggers: readonly FiredTrigger[]
+  caseVersion: number
+}
+
 /* ------------------------------------------------------------ return */
 
 export interface ReturnConcern {

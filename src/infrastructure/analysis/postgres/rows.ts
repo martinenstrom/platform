@@ -655,3 +655,38 @@ export interface RequirementResolutionRow {
   evaluated_by_authentication: string
   organization_seed_version: string
 }
+
+/* -------------------------------------------------------- reconsideration */
+
+/** The CIO reopening a deferred case. Mirrors `CioReturnRow` field for field. */
+export interface CaseReconsiderationRow {
+  id: string
+  case_id: string
+  revision_id: string
+  reconsiders_decision_id: string
+  submission_id: string
+  reopened_at: string
+  reopened_by_employee_id: string
+  reopened_by_role_id: string | null
+  reopened_by_role_function: string | null
+  reopened_by_department_id: string | null
+  reopened_by_department_is_governance: boolean | null
+  reopened_by_department_handles: string[]
+  organization_seed_version: string
+  authentication: string
+  authorization_basis: string
+  case_version: number
+}
+
+export interface ReconsiderationFiredTriggerRow {
+  reconsideration_id: string
+  ordinal: number
+  trigger_id: string
+  /**
+   * Carried alongside the trigger id so the composite foreign key can check
+   * that the trigger belongs to the decision being reconsidered. Redundant with
+   * the parent row by design — the redundancy is what the database enforces on.
+   */
+  reconsiders_decision_id: string
+  observation: string
+}

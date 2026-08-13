@@ -41,6 +41,7 @@ import { recordRiskReview } from '~/application/analysis/commands/recordRiskRevi
 import { submitForCioDecision } from '~/application/analysis/commands/submitForCioDecision'
 import { recordCaseDecision } from '~/application/analysis/commands/recordCaseDecision'
 import { returnFromCioReview } from '~/application/analysis/commands/returnFromCioReview'
+import { reopenForReconsideration } from '~/application/analysis/commands/reopenForReconsideration'
 import { revisionEligibility } from '~/application/analysis/eligibility'
 import {
   deriveAggregationId,
@@ -964,6 +965,90 @@ export async function returnToDesk(
       occurredAt: LATEST,
       expectedVersion: version,
       reason: 'The central claim rests on a single source.',
+      ...env,
+    }),
+    deps,
+  )
+}
+
+/* ------------------------------------------------------- reconsideration */
+
+/**
+ * The trigger a deferral names, and that later ends the wait.
+ *
+ * The id is scoped to the case. Trigger ids are a primary key across the whole
+ * table, so a fixed one would collide the moment two cases were deferred — as
+ * it did, and the schema said so immediately.
+ */
+export const triggerIdFor = (caseId: string) => `trg-${caseId}-fiscal-impulse`
+
+export const deferralTrigger = (caseId: string, revisionId: string) => ({
+  id: triggerIdFor(caseId),
+  conditionType: 'date-or-event' as const,
+  subject: { kind: 'thesis' as const, ref: revisionId },
+  qualitativeCondition: 'The ECB publishes its June staff projections.',
+  expectedSource: 'ECB staff macroeconomic projections',
+  rationale: 'The path cannot be judged before the June projections land.',
+  createdByEmployeeId: 'cio',
+  createdAt: LATEST,
+  policyVersion: '1',
+})
+
+/** The CIO choosing to wait, with a condition that would end the wait. */
+export async function defer(
+  runtime: Runtime,
+  macro: MacroCase,
+  submissionIds: readonly string[],
+  over: Record<string, unknown> = {},
+  suffix = '',
+) {
+  return decide(
+    runtime,
+    macro,
+    submissionIds,
+    {
+      outcome: {
+        kind: 'deferred',
+        consideredRevisionIds: [macro.revisionId],
+      },
+      rationale: 'Sound material, but the June projections decide it.',
+      reconsiderationTriggers: [deferralTrigger(macro.caseId, macro.revisionId)],
+      ...over,
+    },
+    {},
+    suffix,
+  )
+}
+
+/** The CIO bringing it back once the condition is satisfied. */
+export async function reopen(
+  runtime: Runtime,
+  macro: MacroCase,
+  deferredDecisionId: string,
+  over: Record<string, unknown> = {},
+  env: Partial<CommandEnvelope> = {},
+  suffix = '',
+) {
+  const deps = await runtime.container.commandDeps()
+  const version = (await runtime.container.repositories.cases.get(macro.caseId))!.version
+  return runCommand(
+    reopenForReconsideration(deps.organization),
+    {
+      caseId: macro.caseId,
+      deferredDecisionId,
+      firedTriggers: [
+        {
+          triggerId: triggerIdFor(macro.caseId),
+          observation: 'June projections published; fiscal impulse quantified.',
+        },
+      ],
+      authorizationBasis: 'chief-investment-officer',
+      eligibilityPolicyVersion: '1',
+      ...over,
+    },
+    envelope(`${macro.caseId}-reopen${suffix}`, 'cio', {
+      occurredAt: LATEST,
+      expectedVersion: version,
       ...env,
     }),
     deps,

@@ -11,6 +11,7 @@
 import { buildBasisManifest, buildEvidenceSet, observationRef } from './index'
 import type { BasisContent } from './basisManifest'
 import type { DisagreementMateriality } from './aggregation'
+import type { CaseReconsideration } from './decisions'
 import type {
   ActorSnapshot,
   CaseDecision,
@@ -373,4 +374,30 @@ export function declinedDecision(over: Partial<CaseDecision> = {}): CaseDecision
     },
     ...over,
   })
+}
+
+/** A reopening of `deferredDecision`, citing the trigger that decision carries. */
+export function caseReconsideration(
+  over: Partial<CaseReconsideration> = {},
+): CaseReconsideration {
+  return {
+    id: 'rec-1',
+    caseId: 'case-1',
+    revisionId: 'rev-1',
+    reconsidersDecisionId: 'dec-deferred',
+    submissionId: 'sub-1',
+    reopenedAt: '2026-07-28T14:00:00.000Z',
+    reopenedBy: cioActor(),
+    reopenedByEmployeeId: 'cio',
+    authorizationBasis: 'mandate:chief-decision',
+    firedTriggers: [
+      {
+        /* , from , which the deferral carries. */
+        triggerId: 'trg-1',
+        observation: 'The June projections landed and quantified the impulse.',
+      },
+    ],
+    caseVersion: 4,
+    ...over,
+  }
 }

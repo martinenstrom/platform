@@ -40,6 +40,7 @@ import {
   type BasisContent,
   type CaseDecision,
   type CioDecisionOutcome,
+  type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type DisclosedDissent,
@@ -51,12 +52,14 @@ import {
 import { MalformedRowError } from '~/application/analysis/repositories'
 import type {
   CaseDecisionRow,
+  CaseReconsiderationRow,
   CioSubmissionRow,
   DecisionDissentEvidenceRow,
   DecisionDissentRow,
   DecisionRowSet,
   DecisionSubmissionRow,
   DecisionTriggerRow,
+  ReconsiderationFiredTriggerRow,
   ReturnRowSet,
   SubmissionDisagreementRow,
   SubmissionEvidenceRow,
@@ -801,5 +804,89 @@ export function decisionFromRows(
     unresolvedDissent: dissent,
     reconsiderationTriggers: triggers,
     ...optional('supersedesDecisionId', row.supersedes_decision_id),
+  }
+}
+
+/* -------------------------------------------------------- reconsideration */
+
+export function reconsiderationToRows(reconsideration: CaseReconsideration): {
+  reconsideration: CaseReconsiderationRow
+  firedTriggers: ReconsiderationFiredTriggerRow[]
+} {
+  const actor = reconsideration.reopenedBy
+  return {
+    reconsideration: {
+      id: reconsideration.id,
+      case_id: reconsideration.caseId,
+      revision_id: reconsideration.revisionId,
+      reconsiders_decision_id: reconsideration.reconsidersDecisionId,
+      submission_id: reconsideration.submissionId,
+      reopened_at: reconsideration.reopenedAt,
+      reopened_by_employee_id:
+        actor.employeeId ??
+        malformed(
+          'case reconsideration',
+          'was reopened by an actor with no employee id',
+          'returns.recordReconsideration',
+        ),
+      reopened_by_role_id: actor.roleId,
+      reopened_by_role_function: actor.roleFunction,
+      reopened_by_department_id: actor.departmentId,
+      reopened_by_department_is_governance: actor.departmentIsGovernance,
+      /* Sorted: organization insertion order is not institutional meaning. */
+      reopened_by_department_handles: [...actor.departmentHandles].sort(),
+      organization_seed_version: actor.organizationSeedVersion,
+      authentication: actor.authentication,
+      authorization_basis: reconsideration.authorizationBasis,
+      case_version: reconsideration.caseVersion,
+    },
+    firedTriggers: reconsideration.firedTriggers.map((fired, ordinal) => ({
+      reconsideration_id: reconsideration.id,
+      ordinal,
+      trigger_id: fired.triggerId,
+      /* Carried so the composite key can check the trigger's owner. */
+      reconsiders_decision_id: reconsideration.reconsidersDecisionId,
+      observation: fired.observation,
+    })),
+  }
+}
+
+export function toCaseReconsideration(
+  row: CaseReconsiderationRow,
+  firedTriggers: readonly ReconsiderationFiredTriggerRow[],
+  operation: string,
+): CaseReconsideration {
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    revisionId: row.revision_id,
+    reconsidersDecisionId: row.reconsiders_decision_id,
+    submissionId: row.submission_id,
+    reopenedAt: row.reopened_at,
+    reopenedBy: toActor(
+      {
+        employee_id: row.reopened_by_employee_id,
+        role_id: row.reopened_by_role_id,
+        role_function: row.reopened_by_role_function,
+        department_id: row.reopened_by_department_id,
+        department_is_governance: row.reopened_by_department_is_governance,
+        department_handles: row.reopened_by_department_handles,
+        authentication: row.authentication,
+        organization_seed_version: row.organization_seed_version,
+      },
+      operation,
+    ),
+    reopenedByEmployeeId: row.reopened_by_employee_id,
+    authorizationBasis: row.authorization_basis,
+    /*
+     * By ordinal, so the order the CIO cited the conditions in survives. It is
+     * not alphabetical and should not be: the first condition named is the one
+     * the CIO led with.
+     */
+    firedTriggers: byOrdinal(firedTriggers).map((fired) => ({
+      triggerId: fired.trigger_id,
+      observation: fired.observation,
+    })),
+    caseVersion: row.case_version,
   }
 }

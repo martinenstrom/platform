@@ -29,6 +29,7 @@ import { recordRiskReview } from './recordRiskReview'
 import { submitForCioDecision } from './submitForCioDecision'
 import { recordCaseDecision } from './recordCaseDecision'
 import { returnFromCioReview } from './returnFromCioReview'
+import { reopenForReconsideration } from './reopenForReconsideration'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a heterogeneous list of
    definitions has no useful common Input/Result; every consumer reads only the
@@ -56,5 +57,6 @@ export function productionCommands(
     submitForCioDecision(organization),
     recordCaseDecision(organization),
     returnFromCioReview(organization),
+    reopenForReconsideration(organization),
   ]
 }

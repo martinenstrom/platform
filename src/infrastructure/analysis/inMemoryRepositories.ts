@@ -36,6 +36,7 @@ import {
   validateReturnReferences,
   validateSubmissionReferences,
   validateCaseDecision,
+  validateCaseReconsideration,
   validateCioReturn,
   validateCioSubmission,
   type ReviewOrder,
@@ -46,6 +47,7 @@ import {
   type CaseTransition,
   type ReferencedGovernance,
   type ReferencedSubjects,
+  type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type ComplianceReview,
@@ -94,6 +96,7 @@ import {
   type CommandOutcome,
 } from '~/application/analysis/commandLog'
 import {
+  caseReconsiderationSemanticKey,
   cioReturnSemanticKey,
   cioSubmissionSemanticKey,
   claimSemanticKey,
@@ -137,6 +140,7 @@ interface Store {
   aggregations: Map<string, ManagerAggregation>
   submissions: Map<string, CioSubmission>
   returns: Map<string, CioReturn>
+  reconsiderations: Map<string, CaseReconsideration>
   decisions: Map<string, CaseDecision>
   /**
    * Which decision superseded which.
@@ -171,6 +175,7 @@ function emptyStore(): Store {
     aggregations: new Map(),
     submissions: new Map(),
     returns: new Map(),
+    reconsiderations: new Map(),
     decisions: new Map(),
     supersededBy: new Map(),
   }
@@ -209,6 +214,7 @@ function snapshot(store: Store): Store {
     aggregations: new Map(store.aggregations),
     submissions: new Map(store.submissions),
     returns: new Map(store.returns),
+    reconsiderations: new Map(store.reconsiderations),
     decisions: new Map(store.decisions),
     supersededBy: new Map(store.supersededBy),
   }
@@ -1418,6 +1424,100 @@ function submissionRepository(store: Store, scope: Scope): SubmissionRepository 
       return [...store.returns.values()]
         .filter((entry) => entry.caseId === caseId)
         .sort(byReturnedAt)
+    },
+
+    async recordReconsideration(reconsideration) {
+      guard(scope, 'returns.recordReconsideration')
+
+      const problems = validateCaseReconsideration(reconsideration)
+      if (problems.length > 0) {
+        throw new InvariantViolationError(
+          problems[0]!.code,
+          'returns.recordReconsideration',
+        )
+      }
+
+      const existing = store.reconsiderations.get(reconsideration.id)
+      if (existing) {
+        if (
+          caseReconsiderationSemanticKey(existing) !==
+          caseReconsiderationSemanticKey(reconsideration)
+        ) {
+          throw new ConflictingRecordError(
+            'case reconsideration',
+            reconsideration.id,
+            'returns.recordReconsideration',
+          )
+        }
+        return existing
+      }
+
+      const submission = store.submissions.get(reconsideration.submissionId)
+      if (!submission) {
+        throw new ReferentialIntegrityError(
+          'case_reconsiderations_submission_fk',
+          'returns.recordReconsideration',
+        )
+      }
+
+      /*
+       * One reopening per submission, which PostgreSQL holds as a unique
+       * constraint. Without it here the reference store would accept a state
+       * the real one refuses, and the two would disagree about what the firm
+       * permits -- an adapter must not define its own accidental semantics.
+       */
+      for (const other of store.reconsiderations.values()) {
+        if (other.submissionId === reconsideration.submissionId) {
+          throw new DuplicateRecordError(
+            'case_reconsiderations_submission_unique',
+            'returns.recordReconsideration',
+          )
+        }
+      }
+
+      const deferral = store.decisions.get(reconsideration.reconsidersDecisionId)
+      if (!deferral) {
+        throw new ReferentialIntegrityError(
+          'case_reconsiderations_decision_fk',
+          'returns.recordReconsideration',
+        )
+      }
+
+      /*
+       * A cited trigger must belong to the decision being reconsidered.
+       * PostgreSQL holds this as a composite foreign key; the reference store
+       * has to check it, or the two adapters would disagree about which
+       * reopenings the firm permits.
+       */
+      const owned = new Set(deferral.reconsiderationTriggers.map((entry) => entry.id))
+      for (const fired of reconsideration.firedTriggers) {
+        if (!owned.has(fired.triggerId)) {
+          throw new ReferentialIntegrityError(
+            'case_reconsideration_fired_triggers_trigger_fk',
+            'returns.recordReconsideration',
+          )
+        }
+      }
+
+      const stored = seal(reconsideration, `case reconsideration ${reconsideration.id}`)
+      store.reconsiderations.set(reconsideration.id, stored)
+      return stored
+    },
+
+    async getReconsideration(reconsiderationId) {
+      guard(scope, 'returns.getReconsideration')
+      return store.reconsiderations.get(reconsiderationId) ?? null
+    },
+
+    async reconsiderationsForCase(caseId) {
+      guard(scope, 'returns.reconsiderationsForCase')
+      return [...store.reconsiderations.values()]
+        .filter((entry) => entry.caseId === caseId)
+        .sort((a, b) =>
+          a.reopenedAt === b.reopenedAt
+            ? a.id.localeCompare(b.id)
+            : a.reopenedAt.localeCompare(b.reopenedAt),
+        )
     },
 
     async returnsForRevision(revisionId) {

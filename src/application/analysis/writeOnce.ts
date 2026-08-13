@@ -27,6 +27,7 @@
 import type {
   AgentClaim,
   CaseDecision,
+  CaseReconsideration,
   CioReturn,
   CioSubmission,
   EvidenceSet,
@@ -314,6 +315,40 @@ export function cioReturnSemanticKey(cioReturn: CioReturn): string {
     reason: cioReturn.reason,
     caseVersion: cioReturn.caseVersion,
     concerns: cioReturn.concerns.map((concern) => asCanonicalValueString(concern)),
+  })
+}
+
+/**
+ * A reopening. Identity is `id`; everything else is content.
+ *
+ * Canonical, not `JSON.stringify`. Serialising two objects and comparing the
+ * strings makes key ORDER part of the comparison, so a record hydrated from
+ * PostgreSQL differed from the identical record handed in — and an idempotent
+ * replay was refused as a conflict. The canonical form has one ordering by
+ * construction, which is what it exists for.
+ */
+export function caseReconsiderationSemanticKey(
+  reconsideration: CaseReconsideration,
+): string {
+  return asCanonicalValueString({
+    id: reconsideration.id,
+    caseId: reconsideration.caseId,
+    revisionId: reconsideration.revisionId,
+    reconsidersDecisionId: reconsideration.reconsidersDecisionId,
+    submissionId: reconsideration.submissionId,
+    reopenedAt: reconsideration.reopenedAt,
+    reopenedBy: asCanonicalValueString(reconsideration.reopenedBy),
+    reopenedByEmployeeId: reconsideration.reopenedByEmployeeId,
+    authorizationBasis: reconsideration.authorizationBasis,
+    caseVersion: reconsideration.caseVersion,
+    /*
+     * In the order cited, not sorted. The first condition the CIO named is the
+     * one they led with, and reordering would make two different statements
+     * about why the case came back compare equal.
+     */
+    firedTriggers: reconsideration.firedTriggers.map((fired) =>
+      asCanonicalValueString(fired),
+    ),
   })
 }
 

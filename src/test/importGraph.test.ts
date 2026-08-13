@@ -920,6 +920,7 @@ describe('Phase C1A — the command foundation', () => {
       'recordRiskReview.ts',
       'recordVerificationReview.ts',
       'registry.ts',
+      'reopenForReconsideration.ts',
       'resolveCommand.ts',
       'resolveConditionalRequirement.ts',
       'returnFromCioReview.ts',

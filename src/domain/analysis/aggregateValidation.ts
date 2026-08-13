@@ -33,6 +33,7 @@ import { DISAGREEMENT_MATERIALITIES } from './aggregation'
 import {
   dissentRequiresAcknowledgement,
   type CaseDecision,
+  type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type ReconsiderationTrigger,
@@ -176,6 +177,68 @@ export function validateCioSubmission(
 /* ----------------------------------------------------------------- returns */
 
 /** A return the CIO could legitimately have made. */
+/**
+ * A reopening must explain itself.
+ *
+ * The record exists so "why did this come back" is answerable years later, and
+ * every rule here defends that one sentence.
+ */
+export function validateCaseReconsideration(
+  reconsideration: CaseReconsideration,
+): readonly AggregateProblem[] {
+  const found: AggregateProblem[] = []
+
+  if (blank(reconsideration.authorizationBasis)) {
+    found.push(
+      problem(
+        'reconsideration-no-authorization',
+        `Reconsideration "${reconsideration.id}" records no authorization basis.`,
+      ),
+    )
+  }
+
+  if (reconsideration.firedTriggers.length === 0) {
+    found.push(
+      problem(
+        'reconsideration-no-trigger',
+        `Reconsideration "${reconsideration.id}" names no condition that fired. ` +
+          `A reopening citing nothing is the CIO changing their mind — a ` +
+          `legitimate act, but a different one, and recording it as ` +
+          `reconsideration makes the stored triggers decorative.`,
+      ),
+    )
+  }
+
+  const seen = new Set<string>()
+  for (const fired of reconsideration.firedTriggers) {
+    if (blank(fired.observation)) {
+      found.push(
+        problem(
+          'reconsideration-no-observation',
+          `Trigger "${fired.triggerId}" is recorded as fired with no ` +
+            `observation. That records that the firm believed a condition was ` +
+            `met without recording why anybody thought so.`,
+        ),
+      )
+    }
+    /*
+     * One trigger, cited once. Twice would double-count a single condition and
+     * make "how many fired" a question with two answers.
+     */
+    if (seen.has(fired.triggerId)) {
+      found.push(
+        problem(
+          'reconsideration-duplicate-trigger',
+          `Trigger "${fired.triggerId}" is cited more than once.`,
+        ),
+      )
+    }
+    seen.add(fired.triggerId)
+  }
+
+  return found
+}
+
 export function validateCioReturn(cioReturn: CioReturn): readonly AggregateProblem[] {
   const found: AggregateProblem[] = []
 

@@ -153,6 +153,7 @@ export const VERSION_GUARDED_COMMANDS: readonly string[] = [
   'SubmitForCioDecision',
   'RecordCaseDecision',
   'ReturnFromCioReview',
+  'ReopenForReconsideration',
   'CloseCase',
   'ReopenCase',
 ] as const
