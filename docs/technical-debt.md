@@ -1674,3 +1674,35 @@ number and never a pointer to the sources, so persisting the case constraint
 changes what resolution consumes and nothing about what a historical run reads
 back. `runCommands.test.ts` asserts exactly that, by moving all three sources
 after the fact and re-reading the run — that test must keep passing unchanged.
+
+## TD-74 · the pgHarness port assertion can fail by chance · open
+
+**Observed 2026-08-16** in a full PostgreSQL run during C2-1: one failure,
+`pgHarness.pg.test.ts > the harness allocated a dynamic port > is not the old
+fixed 54330`, reporting `expected 54330 not to be 54330`. It passed on a
+re-run, and the full suite was clean at 31 files / 781 tests.
+
+**Unlike TD-62, the cause is established rather than unknown**, which is why
+this entry can be short and why it is not an invitation to investigate.
+
+The harness asks the OS for an ephemeral port. 54330 is inside the ephemeral
+range, so the OS may legitimately assign it, and on this run it did. The
+assertion then fires on a correct allocation.
+
+**What the test is actually for.** The fixed port was the original defect: one
+run killed without teardown kept it, and the next could not bind. The fix was
+to stop hard-coding a port. But the test checks the **outcome of a random
+draw** rather than the property — and the property, "the harness hard-codes no
+port", is a fact about the code, not about which number came back this time. A
+test that fails roughly once in sixteen thousand runs on correct behaviour is
+reporting the wrong thing, not reporting something unknown.
+
+**Deliberately not changed as part of C2-1.** Rewriting an assertion in a
+harness the whole PostgreSQL suite depends on is its own change with its own
+justification, and folding it into a stage about model execution would put an
+unrelated edit inside a boundary that is otherwise about one thing.
+
+**When it is fixed**, assert the property rather than the draw: that the port
+comes from the harness's dynamic allocation path at all. Do **not** retry the
+test, rerun on failure, or mark it flaky-and-skip — the standing rule in TD-62
+holds here, and it holds more easily because there is nothing left to discover.
