@@ -418,7 +418,7 @@ const RUN_COLUMNS = `
   rejection_code, rejection_detail, rejected_by_employee_id, ${ts('rejected_at')},
   playbook_id, playbook_version, playbook_entry_key,
   provider_id, provider_version, provider_kind, missing_optional_inputs,
-  usage_state, input_tokens, output_tokens, cost_minor_units, currency,
+  usage_state, usage_cost_state, input_tokens, output_tokens, cost_minor_units, currency,
   budget_tokens_kind, budget_tokens,
   budget_cost_kind, budget_cost_minor_units, budget_currency,
   budget_deadline_kind, budget_deadline_ms
@@ -450,14 +450,14 @@ export const RUN_SQL = catalog({
             playbook_id, playbook_version, playbook_entry_key,
             provider_id, provider_version, provider_kind, missing_optional_inputs,
             provenance_id,
-            usage_state, input_tokens, output_tokens, cost_minor_units, currency,
+            usage_state, usage_cost_state, input_tokens, output_tokens, cost_minor_units, currency,
             budget_tokens_kind, budget_tokens,
             budget_cost_kind, budget_cost_minor_units, budget_currency,
             budget_deadline_kind, budget_deadline_ms)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                  $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
                  $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,
-                 $48,$49,$50,$51,$52,$53,$54)
+                 $48,$49,$50,$51,$52,$53,$54,$55)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
@@ -471,6 +471,7 @@ export const RUN_SQL = catalog({
            rejected_by_employee_id = EXCLUDED.rejected_by_employee_id,
            rejected_at = EXCLUDED.rejected_at,
            usage_state = EXCLUDED.usage_state,
+           usage_cost_state = EXCLUDED.usage_cost_state,
            input_tokens = EXCLUDED.input_tokens,
            output_tokens = EXCLUDED.output_tokens,
            cost_minor_units = EXCLUDED.cost_minor_units,
@@ -650,10 +651,13 @@ export function createRunRepository(
           [...record.missingOptionalInputs],
           provenance.provenanceId,
           record.usage.state,
+          // NULL exactly when no tokens were counted, so there was no price to
+          // have been reported. Tied to `usage_state` by 0029's CHECK.
+          cost ? cost.cost.state : null,
           cost?.inputTokens ?? null,
           cost?.outputTokens ?? null,
-          cost?.costMinorUnits ?? null,
-          cost?.currency ?? null,
+          cost?.cost.state === 'measured' ? cost.cost.costMinorUnits : null,
+          cost?.cost.state === 'measured' ? cost.cost.currency : null,
           budget.tokens.kind,
           budget.tokens.kind === 'limit' ? budget.tokens.tokens : null,
           budget.cost.kind,

@@ -393,8 +393,7 @@ describe('RecordContribution', () => {
         state: 'measured',
         inputTokens: 900,
         outputTokens: 120,
-        costMinorUnits: 0,
-        currency: 'USD',
+        cost: { state: 'measured', costMinorUnits: 0, currency: 'USD' },
       },
     })
     // Zero is a measurement: the provider said this call was free, which is
@@ -403,8 +402,7 @@ describe('RecordContribution', () => {
       state: 'measured',
       inputTokens: 900,
       outputTokens: 120,
-      costMinorUnits: 0,
-      currency: 'USD',
+      cost: { state: 'measured', costMinorUnits: 0, currency: 'USD' },
     })
   })
 
@@ -697,8 +695,7 @@ describe('work that cost more than the firm authorized', () => {
         state: 'measured',
         inputTokens: 30_000,
         outputTokens: 20_000,
-        costMinorUnits: 100,
-        currency: 'USD',
+        cost: { state: 'measured', costMinorUnits: 100, currency: 'USD' },
       },
     })
 
@@ -717,8 +714,7 @@ describe('work that cost more than the firm authorized', () => {
         state: 'measured',
         inputTokens: 10,
         outputTokens: 10,
-        costMinorUnits: 100,
-        currency: 'USD',
+        cost: { state: 'measured', costMinorUnits: 100, currency: 'USD' },
       },
     })
 

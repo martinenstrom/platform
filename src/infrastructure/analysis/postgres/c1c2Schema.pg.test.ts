@@ -120,7 +120,8 @@ async function insertRun(
         identity_kind, prompt_id, prompt_version, prompt_content_hash,
         model_id, model_provider, model_parameters_hash,
         scenario_id, stub_version, identity_unavailable_reason, recording_id,
-        usage_state, input_tokens, output_tokens, cost_minor_units, currency,
+        usage_state, usage_cost_state,
+        input_tokens, output_tokens, cost_minor_units, currency,
         evidence_set_id, started_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
@@ -142,6 +143,10 @@ async function insertRun(
                   THEN 'not-captured-by-recording' END,
              CASE WHEN $4::text = 'unavailable' THEN 'rec-1' END,
              $5::text,
+             -- Money is asked about exactly when tokens were counted.
+             CASE WHEN $5::text = 'measured' THEN
+                  CASE WHEN $6::boolean THEN 'measured'
+                       ELSE 'not-reported' END END,
              CASE WHEN $6::boolean THEN 0 END,
              CASE WHEN $6::boolean THEN 0 END,
              CASE WHEN $6::boolean THEN 0 END,
@@ -311,17 +316,18 @@ describe('what a run reports consuming', () => {
   })
 
   it('refuses a measurement with nothing measured', async () => {
+    // Tokens are what `measured` asserts, so their absence is the defect.
     const caseId = await insertCase()
     await expect(
       insertRun(caseId, await insertAssignment(caseId), { usageState: 'measured' }),
-    ).rejects.toThrow(/runs_usage_measurement_complete/)
+    ).rejects.toThrow(/runs_usage_tokens_complete/)
   })
 
   it('refuses amounts without the state that gives them meaning', async () => {
     const caseId = await insertCase()
     await expect(
       insertRun(caseId, await insertAssignment(caseId), { measured: true }),
-    ).rejects.toThrow(/runs_usage_measurement_complete/)
+    ).rejects.toThrow(/runs_usage_(tokens|cost)_complete/)
   })
 
   it('accepts a measured zero as a measurement', async () => {

@@ -20,6 +20,7 @@ import {
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
+  budgetOverruns,
   NON_CONSUMING_BUDGET,
   buildThesis,
   buildTransitionEvent,
@@ -1415,6 +1416,131 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.events.append(replayed)
         await repos.events.append(replayed)
         expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+      })
+    })
+
+    describe('tokens and money are measured independently', () => {
+      /*
+       * The correction the live path earned. `measured` used to require all
+       * four numbers together, which left the one combination a real model
+       * provider produces — tokens counted, price unknown — unsayable, and
+       * made a token budget unenforceable against the only producer that
+       * spends tokens.
+       */
+      /** A live run refuses to start unbounded, so it carries a real budget. */
+      const LIVE_BUDGET = {
+        tokens: { kind: 'limit' as const, tokens: 40_000 },
+        cost: { kind: 'limit' as const, costMinorUnits: 5_000, currency: 'USD' },
+        deadline: { kind: 'limit' as const, deadlineMs: 30_000 },
+      }
+
+      it('round-trips tokens measured with the cost unreported', async () => {
+        const { setId } = await seedCase()
+        await saveRun('run-tokens-only', setId, {
+          budget: LIVE_BUDGET,
+          usage: {
+            state: 'measured',
+            inputTokens: 1_200,
+            outputTokens: 300,
+            cost: { state: 'not-reported' },
+          },
+          execution: { ...run('x', setId).execution, providerKind: 'live' },
+        })
+
+        expect((await repos.runs.get('run-tokens-only'))!.usage).toEqual({
+          state: 'measured',
+          inputTokens: 1_200,
+          outputTokens: 300,
+          cost: { state: 'not-reported' },
+        })
+      })
+
+      it('keeps a measured zero distinct from an unknown cost', async () => {
+        /*
+         * The distinction 0017 was written to protect, carried through the
+         * split. Zero is a provider saying the call was free; not-reported is
+         * a provider saying nothing. Two different rows, two different facts.
+         */
+        const { setId } = await seedCase()
+        const free = {
+          state: 'measured' as const,
+          inputTokens: 1,
+          outputTokens: 1,
+          cost: { state: 'measured' as const, costMinorUnits: 0, currency: 'USD' },
+        }
+        const unknown = {
+          state: 'measured' as const,
+          inputTokens: 1,
+          outputTokens: 1,
+          cost: { state: 'not-reported' as const },
+        }
+
+        await saveRun('run-free', setId, {
+          budget: LIVE_BUDGET,
+          usage: free,
+          execution: { ...run('x', setId).execution, providerKind: 'live' },
+        })
+        await saveRun('run-unknown', setId, {
+          budget: LIVE_BUDGET,
+          usage: unknown,
+          execution: { ...run('x', setId).execution, providerKind: 'live' },
+        })
+
+        const storedFree = (await repos.runs.get('run-free'))!.usage
+        const storedUnknown = (await repos.runs.get('run-unknown'))!.usage
+        expect(storedFree).toEqual(free)
+        expect(storedUnknown).toEqual(unknown)
+        expect(storedFree).not.toEqual(storedUnknown)
+      })
+
+      it('enforces a token limit even when the cost is unknown', () => {
+        /*
+         * The semantic point of the whole change, asserted over the domain
+         * function both adapters feed. Tying token enforcement to a known
+         * price would have left the limit permanently unenforceable against a
+         * provider that reports tokens and no money.
+         */
+        const budget = {
+          tokens: { kind: 'limit' as const, tokens: 1_000 },
+          cost: { kind: 'limit' as const, costMinorUnits: 5_000, currency: 'USD' },
+          deadline: { kind: 'not-measured' as const },
+        }
+        expect(
+          budgetOverruns(budget, {
+            state: 'measured',
+            inputTokens: 900,
+            outputTokens: 200,
+            cost: { state: 'not-reported' },
+          }),
+        ).toEqual(['tokens'])
+      })
+
+      it('neither trips nor satisfies a money limit when the cost is unknown', () => {
+        // Silence is not evidence either way. Treating it as zero would let
+        // unpriced spend pass; treating it as infinite would fail every
+        // honest live run.
+        const budget = {
+          tokens: { kind: 'not-applicable' as const },
+          cost: { kind: 'limit' as const, costMinorUnits: 10, currency: 'USD' },
+          deadline: { kind: 'not-measured' as const },
+        }
+        expect(
+          budgetOverruns(budget, {
+            state: 'measured',
+            inputTokens: 1,
+            outputTokens: 1,
+            cost: { state: 'not-reported' },
+          }),
+        ).toEqual([])
+        // The same budget IS enforced once a price actually arrives.
+        expect(
+          budgetOverruns(budget, {
+            state: 'measured',
+            inputTokens: 1,
+            outputTokens: 1,
+            cost: { state: 'measured', costMinorUnits: 11, currency: 'USD' },
+          }),
+        ).toEqual(['cost'])
       })
     })
 

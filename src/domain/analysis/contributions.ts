@@ -366,30 +366,57 @@ export interface RunFailure {
   at: string
 }
 
-/** Cost accounting. Minor currency units throughout, to avoid float drift. */
+/**
+ * What a run spent in money, as a state of its own.
+ *
+ * Separate from the token count because **the two do not arrive together.**
+ * The live path proved it: the Messages API reports `input_tokens` and
+ * `output_tokens` and no price at all. The previous shape required all four
+ * numbers to be present or none, which left one truthful combination —
+ * *tokens measured, monetary cost unknown* — with no way to be said.
+ *
+ * The options that shape forced were both falsehoods. `costMinorUnits: 0`
+ * states that the provider reported a free call, which is a measurement.
+ * Reporting the whole usage as `not-reported` throws away token counts the
+ * provider did give, and — worse — makes a token budget unenforceable, because
+ * enforcement reads measured usage only.
+ *
+ * **Zero still means genuinely free.** That distinction is the reason this is a
+ * state rather than a nullable number, and it is unchanged: `measured` with
+ * `costMinorUnits: 0` is a provider saying the call cost nothing, and
+ * `not-reported` is a provider saying nothing.
+ */
+export type RunMoneyCost =
+  | { state: 'not-reported' }
+  | { state: 'measured'; costMinorUnits: number; currency: string }
+
+/** Token accounting, with money reported separately. */
 export interface RunCost {
   inputTokens: number
   outputTokens: number
-  costMinorUnits: number
-  currency: string
+  /**
+   * Money, in minor units, where the provider said. Minor units throughout to
+   * avoid float drift, and a currency travels with any amount.
+   */
+  cost: RunMoneyCost
 }
 
 /**
  * What a run consumed, in three states rather than a nullable number.
  *
- * A nullable column cannot distinguish the three things that are actually
- * true of different runs, and the ambiguity falls on the side that costs
- * money: `null` reads as free.
+ * A nullable column cannot distinguish the things that are actually true of
+ * different runs, and the ambiguity falls on the side that costs money: `null`
+ * reads as free.
  *
  *   not-applicable  there was nothing to spend — a replay, a stub
- *   not-reported    real work whose provider did not tell us what it cost
- *   measured        a measurement, and **zero is a measurement**
+ *   not-reported    real work whose provider reported nothing at all
+ *   measured        tokens were counted; money is `RunMoneyCost` beside them
  *
- * The third line is the one that needs saying. Once the state carries the
- * meaning, `costMinorUnits: 0` is a provider reporting that this call was
- * free, which is a different fact from a provider that said nothing — and
- * budget enforcement in C2 has to treat them differently or it will authorize
- * spend against unknowns.
+ * **`measured` is about tokens.** Whether the provider also priced the call is
+ * a separate state, because a provider may genuinely report one and not the
+ * other — see `RunMoneyCost`. Reading `measured` as "everything is known"
+ * is what made *tokens measured, cost unknown* unsayable, and what made a
+ * token budget unenforceable against the only provider that spends tokens.
  */
 export type RunUsage =
   | { state: 'not-applicable' }
@@ -549,21 +576,36 @@ export function budgetOverruns(
   if (!cost) return []
 
   const overrun: (keyof ExecutionBudget)[] = []
+
+  /*
+   * Tokens are enforced whenever tokens were counted — independently of
+   * whether anyone priced the call. That independence is the whole point of
+   * separating the two states: the provider that actually spends tokens is
+   * also the one that reports no money, so tying token enforcement to a known
+   * cost would leave the token limit permanently unenforceable.
+   */
   if (
     budget.tokens.kind === 'limit' &&
     cost.inputTokens + cost.outputTokens > budget.tokens.tokens
   ) {
     overrun.push('tokens')
   }
+
   /*
-   * A limit in one currency says nothing about spend in another. Comparing the
-   * numbers would silently treat 100 öre as 100 cents, so a mismatch is not an
-   * overrun here — it is a schema question, refused where the budget is built.
+   * Money is enforced only against a measurement. An unknown cost neither
+   * trips the limit nor satisfies it — it is simply not evidence either way,
+   * and treating silence as zero would let unpriced spend pass a monetary
+   * budget while treating it as infinite would fail every honest live run.
+   *
+   * A limit in one currency also says nothing about spend in another.
+   * Comparing the numbers would silently treat 100 öre as 100 cents, so a
+   * mismatch is not an overrun here — it is refused where the budget is built.
    */
   if (
     budget.cost.kind === 'limit' &&
-    budget.cost.currency === cost.currency &&
-    cost.costMinorUnits > budget.cost.costMinorUnits
+    cost.cost.state === 'measured' &&
+    budget.cost.currency === cost.cost.currency &&
+    cost.cost.costMinorUnits > budget.cost.costMinorUnits
   ) {
     overrun.push('cost')
   }

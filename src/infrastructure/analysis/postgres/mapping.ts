@@ -52,6 +52,7 @@ import {
   type ManagerAggregation,
   type OptionalInputRecord,
   type ProviderKind,
+  type RunMoneyCost,
   type RunUsage,
   type RequirementResolution,
   type RoleFunction,
@@ -410,22 +411,51 @@ function toExecutionIdentity(row: RunRow): ExecutionIdentity {
  * cannot read as a complete one — and a missing state cannot quietly become
  * "free", which is what a bare nullable column did.
  */
+/**
+ * Money, read separately from tokens.
+ *
+ * A row whose cost state is missing while tokens were counted is malformed
+ * rather than quietly `not-reported` — silence about the question is not the
+ * same as the question having been asked and unanswered, and 0029's CHECK
+ * makes such a row unwritable in the first place.
+ */
+function toRunMoneyCost(row: RunRow): RunMoneyCost {
+  switch (row.usage_cost_state) {
+    case 'not-reported':
+      return { state: 'not-reported' }
+    case 'measured':
+      if (row.cost_minor_units === null || row.currency === null) {
+        throw new MalformedRowError(
+          'run',
+          'usage_cost_state is "measured" but carries no amount',
+          'runs.get',
+        )
+      }
+      return {
+        state: 'measured',
+        costMinorUnits: row.cost_minor_units,
+        currency: row.currency,
+      }
+    default:
+      throw new MalformedRowError(
+        'run',
+        `unknown usage_cost_state "${row.usage_cost_state}"`,
+        'runs.get',
+      )
+  }
+}
+
 function toRunUsage(row: RunRow): RunUsage {
   switch (row.usage_state) {
     case 'not-applicable':
       return { state: 'not-applicable' }
     case 'not-reported':
       return { state: 'not-reported' }
-    case 'measured':
-      if (
-        row.input_tokens === null ||
-        row.output_tokens === null ||
-        row.cost_minor_units === null ||
-        row.currency === null
-      ) {
+    case 'measured': {
+      if (row.input_tokens === null || row.output_tokens === null) {
         throw new MalformedRowError(
           'run',
-          'usage_state is "measured" but is not',
+          'usage_state is "measured" but the tokens are not',
           'runs.get',
         )
       }
@@ -433,9 +463,9 @@ function toRunUsage(row: RunRow): RunUsage {
         state: 'measured',
         inputTokens: row.input_tokens,
         outputTokens: row.output_tokens,
-        costMinorUnits: row.cost_minor_units,
-        currency: row.currency,
+        cost: toRunMoneyCost(row),
       }
+    }
     default:
       throw new MalformedRowError(
         'run',

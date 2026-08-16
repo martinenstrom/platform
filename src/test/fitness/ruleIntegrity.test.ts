@@ -32,11 +32,11 @@ describe('fitness rules detect a planted violation', () => {
     expect([...LOAD_BEARING_RULES.map((rule) => rule.id)].sort()).toEqual([
       'challenge-threshold-only-in-the-gate',
       'eligibility-decided-only-in-the-domain',
+      'llm-client-confined-to-provider',
       'no-caller-supplied-or-invented-identity',
       'no-eligibility-in-sql',
       'no-in-memory-adapter-in-durable-tests',
       'no-invisible-characters-in-source',
-      'no-llm-dependency',
       'no-locale-sensitive-identity-ordering',
       'no-outbound-network-outside-http-client',
       'no-placeholder-port-implementations',

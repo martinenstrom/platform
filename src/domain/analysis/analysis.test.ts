@@ -1423,8 +1423,7 @@ describe('run records and the activity feed', () => {
             state: 'measured',
             inputTokens: 30_000,
             outputTokens: 20_000,
-            costMinorUnits: 9_000,
-            currency: 'USD',
+            cost: { state: 'measured', costMinorUnits: 9_000, currency: 'USD' },
           }),
         ).toEqual(['tokens', 'cost'])
       })
@@ -1437,8 +1436,7 @@ describe('run records and the activity feed', () => {
             state: 'measured',
             inputTokens: 25_000,
             outputTokens: 20_000,
-            costMinorUnits: 100,
-            currency: 'USD',
+            cost: { state: 'measured', costMinorUnits: 100, currency: 'USD' },
           }),
         ).toEqual(['tokens'])
       })
@@ -1449,8 +1447,7 @@ describe('run records and the activity feed', () => {
             state: 'measured',
             inputTokens: 10,
             outputTokens: 10,
-            costMinorUnits: 10,
-            currency: 'USD',
+            cost: { state: 'measured', costMinorUnits: 10, currency: 'USD' },
           }),
         ).toEqual([])
       })
@@ -1473,8 +1470,7 @@ describe('run records and the activity feed', () => {
             state: 'measured',
             inputTokens: 1,
             outputTokens: 1,
-            costMinorUnits: 9_000,
-            currency: 'SEK',
+            cost: { state: 'measured', costMinorUnits: 9_000, currency: 'SEK' },
           }),
         ).toEqual([])
       })

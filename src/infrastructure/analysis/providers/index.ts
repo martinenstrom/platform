@@ -1,16 +1,19 @@
 /**
  * Contribution providers.
  *
- * Two, and neither is a model: a **recorded** provider replaying immutable
- * fixtures, and a **stub** producing controlled outcomes. A live provider is
- * Phase C2 and is gated on its own approval — a fitness rule asserts that
- * nothing here declares `providerKind: 'live'`, and the import rules keep LLM
- * clients out of the repository entirely.
+ * Three: a **recorded** provider replaying immutable fixtures, a **stub**
+ * producing controlled outcomes, and — since the C2 gate ruled determinism,
+ * cost, caching and provenance — a **live** provider that calls a model.
  *
- * Neither may bypass claim validation, evidence resolution, the command
- * ledger, assignment state, governance gates or execution provenance. They
- * enter through the same `ContributionProvider` port a live provider will, and
- * their output is written by the same command.
+ * None of them may bypass claim validation, evidence resolution, the command
+ * ledger, assignment state, governance gates or execution provenance. All
+ * three enter through the same `ContributionProvider` port, and their output is
+ * written by the same command. That is the rule that made the live one cheap:
+ * it is a third implementation of an interface, not new machinery.
+ *
+ * The model client stays behind the live provider. `llm-client-confined-to-
+ * provider` asserts nothing outside this directory imports it, and there is no
+ * SDK to leak — which makes the property easier to hold, not harder.
  */
 
 export {
@@ -26,3 +29,10 @@ export {
   createStubContributionProvider,
   type StubOutcome,
 } from './stub'
+
+export {
+  LIVE_PROVIDER_ID,
+  createLiveContributionProvider,
+  LiveProviderFailure,
+  type LiveProviderConfig,
+} from './live'

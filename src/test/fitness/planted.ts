@@ -242,7 +242,7 @@ export const PLANTED: readonly RuleFixtures[] = [
   },
 
   {
-    ruleId: 'no-llm-dependency',
+    ruleId: 'llm-client-confined-to-provider',
     violations: [
       {
         path: 'infrastructure/analysis/providers/live.ts',
@@ -268,8 +268,43 @@ export const PLANTED: readonly RuleFixtures[] = [
           export const prompt = ChatPromptTemplate
         `,
       },
+      {
+        /*
+         * The form the narrowed rule exists for. There is no SDK to install,
+         * so the way a model leaks now is our own client being imported from
+         * outside the provider.
+         */
+        path: 'application/analysis/orchestrator.ts',
+        what: 'the hand-rolled client, from the application layer',
+        source: `
+          import { callModel } from '~/infrastructure/analysis/providers/modelClient'
+          export const call = callModel
+        `,
+      },
+      {
+        path: 'domain/analysis/claims.ts',
+        what: 'the hand-rolled client, from the domain',
+        source: `
+          import { callModel } from '~/infrastructure/analysis/providers/modelClient'
+          export const call = callModel
+        `,
+      },
     ],
     nearMisses: [
+      {
+        /*
+         * The near-miss that stops this becoming "nobody may have a client".
+         * The provider importing its own transport is the arrangement the rule
+         * is designed to permit, and a rule that failed here would have banned
+         * the thing C2 was gated on building.
+         */
+        path: 'infrastructure/analysis/providers/live.ts',
+        what: 'the provider importing its own model client',
+        source: `
+          import { callModel } from './modelClient'
+          export const call = callModel
+        `,
+      },
       {
         path: 'infrastructure/analysis/providers/recorded.ts',
         what: "a recorded provenance whose provider is the string 'anthropic'",

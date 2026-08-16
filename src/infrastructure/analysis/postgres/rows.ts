@@ -129,8 +129,10 @@ export interface RunRow {
   provider_version: string
   provider_kind: string
   missing_optional_inputs: string[]
-  /** 'not-applicable' | 'not-reported' | 'measured'. */
+  /** 'not-applicable' | 'not-reported' | 'measured'. Tokens, not money. */
   usage_state: string
+  /** 'measured' | 'not-reported', and NULL when no tokens were counted. */
+  usage_cost_state: string | null
   input_tokens: number | null
   output_tokens: number | null
   cost_minor_units: number | null

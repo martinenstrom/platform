@@ -974,14 +974,45 @@ describe('Phase C1C-1 — the external-work boundary', () => {
     expect(offenders).toEqual([])
   })
 
-  it('ships no live contribution provider', () => {
-    // C2 remains blocked: recorded and stub only. Read through `codeOnly`, so
-    // the rule can be documented beside the code it governs rather than being
-    // tripped by the sentence explaining it.
+  it('declares live work only in the live provider', () => {
+    /*
+     * LIFTED at the C2 gate, and narrowed rather than deleted.
+     *
+     * It used to ban the live provider kind outright, because the four
+     * decisions the gate demanded had not been made. They are made and the
+     * provider exists, so the blanket ban is over. What survives is the
+     * property underneath it: a provider kind is DECLARED BY THE PROVIDER, so
+     * a fixture cannot enter the record as live work because whoever wired it
+     * up passed the wrong string. Exactly one non-test module may say it.
+     *
+     * ## Why this reads the raw source
+     *
+     * The two guards this replaces both ran their regex over `codeOnly`, which
+     * BLANKS STRING LITERAL CONTENTS — the literal they were searching for was
+     * erased before the search. They matched nothing, could only ever return
+     * an empty array, and passed for that reason rather than because the
+     * codebase complied. Exactly the failure `fitness/rules.ts` was built to
+     * end, reappearing in an inline `it()`.
+     *
+     * So this reads `sourceOf` directly. The cost is that prose must not spell
+     * the literal out; the comments here are worded around it deliberately.
+     */
+    const declaresLive = /(provider)?[kK]ind:\s*'live'/
     const offenders = FILES.filter(
-      (f) => !isTest(f) && /providerKind:\s*'live'/.test(codeOnly(sourceOf(f))),
+      (f) => !isTest(f) && declaresLive.test(sourceOf(f)),
     ).map((f) => f.path)
-    expect(offenders).toEqual([])
+    expect(offenders).toEqual([
+      'infrastructure/analysis/providers/live.ts',
+      /*
+       * Test support, not production. The shared repository contract drives
+       * live runs through both adapters, which is the only way the parity
+       * cases can prove a live run round-trips at all. It is named without
+       * `.test.ts` because it is a suite two test files invoke, so `isTest`
+       * does not classify it — pinned here rather than by loosening `isTest`,
+       * which several other rules depend on.
+       */
+      'infrastructure/analysis/repositoryContract.ts',
+    ])
   })
 
   it('keeps raw provider text out of the failure record', () => {
@@ -1003,27 +1034,21 @@ describe('Phase C1C-2 — contribution', () => {
 
   it('ships exactly the approved contribution providers', () => {
     /*
-     * Two, and neither is a model. A third file appearing here means a
-     * provider landed without the phase gate that C2 is waiting on — the same
-     * control the market-data adapters are under, for the same reason.
+     * Four now, and one of them is a model. C2 lifted the gate that kept this
+     * list at two; the list itself stays, so a FIFTH file appearing here is
+     * still a provider landing without a decision — the same control the
+     * market-data adapters are under, for the same reason.
      */
     const adapters = FILES.filter((f) => inLayer(f, providers) && !isTest(f))
       .map((f) => f.path)
       .sort()
     expect(adapters).toEqual([
       'infrastructure/analysis/providers/index.ts',
+      'infrastructure/analysis/providers/live.ts',
+      'infrastructure/analysis/providers/modelClient.ts',
       'infrastructure/analysis/providers/recorded.ts',
       'infrastructure/analysis/providers/stub.ts',
     ])
-  })
-
-  it('lets no provider declare itself live', () => {
-    // C2 remains blocked. A provider states its own kind, so this is the one
-    // place a fixture could claim to be work the firm stands behind.
-    const offenders = FILES.filter(
-      (f) => inLayer(f, providers) && /kind:\s*'live'/.test(codeOnly(sourceOf(f))),
-    ).map((f) => f.path)
-    expect(offenders).toEqual([])
   })
 
   it('gives the stub no way to name a model', () => {

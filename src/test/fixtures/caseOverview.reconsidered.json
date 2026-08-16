@@ -652,7 +652,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "8003983c14f19d1857760ace2f625ce307fdc7fd37e3ac999c6ab5b6b7608589"
+          "digest": "060c497c88424e8d7d9a000d4ad42f21f414d38ee0167fcfc21bb1eebec343bd"
         }
       }
     },
@@ -703,7 +703,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "392c19a96070029e28d47f882a2895408bebadb6cb3d087794250dcf00221fd7"
+          "digest": "81e649e1d0606b66ebf820abb9b3a4d347fe4d724f41c6f863cc03357811075a"
         }
       }
     }

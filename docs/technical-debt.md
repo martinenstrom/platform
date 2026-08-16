@@ -1706,3 +1706,52 @@ unrelated edit inside a boundary that is otherwise about one thing.
 comes from the harness's dynamic allocation path at all. Do **not** retry the
 test, rerun on failure, or mark it flaky-and-skip — the standing rule in TD-62
 holds here, and it holds more easily because there is nothing left to discover.
+
+## TD-75 · four confidence signals have no production derivation · open
+
+**Opened by C2-1**, as a stated boundary of the live-model ruling rather than
+an oversight.
+
+`composeConfidence` composes confidence mechanically from seven signals, each
+able only to LOWER. The live provider must apply every cap the firm can
+**objectively derive**, and take the lower of that and the model's proposal.
+Measured, only two of the seven have the inputs to be derived at all:
+
+| signal | state | what is missing |
+|---|---|---|
+| `evidenceCount === 0` | **derivable** | — |
+| `anyFixtureBacked` | **derivable** | — |
+| `anyMissingProvenance` | not reachable | `EvidenceItem.provenance` is required, so a stored item always has it |
+| `weakestEvidence` | **missing** | no production mapping from source trust to a `ConfidenceLevel` |
+| `anyStale` | **missing** | the firm has no definition of when an observation is stale |
+| `conflictingEvidence` | **missing** | no definition of when two sources conflict about one subject |
+| `methodologyMismatch` | **missing** | no definition of when two measures are comparable |
+
+`composeConfidence` itself is called **nowhere else in production**, and
+`EvidenceSignals` is constructed only in a test. So the mechanical composer the
+domain designed has, until now, never run over real evidence.
+
+**What C2-1 does instead.** `resolveModelConfidence` calls `composeConfidence`
+with the two derivable signals real and the rest passed as values that cannot
+lower anything, then accepts the result **only** when the cap is one of the two
+the firm actually computed. Otherwise it returns the model's proposal with a
+basis that says so in words — `'proposed by the model'` and `'the firm has not
+independently corroborated this level'` — so an uncapped level can never be
+read as firm-derived, and a later capability can count how much of the firm's
+confidence is model-asserted.
+
+**Why the missing four were not invented here.** Each needs an institutional
+policy decision, not an implementation: how old is stale, what counts as a
+conflict, which methodologies are comparable, and how source trust maps to a
+level. Guessing any of them would put a number the firm never agreed to behind
+a confidence it presents as its own.
+
+**Why the model was not asked for them.** A signal the model supplied and the
+firm then treated as firm-derived would be the model grading its own work
+through a longer route — the exact inversion the ruling exists to prevent.
+
+**When it is built:** define the policies first, then wire `composeConfidence`
+over real signals, and narrow `DERIVABLE_CAPS` in `modelConfidence.ts` toward
+empty as each cap becomes genuinely derived. The long-term direction is that
+institutional confidence becomes increasingly firm-derived; the honest interim
+is that the firm says which parts it has verified.

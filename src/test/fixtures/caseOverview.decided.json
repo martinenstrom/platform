@@ -635,7 +635,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "e9d409b1237beedfee124f9384116396596a5990212f7d2b7a9ded01f24aabdc"
+          "digest": "42b34409bff78fdc59a5b313724d88e375aabc7a2d9271efd34e9ae0f0c7a236"
         }
       }
     }

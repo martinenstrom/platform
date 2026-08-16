@@ -283,20 +283,64 @@ const orchestratorWritesNothing: FitnessRule = {
 const LLM_PACKAGES =
   /^(@anthropic-ai\/|anthropic$|openai$|openai\/|@openai\/|@ai-sdk\/|^ai$|langchain|@langchain\/|llamaindex|@google\/generative-ai|@mistralai\/|cohere-ai|replicate$|ollama$)/
 
-const noLlmDependency: FitnessRule = {
-  id: 'no-llm-dependency',
-  states: 'Nothing in the codebase imports a model client.',
+/**
+ * The one directory a model client may live in.
+ *
+ * The live provider and its transport, and nothing else. Trailing slash so a
+ * sibling directory with a longer name cannot satisfy the prefix.
+ */
+const PROVIDER_DIRECTORY = 'infrastructure/analysis/providers/'
+
+/**
+ * NARROWED at the C2 gate, not removed.
+ *
+ * The original rule said "nothing imports a model client", and its reason was
+ * that C2 is where determinism, cost, caching and provenance get decided — so
+ * a client appearing beforehand would decide them by accident. C2 has now
+ * decided all four, and the client exists.
+ *
+ * What must not be lost is the property the rule was really protecting: **an
+ * LLM cannot leak into the domain, the application layer, or a component.**
+ * Deleting the rule would drop that on the day it starts to matter, which is
+ * the day a client is actually in the tree.
+ *
+ * There is no SDK, so there is no package to leak — which makes this easier to
+ * hold rather than harder. The rule therefore catches both the package form
+ * and the module form: importing an SDK anywhere, and importing the provider's
+ * own client from outside the provider directory.
+ */
+const llmClientConfinedToProvider: FitnessRule = {
+  id: 'llm-client-confined-to-provider',
+  states:
+    'A model client is reachable only through the contribution provider — ' +
+    'never from domain, application or presentation.',
   because:
-    'C2 is the gate where determinism, cost, caching and provenance for real ' +
-    'model execution get decided. A client appearing before it decides them by ' +
-    'default and by accident.',
-  // Tests included: a test importing an SDK means the dependency is installed
-  // and the decision has already been made somewhere.
+    'C2 decided determinism, cost, caching and provenance, so a client may ' +
+    'now exist. It may not spread: a model reachable from the domain or a ' +
+    'component would put non-deterministic, billable work behind code the ' +
+    'firm treats as pure, and the seam that makes a recorded run and a live ' +
+    'run interchangeable is the provider port.',
+  // Tests included. A test importing an SDK means the dependency is installed,
+  // and an installed SDK is reachable from everywhere.
   selects: () => true,
-  detect: (file) =>
-    file.imports
-      .filter((reference) => LLM_PACKAGES.test(reference.specifier))
-      .map((reference) => `${file.path} — imports ${reference.specifier}`),
+  detect: (file) => {
+    const offences: string[] = []
+    const insideProvider = file.path.startsWith(PROVIDER_DIRECTORY)
+
+    for (const reference of file.imports) {
+      // An SDK package is refused everywhere, including inside the provider:
+      // the client decision ruled no SDK, and nothing is exempt from it.
+      if (LLM_PACKAGES.test(reference.specifier)) {
+        offences.push(`${file.path} — imports ${reference.specifier}`)
+        continue
+      }
+      // The hand-rolled client is confined rather than banned.
+      if (!insideProvider && reference.specifier.includes('providers/modelClient')) {
+        offences.push(`${file.path} — imports the model client from outside the provider`)
+      }
+    }
+    return offences
+  },
 }
 
 /* ------------------------------------------------------------------- rule 5 */
@@ -1187,7 +1231,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noOutboundNetwork,
   noProseActivityInDomain,
   orchestratorWritesNothing,
-  noLlmDependency,
+  llmClientConfinedToProvider,
   noUiImportOfInfrastructure,
   noCallerSuppliedIdentity,
   eligibilityDecidedInTheDomain,
