@@ -55,6 +55,7 @@ import {
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
+  isRunTerminal,
   type ManagerAggregation,
   type RequirementResolution,
   type RunEvent,
@@ -79,6 +80,7 @@ import {
   type AssignmentRepository,
   type CaseRepository,
   type ClaimRepository,
+  type ProducedClaimRepository,
   type EventRepository,
   type EvidenceRepository,
   type PlaybookRepository,
@@ -103,6 +105,7 @@ import {
   decisionSemanticKey,
   evidenceSetSemanticKey,
   managerAggregationSemanticKey,
+  producedClaimsSemanticKey,
   requirementResolutionIdentity,
   requirementResolutionSemanticKey,
   resultSemanticKey,
@@ -127,6 +130,7 @@ interface Store {
   runs: Map<string, AgentRunRecord>
   runEvents: RunEvent[]
   claims: Map<string, { claim: AgentClaim; caseId: string; runId: string }>
+  producedClaims: Map<string, { caseId: string; claims: readonly AgentClaim[] }>
   verifications: VerificationReview[]
   challenges: DevilsAdvocateReview[]
   compliance: ComplianceReview[]
@@ -162,6 +166,7 @@ function emptyStore(): Store {
     runs: new Map(),
     runEvents: [],
     claims: new Map(),
+    producedClaims: new Map(),
     verifications: [],
     challenges: [],
     compliance: [],
@@ -201,6 +206,7 @@ function snapshot(store: Store): Store {
     runs: new Map(store.runs),
     runEvents: [...store.runEvents],
     claims: new Map(store.claims),
+    producedClaims: new Map(store.producedClaims),
     verifications: [...store.verifications],
     challenges: [...store.challenges],
     compliance: [...store.compliance],
@@ -516,6 +522,30 @@ function runRepository(store: Store, scope: Scope): RunRepository {
     async save(record) {
       guard(scope, 'runs.save')
       seal(record, 'runs')
+
+      /*
+       * At most one unsettled run per assignment, which PostgreSQL has enforced
+       * with a partial unique index since migration 0015 and this store did
+       * not. A second live run on one assignment is a department doing the same
+       * piece of work twice.
+       *
+       * Terminal is the domain's `isRunTerminal`, so both stores draw the line
+       * in the same place: a `rejected` run has settled and frees the slot for
+       * another attempt, while an `awaiting-acceptance` one has not — somebody
+       * still has to act on it.
+       */
+      if (!isRunTerminal(record.state)) {
+        const active = [...store.runs.values()].find(
+          (candidate) =>
+            candidate.id !== record.id &&
+            candidate.assignmentId === record.assignmentId &&
+            !isRunTerminal(candidate.state),
+        )
+        if (active) {
+          throw new ConflictingRecordError('Run', record.assignmentId, 'runs.save')
+        }
+      }
+
       store.runs.set(record.id, record)
 
       for (const event of record.events) {
@@ -534,6 +564,54 @@ function runRepository(store: Store, scope: Scope): RunRepository {
         store.runEvents.push(event)
       }
       return hydrateRun(store, record)
+    },
+  }
+}
+
+/**
+ * Produced work, kept apart from the institutional record on purpose.
+ *
+ * See `ProducedClaimRepository`: the separation is what makes non-citability
+ * structural rather than remembered.
+ */
+function producedClaimRepository(store: Store, scope: Scope): ProducedClaimRepository {
+  return {
+    async record(runId, caseId, claims) {
+      guard(scope, 'producedClaims.record')
+      if (claims.length === 0) {
+        throw new InvariantViolationError(
+          'produced-claims-empty',
+          'producedClaims.record',
+        )
+      }
+      const existing = store.producedClaims.get(runId)
+      if (existing) {
+        /*
+         * One run produces one set. A second write with different content is a
+         * disagreement about what the agent returned, not a retry — compared by
+         * the shared rule so both adapters answer that identically.
+         */
+        if (
+          producedClaimsSemanticKey(existing.claims) !== producedClaimsSemanticKey(claims)
+        ) {
+          throw new ConflictingRecordError(
+            'Produced claims',
+            runId,
+            'producedClaims.record',
+          )
+        }
+        return
+      }
+      store.producedClaims.set(runId, {
+        caseId,
+        claims: Object.freeze([...claims].map((claim) => seal(claim, 'producedClaims'))),
+      })
+    },
+
+    async listForRun(runId) {
+      guard(scope, 'producedClaims.listForRun')
+      const found = store.producedClaims.get(runId)
+      return found ? [...found.claims].sort((a, b) => byString(a.id, b.id)) : []
     },
   }
 }
@@ -981,6 +1059,7 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     assignments: assignmentRepository(store, scope),
     runs: runRepository(store, scope),
     claims: claimRepository(store, scope),
+    producedClaims: producedClaimRepository(store, scope),
     reviews: reviewRepository(store, scope),
     events: eventRepository(store, scope),
     evidence: evidenceRepository(store, scope),

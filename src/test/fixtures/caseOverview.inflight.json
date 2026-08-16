@@ -283,6 +283,11 @@
         {
           "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
           "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
+        {
+          "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+          "at": "2026-08-01T09:00:00.000Z",
           "state": "completed"
         },
         {
@@ -342,6 +347,11 @@
       "startedAt": "2026-08-01T09:00:00.000Z",
       "completedAt": "2026-08-01T09:00:00.000Z",
       "events": [
+        {
+          "runId": "run-65954d082c7d2a7603093c10348cbd66",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
         {
           "runId": "run-65954d082c7d2a7603093c10348cbd66",
           "at": "2026-08-01T09:00:00.000Z",
@@ -405,6 +415,11 @@
       "startedAt": "2026-08-01T09:00:00.000Z",
       "completedAt": "2026-08-01T09:00:00.000Z",
       "events": [
+        {
+          "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
         {
           "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
           "at": "2026-08-01T09:00:00.000Z",
@@ -477,20 +492,6 @@
   "reconsiderations": [],
   "timeline": [
     {
-      "eventId": "evt-0556dbeb55195f6d75a4aaeca3f41d1d",
-      "subject": "assignment",
-      "caseId": "hq-fixture-inflight",
-      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
-      "toState": "completed",
-      "actorEmployeeId": "research-director",
-      "actorDepartmentId": "research-office",
-      "occurredAt": "2026-08-01T09:00:00.000Z",
-      "correlationId": "macro-flow",
-      "causationId": "evt-4df63ff99309a91dd5f5d75720c798cd",
-      "aggregateVersion": 2,
-      "fromState": "active"
-    },
-    {
       "eventId": "evt-1c13e8dbf85833802d5931b1a7671750",
       "subject": "assignment",
       "caseId": "hq-fixture-inflight",
@@ -503,6 +504,33 @@
       "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
       "aggregateVersion": 2,
       "fromState": null
+    },
+    {
+      "eventId": "evt-1db15be59cde65faaa77c21925f0184a",
+      "subject": "assignment",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-1e3de0ea48d7ab1e5555fc9de14e12ce",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "runId": "run-65954d082c7d2a7603093c10348cbd66",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
     },
     {
       "eventId": "evt-21bf32ed33721920e13ecd1993d81330",
@@ -519,20 +547,6 @@
       "fromState": "queued"
     },
     {
-      "eventId": "evt-2e78af201623e951eefe5b38d25538e1",
-      "subject": "run",
-      "caseId": "hq-fixture-inflight",
-      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
-      "runId": "run-65954d082c7d2a7603093c10348cbd66",
-      "toState": "completed",
-      "actorEmployeeId": "quant-head",
-      "actorDepartmentId": "quant-technical",
-      "occurredAt": "2026-08-01T09:00:00.000Z",
-      "correlationId": "macro-flow",
-      "aggregateVersion": 2,
-      "fromState": "running"
-    },
-    {
       "eventId": "evt-3a1f225f42c114f152c5c3e90d892381",
       "subject": "run",
       "caseId": "hq-fixture-inflight",
@@ -545,6 +559,20 @@
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
       "fromState": null
+    },
+    {
+      "eventId": "evt-4b599ea1a75000c2f59fdc8f72795852",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
     },
     {
       "eventId": "evt-4bfbc989c2d9f66a83cf175392f897da",
@@ -561,20 +589,6 @@
       "fromState": "queued"
     },
     {
-      "eventId": "evt-4df63ff99309a91dd5f5d75720c798cd",
-      "subject": "run",
-      "caseId": "hq-fixture-inflight",
-      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
-      "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
-      "toState": "completed",
-      "actorEmployeeId": "research-director",
-      "actorDepartmentId": "research-office",
-      "occurredAt": "2026-08-01T09:00:00.000Z",
-      "correlationId": "macro-flow",
-      "aggregateVersion": 2,
-      "fromState": "running"
-    },
-    {
       "eventId": "evt-645e372eec1cf974c80ce08aaf8d5864",
       "subject": "thesis",
       "caseId": "hq-fixture-inflight",
@@ -589,18 +603,17 @@
       "fromState": null
     },
     {
-      "eventId": "evt-64c3acb304024ff3609a131d154b75c3",
-      "subject": "run",
+      "eventId": "evt-743da227afb73b8cb9339996eb2f63fc",
+      "subject": "assignment",
       "caseId": "hq-fixture-inflight",
       "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
-      "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
       "toState": "completed",
       "actorEmployeeId": "macro-head",
       "actorDepartmentId": "global-macro",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
-      "fromState": "running"
+      "fromState": "active"
     },
     {
       "eventId": "evt-77c24833e554671ecdb2a1b93971664e",
@@ -631,20 +644,6 @@
       "fromState": null
     },
     {
-      "eventId": "evt-954030e638c72f6da6f8dafe0b2a90bd",
-      "subject": "assignment",
-      "caseId": "hq-fixture-inflight",
-      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
-      "toState": "completed",
-      "actorEmployeeId": "quant-head",
-      "actorDepartmentId": "quant-technical",
-      "occurredAt": "2026-08-01T09:00:00.000Z",
-      "correlationId": "macro-flow",
-      "causationId": "evt-2e78af201623e951eefe5b38d25538e1",
-      "aggregateVersion": 2,
-      "fromState": "active"
-    },
-    {
       "eventId": "evt-9ab21dd36c4d52244fcafbba130bee74",
       "subject": "assignment",
       "caseId": "hq-fixture-inflight",
@@ -659,16 +658,15 @@
       "fromState": null
     },
     {
-      "eventId": "evt-a3c6ccca0e33e467a0d1a119b2e3ba97",
+      "eventId": "evt-b8a4c75983b6ef667f4965e913507f96",
       "subject": "assignment",
       "caseId": "hq-fixture-inflight",
-      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
       "toState": "completed",
-      "actorEmployeeId": "macro-head",
-      "actorDepartmentId": "global-macro",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
-      "causationId": "evt-64c3acb304024ff3609a131d154b75c3",
       "aggregateVersion": 2,
       "fromState": "active"
     },
@@ -713,6 +711,20 @@
       "fromState": null
     },
     {
+      "eventId": "evt-ca247734577e0c4cd43737d480ffbd7c",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-681ec09b7a456868be887e528e1fdb38",
+      "runId": "run-84c3e5973a4de01850bf05cc6d8c4128",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
       "eventId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
       "subject": "case",
       "caseId": "hq-fixture-inflight",
@@ -723,6 +735,34 @@
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
       "fromState": "intake"
+    },
+    {
+      "eventId": "evt-d64e5b2ad212fe1031264c8adf874b20",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-f1ed1ef2045b8aca0348ed2f5846477a",
+      "runId": "run-65954d082c7d2a7603093c10348cbd66",
+      "toState": "completed",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
+    },
+    {
+      "eventId": "evt-eb3855403e93a18a72e212d53d6e779a",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
     },
     {
       "eventId": "evt-eef3a3b8fae307f5663c6d87b6aea225",
@@ -751,6 +791,20 @@
       "causationId": "evt-d3aa1ce1e2370a68e0829badaba9d678",
       "aggregateVersion": 2,
       "fromState": null
+    },
+    {
+      "eventId": "evt-f719b7b60d245368a0481ca47a510e58",
+      "subject": "run",
+      "caseId": "hq-fixture-inflight",
+      "assignmentId": "asg-13dedd9e137e57a24df19e2f9e3d49d2",
+      "runId": "run-46227ab2d244938c2ffb1f9ea58da41c",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
     },
     {
       "eventId": "evt-fbd5abe2742b2afbb5b3180c64df92eb",

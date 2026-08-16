@@ -12,14 +12,20 @@
  * than a rule.
  */
 
-import { ConflictingRecordError } from '~/application/analysis/repositories'
+import {
+  ConflictingRecordError,
+  InvariantViolationError,
+  MalformedRowError,
+} from '~/application/analysis/repositories'
 import type {
   AssignmentRepository,
   ClaimRepository,
+  ProducedClaimRepository,
   RunRepository,
 } from '~/application/analysis/repositories'
 import {
   claimSemanticKey,
+  producedClaimsSemanticKey,
   runEventIdentity,
   runEventSemanticKey,
 } from '~/application/analysis/writeOnce'
@@ -225,6 +231,98 @@ export async function hydrateClaims(
   return rows.map((row) => toClaim(row, byClaim.get(row.id) ?? []))
 }
 
+export const PRODUCED_CLAIM_SQL = catalog({
+  listForRun: `SELECT claims FROM analysis.produced_claims WHERE run_id = $1`,
+
+  record: `INSERT INTO analysis.produced_claims
+             (run_id, case_id, tenant_id, claims, produced_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (run_id) DO NOTHING`,
+})
+
+/**
+ * Produced work, kept out of `analysis.claims` on purpose.
+ *
+ * See `ProducedClaimRepository` and migration 0027: every citation in the
+ * institution is a foreign key into the claims table, so work that is not in it
+ * cannot be cited — by the database, not by a convention.
+ *
+ * Claims are stored as canonical JSON exactly as `agent_results` stores them.
+ * Acceptance moves the same claim, unchanged, into institutional storage; there
+ * is no second canonicalisation on either side of that boundary.
+ */
+export function createProducedClaimRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): ProducedClaimRepository {
+  const readForRun = async (client: Queryable, runId: string, operation: string) => {
+    const row = await one<{ claims: unknown }>(
+      client,
+      context,
+      operation,
+      PRODUCED_CLAIM_SQL.listForRun,
+      [runId],
+    )
+    if (!row) return null
+    if (!Array.isArray(row.claims)) {
+      throw new MalformedRowError(
+        'produced claims',
+        'claims is not an array',
+        'produced_claims',
+      )
+    }
+    return row.claims as AgentClaim[]
+  }
+
+  return {
+    record: (runId: string, caseId: string, claims: readonly AgentClaim[]) =>
+      unitOfWork(scope, 'producedClaims.record', async (client) => {
+        if (claims.length === 0) {
+          throw new InvariantViolationError(
+            'produced-claims-empty',
+            'producedClaims.record',
+          )
+        }
+        const existing = await readForRun(client, runId, 'producedClaims.record')
+        if (existing) {
+          /*
+           * One run produces one set. A second write with different content is
+           * a disagreement about what the agent returned, not a retry.
+           *
+           * Compared by the shared rule rather than by string: `jsonb` re-orders
+           * object keys on the way in, so comparing the round-tripped row
+           * against the caller's own object would call every replayed write a
+           * conflict here and none in memory.
+           */
+          if (producedClaimsSemanticKey(existing) !== producedClaimsSemanticKey(claims)) {
+            throw new ConflictingRecordError(
+              'Produced claims',
+              runId,
+              'producedClaims.record',
+            )
+          }
+          return
+        }
+        await run(client, context, 'producedClaims.record', PRODUCED_CLAIM_SQL.record, [
+          runId,
+          caseId,
+          tenantId,
+          JSON.stringify([...claims]),
+        ])
+      }),
+
+    listForRun: (runId: string) =>
+      unitOfWork(scope, 'producedClaims.listForRun', async (client) => {
+        const found = await readForRun(client, runId, 'producedClaims.listForRun')
+        /* Id order, matching the institutional repository it mirrors. */
+        return found
+          ? [...found].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+          : []
+      }),
+  }
+}
+
 export function createClaimRepository(
   scope: Scope,
   context: SqlContext,
@@ -317,6 +415,7 @@ const RUN_COLUMNS = `
   evidence_set_id,
   ${ts('started_at')}, ${ts('completed_at')},
   failure_category, failure_retryable, failure_attempt, ${ts('failed_at')},
+  rejection_code, rejection_detail, rejected_by_employee_id, ${ts('rejected_at')},
   playbook_id, playbook_version, playbook_entry_key,
   provider_id, provider_version, provider_kind, missing_optional_inputs,
   usage_state, input_tokens, output_tokens, cost_minor_units, currency
@@ -344,13 +443,14 @@ export const RUN_SQL = catalog({
             scenario_id, stub_version, identity_unavailable_reason, recording_id,
             evidence_set_id, started_at, completed_at,
             failure_category, failure_retryable, failure_attempt, failed_at,
+            rejection_code, rejection_detail, rejected_by_employee_id, rejected_at,
             playbook_id, playbook_version, playbook_entry_key,
             provider_id, provider_version, provider_kind, missing_optional_inputs,
             provenance_id,
             usage_state, input_tokens, output_tokens, cost_minor_units, currency)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                  $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
-                 $34,$35,$36,$37,$38,$39,$40,$41,$42,$43)
+                 $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
@@ -359,6 +459,10 @@ export const RUN_SQL = catalog({
            failure_retryable = EXCLUDED.failure_retryable,
            failure_attempt = EXCLUDED.failure_attempt,
            failed_at = EXCLUDED.failed_at,
+           rejection_code = EXCLUDED.rejection_code,
+           rejection_detail = EXCLUDED.rejection_detail,
+           rejected_by_employee_id = EXCLUDED.rejected_by_employee_id,
+           rejected_at = EXCLUDED.rejected_at,
            usage_state = EXCLUDED.usage_state,
            input_tokens = EXCLUDED.input_tokens,
            output_tokens = EXCLUDED.output_tokens,
@@ -518,6 +622,10 @@ export function createRunRepository(
           record.failure?.retryable ?? null,
           record.failure?.attempt ?? null,
           record.failure?.at ?? null,
+          record.rejection?.code ?? null,
+          record.rejection?.detail ?? null,
+          record.rejection?.rejectedByEmployeeId ?? null,
+          record.rejection?.rejectedAt ?? null,
           record.execution.playbookId,
           record.execution.playbookVersion,
           record.execution.playbookEntryKey,

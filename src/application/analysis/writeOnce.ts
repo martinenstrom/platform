@@ -99,6 +99,27 @@ export function claimSemanticKey(claim: AgentClaim): string {
 }
 
 /**
+ * What one run produced, as a **set**.
+ *
+ * Order is not semantic. `listForRun` sorts by id on both adapters, and the
+ * stored array is the work a run returned rather than a sequence — so the same
+ * claims in another order are the same production, not a second one.
+ *
+ * This exists for the reason at the top of this file, and PostgreSQL supplies a
+ * second one here: produced claims are stored whole as `jsonb`, and `jsonb`
+ * re-orders object keys on the way in. A direct string comparison against the
+ * caller's own object would therefore report a conflict on **every** replayed
+ * write in PostgreSQL and none in memory — the two adapters disagreeing about
+ * what "the same production" means, which is the exact failure this module was
+ * written to end.
+ */
+export function producedClaimsSemanticKey(claims: readonly AgentClaim[]): string {
+  return asCanonicalValueString({
+    claims: sorted(claims.map(claimSemanticKey)),
+  })
+}
+
+/**
  * An evidence set, **including its payloads**.
  *
  * The set's id hashes `[observationId, contentHash]` per item — its

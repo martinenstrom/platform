@@ -1075,6 +1075,160 @@ export function describeRepositoryContract(name: string, options: ContractOption
       })
     })
 
+    /* ------------------------------------------------------- produced work */
+
+    /**
+     * Work an agent produced that no human has accepted.
+     *
+     * Kept apart from the claims store on purpose: every citation in the
+     * institution resolves against `claims`, so work that is not in it cannot
+     * be cited. In PostgreSQL that is a foreign key; in memory it is the same
+     * absence. Both are checked here, against the same expectations, because
+     * the contract is the authority and neither adapter defines this alone.
+     */
+    describe('produced claims are stored apart from the record', () => {
+      it('reads back what a run produced', async () => {
+        await seedCase()
+        await repos.producedClaims.record('run-1', 'case-1', [claim('p-2'), claim('p-1')])
+
+        const produced = await repos.producedClaims.listForRun('run-1')
+        // Ordered by id, like the institutional repository it mirrors.
+        expect(produced.map((c) => c.id)).toEqual(['p-1', 'p-2'])
+      })
+
+      it('keeps produced work out of the institutional store', async () => {
+        await seedCase()
+        await repos.producedClaims.record('run-1', 'case-1', [claim('p-1')])
+
+        /*
+         * The assertion the whole separation exists for. Producing work must
+         * not make it findable where citations look.
+         */
+        expect(await repos.claims.get('p-1')).toBeNull()
+        expect(await repos.claims.listForCase('case-1')).toEqual([])
+        expect(await repos.claims.listForRun('run-1')).toEqual([])
+      })
+
+      it('accepts the identical set again as the replay it is', async () => {
+        await seedCase()
+        await repos.producedClaims.record('run-1', 'case-1', [claim('p-1')])
+        await repos.producedClaims.record('run-1', 'case-1', [claim('p-1')])
+
+        expect(await repos.producedClaims.listForRun('run-1')).toHaveLength(1)
+      })
+
+      it('refuses a second, different account of what the agent returned', async () => {
+        await seedCase()
+        await repos.producedClaims.record('run-1', 'case-1', [claim('p-1')])
+
+        await expect(
+          repos.producedClaims.record('run-1', 'case-1', [
+            claim('p-1', { statement: 'Something else entirely' }),
+          ]),
+        ).rejects.toThrow(ConflictingRecordError)
+      })
+
+      it('is empty for a run that produced nothing', async () => {
+        await seedCase()
+        expect(await repos.producedClaims.listForRun('run-1')).toEqual([])
+      })
+
+      it('refuses to record an empty production', async () => {
+        await seedCase()
+        /*
+         * "The agent returned nothing" and "the agent was never asked" must not
+         * be the same row.
+         */
+        await expect(repos.producedClaims.record('run-1', 'case-1', [])).rejects.toThrow()
+      })
+    })
+
+    /* ---------------------------------------------------------- rejection */
+
+    describe('a run a person declined', () => {
+      it('round-trips the rejection beside the run, not folded into failure', async () => {
+        await seedCase()
+        const stored = await repos.runs.save(
+          run('run-1', (await repos.evidence.save(evidenceSet())).id, {
+            state: 'rejected',
+            completedAt: AT,
+            rejection: {
+              code: 'unsupported-by-evidence',
+              detail: 'The claim outruns what the evidence shows.',
+              rejectedByEmployeeId: f.ownerEmployeeId,
+              rejectedAt: AT,
+            },
+          }),
+          prov,
+        )
+
+        expect(stored.rejection).toEqual({
+          code: 'unsupported-by-evidence',
+          detail: 'The claim outruns what the evidence shows.',
+          rejectedByEmployeeId: f.ownerEmployeeId,
+          rejectedAt: AT,
+        })
+        /* A rejected run produced work; it did not fail. */
+        expect(stored.failure).toBeUndefined()
+
+        const read = await repos.runs.get('run-1')
+        expect(read!.rejection).toEqual(stored.rejection)
+        expect(read!.state).toBe('rejected')
+      })
+
+      it('carries no rejection on a run nobody declined', async () => {
+        const { setId } = await seedCase()
+        const read = await repos.runs.get('run-1')
+        expect(read!.rejection).toBeUndefined()
+        expect(setId).toBeTruthy()
+      })
+
+      it('frees the assignment for another attempt', async () => {
+        /*
+         * `rejected` is terminal, so it releases the one-active-run slot. If it
+         * did not, the first rejection would be permanent: the desk could never
+         * be asked again, because the store would refuse the second run. The
+         * domain agrees — `isRunTerminal('rejected')` is true — and this is
+         * where the two are checked against each other.
+         */
+        const { setId } = await seedCase()
+        await repos.runs.save(
+          run('run-1', setId, {
+            state: 'rejected',
+            completedAt: AT,
+            rejection: {
+              code: 'insufficient-analysis',
+              detail: 'Went in the right direction and did not go far enough.',
+              rejectedByEmployeeId: f.ownerEmployeeId,
+              rejectedAt: AT,
+            },
+          }),
+          prov,
+        )
+
+        const retry = await repos.runs.save(
+          run('run-2', setId, { assignmentId: 'a-run-1' }),
+          prov,
+        )
+        expect(retry.state).toBe('running')
+        expect(retry.assignmentId).toBe('a-run-1')
+      })
+
+      it('still refuses a second run while the first awaits a person', async () => {
+        /*
+         * The near miss. `awaiting-acceptance` has NOT settled — somebody has
+         * to act — so the slot stays taken and a second contribution against
+         * the same assignment is refused.
+         */
+        const { setId } = await seedCase()
+        await repos.runs.save(run('run-1', setId, { state: 'awaiting-acceptance' }), prov)
+
+        await expect(
+          repos.runs.save(run('run-2', setId, { assignmentId: 'a-run-1' }), prov),
+        ).rejects.toThrow()
+      })
+    })
+
     /* -------------------------------------------- revision-scoped governance */
 
     describe('revision-scoped governance', () => {

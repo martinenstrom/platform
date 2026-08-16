@@ -18,6 +18,8 @@ import { instantiatePlaybook } from './instantiatePlaybook'
 import { proposeThesis } from './proposeThesis'
 import { startAgentRun } from './startAgentRun'
 import { recordContribution } from './recordContribution'
+import { acceptContribution } from './acceptContribution'
+import { rejectContribution } from './rejectContribution'
 import { failAgentRun } from './failAgentRun'
 import { aggregateManagerConclusion } from './aggregateManagerConclusion'
 import { reviseThesis } from './reviseThesis'
@@ -46,6 +48,8 @@ export function productionCommands(
     proposeThesis(organization),
     startAgentRun(organization),
     recordContribution(organization),
+    acceptContribution(organization),
+    rejectContribution(organization),
     failAgentRun(organization),
     aggregateManagerConclusion(organization),
     reviseThesis(organization),

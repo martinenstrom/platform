@@ -308,6 +308,11 @@
         {
           "runId": "run-00f5f5ac8e7bdb996afdd7df55419049",
           "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
+        {
+          "runId": "run-00f5f5ac8e7bdb996afdd7df55419049",
+          "at": "2026-08-01T09:00:00.000Z",
           "state": "completed"
         },
         {
@@ -367,6 +372,11 @@
       "startedAt": "2026-08-01T09:00:00.000Z",
       "completedAt": "2026-08-01T09:00:00.000Z",
       "events": [
+        {
+          "runId": "run-7dea2d69f8a496fceac01e1ce60e696c",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
         {
           "runId": "run-7dea2d69f8a496fceac01e1ce60e696c",
           "at": "2026-08-01T09:00:00.000Z",
@@ -430,6 +440,11 @@
       "startedAt": "2026-08-01T09:00:00.000Z",
       "completedAt": "2026-08-01T09:00:00.000Z",
       "events": [
+        {
+          "runId": "run-c3ddd8ed23dd519d3f3bd12ec3c50d0d",
+          "at": "2026-08-01T09:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
         {
           "runId": "run-c3ddd8ed23dd519d3f3bd12ec3c50d0d",
           "at": "2026-08-01T09:00:00.000Z",
@@ -601,7 +616,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "9d14e29e25579b6c70a9226c9136d9c21278fd00a768728956ac94221c63c73a"
+          "digest": "dfda24fac46d1bc79afe605d0cabf0ff5e11219a2db23b764bf183dd5e074812"
         }
       }
     },
@@ -652,7 +667,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "6b58521bfc0c64738965e757e5e4791fc3c8a41b1dfdb0fd9f49e28d1adb4892"
+          "digest": "32d3eee5b8cc45daf5736bf5717765f99521e8a57d6633f85d86dbe51a313658"
         }
       }
     }
@@ -821,16 +836,15 @@
       "fromState": null
     },
     {
-      "eventId": "evt-29c0611aa1fb01b419bd33c61d1c25c4",
+      "eventId": "evt-2cf523bc347855c391083c2d4c581fd3",
       "subject": "assignment",
       "caseId": "hq-reconsidered",
-      "assignmentId": "asg-9837633389881e8229821e9235ae8412",
+      "assignmentId": "asg-9581605671740e08a49bef5abaddd938",
       "toState": "completed",
-      "actorEmployeeId": "macro-head",
-      "actorDepartmentId": "global-macro",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
-      "causationId": "evt-71711483db2a6715fa1659f7abbb3085",
       "aggregateVersion": 2,
       "fromState": "active"
     },
@@ -845,6 +859,20 @@
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
       "fromState": "intake"
+    },
+    {
+      "eventId": "evt-2e457b82338f3daf4a5cf34bb613be5f",
+      "subject": "run",
+      "caseId": "hq-reconsidered",
+      "assignmentId": "asg-05e6f67fca1469e06430e2c5248388d0",
+      "runId": "run-7dea2d69f8a496fceac01e1ce60e696c",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
     },
     {
       "eventId": "evt-3784c569429daacedc5df2a1e6b29f9e",
@@ -873,7 +901,7 @@
       "fromState": null
     },
     {
-      "eventId": "evt-5d9b08d4fd9a17111605627a3fd553e1",
+      "eventId": "evt-62351ab861c6b896ae609efe72e6ade6",
       "subject": "assignment",
       "caseId": "hq-reconsidered",
       "assignmentId": "asg-05e6f67fca1469e06430e2c5248388d0",
@@ -882,33 +910,18 @@
       "actorDepartmentId": "quant-technical",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
-      "causationId": "evt-6e1cabfb8b9b9fd0d86e82910c1702e0",
       "aggregateVersion": 2,
       "fromState": "active"
     },
     {
-      "eventId": "evt-6e1cabfb8b9b9fd0d86e82910c1702e0",
+      "eventId": "evt-6f5fb2f38654b5f08d852d1f210854c0",
       "subject": "run",
       "caseId": "hq-reconsidered",
-      "assignmentId": "asg-05e6f67fca1469e06430e2c5248388d0",
-      "runId": "run-7dea2d69f8a496fceac01e1ce60e696c",
-      "toState": "completed",
-      "actorEmployeeId": "quant-head",
-      "actorDepartmentId": "quant-technical",
-      "occurredAt": "2026-08-01T09:00:00.000Z",
-      "correlationId": "macro-flow",
-      "aggregateVersion": 2,
-      "fromState": "running"
-    },
-    {
-      "eventId": "evt-71711483db2a6715fa1659f7abbb3085",
-      "subject": "run",
-      "caseId": "hq-reconsidered",
-      "assignmentId": "asg-9837633389881e8229821e9235ae8412",
-      "runId": "run-00f5f5ac8e7bdb996afdd7df55419049",
-      "toState": "completed",
-      "actorEmployeeId": "macro-head",
-      "actorDepartmentId": "global-macro",
+      "assignmentId": "asg-9581605671740e08a49bef5abaddd938",
+      "runId": "run-c3ddd8ed23dd519d3f3bd12ec3c50d0d",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
@@ -943,7 +956,7 @@
       "fromState": null
     },
     {
-      "eventId": "evt-845b77d9a0d1a967e0586e22eaaa2057",
+      "eventId": "evt-7bde80bac98142827633f52b4cf0a772",
       "subject": "run",
       "caseId": "hq-reconsidered",
       "assignmentId": "asg-9581605671740e08a49bef5abaddd938",
@@ -954,7 +967,7 @@
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
-      "fromState": "running"
+      "fromState": "awaiting-acceptance"
     },
     {
       "eventId": "evt-8a6f44c2ca1034d170b6fb1843311261",
@@ -999,18 +1012,18 @@
       "fromState": "queued"
     },
     {
-      "eventId": "evt-9ea22db5e2705418f02f4fdf9e6e42e8",
-      "subject": "assignment",
+      "eventId": "evt-9c4a3455e761be6519e40949b6e59f75",
+      "subject": "run",
       "caseId": "hq-reconsidered",
-      "assignmentId": "asg-9581605671740e08a49bef5abaddd938",
+      "assignmentId": "asg-05e6f67fca1469e06430e2c5248388d0",
+      "runId": "run-7dea2d69f8a496fceac01e1ce60e696c",
       "toState": "completed",
-      "actorEmployeeId": "research-director",
-      "actorDepartmentId": "research-office",
+      "actorEmployeeId": "quant-head",
+      "actorDepartmentId": "quant-technical",
       "occurredAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow",
-      "causationId": "evt-845b77d9a0d1a967e0586e22eaaa2057",
       "aggregateVersion": 2,
-      "fromState": "active"
+      "fromState": "awaiting-acceptance"
     },
     {
       "eventId": "evt-b42cacc080c7056f41173eadea84cf3f",
@@ -1025,6 +1038,20 @@
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
       "fromState": null
+    },
+    {
+      "eventId": "evt-b86162823a04d648103e6989229b3178",
+      "subject": "run",
+      "caseId": "hq-reconsidered",
+      "assignmentId": "asg-9837633389881e8229821e9235ae8412",
+      "runId": "run-00f5f5ac8e7bdb996afdd7df55419049",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
     },
     {
       "eventId": "evt-c78951c6390a02dcd07440c0454fca8c",
@@ -1095,6 +1122,33 @@
       "correlationId": "macro-flow",
       "aggregateVersion": 2,
       "fromState": null
+    },
+    {
+      "eventId": "evt-ec10ffd48faccbb2e27042808faed642",
+      "subject": "run",
+      "caseId": "hq-reconsidered",
+      "assignmentId": "asg-9837633389881e8229821e9235ae8412",
+      "runId": "run-00f5f5ac8e7bdb996afdd7df55419049",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-f5ec4652b8be496ff36165d63aa49bbf",
+      "subject": "assignment",
+      "caseId": "hq-reconsidered",
+      "assignmentId": "asg-9837633389881e8229821e9235ae8412",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "macro-flow",
+      "aggregateVersion": 2,
+      "fromState": "active"
     },
     {
       "eventId": "evt-1358f775d51ee62afc3bc3401478e03a",

@@ -79,6 +79,7 @@ describe('a clean database reaches the expected schema', () => {
       '0024',
       '0025',
       '0026',
+      '0027',
     ])
   })
 
@@ -129,6 +130,7 @@ describe('a clean database reaches the expected schema', () => {
       'playbook_entry_dependencies',
       'playbook_versions',
       'playbooks',
+      'produced_claims',
       'requirement_resolutions',
       'responsibilities',
       'reviews',

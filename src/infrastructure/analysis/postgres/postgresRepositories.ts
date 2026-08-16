@@ -69,9 +69,11 @@ import { poolScope, runInTransaction, type Scope } from './transaction'
 import {
   ASSIGNMENT_SQL,
   CLAIM_SQL,
+  PRODUCED_CLAIM_SQL,
   RUN_SQL,
   createAssignmentRepository,
   createClaimRepository,
+  createProducedClaimRepository,
   createRunRepository,
 } from './workRepositories'
 import {
@@ -136,6 +138,7 @@ const CATALOGS = registerCatalogues([
   { name: 'assignment', statements: ASSIGNMENT_SQL },
   { name: 'run', statements: RUN_SQL },
   { name: 'claim', statements: CLAIM_SQL },
+  { name: 'producedClaim', statements: PRODUCED_CLAIM_SQL },
   { name: 'evidence', statements: EVIDENCE_SQL },
   { name: 'result', statements: RESULT_SQL },
   { name: 'review', statements: REVIEW_SQL },
@@ -228,6 +231,7 @@ export async function createPostgresRepositories(
     assignments: createAssignmentRepository(scope, context, tenantId),
     runs: createRunRepository(scope, context, tenantId),
     claims: createClaimRepository(scope, context, tenantId),
+    producedClaims: createProducedClaimRepository(scope, context, tenantId),
     reviews: createReviewRepository(scope, context, tenantId),
     events: createEventRepository(scope, context, tenantId),
     evidence: createEvidenceRepository(scope, context),

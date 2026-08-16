@@ -117,6 +117,11 @@ export interface RunRow {
   failure_retryable: boolean | null
   failure_attempt: number | null
   failed_at: string | null
+  /** Present only for `state = 'rejected'`, and then all four are. */
+  rejection_code: string | null
+  rejection_detail: string | null
+  rejected_by_employee_id: string | null
+  rejected_at: string | null
   playbook_id: string
   playbook_version: string
   playbook_entry_key: string

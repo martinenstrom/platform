@@ -906,6 +906,7 @@ describe('Phase C1A — the command foundation', () => {
       (f) => inLayer(f, 'application/analysis/commands/') && !isTest(f),
     ).map((f) => f.path.split('/').pop())
     expect(handlers?.sort()).toEqual([
+      'acceptContribution.ts',
       'aggregateManagerConclusion.ts',
       'definition.ts',
       'envelope.ts',
@@ -920,6 +921,7 @@ describe('Phase C1A — the command foundation', () => {
       'recordRiskReview.ts',
       'recordVerificationReview.ts',
       'registry.ts',
+      'rejectContribution.ts',
       'reopenForReconsideration.ts',
       'resolveCommand.ts',
       'resolveConditionalRequirement.ts',

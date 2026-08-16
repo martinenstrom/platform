@@ -33,6 +33,8 @@ import { openInvestmentCase } from '~/application/analysis/commands/openInvestme
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
+import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
+import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { CANONICALIZATION_VERSION, resultKey } from '~/application/analysis/resultStore'
@@ -221,7 +223,7 @@ const record = (
       runId,
       departmentId: 'global-macro',
       claims,
-      observedStates: ['running', 'completed'] as const,
+      observedStates: ['running'] as const,
       usage: { state: 'not-applicable' } as const,
       ...over,
     },
@@ -234,11 +236,41 @@ const record = (
     deps,
   )
 
+/**
+ * The human act that follows production.
+ *
+ * Separate from `record` on purpose: these are two institutional acts now, and
+ * a helper that fused them would hide the boundary the tests below exist to
+ * check.
+ */
+const accept = (commandId = 'cmd-accept') =>
+  runCommand(
+    acceptContribution(organization),
+    { caseId: 'case-1', runId, departmentId: 'global-macro' },
+    envelope({
+      commandId,
+      occurredAt: LATER,
+      actor: { kind: 'employee', employeeId: 'macro-analyst' },
+    }),
+    deps,
+  )
+
+/** Produce, then accept — what the old single-act `record` used to do. */
+const recordAndAccept = async (
+  claims: readonly AgentClaim[],
+  over: Record<string, unknown> = {},
+  commandId = 'cmd-record',
+) => {
+  const produced = await record(claims, over, commandId)
+  if (produced.outcome !== 'committed') return produced
+  return accept(`${commandId}-accept`)
+}
+
 /* ------------------------------------------------------- the contribution */
 
 describe('RecordContribution', () => {
-  it('completes the run, the claims and the assignment in one act', async () => {
-    const result = await record([claim()])
+  it('completes the run, the claims and the assignment once a human accepts', async () => {
+    const result = await recordAndAccept([claim()])
     expect(result.outcome).toBe('committed')
 
     const run = await repositories.runs.get(runId)
@@ -255,7 +287,7 @@ describe('RecordContribution', () => {
   })
 
   it('gives the claim an identity the firm derived, not one the provider chose', async () => {
-    await record([claim()])
+    await recordAndAccept([claim()])
     const [stored] = await repositories.claims.listForRun(runId)
 
     // The provider called it `c-1`. Two cases replaying one fixture would then
@@ -265,7 +297,7 @@ describe('RecordContribution', () => {
   })
 
   it('stores the immutable result, marked as the replay it is', async () => {
-    await record([claim()])
+    await recordAndAccept([claim()])
     const run = await repositories.runs.get(runId)
 
     const stored = await repositories.results.get(
@@ -289,13 +321,40 @@ describe('RecordContribution', () => {
   })
 
   it('records only the states the provider actually reported', async () => {
-    await record([claim()], { observedStates: ['running', 'completed'] })
+    await record([claim()], { observedStates: ['running'] })
     const run = await repositories.runs.get(runId)
 
     // `running` was already recorded when the run started; a second one would
     // be a transition to itself, which the activity feed would render as a
     // department starting work it was already doing.
-    expect(run!.events.map((e) => e.state)).toEqual(['running', 'completed'])
+    //
+    // The log ends at `awaiting-acceptance` — the state the run actually
+    // reached. Completion is appended by `AcceptContribution`, when it is true.
+    expect(run!.events.map((e) => e.state)).toEqual(['running', 'awaiting-acceptance'])
+  })
+
+  it('refuses a provider that reports having completed', async () => {
+    /*
+     * The activity feed renders run events directly. A provider able to report
+     * `completed` could therefore put "the macro desk finished" on the
+     * headquarters floor for work no human has read — the one claim this whole
+     * boundary exists to withhold.
+     */
+    const outcome = await record([claim()], {
+      observedStates: ['running', 'completed'],
+    })
+
+    expect(outcome.outcome).toBe('rejected')
+    const run = await repositories.runs.get(runId)
+    // Refused, and nothing recorded: not the state, and not the work.
+    expect(run!.state).toBe('running')
+    expect(await repositories.producedClaims.listForRun(runId)).toEqual([])
+  })
+
+  it('refuses a provider that reports an outcome only the firm can settle', async () => {
+    /* `failed` is `FailAgentRun`'s to record, for the same reason. */
+    const outcome = await record([claim()], { observedStates: ['failed'] })
+    expect(outcome.outcome).toBe('rejected')
   })
 
   it('records a replay as having consumed nothing, not as free', async () => {
@@ -339,8 +398,8 @@ describe('RecordContribution', () => {
   })
 
   it('replays to the same contribution rather than recording a second', async () => {
-    const first = await record([claim()])
-    const replay = await record([claim()])
+    const first = await recordAndAccept([claim()])
+    const replay = await recordAndAccept([claim()])
 
     expect(first.outcome).toBe('committed')
     expect(replay.outcome).toBe('committed')
@@ -458,7 +517,10 @@ describe('what a contribution may not be', () => {
   })
 
   it('keeps a counterclaim pointing at the claim it was written to contest', async () => {
-    await record([claim(), claim({ id: 'c-2', type: 'counterclaim', contests: 'c-1' })])
+    await recordAndAccept([
+      claim(),
+      claim({ id: 'c-2', type: 'counterclaim', contests: 'c-1' }),
+    ])
 
     const stored = await repositories.claims.listForRun(runId)
     const counter = stored.find((c) => c.type === 'counterclaim')
@@ -522,7 +584,10 @@ describe('what a contribution may not be', () => {
   })
 
   it('gives two claims two identities', async () => {
-    await record([claim(), claim({ id: 'c-2', statement: 'and the 2y at 2.10' })])
+    await recordAndAccept([
+      claim(),
+      claim({ id: 'c-2', statement: 'and the 2y at 2.10' }),
+    ])
     const stored = await repositories.claims.listForRun(runId)
 
     expect(stored).toHaveLength(2)
@@ -545,16 +610,21 @@ describe('what a contribution may not be', () => {
       runId,
     )
 
-    const result = await record(
+    const result = await recordAndAccept(
       [claim(), claim({ id: 'c-2', statement: 'and the 2y at 2.10' })],
       {},
       'cmd-rollback',
     )
 
     expect(result.outcome).toBe('failed')
-    // Everything or nothing: the run is still running, the assignment is still
-    // active, no result was stored, and the first claim did not survive.
-    expect((await repositories.runs.get(runId))!.state).toBe('running')
+    /*
+     * Everything or nothing — now of the ACCEPTANCE act, which is where claims
+     * reach the institution and therefore where the conflict surfaces. The run
+     * falls back to awaiting acceptance rather than to running: the work was
+     * produced and is still there to be judged, and only the attempt to admit
+     * it failed.
+     */
+    expect((await repositories.runs.get(runId))!.state).toBe('awaiting-acceptance')
     expect((await repositories.assignments.get(assignmentId))?.status).toBe('active')
     expect(await repositories.claims.listForRun(runId)).toHaveLength(1)
   })
@@ -638,8 +708,8 @@ describe('a result that arrives after the world moved on', () => {
   })
 
   it('refuses a second contribution once the run has settled', async () => {
-    await record([claim()], {}, 'cmd-first')
-    const late = await record(
+    await recordAndAccept([claim()], {}, 'cmd-first')
+    const late = await recordAndAccept(
       [claim({ statement: 'actually, something else' })],
       {},
       'cmd-late',
@@ -715,5 +785,234 @@ describe('a result that arrives after the world moved on', () => {
     })
     // Not reattached to whatever the current revision happens to be.
     expect(await repositories.claims.listForCase('case-1')).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------ the human boundary */
+
+/**
+ * The three citability assertions, which are C2-1's exit criteria.
+ *
+ * Generated work is **operational** until a person accepts it; accepted work is
+ * **institutional**; rejected work is durable operational history and never
+ * citable institutional evidence. Each of the three is checked by trying to
+ * cite the work through a real institutional path — a counterclaim from another
+ * desk — rather than by reading a flag and trusting it.
+ *
+ * The mechanism is the separation itself. Every citation in the institution is
+ * a reference into the claims store, and produced work is not in it, so citing
+ * unaccepted work fails because the claim is not there. In PostgreSQL that is a
+ * foreign key; here it is the same absence. Neither is a filter that a consumer
+ * had to remember to apply.
+ */
+describe('citing an agent’s work, before and after a person judges it', () => {
+  /** The stored identity of the claim produced under `cmd-record`. */
+  const producedClaimId = () => deriveClaimId('cmd-record', 'c-1')
+
+  /**
+   * Another desk contesting the macro desk's claim.
+   *
+   * A counterclaim across runs is the Devil's Advocate's whole purpose, which
+   * makes it the honest way to ask "can this work be cited yet?".
+   */
+  const contestFromQuantDesk = async (commandId: string) => {
+    const quantId = deriveAssignmentId('cmd-inst', 'quant-validation')
+    await runCommand(
+      startAgentRun(organization),
+      {
+        caseId: 'case-1',
+        assignmentId: quantId,
+        departmentId: 'quant-technical',
+        evidenceSetId: evidenceSet.id,
+        ...RUN_DECLARATION,
+      },
+      envelope({
+        commandId: `${commandId}-run`,
+        actor: { kind: 'employee', employeeId: 'quant-head' },
+      }),
+      deps,
+    )
+
+    return runCommand(
+      recordContribution(organization),
+      {
+        caseId: 'case-1',
+        runId: deriveRunId(`${commandId}-run`, quantId),
+        departmentId: 'quant-technical',
+        claims: [
+          claim({
+            id: 'q-1',
+            type: 'counterclaim',
+            statement: 'The 10y print is stale',
+            contests: producedClaimId(),
+          }),
+        ],
+        observedStates: ['running'],
+        usage: { state: 'not-applicable' },
+      },
+      envelope({
+        commandId: `${commandId}-record`,
+        actor: { kind: 'employee', employeeId: 'quant-head' },
+      }),
+      deps,
+    )
+  }
+
+  const decline = (commandId = 'cmd-reject', over: Record<string, unknown> = {}) =>
+    runCommand(
+      rejectContribution(organization),
+      {
+        caseId: 'case-1',
+        runId,
+        departmentId: 'global-macro',
+        code: 'unsupported-by-evidence',
+        detail: 'The 10y print does not support a claim about the ECB path.',
+        ...over,
+      },
+      envelope({
+        commandId,
+        occurredAt: LATER,
+        actor: { kind: 'employee', employeeId: 'macro-analyst' },
+      }),
+      deps,
+    )
+
+  /* ------------------------------------------------------------ produced */
+
+  it('cannot be cited while it is awaiting a person', async () => {
+    await record([claim()])
+
+    // Real, durable, paid for — and outside the store citations resolve
+    // against, which is the whole design.
+    expect(await repositories.producedClaims.listForRun(runId)).toHaveLength(1)
+    expect(await repositories.claims.listForCase('case-1')).toEqual([])
+    expect(await repositories.claims.get(producedClaimId())).toBeNull()
+
+    /*
+     * And the citation fails because the claim is not there — not because
+     * something checked a status and decided to say no. There is no filter in
+     * this path to forget.
+     */
+    expect(await contestFromQuantDesk('cmd-early')).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'not-found' },
+    })
+
+    // Nothing else was released either: the desk's obligation is not
+    // discharged while nobody has accepted the work.
+    expect((await repositories.assignments.get(assignmentId))!.status).toBe('active')
+  })
+
+  /* ------------------------------------------------------------ accepted */
+
+  it('becomes citable through the unchanged model once a person accepts it', async () => {
+    await record([claim()])
+    expect((await accept()).outcome).toBe('committed')
+
+    /*
+     * The SAME claim, with the same id and the same content. There is no second
+     * canonicalisation and no second content hash — a claim that hashed
+     * differently depending on which side of acceptance it was read from would
+     * not be content-addressed at all.
+     */
+    const [produced] = await repositories.producedClaims.listForRun(runId)
+    const institutional = await repositories.claims.get(producedClaimId())
+    expect(institutional).not.toBeNull()
+    expect(institutional).toEqual(produced)
+
+    // And it is now citable, through exactly the path that refused before.
+    expect(await contestFromQuantDesk('cmd-late')).toMatchObject({
+      outcome: 'committed',
+    })
+
+    // The obligation is discharged here, and not before.
+    expect((await repositories.assignments.get(assignmentId))!.status).toBe('completed')
+  })
+
+  /* ------------------------------------------------------------ rejected */
+
+  it('stays readable and stays uncitable once a person declines it', async () => {
+    await record([claim()])
+    expect((await decline()).outcome).toBe('committed')
+
+    const run = await repositories.runs.get(runId)
+    expect(run!.state).toBe('rejected')
+    /* Never a kind of `failed`: every call succeeded. */
+    expect(run!.failure).toBeUndefined()
+    expect(run!.rejection).toMatchObject({
+      code: 'unsupported-by-evidence',
+      rejectedByEmployeeId: 'macro-analyst',
+      rejectedAt: LATER,
+    })
+
+    /*
+     * The firm keeps what it paid for and what it thought of it. Over years
+     * this is what answers "which agents are rejected most, and why".
+     */
+    expect(await repositories.producedClaims.listForRun(runId)).toHaveLength(1)
+
+    // And it never becomes evidence. Same absence, same refusal.
+    expect(await repositories.claims.listForCase('case-1')).toEqual([])
+    expect(await contestFromQuantDesk('cmd-after-reject')).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'not-found' },
+    })
+  })
+
+  /* ------------------------------------------------- the act, not the work */
+
+  it('refuses a rejection that does not say what was wrong', async () => {
+    await record([claim()])
+    /*
+     * A code with no explanation records that the firm declined the work
+     * without recording what would make the next attempt better.
+     */
+    expect(await decline('cmd-blank', { detail: '   ' })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect((await repositories.runs.get(runId))!.state).toBe('awaiting-acceptance')
+  })
+
+  it('refuses a reason outside the vocabulary the firm counts', async () => {
+    await record([claim()])
+    expect(await decline('cmd-novel', { code: 'below-quality-bar' })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+  })
+
+  it('lets a decision be made once', async () => {
+    await record([claim()])
+    expect((await accept()).outcome).toBe('committed')
+
+    // A settled run keeps the outcome it settled on.
+    expect(await decline('cmd-too-late')).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'illegal-prior-state' },
+    })
+  })
+
+  it('refuses acceptance of work that was never produced', async () => {
+    /* The run is running: there is nothing to judge yet. */
+    expect(await accept('cmd-premature')).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'illegal-prior-state' },
+    })
+  })
+
+  it('refuses another department judging this desk’s work', async () => {
+    await record([claim()])
+    const foreign = await runCommand(
+      acceptContribution(organization),
+      { caseId: 'case-1', runId, departmentId: 'quant-technical' },
+      envelope({
+        commandId: 'cmd-foreign',
+        actor: { kind: 'employee', employeeId: 'quant-head' },
+      }),
+      deps,
+    )
+    expect(foreign.outcome).toBe('rejected')
+    expect((await repositories.runs.get(runId))!.state).toBe('awaiting-acceptance')
   })
 })

@@ -3,14 +3,25 @@
  *
  * The second half of the external-work boundary. The provider has already run,
  * outside any transaction; this command takes what came back and decides, in
- * one transaction, whether it becomes part of the record.
+ * one transaction, whether it is admissible enough to keep.
+ *
+ * ## It does not make the work institutional
+ *
+ * The run lands in `awaiting-acceptance` and the claims land in the
+ * produced-claim store — durable, readable, paid for, and outside
+ * `analysis.claims`, so nothing can verify, gate, aggregate or cite them.
+ * `AcceptContribution` is the only path across that boundary, and it is where
+ * the result store fills and the assignment completes. Neither happens here: a
+ * rejected result must never become reusable merely because the model produced
+ * it successfully, and work nobody accepted has not discharged the department's
+ * obligation.
  *
  * ## Everything or nothing
  *
- * Run completion, the immutable result, every claim, the assignment's
- * completion and the events commit together. A partial contribution is the
- * worst outcome available: a completed run with half its claims reads as a
- * desk that found less than it did, and nothing downstream could tell.
+ * The produced claims, the run's new state and the events commit together. A
+ * partial contribution is the worst outcome available: a run recorded with half
+ * its claims reads as a desk that found less than it did, and nothing
+ * downstream could tell.
  *
  * ## Where the checking happens, and why here
  *
@@ -32,13 +43,11 @@
  */
 
 import {
-  buildAssignment,
   buildClaim,
   buildRunRecord,
   canTransitionRun,
   type AgentClaim,
   type AgentRunRecord,
-  executionIdentityKey,
   type Organization,
   type RunEvent,
   type RunState,
@@ -46,7 +55,6 @@ import {
 } from '~/domain/analysis'
 import { buildTransitionEvent } from '~/domain/analysis'
 import { describeDefect, validateContribution } from '../contributionValidation'
-import { CANONICALIZATION_VERSION, resultKey } from '../resultStore'
 import { deriveClaimId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
@@ -66,11 +74,12 @@ export interface RecordContributionInput {
    */
   claims: readonly AgentClaim[]
   /**
-   * States the provider passed through.
+   * States the provider passed through, describing its own execution.
    *
    * Appended to the run's event log so the floor reflects what actually
-   * happened rather than a synthetic start-and-finish pair. Nothing invents a
-   * state here: a provider that reported none produces one completion event.
+   * happened rather than a synthetic start-and-finish pair. Bounded by
+   * `OBSERVABLE_BY_PROVIDER`: a provider reports progress, never an outcome the
+   * firm has not granted.
    */
   observedStates: readonly RunState[]
   /**
@@ -84,6 +93,23 @@ export interface RecordContributionInput {
    */
   usage: RunUsage
 }
+
+/**
+ * The states a provider may report having passed through.
+ *
+ * Progress only. Every outcome is excluded, and for two different reasons:
+ * `awaiting-acceptance` and `completed` are institutional facts the firm
+ * grants — the first by this command, the second only by a person — and every
+ * stopped state belongs to `FailAgentRun`, which is a separate command because
+ * failure is a different institutional fact rather than a completion with no
+ * output.
+ */
+const OBSERVABLE_BY_PROVIDER: readonly RunState[] = [
+  'queued',
+  'waiting-for-dependencies',
+  'ready',
+  'running',
+]
 
 export function recordContribution(
   _organization: Organization,
@@ -147,10 +173,11 @@ export function recordContribution(
             `arrives after the run settled is late, not authoritative.`,
         )
       }
-      if (!canTransitionRun(run.state, 'completed')) {
+      if (!canTransitionRun(run.state, 'awaiting-acceptance')) {
         reject(
           'illegal-prior-state',
-          `Run "${input.runId}" cannot move from ${run.state} to completed`,
+          `Run "${input.runId}" cannot move from ${run.state} to ` +
+            `awaiting-acceptance`,
         )
       }
 
@@ -214,6 +241,26 @@ export function recordContribution(
       }
 
       /*
+       * A provider describes its own execution and nothing beyond it. These
+       * states are appended to the run's event log, which the activity feed
+       * renders directly — so a provider permitted to report `completed` could
+       * put "the desk finished" on the headquarters floor for work no human has
+       * read, which is the one claim this whole boundary exists to withhold.
+       */
+      const unobservable = input.observedStates.filter(
+        (state) => !OBSERVABLE_BY_PROVIDER.includes(state),
+      )
+      if (unobservable.length > 0) {
+        reject(
+          'invariant-violated',
+          `A provider reported passing through ${unobservable
+            .map((state) => `"${state}"`)
+            .join(', ')}. A provider reports its own progress; how the work ` +
+            `settles is the firm's to record.`,
+        )
+      }
+
+      /*
        * A counterclaim may contest a claim from another desk's run, which is
        * the Devil's Advocate's whole purpose. Those ids are already stored, so
        * they are verified rather than translated — a dangling contest would be
@@ -244,21 +291,31 @@ export function recordContribution(
         }),
       )
 
-      for (const claim of stored) {
-        await repositories.claims.save(claim, input.caseId, run.id)
-      }
+      /*
+       * Into the produced-claim store, NOT the case.
+       *
+       * Generated work is operational until a human accepts it. These claims
+       * are durable and readable — the firm paid for them — and outside
+       * `analysis.claims`, so nothing can verify, gate, aggregate or cite them.
+       * `AcceptContribution` is the only path across that boundary.
+       */
+      await repositories.producedClaims.record(run.id, input.caseId, stored)
 
       const events = [
         ...run.events,
         ...contributionEvents(run, input, context.occurredAt),
       ]
 
-      const completed = await repositories.runs.save(
+      const produced = await repositories.runs.save(
         buildRunRecord({
           ...run,
-          state: 'completed',
-          completedAt: context.occurredAt,
-          claims: stored,
+          state: 'awaiting-acceptance',
+          /*
+           * `claims` is a projection of the institutional table, so it is
+           * empty here and correctly so: nothing has been accepted. The work
+           * lives in the produced-claim store until somebody says otherwise.
+           */
+          claims: [],
           usage: input.usage,
           events,
         }),
@@ -266,59 +323,32 @@ export function recordContribution(
       )
 
       /*
-       * The immutable result, keyed on every semantic input.
+       * The result store is deliberately NOT written here, and the assignment
+       * is deliberately NOT completed.
        *
-       * Written inside the same transaction as the run it describes: a stored
-       * result whose run rolled back would be reusable analysis attributed to
-       * work that never completed.
+       * The store exists so identical analysis can be reused rather than
+       * re-run. Filling it before acceptance would let a later identical run
+       * reuse work the firm declined — a rejected result becoming reusable
+       * merely because the model produced it successfully. And work nobody has
+       * accepted has not discharged the department's obligation.
+       *
+       * Both happen in `AcceptContribution`, atomically with the claims.
        */
-      const inputs = {
-        caseId: run.caseId,
-        evidenceSetId: run.evidenceSetId,
-        executionIdentity: executionIdentityKey(run.execution.identity),
-        agentContractVersion: run.agentContractVersion,
-        outputSchemaVersion: run.outputSchemaVersion,
-        canonicalizationVersion: CANONICALIZATION_VERSION,
-        agentImplementationVersion: run.execution.providerVersion,
-        playbookVersion: run.execution.playbookVersion,
-        departmentId: run.departmentId,
-      }
-
-      await repositories.results.put(
-        {
-          key: resultKey(inputs),
-          claims: stored,
-          storedAt: context.occurredAt,
-          providerKind: run.execution.providerKind,
-          inputs,
-        },
-        context.provenance,
-      )
-
-      await repositories.assignments.save(
-        buildAssignment({
-          ...assignment,
-          status: 'completed',
-          completedAt: context.occurredAt,
-        }),
-      )
-
-      const runEventId = deriveEventId({
-        commandId: context.commandId,
-        recordType: 'run-completed',
-        entityId: run.id,
-      })
 
       await repositories.events.append(
         buildTransitionEvent({
-          eventId: runEventId,
+          eventId: deriveEventId({
+            commandId: context.commandId,
+            recordType: 'run-produced-work',
+            entityId: run.id,
+          }),
           subject: 'run',
           caseId: input.caseId,
           assignmentId: run.assignmentId,
           runId: run.id,
           ...(run.revisionId ? { revisionId: run.revisionId } : {}),
           fromState: run.state,
-          toState: 'completed',
+          toState: 'awaiting-acceptance',
           actorEmployeeId: context.actor.employeeId ?? undefined,
           actorDepartmentId: run.departmentId,
           occurredAt: context.occurredAt,
@@ -327,28 +357,17 @@ export function recordContribution(
         }),
       )
 
-      await repositories.events.append(
-        buildTransitionEvent({
-          eventId: deriveEventId({
-            commandId: context.commandId,
-            recordType: 'assignment-completed',
-            entityId: assignment.id,
-          }),
-          subject: 'assignment',
-          caseId: input.caseId,
-          assignmentId: assignment.id,
-          fromState: assignment.status,
-          toState: 'completed',
-          actorEmployeeId: context.actor.employeeId ?? undefined,
-          actorDepartmentId: run.departmentId,
-          occurredAt: context.occurredAt,
-          correlationId: context.correlationId,
-          causationId: runEventId,
-          aggregateVersion: investmentCase.version,
-        }),
-      )
+      /*
+       * There is no assignment event here, because the assignment did not move.
+       * It stays `active`: the desk still owes work nobody has accepted. An
+       * event announcing a transition the row did not make would leave the
+       * timeline and the record disagreeing about the same assignment — and
+       * `awaiting-acceptance` is not an assignment status at all. The
+       * assignment completes in `AcceptContribution`, and its event is emitted
+       * there, where it is true.
+       */
 
-      return { value: completed, resultKind: 'run', resultRef: completed.id }
+      return { value: produced, resultKind: 'run', resultRef: produced.id }
     },
 
     async rehydrate(repositories, resultRef) {
@@ -367,11 +386,16 @@ export function recordContribution(
 /**
  * The run events this contribution adds.
  *
- * Only states the provider actually reported, plus the completion. A state
- * repeated from the one already recorded is dropped rather than written as a
- * transition to itself — the activity feed reads these directly, and a
- * department appearing to start work it was already doing is invented activity
- * however honestly it got there.
+ * Only states the provider actually reported, plus the state the run actually
+ * reached — `awaiting-acceptance`, not `completed`. The activity feed reads
+ * these directly, so writing `completed` here would put "the macro desk
+ * finished" on the floor for work no human has looked at, which is precisely
+ * the claim this whole boundary exists to withhold. Completion is appended by
+ * `AcceptContribution`, when it is true.
+ *
+ * A state repeated from the one already recorded is dropped rather than written
+ * as a transition to itself — a department appearing to start work it was
+ * already doing is invented activity however honestly it got there.
  */
 function contributionEvents(
   run: AgentRunRecord,
@@ -381,7 +405,7 @@ function contributionEvents(
   const added: RunEvent[] = []
   let previous: RunState = run.events[run.events.length - 1]?.state ?? run.state
 
-  for (const state of [...input.observedStates, 'completed' as const]) {
+  for (const state of [...input.observedStates, 'awaiting-acceptance' as const]) {
     if (state === previous) continue
     added.push({ runId: run.id, at, state })
     previous = state

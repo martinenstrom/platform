@@ -303,7 +303,7 @@ describe('recorded contributions', () => {
       model: { id: 'm', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
     },
     claims: [],
-    observedStates: ['running', 'completed'],
+    observedStates: ['running'],
   }
 
   it('replays deterministically', async () => {

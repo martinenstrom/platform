@@ -273,6 +273,7 @@ describe('command declarations', () => {
 
   it('registers exactly the approved commands', () => {
     expect(commands.map((c) => c.type).sort()).toEqual([
+      'AcceptContribution',
       'AggregateManagerConclusion',
       'FailAgentRun',
       'InstantiatePlaybook',
@@ -283,6 +284,7 @@ describe('command declarations', () => {
       'RecordDevilsAdvocateReview',
       'RecordRiskReview',
       'RecordVerificationReview',
+      'RejectContribution',
       'ReopenForReconsideration',
       'ResolveConditionalRequirement',
       'ReturnFromCioReview',

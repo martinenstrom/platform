@@ -414,6 +414,35 @@ export interface ClaimRepository {
 }
 
 /**
+ * Work an agent produced that no human has accepted.
+ *
+ * **Deliberately not the claims repository.** Generated work is operational
+ * until a person accepts it, and the separation is what makes non-citability
+ * structural: every citation in the institution — `contests`, `evidenceRefs`,
+ * an aggregation disposition, a challenge subject — is a foreign key into
+ * `analysis.claims`, and nothing produced is in it. Citing unaccepted work
+ * therefore fails at the database rather than at a filter somebody remembered.
+ *
+ * Claims cross this boundary **unchanged**. Acceptance moves the same claim,
+ * with the same id and the same content, into institutional storage; there is
+ * no second canonicalisation and no second content hash. A claim that hashed
+ * differently depending on which side of acceptance it was read from would not
+ * be content-addressed at all.
+ *
+ * Rejected work stays here, readable, for as long as the run does.
+ */
+export interface ProducedClaimRepository {
+  /**
+   * Records what a run produced. Idempotent on `runId`; one run produces one
+   * set of claims, and a second write with different content throws
+   * `ConflictingRecordError`.
+   */
+  record(runId: string, caseId: string, claims: readonly AgentClaim[]): Promise<void>
+  /** Ordered by `id`, like the institutional repository it mirrors. */
+  listForRun(runId: string): Promise<AgentClaim[]>
+}
+
+/**
  * Reviews for a case — both the case-wide ones and every revision-scoped one.
  *
  * There is deliberately no `…ForRevision` method. Matching a review to a
@@ -717,6 +746,7 @@ export interface AnalysisRepositories {
   assignments: AssignmentRepository
   runs: RunRepository
   claims: ClaimRepository
+  producedClaims: ProducedClaimRepository
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
@@ -790,6 +820,7 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   assignments: ['get', 'listForCase', 'listForDepartment', 'save'],
   runs: ['get', 'listForCase', 'save'],
   claims: ['get', 'listForRun', 'listForCase', 'save'],
+  producedClaims: ['record', 'listForRun'],
   reviews: [
     'nextSequence',
     'get',

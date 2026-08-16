@@ -89,6 +89,19 @@ export interface StageOutcome {
    */
   failureCategory?: RunFailureCategory
   /**
+   * Upstream entries whose work is produced and awaiting a human.
+   *
+   * Present only on `waiting-for-dependencies`, and the reason this state is
+   * distinguishable from "the upstream has not run yet". A dependency is
+   * satisfied by **accepted** claims: produced work is operational and does not
+   * unlock institutional work downstream, because an agent chain must not build
+   * on a premise no human has agreed belongs in the record.
+   *
+   * Named rather than implied, so a reader sees WHY the playbook stopped and
+   * whose desk ends the wait.
+   */
+  awaitingAcceptanceOf?: readonly string[]
+  /**
    * Set when a command refused rather than a provider failing.
    *
    * The two are different facts and were previously indistinguishable: an
@@ -167,10 +180,19 @@ export async function runPlaybook(
   const outcomes: StageOutcome[] = []
   const completed = new Set<string>()
   const failed = new Set<string>()
+  /** Entries that produced work and are waiting on a person. */
+  const awaitingAcceptance = new Set<string>()
   const claimsByKey = new Map<string, readonly AgentClaim[]>()
 
   for (;;) {
-    const ready = readyEntries(playbook, [...completed], [...failed])
+    /*
+     * Anything already awaiting a person is not ready again. It has produced
+     * its work; re-selecting it would loop forever, because it will never
+     * complete without an act the orchestrator is not permitted to perform.
+     */
+    const ready = readyEntries(playbook, [...completed], [...failed]).filter(
+      (entry) => !awaitingAcceptance.has(entry.key),
+    )
     if (ready.length === 0) break
 
     // Highest priority first, so a wave that exceeds the cap runs the most
@@ -185,7 +207,14 @@ export async function runPlaybook(
 
     for (const outcome of results) {
       outcomes.push(outcome)
-      if (outcome.state === 'completed' && !outcome.obsolete) {
+      /*
+       * Three destinations, not two. Work awaiting a human is neither a
+       * success that unlocks the graph nor a failure that blocks it — treating
+       * it as either would be the whole boundary collapsing into a boolean.
+       */
+      if (outcome.state === 'awaiting-acceptance') {
+        awaitingAcceptance.add(outcome.entryKey)
+      } else if (outcome.state === 'completed' && !outcome.obsolete) {
         completed.add(outcome.entryKey)
         claimsByKey.set(outcome.entryKey, outcome.claims)
       } else {
@@ -213,6 +242,38 @@ export async function runPlaybook(
       claims: [],
       startedAt: context.now().toISOString(),
       failureCategory: 'upstream-failed',
+    })
+  }
+
+  /*
+   * Entries that neither completed, failed, nor were blocked by a failure.
+   *
+   * They are waiting on a human. An upstream entry produced work that is in
+   * `awaiting-acceptance`, and until somebody accepts it the dependency is not
+   * satisfied — accepted claims satisfy dependencies, produced ones do not, and
+   * rejected ones never will.
+   *
+   * Recorded explicitly rather than left out of the outcomes. An entry that
+   * simply did not appear would be indistinguishable from one the playbook
+   * never contained, and "the run stopped and nobody can see why" is the
+   * failure this whole record exists to prevent.
+   */
+  const accountedFor = new Set([
+    ...completed,
+    ...failed,
+    ...awaitingAcceptance,
+    ...blocked.map((entry) => entry.key),
+  ])
+  for (const entry of playbook.entries) {
+    if (accountedFor.has(entry.key)) continue
+    const waitingOn = entry.blockedBy.filter((key) => awaitingAcceptance.has(key))
+    outcomes.push({
+      entryKey: entry.key,
+      departmentId: entry.departmentId,
+      state: 'waiting-for-dependencies',
+      claims: [],
+      startedAt: context.now().toISOString(),
+      ...(waitingOn.length > 0 ? { awaitingAcceptanceOf: waitingOn } : {}),
     })
   }
 
@@ -466,8 +527,17 @@ async function runEntry(
     })
   }
 
+  /*
+   * Produced, not completed.
+   *
+   * The work is real and durable and sits in `awaiting-acceptance`. It has not
+   * satisfied anything: a dependency is satisfied by ACCEPTED claims, because
+   * an agent chain must not build on a premise no human has agreed belongs in
+   * the record. Reporting this as `completed` would unlock every downstream
+   * entry on work nobody has looked at.
+   */
   return stage({
-    state: 'completed',
+    state: 'awaiting-acceptance',
     // The stored claims, with the identities the firm gave them — not the
     // provider's own ids, which are local to one contribution.
     claims: recorded.value.claims,

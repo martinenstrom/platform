@@ -130,33 +130,122 @@ const run = (
 const outcomeFor = (result: OrchestrationResult, key: string) =>
   result.outcomes.find((o) => o.entryKey === key)
 
+/**
+ * The entries that reached a provider and produced work in this pass.
+ *
+ * Derived, never hardcoded. A single pass ends at the first human checkpoint,
+ * so which entries run depends on the playbook's shape — and a hand-written
+ * list would turn every one of these tests into an assertion about the
+ * scheduler rather than about the boundary.
+ */
+const producedIn = (result: OrchestrationResult) =>
+  result.outcomes
+    .filter((o) => o.state === 'awaiting-acceptance')
+    .map((o) => o.entryKey)
+    .sort()
+
+/** The entries that could not run because somebody has not accepted yet. */
+const waitingIn = (result: OrchestrationResult) =>
+  result.outcomes
+    .filter((o) => o.state === 'waiting-for-dependencies')
+    .map((o) => o.entryKey)
+    .sort()
+
 /* ------------------------------------------------------------ the whole graph */
 
 describe('running a playbook', () => {
-  it('carries every entry through to a completed run', async () => {
+  it('stops at the human acceptance checkpoint, and says what it is waiting for', async () => {
+    /*
+     * The boundary, encoded rather than described.
+     *
+     * A dependency is satisfied by **accepted** claims. Produced work is
+     * operational: it may be inspected, accepted or rejected, and it does not
+     * unlock institutional work downstream — an agent chain must not build on a
+     * premise no human has agreed belongs in the record.
+     *
+     * So a live multi-step playbook stops at each checkpoint. That is
+     * deliberate for the first live-agent phase, and it is NOT a permanent
+     * removal of multi-step workflows: the eventual capability is checkpointed
+     * orchestration that resumes from newly eligible entries after acceptance,
+     * without replaying completed work. Recorded as TD-72 rather than smuggled
+     * in here.
+     */
     const result = await run(createStubContributionProvider())
 
-    expect([...result.completedKeys].sort()).toEqual([
-      'aggregation',
-      'challenge',
-      'macro-analysis',
-      'quant-validation',
-      'risk-review',
-      'verification',
-    ])
-    expect(result.missingRequired).toEqual([])
+    /*
+     * NOTHING completed. The two entries with nothing upstream of them
+     * produced work, and producing is not completing — completion is what a
+     * human grants.
+     */
+    expect([...result.completedKeys]).toEqual([])
 
+    const produced = result.outcomes.filter(
+      (outcome) => outcome.state === 'awaiting-acceptance',
+    )
+    /*
+     * Exactly the entries with nothing blocking them. Derived from the playbook
+     * rather than hardcoded: which of them land in one wave depends on
+     * concurrency, and a list written by hand would be asserting the scheduler
+     * rather than the boundary.
+     */
+    const independent = MACRO_REGIME_PLAYBOOK.entries
+      .filter((entry) => entry.blockedBy.length === 0)
+      .map((entry) => entry.key)
+      .sort()
+    expect(produced.map((outcome) => outcome.entryKey).sort()).toEqual(independent)
+
+    /*
+     * And the rest are visibly WAITING, not missing and not failed. An entry
+     * absent from the outcomes would be indistinguishable from one the playbook
+     * never contained.
+     */
+    const waiting = result.outcomes.filter(
+      (outcome) => outcome.state === 'waiting-for-dependencies',
+    )
+    /* And everything else is visibly waiting — nothing is silently absent. */
+    const dependent = MACRO_REGIME_PLAYBOOK.entries
+      .filter((entry) => entry.blockedBy.length > 0)
+      .map((entry) => entry.key)
+      .sort()
+    expect(waiting.map((outcome) => outcome.entryKey).sort()).toEqual(dependent)
+
+    /* Nothing failed. Waiting on a person is not an error. */
+    expect(result.outcomes.filter((outcome) => outcome.state === 'failed')).toEqual([])
+
+    /* The reason is readable: which upstream work is awaiting acceptance. */
+    const anyWaiting = waiting.find((outcome) => outcome.awaitingAcceptanceOf)!
+    expect(anyWaiting).toBeDefined()
+    for (const key of anyWaiting.awaitingAcceptanceOf!) {
+      expect(independent).toContain(key)
+    }
+
+    /* The produced work is real, durable, and not yet institutional. */
     const runs = await repositories.runs.listForCase('case-1')
-    expect(runs).toHaveLength(6)
-    expect(runs.every((r) => r.state === 'completed')).toBe(true)
+    const pendingRuns = runs.filter((entry) => entry.state === 'awaiting-acceptance')
+    expect(pendingRuns).toHaveLength(independent.length)
+    expect(await repositories.claims.listForCase('case-1')).toEqual([])
+    for (const pending of pendingRuns) {
+      expect(
+        (await repositories.producedClaims.listForRun(pending.id)).length,
+      ).toBeGreaterThan(0)
+    }
   })
 
-  it('leaves a command behind every durable effect', async () => {
-    await run(createStubContributionProvider())
+  it('leaves a command behind every durable effect, and none behind work that never ran', async () => {
+    const result = await run(createStubContributionProvider())
 
-    for (const entry of MACRO_REGIME_PLAYBOOK.entries) {
+    /*
+     * Derived from the outcomes rather than hardcoded. Which entries reach a
+     * provider in one pass is the checkpoint's business; a list written by hand
+     * would assert the scheduler instead of the rule.
+     */
+    const produced = producedIn(result)
+    expect(produced.length).toBeGreaterThan(0)
+
+    for (const key of produced) {
+      const entry = MACRO_REGIME_PLAYBOOK.entries.find((e) => e.key === key)!
       for (const act of ['start', 'record'] as const) {
-        const ledger = await repositories.commands.find(`cmd-${entry.key}-${act}`)
+        const ledger = await repositories.commands.find(`cmd-${key}-${act}`)
         expect(ledger?.outcomes.map((o) => o.state)).toEqual(['committed'])
         // Who set it in motion is not who is accountable for it.
         expect(ledger!.intent.initiator).toEqual({
@@ -166,6 +255,19 @@ describe('running a playbook', () => {
         expect(ledger!.intent.actor.employeeId).toBe(
           EMPLOYEE_BY_DEPARTMENT[entry.departmentId],
         )
+      }
+    }
+
+    /*
+     * And the converse, which the checkpoint makes worth stating: an entry
+     * waiting on a person left NOTHING in the ledger. Work that did not happen
+     * must not have a command behind it claiming that it did.
+     */
+    const waiting = waitingIn(result)
+    expect(waiting.length).toBeGreaterThan(0)
+    for (const key of waiting) {
+      for (const act of ['start', 'record'] as const) {
+        expect(await repositories.commands.find(`cmd-${key}-${act}`)).toBeNull()
       }
     }
   })
@@ -181,20 +283,47 @@ describe('running a playbook', () => {
     }
   })
 
-  it('passes only declared dependency outputs downstream', async () => {
-    const seen: Array<Record<string, unknown>> = []
+  it('passes no unaccepted work downstream, to anyone', async () => {
+    /*
+     * The input side of the same boundary.
+     *
+     * `quant-validation` declares `macro-analysis` as an optional input, and
+     * macro-analysis produces its work in this very pass. It is still not
+     * passed on: a dependency — blocking or optional — is satisfied by
+     * ACCEPTED claims, and nobody has accepted anything yet.
+     *
+     * Absent rather than empty, too, which is a distinction the orchestrator
+     * makes deliberately: a contributor can tell "the macro desk found nothing"
+     * from "the macro desk has not contributed", and an empty list would erase
+     * that difference.
+     *
+     * What this test can no longer reach is a DEPENDENT desk receiving exactly
+     * its declared edges — aggregation never starts, because the pass ends at
+     * the checkpoint above it. That coverage returns with TD-72; the rule
+     * itself is still enforced by `runEntry`, which builds `inputs` only from
+     * `blockedBy` and `optionalInputs`.
+     */
+    const seen = new Map<string, Record<string, readonly unknown[]>>()
     const provider = spy((request) => {
-      if (request.departmentId === 'research-office') seen.push(request.inputs)
+      seen.set(request.departmentId, request.inputs)
     })
 
-    await run(provider)
+    const result = await run(provider)
 
-    // Aggregation declared `macro-analysis` blocking and `quant-validation`
-    // optional. It must not receive verification, challenge or risk.
-    expect(Object.keys(seen[0] ?? {}).sort()).toEqual([
-      'macro-analysis',
-      'quant-validation',
-    ])
+    // Only the entries with nothing upstream of them were ever invoked.
+    const invokedDepartments = MACRO_REGIME_PLAYBOOK.entries
+      .filter((entry) => producedIn(result).includes(entry.key))
+      .map((entry) => entry.departmentId)
+      .sort()
+    expect([...seen.keys()].sort()).toEqual(invokedDepartments)
+
+    // And not one of them was handed anything at all.
+    for (const [departmentId, inputs] of seen) {
+      expect({ departmentId, inputs: Object.keys(inputs) }).toEqual({
+        departmentId,
+        inputs: [],
+      })
+    }
   })
 
   it('runs independent desks in the same wave', async () => {
@@ -213,12 +342,22 @@ describe('running a playbook', () => {
   })
 
   it('resolves a re-run from the ledger instead of starting the work again', async () => {
-    await run(createStubContributionProvider())
+    const first = await run(createStubContributionProvider())
     const replay = await run(createStubContributionProvider())
 
-    expect(replay.completedKeys).toHaveLength(6)
-    // Same command ids: six runs, not twelve.
-    expect(await repositories.runs.listForCase('case-1')).toHaveLength(6)
+    /*
+     * Re-invoking replays; it does not resume. Both passes stop at the same
+     * checkpoint and produce the same outcome, because the deterministic
+     * command ids resolve from the ledger instead of starting the work a
+     * second time. Resuming from newly accepted work is TD-72.
+     */
+    expect(producedIn(replay)).toEqual(producedIn(first))
+    expect(producedIn(first).length).toBeGreaterThan(0)
+
+    // Same command ids: the same runs, not a second set beside them.
+    expect(await repositories.runs.listForCase('case-1')).toHaveLength(
+      producedIn(first).length,
+    )
   })
 })
 
@@ -239,9 +378,12 @@ describe('the external-work boundary', () => {
       seenByProvider.push((ledger?.outcomes ?? []).map((o) => o.state))
     })
 
-    await run(provider)
+    const result = await run(provider)
 
-    expect(seenByProvider).toHaveLength(6)
+    // One reading per entry that actually reached the provider, and at least
+    // one — an empty list would satisfy `every` while proving nothing.
+    expect(seenByProvider).toHaveLength(producedIn(result).length)
+    expect(seenByProvider.length).toBeGreaterThan(0)
     expect(seenByProvider.every((states) => states.join() === 'committed')).toBe(true)
   })
 
@@ -301,14 +443,30 @@ describe('when the provider does not deliver', () => {
     )
 
     expect(result.failedKeys).toContain('quant-validation')
-    expect(result.missingRequired).toEqual([])
-    expect(result.completedKeys).toContain('aggregation')
 
-    // Absent, and visible as absent.
-    const aggregation = (await repositories.runs.listForCase('case-1')).find(
-      (r) => r.execution.playbookEntryKey === 'aggregation',
-    )
-    expect(aggregation!.missingOptionalInputs).toEqual(['quant-validation'])
+    /*
+     * What makes an optional entry optional: its failure blocks nothing.
+     * Nothing declares `quant-validation` as a BLOCKING dependency, so no entry
+     * is blocked by it — and the required desk produced its work regardless.
+     */
+    expect([...result.blockedKeys]).toEqual([])
+    expect(outcomeFor(result, 'macro-analysis')).toMatchObject({
+      state: 'awaiting-acceptance',
+    })
+
+    /*
+     * Aggregation is waiting on a PERSON, not on the desk that fell over. The
+     * distinction is the whole reason `awaitingAcceptanceOf` is recorded: "the
+     * quant desk failed" and "somebody has to read the macro desk's work" send
+     * a reader to two different places.
+     */
+    expect(outcomeFor(result, 'aggregation')).toMatchObject({
+      state: 'waiting-for-dependencies',
+      awaitingAcceptanceOf: ['macro-analysis'],
+    })
+
+    // An optional entry is never on the required path, failed or not.
+    expect(result.missingRequired).not.toContain('quant-validation')
   })
 
   it('times a hung provider out rather than waiting', async () => {

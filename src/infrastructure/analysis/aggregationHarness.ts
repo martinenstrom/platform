@@ -25,6 +25,7 @@ import { instantiatePlaybook } from '~/application/analysis/commands/instantiate
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
+import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { EMPLOYEE_BY_DEPARTMENT } from './testOrganization'
 
@@ -132,7 +133,7 @@ export async function contributionFor(
   const runId = deriveRunId(`${args.commandPrefix}-start`, assignmentId)
   const providerClaimId = `${args.entryKey}-claim`
 
-  await runCommand(
+  const recorded = await runCommand(
     recordContribution(organization),
     {
       caseId: args.caseId,
@@ -145,12 +146,48 @@ export async function contributionFor(
           args.opposesThesisId,
         ),
       ],
-      observedStates: ['running', 'completed'],
+      observedStates: ['running'],
       usage: { state: 'not-applicable' },
     },
     envelopeFor(`${args.commandPrefix}-record`, employeeId),
     deps,
   )
+
+  /*
+   * Recording produces work; it does not make it institutional. A person
+   * accepts, and only then do the claims reach the case.
+   *
+   * The harness does this because the tests below are about what the
+   * institution does with accepted work. That every provider kind traverses
+   * acceptance — recorded and stub included — is the point: an acceptance step
+   * only live work went through would be untested by every test here.
+   *
+   * Some callers deliberately drive this helper into a state where no run
+   * exists, to prove the institution refuses work it never commissioned.
+   * Recording fails there, as it always has, and there is nothing to accept —
+   * so acceptance is skipped rather than asserted, leaving those callers seeing
+   * exactly what they saw before acceptance existed.
+   */
+  if (recorded.outcome !== 'committed') {
+    return {
+      runId,
+      claimId: deriveClaimId(`${args.commandPrefix}-record`, providerClaimId),
+    }
+  }
+
+  const accepted = await runCommand(
+    acceptContribution(organization),
+    {
+      caseId: args.caseId,
+      runId,
+      departmentId: args.departmentId,
+    },
+    envelopeFor(`${args.commandPrefix}-accept`, employeeId),
+    deps,
+  )
+  if (accepted.outcome !== 'committed') {
+    throw new Error(`acceptance failed: ${JSON.stringify(accepted)}`)
+  }
 
   return {
     runId,

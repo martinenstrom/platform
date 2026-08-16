@@ -23,6 +23,20 @@ export type UnmetReason =
   | 'not-assigned'
   /** The desk has not finished. */
   | 'assignment-incomplete'
+  /**
+   * The desk finished and nobody has judged it yet.
+   *
+   * Distinct from `assignment-incomplete`, which would be untrue: the work
+   * exists and is waiting on a person, not on the department.
+   */
+  | 'awaiting-acceptance'
+  /**
+   * A person read the work and declined it.
+   *
+   * Never `run-failed`. A failed run produced nothing; a declined one produced
+   * work the firm judged inadequate, and every call succeeded.
+   */
+  | 'contribution-declined'
   /** A run exists and did not produce a contribution. */
   | 'run-failed'
   /** No run reached `completed`. */
@@ -130,14 +144,31 @@ export function unmetRequiredWork(input: RequiredWorkInput): UnmetDependency[] {
           run.state === 'timed-out' ||
           run.state === 'cancelled',
       )
+      /*
+       * Work the desk finished and nobody has judged, and work a person
+       * declined, are each reported as themselves.
+       *
+       * Both would otherwise read as `assignment-incomplete`, because the
+       * assignment stays `active` until somebody accepts. That would tell a
+       * reader the desk has not finished when the desk has finished — and the
+       * two send a reader to entirely different places: one needs a person to
+       * read something, the other needs the work done again.
+       */
+      const awaitingAcceptance = runs.some((run) => run.state === 'awaiting-acceptance')
+      const declined = runs.some((run) => run.state === 'rejected')
+
       unmet.push({
         playbookEntryKey: entry.key,
         departmentId: entry.departmentId,
-        reason: failed
-          ? 'run-failed'
-          : assignment.status === 'completed'
-            ? 'no-accepted-contribution'
-            : 'assignment-incomplete',
+        reason: awaitingAcceptance
+          ? 'awaiting-acceptance'
+          : failed
+            ? 'run-failed'
+            : declined
+              ? 'contribution-declined'
+              : assignment.status === 'completed'
+                ? 'no-accepted-contribution'
+                : 'assignment-incomplete',
       })
       continue
     }

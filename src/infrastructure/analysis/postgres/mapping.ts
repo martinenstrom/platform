@@ -51,6 +51,7 @@ import {
   type RunUsage,
   type RequirementResolution,
   type RoleFunction,
+  type ContributionRejectionCode,
   type RunFailureCategory,
   type InvestmentCase,
   type InvestmentThesis,
@@ -474,6 +475,22 @@ export function toRun(
                   retryable: row.failure_retryable!,
                   attempt: row.failure_attempt!,
                   at: row.failed_at!,
+                },
+              }
+            : {}),
+          /*
+           * Beside the failure, never folded into it. A run the firm declined
+           * and a run that fell over answer different questions, and
+           * `runs_rejection_complete` makes the three companion columns present
+           * exactly when the code is.
+           */
+          ...(row.rejection_code
+            ? {
+                rejection: {
+                  code: row.rejection_code as ContributionRejectionCode,
+                  detail: row.rejection_detail!,
+                  rejectedByEmployeeId: row.rejected_by_employee_id!,
+                  rejectedAt: row.rejected_at!,
                 },
               }
             : {}),

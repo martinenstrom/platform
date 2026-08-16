@@ -168,7 +168,11 @@ export function createStubContributionProvider(
         outputSchemaVersion: '0',
         // Synthetic work spends nothing. Not zero — nothing to spend.
         usage: { state: 'not-applicable' },
-        observedStates: ['running', 'completed'],
+        /*
+         * Progress, not an outcome. A provider does not report `completed`:
+         * completion is a person accepting the work, and this one is a stub.
+         */
+        observedStates: ['running'],
       }
     },
   }

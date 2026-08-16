@@ -1584,3 +1584,60 @@ Batching, caching, parallelisation and indexing all change how the facts are
 fetched, and are permitted. A second derivation for a particular caller is not,
 at any speed. The queue and the case page must always answer the same question
 in exactly the same way.
+
+
+---
+
+## TD-72 · checkpointed orchestration resume after acceptance · open
+
+**Opened by C2-1**, as a deliberate consequence rather than an oversight.
+
+Only **accepted** institutional claims satisfy a playbook dependency. Produced
+work is operational: it may be inspected, accepted or rejected, and it does not
+unlock downstream institutional work, because an agent chain must not build on a
+premise no human has agreed belongs in the record.
+
+So a multi-step playbook now stops at each human checkpoint. `runPlaybook`
+executes every currently eligible entry, reports the rest as
+`waiting-for-dependencies` with `awaitingAcceptanceOf` naming the upstream work
+a person must accept, and ends. Re-invoking it replays rather than resumes:
+it is a single pass over the graph by design.
+
+**This is accepted for the first live-agent phase and is NOT a permanent
+removal of multi-step agent workflows.**
+
+**The capability this defers:**
+
+```
+orchestrator executes all currently eligible entries
+        → produced work enters awaiting-acceptance
+        → a human accepts
+        → those accepted claims satisfy dependencies
+        → orchestration RESUMES from the newly eligible entries,
+          without replaying completed work
+```
+
+That is checkpointed, resumable orchestration. It needs its own design: what
+identifies a resumption, how already-completed entries are skipped without
+re-deriving their identity, and how a partially advanced graph is represented so
+a reader can see where it stopped and why.
+
+**Why it is not in C2-1.** Smuggling resumability into the first live-agent
+stage would mean designing the mechanism that lets agents advance a workflow at
+the same moment as the boundary that stops them — two decisions of opposite
+intent in one change. The boundary is the point of C2-1; resuming across it is a
+later capability, chosen deliberately.
+
+**What must not be weakened when it is built:** accepted claims satisfy
+dependencies, awaiting-acceptance claims do not, and rejected claims never will.
+
+**Coverage this defers, stated so it is not rediscovered as a gap.** Because a
+single pass cannot reach a dependent entry, `orchestration.test.ts` can no
+longer exercise a downstream desk receiving exactly its declared edges
+end-to-end — aggregation never starts. The rule is still enforced in
+`runEntry`, which builds `inputs` only from `blockedBy` and `optionalInputs`,
+and `missingOptionalInputs` remains covered by `runCommands.test.ts` and
+`caseCommands.test.ts`. What is missing is the end-to-end path, and it returns
+with this capability. The tests that used to cover it now assert the boundary
+that replaced it: no unaccepted work reaches any desk, and entries waiting on a
+person leave nothing in the ledger.

@@ -228,6 +228,16 @@ describe('append-only tables', () => {
     await expectDenied(app, 'DELETE FROM analysis.claims')
   })
 
+  it('refuses to update or delete produced work', async () => {
+    /*
+     * A rejected run's work stays exactly as it was produced — that is what
+     * makes it evidence about the agent. An institution that could quietly
+     * edit what an agent returned could not answer why it declined it.
+     */
+    await expectDenied(app, `UPDATE analysis.produced_claims SET claims = '[]'::jsonb`)
+    await expectDenied(app, 'DELETE FROM analysis.produced_claims')
+  })
+
   it('refuses to update or delete an evidence set or item', async () => {
     await expectDenied(app, `UPDATE analysis.evidence_sets SET correlation_id = 'x'`)
     await expectDenied(app, 'DELETE FROM analysis.evidence_sets')

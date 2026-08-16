@@ -155,6 +155,63 @@ export function promptOf(identity: ExecutionIdentity): PromptRef | null {
  * approved one, and folding them into one status field would make it
  * impossible to say "finished, and rejected".
  */
+/**
+ * Why a human declined an agent's work.
+ *
+ * A **code**, not a sentence. This vocabulary exists to be measured over years
+ * — which agents are rejected most, why, whether it clusters by capability,
+ * prompt, task or market regime, and whether an agent improves. None of that is
+ * answerable over prose.
+ *
+ * `Blocker` already paid for that lesson here: it carried `detail: string`,
+ * prose became a data channel, the category was recovered by matching sentence
+ * prefixes, and renaming a message silently reclassified a blocker.
+ *
+ * Each names **what was wrong**, never how it scored. A code naming a
+ * deficiency can be improved against; one naming a verdict cannot — which is
+ * why `insufficient-analysis` exists and `below-quality-bar` does not.
+ */
+export type ContributionRejectionCode =
+  /** The claim outruns what the evidence shows. */
+  | 'unsupported-by-evidence'
+  /** Answered a different question from the one briefed. */
+  | 'misread-the-brief'
+  /** The reasoning contradicts itself. */
+  | 'internally-inconsistent'
+  /** Already known. Adds nothing the firm did not have. */
+  | 'duplicates-existing-work'
+  /** Went in the right direction and did not go far enough. */
+  | 'insufficient-analysis'
+  /** Correct, and not this department's work. */
+  | 'out-of-scope'
+
+export const CONTRIBUTION_REJECTION_CODES: readonly ContributionRejectionCode[] =
+  Object.freeze([
+    'unsupported-by-evidence',
+    'misread-the-brief',
+    'internally-inconsistent',
+    'duplicates-existing-work',
+    'insufficient-analysis',
+    'out-of-scope',
+  ])
+
+/**
+ * A human declining an agent's work, and why.
+ *
+ * **One primary code, and prose that is required rather than optional.** A code
+ * alone teaches nobody anything, and a rejection nobody can learn from is the
+ * discarded history this record exists to prevent. Secondary codes are
+ * deliberately not modelled.
+ */
+export interface ContributionRejection {
+  code: ContributionRejectionCode
+  /** Required. What was actually wrong, for whoever tries to fix it. */
+  detail: string
+  /** The person who declined it. Never an agent. */
+  rejectedByEmployeeId: EmployeeId
+  rejectedAt: string
+}
+
 export type RunState =
   | 'queued'
   /** Cannot start: a declared dependency has not completed. */
@@ -162,7 +219,25 @@ export type RunState =
   /** Dependencies satisfied, awaiting a slot. */
   | 'ready'
   | 'running'
+  /**
+   * The work is produced and durable, and is not institutional.
+   *
+   * Generated work is **operational** until a human accepts it. The claims are
+   * in the produced-claim store — readable, paid for, and outside
+   * `analysis.claims`, so nothing can verify, gate, aggregate or cite them.
+   */
+  | 'awaiting-acceptance'
   | 'completed'
+  /**
+   * A human read the work and declined it.
+   *
+   * **Never a kind of `failed`.** A failed run produced nothing; a rejected run
+   * produced work the firm judged inadequate, and every call succeeded.
+   * Collapsing them would make "how often does this agent fail" and "how often
+   * is its work not good enough" one number, and those are the two different
+   * questions worth asking about an employee.
+   */
+  | 'rejected'
   | 'failed'
   | 'timed-out'
   | 'cancelled'
@@ -175,8 +250,15 @@ const RUN_TRANSITIONS: Readonly<Record<RunState, readonly RunState[]>> = Object.
   queued: ['waiting-for-dependencies', 'ready', 'cancelled', 'blocked'],
   'waiting-for-dependencies': ['ready', 'blocked', 'cancelled', 'superseded'],
   ready: ['running', 'cancelled', 'blocked', 'superseded'],
-  running: ['completed', 'failed', 'timed-out', 'cancelled', 'superseded'],
+  /*
+   * A run no longer reaches `completed` directly. Work produced is work
+   * awaiting a decision, and the only path into the institutional record runs
+   * through a person.
+   */
+  running: ['awaiting-acceptance', 'failed', 'timed-out', 'cancelled', 'superseded'],
+  'awaiting-acceptance': ['completed', 'rejected', 'cancelled', 'superseded'],
   completed: ['superseded'],
+  rejected: [],
   failed: [],
   'timed-out': [],
   cancelled: [],
@@ -191,6 +273,7 @@ export function canTransitionRun(from: RunState, to: RunState): boolean {
 /** States after which no further work happens. */
 export const TERMINAL_RUN_STATES: readonly RunState[] = [
   'completed',
+  'rejected',
   'failed',
   'timed-out',
   'cancelled',
@@ -416,6 +499,14 @@ export interface AgentRunRecord {
   /** Present when the run failed, timed out, was blocked or cancelled. */
   failure?: RunFailure
   /**
+   * Present when a human declined the work.
+   *
+   * Beside `failure`, never folded into it: an operational failure and an
+   * institutional rejection answer different questions, and a reader must not
+   * have to guess which one a run holds.
+   */
+  rejection?: ContributionRejection
+  /**
    * What produced this work, and under which workflow.
    *
    * Required, and `providerKind` is the field that matters: a recorded fixture
@@ -506,6 +597,24 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
       `Run "${record.id}" is ${record.state} and also carries a failure record`,
     )
   }
+  /*
+   * The state and the rejection agree, in both directions. A rejected run that
+   * cannot say why teaches the firm nothing, and a run carrying a rejection it
+   * did not receive misreports an agent's record. Mirrored by
+   * `runs_rejected_has_reason` in migration 0027.
+   */
+  if (record.state === 'rejected' && !record.rejection) {
+    throw new Error(
+      `Run "${record.id}" is rejected without a rejection record. A rejection ` +
+        `nobody can learn from is the discarded history this record prevents.`,
+    )
+  }
+  if (record.rejection && record.state !== 'rejected') {
+    throw new Error(`Run "${record.id}" is ${record.state} and also carries a rejection`)
+  }
+  if (record.rejection && record.rejection.detail.trim() === '') {
+    throw new Error(`Run "${record.id}" is rejected with no explanation`)
+  }
   return Object.freeze({
     ...record,
     events: Object.freeze([...record.events]),
@@ -518,13 +627,23 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
   })
 }
 
-/** States in which a failure record would contradict the run's own state. */
+/**
+ * States in which a failure record would contradict the run's own state.
+ *
+ * `awaiting-acceptance` and `rejected` are here for the reason the two states
+ * exist at all: work that was produced and then declined is not work that
+ * failed. A run holding both a rejection and a failure would be two answers
+ * about the same contribution, and a reader would have to guess which one the
+ * firm meant. Mirrored by `runs_progress_without_failure` in migration 0027.
+ */
 const RUN_STATES_WITHOUT_FAILURE: readonly RunState[] = [
   'queued',
   'waiting-for-dependencies',
   'ready',
   'running',
+  'awaiting-acceptance',
   'completed',
+  'rejected',
 ] as const
 
 /* ------------------------------------------------------------ activity feed */

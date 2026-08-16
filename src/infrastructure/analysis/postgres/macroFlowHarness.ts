@@ -31,6 +31,7 @@ import { instantiatePlaybook } from '~/application/analysis/commands/instantiate
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
+import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { failAgentRun } from '~/application/analysis/commands/failAgentRun'
 import { aggregateManagerConclusion } from '~/application/analysis/commands/aggregateManagerConclusion'
 import { resolveConditionalRequirement } from '~/application/analysis/commands/resolveConditionalRequirement'
@@ -321,13 +322,33 @@ export async function runMacroToAggregation(
           runId,
           departmentId,
           claims,
-          observedStates: ['running', 'completed'],
+          observedStates: ['running'],
           usage: { state: 'not-applicable' },
         },
         envelope(`${caseId}-${entryKey}-record`, employeeId),
         deps,
       ),
       `RecordContribution(${entryKey})`,
+    )
+
+    /*
+     * Recording produces work; a person makes it institutional. Until this act
+     * the claims sit in the produced-claim store and satisfy nothing — so a
+     * flow that stopped at recording would have every downstream gate below
+     * blocking on work that exists and was never judged.
+     *
+     * Every provider kind traverses acceptance, recorded ones included. That is
+     * the point: an acceptance step only live work went through would be
+     * exercised by none of these scenarios.
+     */
+    await expect2(
+      await runCommand(
+        acceptContribution(deps.organization),
+        { caseId, runId, departmentId },
+        envelope(`${caseId}-${entryKey}-accept`, employeeId),
+        deps,
+      ),
+      `AcceptContribution(${entryKey})`,
     )
 
     const stored = await repositories.runs.get(runId)
