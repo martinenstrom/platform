@@ -109,7 +109,10 @@ async function insertRun(
         failure_category, failure_retryable, failure_attempt, failed_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
-        provenance_id)
+        provenance_id,
+        budget_tokens_kind, budget_tokens,
+        budget_cost_kind, budget_cost_minor_units, budget_currency,
+        budget_deadline_kind, budget_deadline_ms)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', $4,
              '1', '1', $9::text,
              CASE WHEN $9::text = 'model' THEN 'p' END,
@@ -128,7 +131,18 @@ async function insertRun(
              CASE WHEN $6::text IS NULL THEN NULL ELSE 1 END,
              CASE WHEN $6::text IS NULL THEN NULL ELSE now() END,
              'c1c', '1', $7,
-             'recorded-provider', '1', $8::text, '{}', 'c1c-prov')`,
+             'recorded-provider', '1', $8::text, '{}', 'c1c-prov',
+             -- The budget has to follow the provider kind, or
+             -- runs_budget_matches_provider refuses the row: only live work
+             -- can consume tokens or money, and only live work is forbidden
+             -- an undecided dimension.
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-applicable' END,
+             CASE WHEN $8::text = 'live' THEN 40000 END,
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-applicable' END,
+             CASE WHEN $8::text = 'live' THEN 5000 END,
+             CASE WHEN $8::text = 'live' THEN 'USD' END,
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-measured' END,
+             CASE WHEN $8::text = 'live' THEN 30000 END)`,
     [
       runId,
       caseId,

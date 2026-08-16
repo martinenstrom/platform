@@ -24,6 +24,7 @@ import {
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
+  NON_CONSUMING_BUDGET,
   buildTransitionEvent,
   observationRef,
   type InvestmentCase,
@@ -166,6 +167,7 @@ async function seedRun(): Promise<string> {
       agentContractVersion: '1',
       outputSchemaVersion: '1',
       usage: { state: 'not-applicable' },
+      budget: NON_CONSUMING_BUDGET,
       evidenceSetId: set.id,
       execution: {
         playbookId: 'macro-regime',
@@ -348,6 +350,7 @@ describe('what the adapter checks on the way out', () => {
         agentContractVersion: '1',
         outputSchemaVersion: '1',
         usage: { state: 'not-applicable' },
+        budget: NON_CONSUMING_BUDGET,
         evidenceSetId: set.id,
         execution: {
           playbookId: 'macro-regime',
@@ -716,7 +719,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0027')
+    expect(provenance.schemaVersion).toBe('0028')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

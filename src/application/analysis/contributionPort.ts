@@ -14,6 +14,7 @@
 
 import type {
   AgentClaim,
+  ExecutionBudget,
   ExecutionIdentity,
   ProviderKind,
   RunState,
@@ -32,31 +33,10 @@ export interface ContributionRequest {
   evidenceSetId: string
   /** Outputs of declared upstream dependencies. Never a shared mutable context. */
   inputs: Readonly<Record<string, readonly AgentClaim[]>>
-  budget: ContributionBudget
+  /** The effective limit, already resolved. A provider enforces, never decides. */
+  budget: ExecutionBudget
   signal: AbortSignal
 }
-
-/**
- * Budgets, kept separate because they are separate limits.
- *
- * `null` means **not measured in Phase B**, never "unlimited". A live runtime
- * must refuse to begin work when a required authorization is absent, and a
- * null that silently meant infinity would make that refusal impossible to
- * write later.
- */
-export interface ContributionBudget {
-  tokens: number | null
-  costMinorUnits: number | null
-  currency: string | null
-  deadlineMs: number | null
-}
-
-export const PHASE_B_BUDGET: ContributionBudget = Object.freeze({
-  tokens: null,
-  costMinorUnits: null,
-  currency: null,
-  deadlineMs: null,
-})
 
 export interface ContributionResult {
   claims: readonly AgentClaim[]

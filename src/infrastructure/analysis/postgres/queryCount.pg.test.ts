@@ -19,6 +19,7 @@ import {
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
+  NON_CONSUMING_BUDGET,
   observationRef,
   type InvestmentCase,
 } from '~/domain/analysis'
@@ -142,6 +143,7 @@ const runWith = (setId: string, events: number) =>
     agentContractVersion: '1',
     outputSchemaVersion: '1',
     usage: { state: 'not-applicable' },
+    budget: NON_CONSUMING_BUDGET,
     evidenceSetId: setId,
     execution: {
       playbookId: 'macro-regime',

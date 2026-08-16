@@ -32,6 +32,7 @@ import {
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
+import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
@@ -145,9 +146,15 @@ const RUN_DECLARATION = {
     prompt: { id: 'macro-brief', version: '1', contentHash: 'ph' },
     model: { id: 'sonnet', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
   },
+  // A replay spends nothing now, so tokens and cost are `not-applicable`
+  // rather than unmeasured — the distinction that keeps a producer incapable
+  // of spending from being refused for lacking a limit.
+  budget: resolveExecutionBudget('recorded', { firmCeiling: { deadlineMs: 30_000 } }),
 }
 
-async function seedRunningRun(): Promise<string> {
+async function seedRunningRun(
+  declarationOver: Record<string, unknown> = {},
+): Promise<string> {
   await repositories.evidence.save(evidenceSet)
 
   await runCommand(
@@ -185,6 +192,7 @@ async function seedRunningRun(): Promise<string> {
       departmentId: 'global-macro',
       evidenceSetId: evidenceSet.id,
       ...RUN_DECLARATION,
+      ...declarationOver,
     },
     envelope({
       commandId: 'cmd-run',
@@ -195,6 +203,19 @@ async function seedRunningRun(): Promise<string> {
   )
 
   return deriveRunId('cmd-run', assignmentId)
+}
+
+/** A live run under a real, bounded authorization. */
+const LIVE_UNDER_BUDGET = {
+  providerId: 'live-macro',
+  providerKind: 'live' as const,
+  budget: resolveExecutionBudget('live', {
+    firmCeiling: {
+      tokens: 40_000,
+      cost: { costMinorUnits: 5_000, currency: 'USD' },
+      deadlineMs: 30_000,
+    },
+  }),
 }
 
 let runId: string
@@ -647,6 +668,67 @@ describe('what a contribution may not be', () => {
 })
 
 /* -------------------------------------------------------------- late results */
+
+describe('work that cost more than the firm authorized', () => {
+  beforeEach(async () => {
+    repositories = createInMemoryRepositories()
+    deps = {
+      repositories,
+      organization,
+      organizationSeedVersion: TEST_SEED_VERSION,
+      provenance: await repositories.provenance(),
+      now: () => AT,
+    }
+    runId = await seedRunningRun(LIVE_UNDER_BUDGET)
+  })
+
+  it('refuses the contribution and records no produced claim', async () => {
+    /*
+     * The exit criterion, driven through the command rather than asserted on
+     * the pure function: a run authorized 40,000 tokens reports spending
+     * 50,000, and nothing of it enters the produced store.
+     *
+     * Refused rather than recorded-and-flagged. A produced claim is work a
+     * person may accept, and offering someone the choice to accept spend the
+     * firm never authorized puts the decision in the wrong place.
+     */
+    const result = await record([claim({ id: 'claim-over' })], {
+      usage: {
+        state: 'measured',
+        inputTokens: 30_000,
+        outputTokens: 20_000,
+        costMinorUnits: 100,
+        currency: 'USD',
+      },
+    })
+
+    expect(result.outcome).toBe('rejected')
+    expect(await repositories.producedClaims.listForRun(runId)).toEqual([])
+    expect(await repositories.claims.listForCase('case-1')).toEqual([])
+  })
+
+  it('records a contribution that stayed inside its authorization', async () => {
+    /*
+     * The near-miss. Without it, the refusal above would pass just as well if
+     * the command refused every live contribution.
+     */
+    const result = await record([claim({ id: 'claim-within' })], {
+      usage: {
+        state: 'measured',
+        inputTokens: 10,
+        outputTokens: 10,
+        costMinorUnits: 100,
+        currency: 'USD',
+      },
+    })
+
+    expect(result.outcome).toBe('committed')
+    // The stored id is derived by the command, not the provider's own.
+    const produced = await repositories.producedClaims.listForRun(runId)
+    expect(produced).toHaveLength(1)
+    expect(produced[0]!.statement).toBe('The 10y sits at 2.41')
+  })
+})
 
 describe('a result that arrives after the world moved on', () => {
   /**

@@ -1,8 +1,24 @@
 # Planning gate — C2: the first operational agent
 
-**Status:** approved. Nothing implemented — C2-1 begins in a fresh session,
-sized so the domain change, both adapters, contract parity and the
-contribution-test migration reach a green boundary in one effort.
+**Status:** approved, and C2-1 is partly built. Two of its three remaining
+pieces are done and green:
+
+| C2-1 piece | State |
+|---|---|
+| The human acceptance boundary | **done** — commit `67d585f` |
+| The three-state execution budget | **done** — this stage |
+| The analysis execution pipeline | not started |
+| The model client | not started |
+
+**The budget stage delivers:** `ExecutionBudget` as three states per dimension,
+`resolveExecutionBudget` collapsing the playbook proposal, a case constraint and
+the firm ceiling into one effective limit, that limit recorded write-once on the
+run (migration 0028), refusal of live work against an undecided dimension, and
+failure of a run whose reported spend exceeded what it was authorized.
+
+**What it deliberately leaves:** a case constraint has no durable home — it
+reaches the resolver from the orchestrator's caller rather than from a column.
+Recorded as **TD-73**, with the reason a NULL column would have been worse.
 
 This gate lifts two standing constraints, and the four decisions the guard
 demanded (§4) are made.
@@ -478,9 +494,9 @@ this gate has not made.
       sides of the boundary — no second canonicalisation exists
 - [ ] Recorded and stub runs traverse the same acceptance path
 - [ ] A rejected run records one bounded reason code **and** mandatory prose
-- [ ] A budget dimension that does not apply is distinguishable from one nobody
+- [x] A budget dimension that does not apply is distinguishable from one nobody
       measured; a local provider is not refused for having no monetary cost
-- [ ] The **effective** budget is recorded with the run, not reconstructed
+- [x] The **effective** budget is recorded with the run, not reconstructed
 - [ ] A historical run reads back its own limits unchanged after the playbook,
       case policy and firm-wide policy that produced them have all been altered
 - [ ] `rejected` is distinguishable from `failed` in every read path
@@ -491,8 +507,8 @@ this gate has not made.
       workflow, unchanged
 - [ ] The run records its exact model and prompt; a live run cannot present any
       other identity
-- [ ] A run with no budget refuses to start
-- [ ] A run exceeding its budget fails, and records no claim
+- [x] A run with no budget refuses to start
+- [x] A run exceeding its budget fails, and records no claim
 - [ ] Replay returns the recorded artifact and does not re-invoke the model
 - [ ] Recorded and stub providers still pass every existing test unchanged
 - [ ] `no-llm-dependency` is replaced by a narrower rule — the client is

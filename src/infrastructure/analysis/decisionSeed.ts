@@ -12,7 +12,12 @@
  * ports is what makes one function satisfy both.
  */
 
-import { buildAssignment, buildClaim, buildRunRecord } from '~/domain/analysis'
+import {
+  buildAssignment,
+  buildClaim,
+  buildRunRecord,
+  NON_CONSUMING_BUDGET,
+} from '~/domain/analysis'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import {
@@ -136,6 +141,7 @@ export async function seedDecisionGovernance(
           agentContractVersion: '1',
           outputSchemaVersion: '1',
           usage: { state: 'not-applicable' },
+          budget: NON_CONSUMING_BUDGET,
           evidenceSetId: sets[0]!.id,
           state: 'running',
           startedAt: AT,

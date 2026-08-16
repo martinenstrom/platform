@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   buildTransitionEvent,
   transitionCase,
+  NON_CONSUMING_BUDGET,
   type InvestmentCase,
   type TransitionEvent,
 } from '~/domain/analysis'
@@ -316,7 +317,7 @@ describe('recorded contributions', () => {
       brief: 'x',
       evidenceSetId: 'set-1',
       inputs: {},
-      budget: { tokens: null, costMinorUnits: null, currency: null, deadlineMs: null },
+      budget: NON_CONSUMING_BUDGET,
       signal: new AbortController().signal,
     }
     const first = await provider.contribute(request)
@@ -336,7 +337,7 @@ describe('recorded contributions', () => {
         brief: 'x',
         evidenceSetId: 'set-DIFFERENT',
         inputs: {},
-        budget: { tokens: null, costMinorUnits: null, currency: null, deadlineMs: null },
+        budget: NON_CONSUMING_BUDGET,
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow(/never saw/)

@@ -418,7 +418,10 @@ const RUN_COLUMNS = `
   rejection_code, rejection_detail, rejected_by_employee_id, ${ts('rejected_at')},
   playbook_id, playbook_version, playbook_entry_key,
   provider_id, provider_version, provider_kind, missing_optional_inputs,
-  usage_state, input_tokens, output_tokens, cost_minor_units, currency
+  usage_state, input_tokens, output_tokens, cost_minor_units, currency,
+  budget_tokens_kind, budget_tokens,
+  budget_cost_kind, budget_cost_minor_units, budget_currency,
+  budget_deadline_kind, budget_deadline_ms
 `
 
 export const RUN_SQL = catalog({
@@ -447,10 +450,14 @@ export const RUN_SQL = catalog({
             playbook_id, playbook_version, playbook_entry_key,
             provider_id, provider_version, provider_kind, missing_optional_inputs,
             provenance_id,
-            usage_state, input_tokens, output_tokens, cost_minor_units, currency)
+            usage_state, input_tokens, output_tokens, cost_minor_units, currency,
+            budget_tokens_kind, budget_tokens,
+            budget_cost_kind, budget_cost_minor_units, budget_currency,
+            budget_deadline_kind, budget_deadline_ms)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                  $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
-                 $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
+                 $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,
+                 $48,$49,$50,$51,$52,$53,$54)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
@@ -468,6 +475,13 @@ export const RUN_SQL = catalog({
            output_tokens = EXCLUDED.output_tokens,
            cost_minor_units = EXCLUDED.cost_minor_units,
            currency = EXCLUDED.currency`,
+  /*
+   * The budget columns are deliberately absent from that list. What a run was
+   * authorized to spend is decided before it starts and is never revised by
+   * later work — the same treatment identity and provider get. Migration 0028
+   * grants no UPDATE on them, so the statement and the grant agree rather than
+   * one silently permitting what the other forbids.
+   */
 
   /*
    * Append-only, one statement for the whole batch. `ON CONFLICT DO NOTHING`
@@ -590,6 +604,7 @@ export function createRunRepository(
         const prompt = promptOf(identity)
         const model = modelOf(identity)
         const cost = measuredCost(record.usage)
+        const budget = record.budget
 
         await run(client, context, 'runs.save', RUN_SQL.save, [
           record.id,
@@ -639,6 +654,13 @@ export function createRunRepository(
           cost?.outputTokens ?? null,
           cost?.costMinorUnits ?? null,
           cost?.currency ?? null,
+          budget.tokens.kind,
+          budget.tokens.kind === 'limit' ? budget.tokens.tokens : null,
+          budget.cost.kind,
+          budget.cost.kind === 'limit' ? budget.cost.costMinorUnits : null,
+          budget.cost.kind === 'limit' ? budget.cost.currency : null,
+          budget.deadline.kind,
+          budget.deadline.kind === 'limit' ? budget.deadline.deadlineMs : null,
         ])
 
         if (record.events.length > 0) {

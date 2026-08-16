@@ -124,7 +124,10 @@ async function insertRun(
         evidence_set_id, started_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
-        provenance_id)
+        provenance_id,
+        budget_tokens_kind, budget_tokens,
+        budget_cost_kind, budget_cost_minor_units, budget_currency,
+        budget_deadline_kind, budget_deadline_ms)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', 'running',
              '1', '1', $4::text,
              CASE WHEN $4::text = 'model' THEN 'p' END,
@@ -145,7 +148,15 @@ async function insertRun(
              CASE WHEN $6::boolean THEN 'USD' END,
              $7, now(),
              'c1c2', '1', 'entry',
-             'test-provider', '1', $8::text, '{}', 'c1c2-prov')`,
+             'test-provider', '1', $8::text, '{}', 'c1c2-prov',
+             -- Follows the provider kind, per runs_budget_matches_provider.
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-applicable' END,
+             CASE WHEN $8::text = 'live' THEN 40000 END,
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-applicable' END,
+             CASE WHEN $8::text = 'live' THEN 5000 END,
+             CASE WHEN $8::text = 'live' THEN 'USD' END,
+             CASE WHEN $8::text = 'live' THEN 'limit' ELSE 'not-measured' END,
+             CASE WHEN $8::text = 'live' THEN 30000 END)`,
     [
       runId,
       caseId,

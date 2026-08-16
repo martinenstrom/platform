@@ -110,11 +110,14 @@ async function seed() {
         scenario_id, stub_version, usage_state, evidence_set_id, started_at,
         completed_at, playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
-        provenance_id)
+        provenance_id,
+        budget_tokens_kind, budget_cost_kind, budget_deadline_kind)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', 'completed',
              '1', '1', 'scenario', 'success', '1', 'not-applicable', $4, now(),
              now(), 'c1c3', '1', 'entry', 'stub', '1', 'stub', '{}',
-             'c1c3-prov')`,
+             'c1c3-prov',
+             -- A stub spends nothing it could be limited on.
+             'not-applicable', 'not-applicable', 'not-measured')`,
     [runId, caseId, assignmentId, setId],
   )
 

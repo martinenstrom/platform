@@ -17,6 +17,9 @@ import {
   buildRiskVerdict,
   buildRole,
   buildRunRecord,
+  budgetOverruns,
+  NON_CONSUMING_BUDGET,
+  type ExecutionBudget,
   buildVerificationFinding,
   canTransition,
   challengeBlocks,
@@ -1310,6 +1313,7 @@ describe('run records and the activity feed', () => {
     agentContractVersion: '1.0.0',
     outputSchemaVersion: '1.0.0',
     usage: { state: 'not-applicable' },
+    budget: NON_CONSUMING_BUDGET,
     evidenceSetId: 'set-1',
     state: 'completed',
     startedAt: '2026-07-27T09:00:00.000Z',
@@ -1358,6 +1362,123 @@ describe('run records and the activity feed', () => {
     expect(() => buildRunRecord({ ...run, state: 'failed', failure: undefined })).toThrow(
       /without a failure record/,
     )
+  })
+
+  describe('the execution budget', () => {
+    const liveRun = (budget: ExecutionBudget) =>
+      buildRunRecord({
+        ...run,
+        budget,
+        // A live call always consumed something; the question is whether
+        // anyone measured it.
+        usage: { state: 'not-reported' },
+        execution: { ...run.execution, providerKind: 'live' },
+      })
+
+    const bounded: ExecutionBudget = {
+      tokens: { kind: 'limit', tokens: 40_000 },
+      cost: { kind: 'limit', costMinorUnits: 5_000, currency: 'USD' },
+      deadline: { kind: 'limit', deadlineMs: 30_000 },
+    }
+
+    it('refuses a live run against a dimension nobody decided', () => {
+      /*
+       * The record is the thing that must not exist: a stored live run whose
+       * authorization was never decided says the firm approved spend it never
+       * approved. `StartAgentRun` refuses the same combination, so a caller
+       * bypassing the command still cannot write one.
+       */
+      expect(() => liveRun({ ...bounded, cost: { kind: 'not-measured' } })).toThrow(
+        /no decided budget for cost/,
+      )
+    })
+
+    it('permits a live run whose dimensions are all bounded', () => {
+      // The near-miss. Without this, the rule above would also pass if
+      // `buildRunRecord` refused every live run.
+      expect(liveRun(bounded).budget).toEqual(bounded)
+    })
+
+    it('permits an unmeasured dimension on a producer that cannot spend', () => {
+      // A stub authorizes no spend, so an unmeasured dimension on one blocks
+      // no fact. Refusing it would be refusing a fact rather than a policy.
+      expect(buildRunRecord({ ...run, budget: NON_CONSUMING_BUDGET }).budget).toEqual(
+        NON_CONSUMING_BUDGET,
+      )
+    })
+
+    it('refuses a cost limit with no currency, because that is not a cost', () => {
+      expect(() =>
+        liveRun({
+          ...bounded,
+          cost: { kind: 'limit', costMinorUnits: 10, currency: '' },
+        }),
+      ).toThrow(/no currency/)
+    })
+
+    describe('overruns', () => {
+      it('names the dimensions the reported spend exceeded', () => {
+        expect(
+          budgetOverruns(bounded, {
+            state: 'measured',
+            inputTokens: 30_000,
+            outputTokens: 20_000,
+            costMinorUnits: 9_000,
+            currency: 'USD',
+          }),
+        ).toEqual(['tokens', 'cost'])
+      })
+
+      it('counts input and output tokens together against one limit', () => {
+        // Neither half exceeds 40,000 alone. The limit is on what the run
+        // spent, not on either side of the exchange.
+        expect(
+          budgetOverruns(bounded, {
+            state: 'measured',
+            inputTokens: 25_000,
+            outputTokens: 20_000,
+            costMinorUnits: 100,
+            currency: 'USD',
+          }),
+        ).toEqual(['tokens'])
+      })
+
+      it('reports nothing when spend is inside every limit', () => {
+        expect(
+          budgetOverruns(bounded, {
+            state: 'measured',
+            inputTokens: 10,
+            outputTokens: 10,
+            costMinorUnits: 10,
+            currency: 'USD',
+          }),
+        ).toEqual([])
+      })
+
+      it('does not treat an unreported cost as an overrun', () => {
+        /*
+         * A provider that said nothing cannot be shown to have exceeded
+         * anything. Treating silence as an overrun would fail runs for the
+         * provider's reticence rather than for their spend — what it actually
+         * costs the firm is visibility, which `not-reported` records.
+         */
+        expect(budgetOverruns(bounded, { state: 'not-reported' })).toEqual([])
+      })
+
+      it('does not compare amounts across currencies', () => {
+        // 9,000 öre is not 9,000 cents. Comparing the numbers would enforce a
+        // limit nobody set.
+        expect(
+          budgetOverruns(bounded, {
+            state: 'measured',
+            inputTokens: 1,
+            outputTokens: 1,
+            costMinorUnits: 9_000,
+            currency: 'SEK',
+          }),
+        ).toEqual([])
+      })
+    })
   })
 
   it('builds the activity feed only from recorded state changes', () => {

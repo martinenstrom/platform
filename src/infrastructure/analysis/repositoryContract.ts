@@ -20,6 +20,7 @@ import {
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
+  NON_CONSUMING_BUDGET,
   buildThesis,
   buildTransitionEvent,
   modelOf,
@@ -201,6 +202,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         agentContractVersion: '1',
         outputSchemaVersion: '1',
         usage: { state: 'not-applicable' },
+        budget: NON_CONSUMING_BUDGET,
         evidenceSetId: setId,
         state: 'running',
         execution: {
@@ -1413,6 +1415,80 @@ export function describeRepositoryContract(name: string, options: ContractOption
         await repos.events.append(replayed)
         await repos.events.append(replayed)
         expect(await repos.events.listForCase('case-1')).toHaveLength(1)
+      })
+    })
+
+    describe('what a run was authorized to spend', () => {
+      /*
+       * The budget is a three-state union per dimension, and both stores have
+       * to round-trip all three identically. The failure this guards against
+       * is the one the design exists to prevent: an adapter that collapses
+       * "cannot spend this" and "nobody decided" into one absent value, which
+       * is what a nullable column did before.
+       */
+      it('round-trips a bounded live budget with its currency intact', async () => {
+        const { setId } = await seedCase()
+        const budget = {
+          tokens: { kind: 'limit' as const, tokens: 40_000 },
+          cost: { kind: 'limit' as const, costMinorUnits: 5_000, currency: 'USD' },
+          deadline: { kind: 'limit' as const, deadlineMs: 30_000 },
+        }
+        await saveRun('run-budget', setId, {
+          budget,
+          // A live call always consumed something, measured or not.
+          usage: { state: 'not-reported' },
+          execution: { ...run('x', setId).execution, providerKind: 'live' },
+        })
+
+        expect((await repos.runs.get('run-budget'))!.budget).toEqual(budget)
+      })
+
+      it('keeps not-applicable distinct from not-measured across a round trip', async () => {
+        const { setId } = await seedCase()
+        await saveRun('run-cannot', setId, {
+          budget: {
+            tokens: { kind: 'not-applicable' },
+            cost: { kind: 'not-applicable' },
+            deadline: { kind: 'not-measured' },
+          },
+        })
+
+        const stored = (await repos.runs.get('run-cannot'))!.budget
+        // Three states in, three states out. A store that wrote NULL for both
+        // absences would return the same value for two different facts.
+        expect(stored.cost).toEqual({ kind: 'not-applicable' })
+        expect(stored.deadline).toEqual({ kind: 'not-measured' })
+        expect(stored.cost).not.toEqual(stored.deadline)
+      })
+
+      it('does not rewrite the authorization when the run is saved again', async () => {
+        /*
+         * Write-once, like identity and provider. A later save carrying a
+         * different budget must not change what the firm authorized — that
+         * number is a fact about the moment the run started, and a store that
+         * let it drift would make every historical limit unreliable.
+         */
+        const { setId } = await seedCase()
+        const authorized = {
+          tokens: { kind: 'not-applicable' as const },
+          cost: { kind: 'not-applicable' as const },
+          deadline: { kind: 'limit' as const, deadlineMs: 30_000 },
+        }
+        await saveRun('run-fixed', setId, { budget: authorized })
+
+        const stored = (await repos.runs.get('run-fixed'))!
+        await repos.runs.save(
+          buildRunRecord({
+            ...stored,
+            budget: { ...authorized, deadline: { kind: 'limit', deadlineMs: 999_999 } },
+          }),
+          prov,
+        )
+
+        expect((await repos.runs.get('run-fixed'))!.budget.deadline).toEqual({
+          kind: 'limit',
+          deadlineMs: 30_000,
+        })
       })
     })
 

@@ -27,7 +27,9 @@ import {
   buildAssignment,
   buildRunRecord,
   isRunTerminal,
+  unmeasuredBudgetDimensions,
   type AgentRunRecord,
+  type ExecutionBudget,
   type ExecutionIdentity,
   type Organization,
   type ProviderKind,
@@ -68,6 +70,17 @@ export interface StartAgentRunInput {
    */
   identity: ExecutionIdentity
   evidenceSetId: string
+  /**
+   * The **effective** limit, already resolved by the caller.
+   *
+   * Resolved rather than decided here, and recorded rather than referenced.
+   * The orchestrator holds the three policy sources — the playbook proposes, a
+   * case may constrain, firm-wide policy is the hard ceiling — and this command
+   * stores only what they came to. The same shape as every other policy
+   * decision in the ledger: resolved by the caller, recorded with the act,
+   * never looked up again afterwards.
+   */
+  budget: ExecutionBudget
 }
 
 export function startAgentRun(
@@ -97,6 +110,9 @@ export function startAgentRun(
       outputSchemaVersion: input.outputSchemaVersion,
       identity: asCanonicalValue(input.identity),
       evidenceSetId: input.evidenceSetId,
+      // What the firm authorized is part of what was asked, not a detail of
+      // how it was carried out.
+      budget: asCanonicalValue(input.budget),
     }),
 
     async execute(repositories, context, input) {
@@ -233,6 +249,27 @@ export function startAgentRun(
         reject('not-found', `"${employeeId}" is not an employee of the firm`)
       }
 
+      /*
+       * A live run refuses to begin against a dimension nobody decided.
+       *
+       * `not-measured` is not `unlimited` — that was the whole reason the
+       * original nullable field carried the comment it did. A replay or a stub
+       * is not refused: it consumes nothing external, so an unmeasured
+       * dimension on one authorizes no spend. `buildRunRecord` refuses the same
+       * combination, so the record cannot exist even if a caller bypasses this.
+       */
+      if (input.providerKind === 'live') {
+        const unmeasured = unmeasuredBudgetDimensions(input.budget)
+        if (unmeasured.length > 0) {
+          reject(
+            'invariant-violated',
+            `Live work on assignment "${input.assignmentId}" has no decided ` +
+              `budget for ${unmeasured.join(', ')}. The firm does not start work ` +
+              `it has not authorized, and "not measured" is not "unlimited".`,
+          )
+        }
+      }
+
       /* -------------------------------------------------------- the write */
 
       const runId = deriveRunId(context.commandId, input.assignmentId)
@@ -251,8 +288,20 @@ export function startAgentRun(
          * A run that has not produced anything has consumed nothing yet, and
          * for a replay or a stub it never will. `RecordContribution` replaces
          * this with what the provider reported.
+         *
+         * Live work is the exception, and it matters: a live call always
+         * consumes something, so `not-applicable` would be a claim that the
+         * work was free. Before the provider reports, the honest state is
+         * `not-reported` — real spend nobody has told us about yet — which is
+         * also the only pair of states `usagePermitted` allows live work.
+         * Recorded and stub keep `not-applicable`, which is the truth for them.
          */
-        usage: { state: 'not-applicable' },
+        usage:
+          input.providerKind === 'live'
+            ? { state: 'not-reported' }
+            : { state: 'not-applicable' },
+        /* What was authorized, as resolved before anything ran. */
+        budget: input.budget,
         ...(input.revisionId ? { revisionId: input.revisionId } : {}),
         startedAt: context.occurredAt,
         events: [{ runId, at: context.occurredAt, state: 'running' }],

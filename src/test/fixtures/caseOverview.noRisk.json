@@ -302,6 +302,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -370,6 +382,18 @@
           "opposesThesisId": "hq-fixture-norisk-thesis"
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -437,6 +461,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },

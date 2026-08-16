@@ -135,6 +135,19 @@ export interface RunRow {
   output_tokens: number | null
   cost_minor_units: number | null
   currency: string | null
+  /**
+   * What the run was authorized to spend, as against what it did.
+   *
+   * Each `*_kind` is 'limit' | 'not-applicable' | 'not-measured'. Write-once:
+   * set when the run starts and absent from the upsert's `DO UPDATE SET`.
+   */
+  budget_tokens_kind: string
+  budget_tokens: number | null
+  budget_cost_kind: string
+  budget_cost_minor_units: number | null
+  budget_currency: string | null
+  budget_deadline_kind: string
+  budget_deadline_ms: number | null
 }
 
 export interface RunEventRow {

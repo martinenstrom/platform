@@ -24,6 +24,7 @@ import { openInvestmentCase } from '~/application/analysis/commands/openInvestme
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
+import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
@@ -88,6 +89,12 @@ const DECLARATION = {
     scenarioId: 'success',
     stubVersion: '1',
   },
+  /*
+   * Resolved through the real path rather than hand-built, so the harness
+   * exercises what production does: a stub consumes nothing external, so
+   * tokens and cost come back `not-applicable` while the deadline still binds.
+   */
+  budget: resolveExecutionBudget('stub', { firmCeiling: { deadlineMs: 30_000 } }),
 }
 
 /**

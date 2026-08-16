@@ -23,6 +23,7 @@ import {
   buildClaim,
   buildEvidenceSet,
   buildRunRecord,
+  NON_CONSUMING_BUDGET,
   buildThesis,
   buildTransitionEvent,
   observationRef,
@@ -128,6 +129,7 @@ const run = (): AgentRunRecord =>
     agentContractVersion: '1',
     outputSchemaVersion: '1',
     usage: { state: 'not-applicable' },
+    budget: NON_CONSUMING_BUDGET,
     evidenceSetId: 'set-1',
     state: 'running',
     execution: {

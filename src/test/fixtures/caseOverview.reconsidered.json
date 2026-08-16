@@ -341,6 +341,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -409,6 +421,18 @@
           "opposesThesisId": "hq-reconsidered-thesis"
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -476,6 +500,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -616,7 +652,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "dfda24fac46d1bc79afe605d0cabf0ff5e11219a2db23b764bf183dd5e074812"
+          "digest": "8003983c14f19d1857760ace2f625ce307fdc7fd37e3ac999c6ab5b6b7608589"
         }
       }
     },
@@ -667,7 +703,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "32d3eee5b8cc45daf5736bf5717765f99521e8a57d6633f85d86dbe51a313658"
+          "digest": "392c19a96070029e28d47f882a2895408bebadb6cb3d087794250dcf00221fd7"
         }
       }
     }

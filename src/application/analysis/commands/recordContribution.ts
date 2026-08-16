@@ -43,6 +43,7 @@
  */
 
 import {
+  budgetOverruns,
   buildClaim,
   buildRunRecord,
   canTransitionRun,
@@ -178,6 +179,32 @@ export function recordContribution(
           'illegal-prior-state',
           `Run "${input.runId}" cannot move from ${run.state} to ` +
             `awaiting-acceptance`,
+        )
+      }
+
+      /*
+       * Work that cost more than the run was authorized to spend does not
+       * enter the produced store.
+       *
+       * The orchestrator settles such a run as `budget-exhausted` before ever
+       * reaching this command; this is the copy that holds when something
+       * calls the command directly. Refused rather than recorded-and-flagged,
+       * because a produced claim is work a person may accept, and offering
+       * someone the choice to accept unauthorized spend puts the decision in
+       * the wrong place.
+       *
+       * Compared against the budget carried on the run, never against current
+       * policy: the authorization is a fact of the record, and re-reading it
+       * from a source that has since changed would let a policy edit decide
+       * whether finished work was affordable.
+       */
+      const overrun = budgetOverruns(run.budget, input.usage)
+      if (overrun.length > 0) {
+        reject(
+          'invariant-violated',
+          `Run "${input.runId}" reports spending beyond its authorized ` +
+            `${overrun.join(' and ')}. Work the firm did not authorize is not ` +
+            `recorded as work the firm may accept.`,
         )
       }
 

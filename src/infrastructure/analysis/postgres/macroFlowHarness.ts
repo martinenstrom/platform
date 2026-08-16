@@ -30,6 +30,7 @@ import { openInvestmentCase } from '~/application/analysis/commands/openInvestme
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
+import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { failAgentRun } from '~/application/analysis/commands/failAgentRun'
@@ -170,6 +171,10 @@ const DECLARATION = {
   agentContractVersion: '0',
   outputSchemaVersion: '0',
   identity: { kind: 'scenario' as const, scenarioId: 'success', stubVersion: '1' },
+  // A stub spends nothing external; the deadline is the only dimension that
+  // binds it. Resolved rather than hand-built, so the flow exercises the path
+  // production takes.
+  budget: resolveExecutionBudget('stub', { firmCeiling: { deadlineMs: 30_000 } }),
 }
 
 export interface MacroCase {

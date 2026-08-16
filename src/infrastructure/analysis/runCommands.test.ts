@@ -29,6 +29,7 @@ import {
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
+import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { failAgentRun } from '~/application/analysis/commands/failAgentRun'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { playbookContentHash } from '~/application/analysis/playbooks'
@@ -122,6 +123,9 @@ const startInput = (assignmentId: string, over: Record<string, unknown> = {}) =>
     model: { id: 'sonnet', provider: 'anthropic', parameters: {}, parametersHash: 'mh' },
   },
   evidenceSetId,
+  // A replay consumes nothing external, so tokens and cost resolve to
+  // `not-applicable`; the deadline is the dimension that still binds it.
+  budget: resolveExecutionBudget('recorded', { firmCeiling: { deadlineMs: 30_000 } }),
   ...over,
 })
 
@@ -434,6 +438,132 @@ describe('StartAgentRun', () => {
     expect(replay.outcome).toBe('committed')
     expect(await repositories.runs.listForCase('case-1')).toHaveLength(1)
     expect(first.outcome).toBe('committed')
+  })
+})
+
+/* ------------------------------------------------------- the execution budget */
+
+describe('what a run is authorized to spend', () => {
+  let assignmentId: string
+
+  beforeEach(async () => {
+    assignmentId = await seedInstantiatedCase()
+  })
+
+  it('records the effective limit, not the policies that produced it', async () => {
+    /*
+     * The run stores "this was allowed 40,000 tokens", never "the playbook
+     * proposed X, the case constrained Y, policy capped Z". Storing the
+     * sources would make an old run's limits re-derivable only from documents
+     * that have since moved.
+     */
+    const budget = resolveExecutionBudget('live', {
+      proposed: { tokens: 90_000 },
+      caseConstraint: { tokens: 40_000 },
+      firmCeiling: {
+        tokens: 100_000,
+        cost: { costMinorUnits: 5_000, currency: 'USD' },
+        deadlineMs: 30_000,
+      },
+    })
+
+    await start(assignmentId, { providerKind: 'live', budget })
+    const [run] = await repositories.runs.listForCase('case-1')
+
+    expect(run!.budget).toEqual({
+      tokens: { kind: 'limit', tokens: 40_000 },
+      cost: { kind: 'limit', costMinorUnits: 5_000, currency: 'USD' },
+      deadline: { kind: 'limit', deadlineMs: 30_000 },
+    })
+  })
+
+  it('reads its own limits back unchanged after every source has moved', async () => {
+    /*
+     * The exit criterion stated as a test. The three policy sources are all
+     * rewritten after the run committed — a different playbook proposal, a
+     * different case constraint, a different firm ceiling — and the run still
+     * reports what it was actually authorized to spend.
+     *
+     * This is what "the record carries what was in force, not a pointer to
+     * wherever it currently lives" has to mean operationally.
+     */
+    const atTheTime = resolveExecutionBudget('live', {
+      proposed: { tokens: 90_000 },
+      caseConstraint: { tokens: 40_000 },
+      firmCeiling: {
+        tokens: 100_000,
+        cost: { costMinorUnits: 5_000, currency: 'USD' },
+        deadlineMs: 30_000,
+      },
+    })
+    await start(assignmentId, { providerKind: 'live', budget: atTheTime })
+
+    // Every source changes. None of them is what the run reads.
+    const laterAndDifferent = resolveExecutionBudget('live', {
+      proposed: { tokens: 1 },
+      caseConstraint: { tokens: 2 },
+      firmCeiling: {
+        tokens: 3,
+        cost: { costMinorUnits: 4, currency: 'USD' },
+        deadlineMs: 5,
+      },
+    })
+    expect(laterAndDifferent.tokens).toEqual({ kind: 'limit', tokens: 1 })
+
+    const [run] = await repositories.runs.listForCase('case-1')
+    expect(run!.budget.tokens).toEqual({ kind: 'limit', tokens: 40_000 })
+    expect(run!.budget.deadline).toEqual({ kind: 'limit', deadlineMs: 30_000 })
+  })
+
+  it('refuses to start live work against a dimension nobody decided', async () => {
+    /*
+     * "Not measured" is not "unlimited" — the reason the original nullable
+     * field carried that comment. The firm does not begin work it has not
+     * authorized.
+     */
+    const unbounded = resolveExecutionBudget('live', { firmCeiling: {} })
+    expect(unbounded.tokens).toEqual({ kind: 'not-measured' })
+
+    const result = await start(assignmentId, {
+      providerKind: 'live',
+      budget: unbounded,
+    })
+
+    expect(result.outcome).toBe('rejected')
+    expect(await repositories.runs.listForCase('case-1')).toEqual([])
+  })
+
+  it('does not refuse a producer for lacking a limit it could never spend', async () => {
+    /*
+     * The other half, and the whole reason `not-applicable` exists as a state.
+     * A stub has no monetary cost by construction; refusing it for having no
+     * cost limit would be refusing a fact rather than enforcing a policy.
+     */
+    const budget = resolveExecutionBudget('stub', { firmCeiling: {} })
+    expect(budget.cost).toEqual({ kind: 'not-applicable' })
+
+    const result = await start(assignmentId, {
+      providerId: 'stub',
+      providerKind: 'stub',
+      identity: { kind: 'scenario', scenarioId: 'success', stubVersion: '1' },
+      budget,
+    })
+
+    expect(result.outcome).toBe('committed')
+    const [run] = await repositories.runs.listForCase('case-1')
+    expect(run!.budget.cost).toEqual({ kind: 'not-applicable' })
+  })
+
+  it('keeps "cannot spend this" and "nobody decided" distinguishable on the record', async () => {
+    // A single nullable number could not tell these two runs apart, and the
+    // ambiguity would fall on the side that costs money.
+    const stub = resolveExecutionBudget('stub', { firmCeiling: {} })
+    expect(stub.cost.kind).toBe('not-applicable')
+
+    const live = resolveExecutionBudget('live', { firmCeiling: {} })
+    expect(live.cost.kind).toBe('not-measured')
+
+    expect(stub.cost).not.toEqual(live.cost)
   })
 })
 

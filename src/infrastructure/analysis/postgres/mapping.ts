@@ -43,8 +43,12 @@ import {
   type AggregationInput,
   type ClaimDispositionRecord,
   type DisagreementMateriality,
+  type CostBudget,
+  type DeadlineBudget,
   type EvidenceSet,
+  type ExecutionBudget,
   type ExecutionIdentity,
+  type TokenBudget,
   type ManagerAggregation,
   type OptionalInputRecord,
   type ProviderKind,
@@ -441,6 +445,71 @@ function toRunUsage(row: RunRow): RunUsage {
   }
 }
 
+/**
+ * Rebuilds what the run was authorized to spend.
+ *
+ * Each dimension is read on its own, and a `limit` without its value is a
+ * malformed row rather than a silently unbounded one — the failure mode the
+ * three-state design exists to prevent, so it must not be reintroduced at the
+ * boundary that reads the columns back.
+ */
+function toBudgetDimension<T>(
+  kind: string,
+  limit: () => T | null,
+  column: string,
+): T | { kind: 'not-applicable' } | { kind: 'not-measured' } {
+  switch (kind) {
+    case 'not-applicable':
+      return { kind: 'not-applicable' }
+    case 'not-measured':
+      return { kind: 'not-measured' }
+    case 'limit': {
+      const value = limit()
+      if (value === null) {
+        throw new MalformedRowError(
+          'run',
+          `${column} is "limit" but carries no value`,
+          'runs.get',
+        )
+      }
+      return value
+    }
+    default:
+      throw new MalformedRowError('run', `unknown ${column} "${kind}"`, 'runs.get')
+  }
+}
+
+function toExecutionBudget(row: RunRow): ExecutionBudget {
+  const tokens = toBudgetDimension<TokenBudget>(
+    row.budget_tokens_kind,
+    () =>
+      row.budget_tokens === null ? null : { kind: 'limit', tokens: row.budget_tokens },
+    'budget_tokens_kind',
+  )
+  const cost = toBudgetDimension<CostBudget>(
+    row.budget_cost_kind,
+    () =>
+      row.budget_cost_minor_units === null || row.budget_currency === null
+        ? null
+        : {
+            kind: 'limit',
+            costMinorUnits: row.budget_cost_minor_units,
+            currency: row.budget_currency,
+          },
+    'budget_cost_kind',
+  )
+  const deadline = toBudgetDimension<DeadlineBudget>(
+    row.budget_deadline_kind,
+    () =>
+      row.budget_deadline_ms === null
+        ? null
+        : { kind: 'limit', deadlineMs: row.budget_deadline_ms },
+    'budget_deadline_kind',
+  )
+
+  return { tokens, cost, deadline }
+}
+
 export function toRun(
   row: RunRow,
   events: readonly RunEventRow[],
@@ -448,6 +517,7 @@ export function toRun(
 ): AgentRunRecord {
   const identity = toExecutionIdentity(row)
   const usage = toRunUsage(row)
+  const budget = toExecutionBudget(row)
 
   return seal(
     build('run', 'runs', () =>
@@ -467,6 +537,7 @@ export function toRun(
           completedAt: row.completed_at,
           events: events.map(toRunEvent),
           claims: [...claims],
+          budget,
           usage,
           ...(row.failure_category
             ? {

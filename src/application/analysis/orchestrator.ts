@@ -42,6 +42,7 @@
 
 import { isolate } from '~/application/shared/isolate'
 import { withDeadline } from '~/application/shared/deadline'
+import { budgetOverruns } from '~/domain/analysis'
 import type {
   AgentClaim,
   AgentRunRecord,
@@ -55,6 +56,7 @@ import {
   type PlaybookEntry,
 } from './playbooks'
 import type { ContributionProvider, ContributionRequest } from './contributionPort'
+import { resolveExecutionBudget, type BudgetCap } from './executionBudget'
 import { runCommand, type CommandDeps } from './commands/runCommand'
 import { startAgentRun } from './commands/startAgentRun'
 import { recordContribution } from './commands/recordContribution'
@@ -70,6 +72,27 @@ export interface OrchestrationOptions {
   /** Maximum contributions in flight at once. */
   maxConcurrency: number
   signal?: AbortSignal
+  /**
+   * The hard ceiling. Nothing resolves above it.
+   *
+   * Firm-wide policy, and the last word in the resolution chain — a playbook
+   * proposes, a case may constrain, and this caps both. It participates in the
+   * same minimum as the other two rather than being applied after them, so no
+   * ordering of the sources can defeat it.
+   *
+   * `stageDeadlineMs` is folded in as the deadline ceiling, which is what it
+   * has always been.
+   */
+  firmBudgetCeiling?: BudgetCap
+  /**
+   * What this particular case is willing to spend, where it says anything.
+   *
+   * Supplied by the caller rather than read from the case, because a case
+   * constraint has no durable home yet — see the closing note in migration
+   * 0028. The resolver's shape is already final; only where this value comes
+   * from will change.
+   */
+  caseBudgetConstraint?: BudgetCap
 }
 
 export interface StageOutcome {
@@ -324,6 +347,33 @@ async function runEntry(
    * tell "the quant desk found nothing" from "the quant desk did not
    * contribute".
    */
+  /*
+   * Resolved once, here, and used for both the record and the request.
+   *
+   * One resolution rather than two: the number `StartAgentRun` writes down and
+   * the number the provider executes under have to be the same number, and
+   * resolving separately for each would let the record describe an
+   * authorization the provider never operated under.
+   */
+  const budget = resolveExecutionBudget(provider.kind, {
+    ...(entry.budget ? { proposed: entry.budget } : {}),
+    ...(options.caseBudgetConstraint
+      ? { caseConstraint: options.caseBudgetConstraint }
+      : {}),
+    firmCeiling: {
+      ...options.firmBudgetCeiling,
+      /*
+       * The stage deadline has always been the firm's ceiling on how long one
+       * contribution may take. Folded in rather than left beside the budget,
+       * so there is one deadline instead of two that can disagree.
+       */
+      deadlineMs: Math.min(
+        options.stageDeadlineMs,
+        options.firmBudgetCeiling?.deadlineMs ?? options.stageDeadlineMs,
+      ),
+    },
+  })
+
   const inputs: Record<string, readonly AgentClaim[]> = {}
   for (const dependency of entry.blockedBy) {
     inputs[dependency] = claimsByKey.get(dependency) ?? []
@@ -342,12 +392,7 @@ async function runEntry(
     brief: entry.brief,
     evidenceSetId: context.evidenceSetId,
     inputs,
-    budget: {
-      tokens: null,
-      costMinorUnits: null,
-      currency: null,
-      deadlineMs: options.stageDeadlineMs,
-    },
+    budget,
     signal: options.signal ?? new AbortController().signal,
   }
 
@@ -384,6 +429,7 @@ async function runEntry(
       outputSchemaVersion: declaration.outputSchemaVersion,
       identity: declaration.identity,
       evidenceSetId: context.evidenceSetId,
+      budget,
     },
     envelope('start'),
     deps,
@@ -485,6 +531,34 @@ async function runEntry(
     })
     return stage({
       failureCategory: 'schema-violation',
+      completedAt: context.now().toISOString(),
+    })
+  }
+
+  /*
+   * Work that cost more than the firm authorized is not recorded.
+   *
+   * Checked against what the run itself carries, not against the options that
+   * produced it — the authorization is a fact on the record, and reading it
+   * from anywhere else would let a mid-flight policy change decide whether
+   * completed work was affordable.
+   *
+   * The run fails and no claim is written. Deliberately not "record it and
+   * flag it": a claim in the produced store is work a person may accept, and
+   * offering someone the option to accept spend the firm never authorized puts
+   * the decision in the wrong place. `budget-exhausted` already exists in the
+   * failure vocabulary for exactly this.
+   */
+  const overrun = budgetOverruns(run.budget, settled.data.usage)
+  if (overrun.length > 0) {
+    await settle(entry, context, deps, run.id, departmentId, {
+      category: 'budget-exhausted',
+      state: 'failed',
+      // Repeating it would spend the same overrun again.
+      retryable: false,
+    })
+    return stage({
+      failureCategory: 'budget-exhausted',
       completedAt: context.now().toISOString(),
     })
   }

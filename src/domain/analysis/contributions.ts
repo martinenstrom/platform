@@ -417,6 +417,159 @@ export function measuredCost(usage: RunUsage): RunCost | null {
   return usage.state === 'measured' ? usage : null
 }
 
+/* --------------------------------------------------------- execution budget */
+
+/**
+ * What a run was **authorized** to consume, as against `RunUsage`, which is
+ * what it actually did.
+ *
+ * Three states per dimension rather than a nullable number, for the reason
+ * `RunUsage` gives one line up: a nullable column cannot distinguish the
+ * things that are separately true, and the ambiguity falls on the side that
+ * costs money.
+ *
+ *   limit           bounded. Exceeding it fails the run
+ *   not-applicable  the provider cannot consume this at all
+ *   not-measured    nobody decided, and a live run therefore refuses to start
+ *
+ * `not-measured` preserves exactly the meaning the original nullable field was
+ * documented with — *"not measured, never unlimited"* — which existed so that a
+ * live runtime could refuse to begin work when a required authorization was
+ * absent. What it could not express is the other half: a local or simulated
+ * provider **cannot** incur a monetary cost, and refusing it for lacking a
+ * limit on something it is incapable of spending would be refusing a fact.
+ *
+ * The same distinction the eligibility gates already draw between
+ * `not-applicable` and `passed`, for the same reason: a limit that does not
+ * apply and a limit nobody set are different facts about the firm.
+ */
+export type TokenBudget =
+  | { kind: 'limit'; tokens: number }
+  | { kind: 'not-applicable' }
+  | { kind: 'not-measured' }
+
+/**
+ * Currency travels with the amount, never beside it.
+ *
+ * `RunCost` pairs them for the same reason: an amount without a currency is
+ * not a cost, and two nullable columns permit a record that names one without
+ * the other.
+ */
+export type CostBudget =
+  | { kind: 'limit'; costMinorUnits: number; currency: string }
+  | { kind: 'not-applicable' }
+  | { kind: 'not-measured' }
+
+export type DeadlineBudget =
+  | { kind: 'limit'; deadlineMs: number }
+  | { kind: 'not-applicable' }
+  | { kind: 'not-measured' }
+
+/**
+ * The **effective** limit a run executed under.
+ *
+ * Deliberately not the policies that produced it. A playbook proposes, a case
+ * may constrain, and firm-wide policy is the hard ceiling — but what the run
+ * records is the number those three resolved to, because a historical run must
+ * stay self-describing after all three have since changed. A run whose limits
+ * could only be read by reconstructing three policies would not be a record of
+ * what the firm permitted; it would be a reference to it.
+ *
+ * The same rule the eligibility basis already follows: the record carries what
+ * was in force, not a pointer to wherever it currently lives.
+ */
+export interface ExecutionBudget {
+  tokens: TokenBudget
+  cost: CostBudget
+  deadline: DeadlineBudget
+}
+
+/**
+ * What a producer that consumes nothing external runs under.
+ *
+ * A replay and a stub cannot spend tokens or money, so both are
+ * `not-applicable` rather than unmeasured — the distinction that keeps a
+ * producer incapable of spending from being refused for lacking a limit on
+ * something it could never consume. The deadline is `not-measured` because
+ * whether one was set is a fact about the caller, not about the producer.
+ */
+export const NON_CONSUMING_BUDGET: ExecutionBudget = Object.freeze({
+  tokens: { kind: 'not-applicable' } as const,
+  cost: { kind: 'not-applicable' } as const,
+  deadline: { kind: 'not-measured' } as const,
+})
+
+export type BudgetKind = TokenBudget['kind']
+
+export const BUDGET_KINDS: readonly BudgetKind[] = [
+  'limit',
+  'not-applicable',
+  'not-measured',
+]
+
+/** Named so a refusal can say which dimension nobody decided. */
+export function unmeasuredBudgetDimensions(
+  budget: ExecutionBudget,
+): readonly (keyof ExecutionBudget)[] {
+  return (['tokens', 'cost', 'deadline'] as const).filter(
+    (dimension) => budget[dimension].kind === 'not-measured',
+  )
+}
+
+/**
+ * Whether a producer of this kind may begin under this budget.
+ *
+ * Only live work is refused. A replay and a stub consume nothing external, so
+ * an unmeasured dimension on one authorizes no spend and blocks no fact — but
+ * a live call against a dimension nobody bounded is precisely the thing the
+ * original `null` comment was written to make refusable.
+ */
+export function budgetPermitsStart(
+  providerKind: ProviderKind,
+  budget: ExecutionBudget,
+): boolean {
+  if (providerKind !== 'live') return true
+  return unmeasuredBudgetDimensions(budget).length === 0
+}
+
+/**
+ * Which authorized dimensions the reported usage overran.
+ *
+ * Reads `measured` usage only. A provider that did not report cannot be shown
+ * to have exceeded anything, and treating silence as an overrun would fail
+ * runs for the provider's reticence rather than for their spend. That gap is
+ * closed at the other end — `not-reported` is a state a live provider may
+ * return, and what it costs the firm is visibility, not enforcement here.
+ */
+export function budgetOverruns(
+  budget: ExecutionBudget,
+  usage: RunUsage,
+): readonly (keyof ExecutionBudget)[] {
+  const cost = measuredCost(usage)
+  if (!cost) return []
+
+  const overrun: (keyof ExecutionBudget)[] = []
+  if (
+    budget.tokens.kind === 'limit' &&
+    cost.inputTokens + cost.outputTokens > budget.tokens.tokens
+  ) {
+    overrun.push('tokens')
+  }
+  /*
+   * A limit in one currency says nothing about spend in another. Comparing the
+   * numbers would silently treat 100 öre as 100 cents, so a mismatch is not an
+   * overrun here — it is a schema question, refused where the budget is built.
+   */
+  if (
+    budget.cost.kind === 'limit' &&
+    budget.cost.currency === cost.currency &&
+    cost.costMinorUnits > budget.cost.costMinorUnits
+  ) {
+    overrun.push('cost')
+  }
+  return overrun
+}
+
 /**
  * What kind of thing produced a contribution.
  *
@@ -491,6 +644,14 @@ export interface AgentRunRecord {
   events: readonly RunEvent[]
 
   claims: readonly AgentClaim[]
+  /**
+   * What it was authorized to consume, resolved before it started.
+   *
+   * Beside `usage` because the pair is the whole accounting question: what the
+   * firm permitted, and what was actually spent. Recorded rather than looked
+   * up, so the answer survives every later change to the policies that set it.
+   */
+  budget: ExecutionBudget
   /**
    * What it consumed. Required, because "we did not record this" is one of the
    * states rather than the absence of all of them.
@@ -579,6 +740,25 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
         `"${record.usage.state}" usage. A replay and a stub spend nothing; a live ` +
         `call spends something, measured or not.`,
     )
+  }
+
+  /*
+   * A live run under a dimension nobody bounded. Refused here as well as at
+   * `StartAgentRun`, because the command is one way in and the record is the
+   * thing that must not exist: a stored live run whose authorization was never
+   * decided is a record that the firm approved spend it never approved.
+   */
+  if (!budgetPermitsStart(record.execution.providerKind, record.budget)) {
+    const unmeasured = unmeasuredBudgetDimensions(record.budget).join(', ')
+    throw new Error(
+      `Run "${record.id}" is live work with no decided budget for ${unmeasured}. ` +
+        `"Not measured" is not "unlimited", and a live call against an ` +
+        `unbounded dimension is spend nobody authorized.`,
+    )
+  }
+  if (record.budget.cost.kind === 'limit' && record.budget.cost.currency.trim() === '') {
+    // An amount without a currency is not a cost. Mirrors `RunCost`.
+    throw new Error(`Run "${record.id}" carries a cost budget with no currency`)
   }
 
   const needsReason: readonly RunState[] = ['failed', 'timed-out', 'blocked', 'cancelled']

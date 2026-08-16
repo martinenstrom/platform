@@ -314,6 +314,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -381,6 +393,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -449,6 +473,18 @@
           "opposesThesisId": "hq-fixture-awaiting-thesis"
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -589,7 +625,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "ea018085c6e763a4a38a786970fce5ce4e5ec14acc0594cb24454795ce81f410"
+          "digest": "9705f3aed8eb4439e306190d1f24545f53edc1ba783ec5ae365f85d1bb13dcce"
         }
       }
     }

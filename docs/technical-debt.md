@@ -1641,3 +1641,36 @@ and `missingOptionalInputs` remains covered by `runCommands.test.ts` and
 with this capability. The tests that used to cover it now assert the boundary
 that replaced it: no unaccepted work reaches any desk, and entries waiting on a
 person leave nothing in the ledger.
+
+## TD-73 · a case-level budget constraint has no durable home · open
+
+**Opened by C2-1**, as a stated scope boundary rather than an oversight.
+
+The effective execution budget resolves from three sources — a playbook entry
+proposes, a case may constrain, firm-wide policy is the hard ceiling — and
+`resolveExecutionBudget` takes all three today. Two of them have durable homes:
+the proposal lives on `PlaybookEntry.budget` and is inside the playbook content
+hash, and the ceiling is firm policy supplied by the caller.
+
+**The middle one does not.** A case constraint reaches the resolver through
+`OrchestrationOptions.caseBudgetConstraint`, from whoever invoked the
+orchestrator, rather than from a column on `analysis.cases`. So a case cannot
+today *record* that this particular question does not warrant the standard
+allowance; it can only be told so at the moment work is run.
+
+**What building it needs:** a column group on `analysis.cases` with the same
+CHECK vocabulary migration 0028 uses for runs, its create and save statements,
+the row type, the mapping, a field on `InvestmentCase`, and a command
+authorised to revise it — a case's spending constraint is policy a person sets,
+so it needs an actor, a mandate and a reason like every other institutional act.
+
+**Why the column was not added in 0028 anyway.** A column nothing reads is
+worse than an honest absence: one that is always NULL reads as a policy the
+firm declined to set rather than one it cannot yet record, and that is a
+distinction this phase spent its whole budget design defending.
+
+**What must not be weakened when it is built.** The run stores the *resolved*
+number and never a pointer to the sources, so persisting the case constraint
+changes what resolution consumes and nothing about what a historical run reads
+back. `runCommands.test.ts` asserts exactly that, by moving all three sources
+after the fact and re-reading the run — that test must keep passing unchanged.

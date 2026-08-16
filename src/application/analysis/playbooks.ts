@@ -41,6 +41,7 @@ import {
   type RequirementLevel,
 } from '~/domain/analysis'
 import { canonicalIdentityInput, utf8ByteOrder } from '~/domain/shared/canonicalValue'
+import type { BudgetCap } from './executionBudget'
 
 export type PlaybookId = string
 
@@ -91,6 +92,15 @@ export interface PlaybookEntry {
    * department's remit and the check would be ceremony.
    */
   disciplineTag?: string
+  /**
+   * What this entry proposes to spend, where the workflow has a view.
+   *
+   * The first of the three sources the effective budget resolves from. A
+   * proposal, not an allowance: a case may constrain it further and firm-wide
+   * policy caps it, and the entry cannot raise either. Omitted where the
+   * workflow has no opinion, which leaves the other two to decide.
+   */
+  budget?: BudgetCap
 }
 
 export interface CasePlaybook {
@@ -133,6 +143,31 @@ export function playbookContentHash(playbook: CasePlaybook): string {
             : null,
           priority: entry.priority,
           disciplineTag: entry.disciplineTag ?? null,
+          /*
+           * What an entry proposes to spend is part of what the playbook
+           * instantiates, so it belongs in the content address. Two versions
+           * differing only in their proposed budget authorize different work,
+           * and a hash that could not tell them apart would let one version
+           * quietly mean two things.
+           *
+           * The key is OMITTED rather than set to null when an entry proposes
+           * nothing, so every playbook written before budgets existed keeps
+           * the hash it already has. Emitting `budget: null` would change the
+           * content address of entries whose content did not change — and
+           * since registration compares this hash against the stored one, it
+           * would make every already-registered playbook refuse to re-register
+           * on the grounds that its version now means something else.
+           */
+          ...(entry.budget
+            ? {
+                budget: {
+                  tokens: entry.budget.tokens ?? null,
+                  costMinorUnits: entry.budget.cost?.costMinorUnits ?? null,
+                  currency: entry.budget.cost?.currency ?? null,
+                  deadlineMs: entry.budget.deadlineMs ?? null,
+                },
+              }
+            : {}),
         })),
     }),
   )

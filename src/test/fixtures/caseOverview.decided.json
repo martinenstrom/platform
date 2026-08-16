@@ -324,6 +324,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -391,6 +403,18 @@
           }
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -459,6 +483,18 @@
           "opposesThesisId": "hq-fixture-decided-thesis"
         }
       ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
       "usage": {
         "state": "not-applicable"
       },
@@ -599,7 +635,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "945eb4357167b1d988f904a22c014b85d385e9c90003d8dad1c3af9c3537a01e"
+          "digest": "e9d409b1237beedfee124f9384116396596a5990212f7d2b7a9ded01f24aabdc"
         }
       }
     }

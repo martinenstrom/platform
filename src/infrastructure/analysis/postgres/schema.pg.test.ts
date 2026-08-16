@@ -160,12 +160,15 @@ async function insertRun(caseId: string) {
         usage_state, evidence_set_id, started_at,
         playbook_id, playbook_version, playbook_entry_key,
         provider_id, provider_version, provider_kind, missing_optional_inputs,
-        provenance_id)
+        provenance_id,
+        budget_tokens_kind, budget_cost_kind, budget_deadline_kind)
      VALUES ($1, $2, 'system', $3, 'global-macro', 'macro-head', 'running',
              '1', '1', 'model', 'p', '1', 'ph', 'm', 'anthropic', 'mh',
              'not-applicable', $4, now(),
              'schema-test', '1', 'entry',
-             'recorded-provider', '1', 'recorded', '{}', 'schema-test-prov')`,
+             'recorded-provider', '1', 'recorded', '{}', 'schema-test-prov',
+             -- Recorded work cannot spend tokens or money; no deadline was set.
+             'not-applicable', 'not-applicable', 'not-measured')`,
     [runId, caseId, assignmentId, await insertEvidenceSet()],
   )
   return { assignmentId, runId }

@@ -546,7 +546,30 @@ function runRepository(store: Store, scope: Scope): RunRepository {
         }
       }
 
-      store.runs.set(record.id, record)
+      /*
+       * A re-save revises what happened, never what was authorized.
+       *
+       * PostgreSQL says this structurally: `RUN_SQL.save` lists only state,
+       * obsolete, completion, failure, rejection and usage in its
+       * `DO UPDATE SET`, so identity, provider, evidence and budget keep the
+       * values they were written with — and migration 0028 grants no UPDATE on
+       * the budget columns at all. This store replaced the whole record, so the
+       * same second save silently rewrote what the firm had authorized.
+       *
+       * Surfaced by a shared contract case rather than fixed in one adapter:
+       * neither store defines these semantics, the contract does.
+       */
+      const previous = store.runs.get(record.id)
+      const stored = previous
+        ? Object.freeze({
+            ...record,
+            budget: previous.budget,
+            evidenceSetId: previous.evidenceSetId,
+            startedAt: previous.startedAt,
+            execution: previous.execution,
+          })
+        : record
+      store.runs.set(record.id, stored)
 
       for (const event of record.events) {
         const identity = runEventIdentity(event)
@@ -563,7 +586,10 @@ function runRepository(store: Store, scope: Scope): RunRepository {
         }
         store.runEvents.push(event)
       }
-      return hydrateRun(store, record)
+      // What the store holds, not what the caller offered. PostgreSQL reads
+      // the row back after writing for the same reason: a save must not report
+      // a value the store declined to take.
+      return hydrateRun(store, stored)
     },
   }
 }
