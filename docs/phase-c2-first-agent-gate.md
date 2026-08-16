@@ -6,8 +6,8 @@ pieces are done and green:
 | C2-1 piece | State |
 |---|---|
 | The human acceptance boundary | **done** — commit `67d585f` |
-| The three-state execution budget | **done** — this stage |
-| The analysis execution pipeline | not started |
+| The three-state execution budget | **done** — commit `e6aaf2d` |
+| The analysis execution pipeline | **done** — this stage |
 | The model client | not started |
 
 **The budget stage delivers:** `ExecutionBudget` as three states per dimension,
@@ -19,6 +19,27 @@ failure of a run whose reported spend exceeded what it was authorized.
 **What it deliberately leaves:** a case constraint has no durable home — it
 reaches the resolver from the orchestrator's caller rather than from a column.
 Recorded as **TD-73**, with the reason a NULL column would have been worse.
+
+**The pipeline stage delivers** exactly what §6.3 ruled and nothing more:
+
+- `withTimeout` and `backoffDelayMs` extracted to `application/shared/`, used by
+  both pipelines unchanged. Nothing else was extracted, and the market-data
+  modules keep the parts that are keyed to their own error vocabulary.
+- `executeWithinRun`, owning the **run-level** deadline: attempts share one wall
+  clock, so retries cannot quietly consume several times the authorised time.
+  The signal is aborted on expiry, so an over-running call is cancelled rather
+  than abandoned while it keeps spending.
+- `isRetryableFailure`, keyed to `RunFailureCategory`. The entry that proves the
+  vocabularies could not be shared: **`malformed-output` is retryable here and
+  its market-data analogue is not**, because a sampled producer genuinely may
+  parse next time while a mismatched API schema fails identically forever.
+- Retries stay attempts of **one** run. The count reaches the record through
+  `RunFailure.attempt`, which stopped being hard-coded to 1.
+- No rate limiter and no circuit breaker, per §6.2.
+
+The orchestrator now executes through it, so this is a path the workflow takes
+rather than a module beside it. A hung provider is still `provider-timeout` and
+still retryable — that behaviour was deliberate and is unchanged.
 
 This gate lifts two standing constraints, and the four decisions the guard
 demanded (§4) are made.

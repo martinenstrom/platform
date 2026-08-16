@@ -1,16 +1,19 @@
 /**
- * Bounded retry with exponential backoff and full jitter.
+ * How many attempts this pipeline allows, and which failures deserve one.
  *
- * Full jitter (`random() * cappedDelay`) rather than a fixed backoff, because
- * every instance that failed at the same moment would otherwise retry at the
- * same moment — the thundering herd the retry is supposed to avoid.
+ * The backoff calculation itself moved to `~/application/shared/backoff` when
+ * the analysis pipeline needed the same maths with the same injected
+ * randomness — measured as identical, so extracted and used by both unchanged.
  *
- * Jitter comes from the injected `Random`, so a seeded test reproduces the
- * exact delay sequence.
+ * What stays here is what is **not** shared: `isRetryable` is keyed to this
+ * module's `ErrorCode`, and the attempt counts are keyed to what an attempt
+ * costs against a daily provider quota. The other pipeline has a different
+ * error vocabulary and counts attempts inside one run's deadline instead.
  */
 
-import type { Random } from '~/domain/shared/random'
 import type { ErrorCode } from '~/domain/market'
+
+export { backoffDelayMs, sleep } from '~/application/shared/backoff'
 
 export interface RetryOptions {
   maxAttempts: number
@@ -55,20 +58,4 @@ export function isRetryable(code: ErrorCode): boolean {
     case 'unknown':
       return false
   }
-}
-
-export function backoffDelayMs(
-  attempt: number,
-  options: RetryOptions,
-  random: Random,
-): number {
-  const exponential = Math.min(
-    options.maxDelayMs,
-    options.baseDelayMs * 2 ** (attempt - 1),
-  )
-  return Math.floor(random.next() * exponential)
-}
-
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

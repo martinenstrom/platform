@@ -41,7 +41,6 @@
  */
 
 import { isolate } from '~/application/shared/isolate'
-import { withDeadline } from '~/application/shared/deadline'
 import { budgetOverruns } from '~/domain/analysis'
 import type {
   AgentClaim,
@@ -55,8 +54,14 @@ import {
   type CasePlaybook,
   type PlaybookEntry,
 } from './playbooks'
-import type { ContributionProvider, ContributionRequest } from './contributionPort'
+import type {
+  ContributionProvider,
+  ContributionRequest,
+  ContributionResult,
+} from './contributionPort'
 import { resolveExecutionBudget, type BudgetCap } from './executionBudget'
+import { executeWithinRun } from './executionPipeline'
+import { systemRandom, type Random } from '~/domain/shared/random'
 import { runCommand, type CommandDeps } from './commands/runCommand'
 import { startAgentRun } from './commands/startAgentRun'
 import { recordContribution } from './commands/recordContribution'
@@ -93,6 +98,21 @@ export interface OrchestrationOptions {
    * from will change.
    */
   caseBudgetConstraint?: BudgetCap
+  /**
+   * Jitter for retry backoff, injected so a seeded test reproduces the exact
+   * delay sequence. `Math.random()` is banned below the presentation layer for
+   * the same reason `Date.now()` is: it makes behaviour unobservable.
+   */
+  random?: Random
+  /**
+   * The wall clock the run deadline is measured against.
+   *
+   * Separate from `context.now()`, which produces the timestamps written to
+   * records. This measures elapsed time during execution, where a clock that
+   * can be stepped backwards or forwards for record-keeping would be the wrong
+   * instrument.
+   */
+  monotonicNowMs?: () => number
 }
 
 export interface StageOutcome {
@@ -455,40 +475,72 @@ async function runEntry(
   /* ------------------------------------------------------------- act two */
 
   /*
-   * `isolate` and `withDeadline` are reused because the semantics genuinely
-   * match — one unit failing must not take the others down, and a reader must
-   * not wait indefinitely. What is NOT reused is the market-data envelope: a
-   * contribution is not an observation, and forcing it into `Envelope` would
-   * give it a provenance and a staleness it does not have.
+   * The run's whole authorised wall clock, attempts included.
    *
-   * No transaction is open here. That is the whole reason this sits between
-   * two commands rather than inside one.
+   * Read from the budget on the RECORD rather than from `options`, so what
+   * bounds execution is the same number the firm authorised and wrote down. A
+   * producer whose deadline dimension is `not-applicable` runs unbounded here;
+   * a live one always has a deadline, because it refuses to start without.
+   *
+   * No transaction is open. That is the whole reason this sits between two
+   * commands rather than inside one.
    */
-  const settled = await withDeadline(
-    `contribution:${entry.key}`,
-    () =>
-      isolate(`contribution:${entry.key}`, async () => {
-        const result = await provider.contribute(request)
+  const deadlineMs =
+    run.budget.deadline.kind === 'limit' ? run.budget.deadline.deadlineMs : null
+
+  const settled = await executeWithinRun<ContributionResult>(
+    deadlineMs,
+    /*
+     * `isolate` still wraps each attempt: one department failing must not take
+     * the others down. What it no longer does is decide the deadline — the
+     * pipeline owns that now, and owns it per run rather than per attempt.
+     *
+     * The signal is the pipeline's, not the caller's, so an attempt that
+     * outlives the run's window is actually cancelled rather than abandoned.
+     */
+    async (signal) => {
+      const attempted = await isolate(`contribution:${entry.key}`, async () => {
+        const result = await provider.contribute({ ...request, signal })
         return { state: 'ok' as const, data: result, provenance: undefined as never }
-      }),
-    { budgetMs: options.stageDeadlineMs },
+      })
+      return attempted.state === 'ok'
+        ? { state: 'ok', value: attempted.data }
+        : /*
+           * Everything a provider throws is `provider-error` until a client
+           * exists that can tell "unreachable" from "answered with an error".
+           * Guessing between them from an exception would put a category the
+           * firm counts on top of something nobody measured.
+           */
+          { state: 'failed', category: 'provider-error' }
+    },
+    {
+      random: options.random ?? systemRandom,
+      monotonicNowMs: options.monotonicNowMs ?? (() => Date.now()),
+    },
   )
 
   /* ----------------------------------------------------------- act three */
 
   if (settled.state !== 'ok') {
-    const timedOut = settled.state === 'error' && settled.error.code === 'timeout'
-    const category: RunFailureCategory = timedOut ? 'provider-timeout' : 'provider-error'
+    // Time ran out, whichever way: the run stopped without producing.
+    const timedOut =
+      settled.category === 'provider-timeout' || settled.category === 'budget-exhausted'
     await settle(entry, context, deps, run.id, departmentId, {
-      category,
+      category: settled.category,
       state: timedOut ? 'timed-out' : 'failed',
-      // A timeout may be transient; an error the provider chose to return is
-      // not, and returning the work to the queue would repeat it forever.
-      retryable: timedOut,
+      /*
+       * Whether the ORGANIZATION queues it again, decided by the pipeline
+       * against the analysis vocabulary rather than re-derived here. A second
+       * opinion about retryability at the call site is how the two drift.
+       */
+      retryable: settled.retryable,
+      // Retries were attempts within THIS run. The count is a fact about the
+      // one run, never a reason to have recorded several.
+      attempt: settled.attempts,
     })
     return stage({
       state: timedOut ? 'timed-out' : 'failed',
-      failureCategory: category,
+      failureCategory: settled.category,
       completedAt: context.now().toISOString(),
     })
   }
@@ -507,7 +559,7 @@ async function runEntry(
     })
     return stage({
       state: 'superseded',
-      claims: settled.data.claims,
+      claims: settled.value.claims,
       obsolete: true,
       failureCategory: 'revision-superseded',
       completedAt: context.now().toISOString(),
@@ -521,8 +573,8 @@ async function runEntry(
    * key on.
    */
   if (
-    settled.data.agentContractVersion !== declaration.agentContractVersion ||
-    settled.data.outputSchemaVersion !== declaration.outputSchemaVersion
+    settled.value.agentContractVersion !== declaration.agentContractVersion ||
+    settled.value.outputSchemaVersion !== declaration.outputSchemaVersion
   ) {
     await settle(entry, context, deps, run.id, departmentId, {
       category: 'schema-violation',
@@ -549,7 +601,7 @@ async function runEntry(
    * the decision in the wrong place. `budget-exhausted` already exists in the
    * failure vocabulary for exactly this.
    */
-  const overrun = budgetOverruns(run.budget, settled.data.usage)
+  const overrun = budgetOverruns(run.budget, settled.value.usage)
   if (overrun.length > 0) {
     await settle(entry, context, deps, run.id, departmentId, {
       category: 'budget-exhausted',
@@ -569,11 +621,11 @@ async function runEntry(
       caseId: context.caseId,
       runId: run.id,
       departmentId,
-      claims: settled.data.claims,
-      observedStates: settled.data.observedStates,
+      claims: settled.value.claims,
+      observedStates: settled.value.observedStates,
       // Passed through exactly as reported. The orchestrator has no basis for
       // converting one usage state into another.
-      usage: settled.data.usage,
+      usage: settled.value.usage,
     },
     envelope('record'),
     deps,
@@ -647,7 +699,13 @@ async function settle(
   deps: CommandDeps,
   runId: string,
   departmentId: string,
-  failure: { category: RunFailureCategory; state: RunState; retryable: boolean },
+  failure: {
+    category: RunFailureCategory
+    state: RunState
+    retryable: boolean
+    /** Attempts made inside this ONE run. Defaults to the single attempt. */
+    attempt?: number
+  },
 ): Promise<void> {
   await runCommand(
     failAgentRun(deps.organization),
@@ -657,7 +715,7 @@ async function settle(
       departmentId,
       category: failure.category,
       retryable: failure.retryable,
-      attempt: 1,
+      attempt: failure.attempt ?? 1,
       state: failure.state,
     },
     {
