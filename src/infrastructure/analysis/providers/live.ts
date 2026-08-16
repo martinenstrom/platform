@@ -32,14 +32,14 @@ import {
   type ConfidenceLevel,
   type EvidenceItem,
   type EvidenceSet,
-  type RunFailureCategory,
 } from '~/domain/analysis'
 import { resolveModelConfidence } from '~/application/analysis/modelConfidence'
-import type {
-  ContributionDeclaration,
-  ContributionProvider,
-  ContributionRequest,
-  ContributionResult,
+import {
+  ContributionFailure,
+  type ContributionDeclaration,
+  type ContributionProvider,
+  type ContributionRequest,
+  type ContributionResult,
 } from '~/application/analysis/contributionPort'
 import { stableHashHex } from '~/domain/shared/hash'
 import { callModel, type ModelClientConfig, type ModelResponse } from './modelClient'
@@ -57,7 +57,6 @@ const OUTPUT_SCHEMA_VERSION = '1'
 export interface LiveProviderConfig extends ModelClientConfig {
   model: string
   maxTokens: number
-  temperature: number
   /**
    * Reads the evidence the run was given.
    *
@@ -172,20 +171,18 @@ export function parseCandidates(text: string): readonly CandidateClaim[] | null 
 
 /* ------------------------------------------------------------- the provider */
 
-export class LiveProviderFailure extends Error {
-  constructor(readonly category: RunFailureCategory) {
-    super(`live provider failed: ${category}`)
-    this.name = 'LiveProviderFailure'
-  }
-}
-
 export function createLiveContributionProvider(
   config: LiveProviderConfig,
 ): ContributionProvider {
-  const parameters = {
-    temperature: config.temperature,
-    maxTokens: config.maxTokens,
-  }
+  /*
+   * What the request actually carries, and nothing else.
+   *
+   * `parametersHash` is a content address of what shaped the output. Recording
+   * `temperature` while the body omits it would make the stored identity
+   * describe a call that was never sent — and the whole point of hashing the
+   * parameters is that a run cannot misreport what produced it.
+   */
+  const parameters = { maxTokens: config.maxTokens }
 
   const declare = (request: ContributionRequest): ContributionDeclaration => ({
     agentContractVersion: AGENT_CONTRACT_VERSION,
@@ -219,7 +216,7 @@ export function createLiveContributionProvider(
 
     async contribute(request: ContributionRequest): Promise<ContributionResult> {
       const evidence = await config.loadEvidenceSet(request.evidenceSetId)
-      if (!evidence) throw new LiveProviderFailure('evidence-unavailable')
+      if (!evidence) throw new ContributionFailure('evidence-unavailable')
 
       const outcome = await callModel(
         {
@@ -227,15 +224,14 @@ export function createLiveContributionProvider(
           system: renderSystemPrompt(),
           user: renderUserPrompt(request.brief, evidence),
           maxTokens: config.maxTokens,
-          temperature: config.temperature,
         },
         config,
         request.signal,
       )
-      if (outcome.state === 'failed') throw new LiveProviderFailure(outcome.category)
+      if (outcome.state === 'failed') throw new ContributionFailure(outcome.category)
 
       const candidates = parseCandidates(outcome.response.text)
-      if (!candidates) throw new LiveProviderFailure('malformed-output')
+      if (!candidates) throw new ContributionFailure('malformed-output')
 
       const claims = candidates.map((candidate, index) =>
         toAgentClaim(candidate, index, evidence, request),
@@ -277,7 +273,7 @@ function toAgentClaim(
      * firm can act on — so it is caught and named. A model naming evidence it
      * was not given is malformed output, and malformed output is retryable.
      */
-    if (!item) throw new LiveProviderFailure('malformed-output')
+    if (!item) throw new ContributionFailure('malformed-output')
     items.push(item)
     return citeFrom(evidence, item.ref)
   })

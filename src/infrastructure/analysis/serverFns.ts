@@ -149,3 +149,14 @@ export const getCaseListFn = createServerFn({ method: 'POST' }).handler(
     }
   },
 )
+
+/*
+ * The C2-1 smoke proof, re-exported through the published boundary.
+ *
+ * `no-ui-import-of-infrastructure` permits the presentation layer to name
+ * exactly one kind of infrastructure module: a `serverFns` boundary. The smoke
+ * route reached into `smokeFns` directly and the rule caught it — correctly, so
+ * the fix is to use the sanctioned door rather than widen it. The function
+ * itself stays in its own module; only its reachability changes.
+ */
+export { c2SmokeProofFn, type SmokeResult } from './smokeFns'

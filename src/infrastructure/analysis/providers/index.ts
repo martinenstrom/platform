@@ -33,6 +33,5 @@ export {
 export {
   LIVE_PROVIDER_ID,
   createLiveContributionProvider,
-  LiveProviderFailure,
   type LiveProviderConfig,
 } from './live'

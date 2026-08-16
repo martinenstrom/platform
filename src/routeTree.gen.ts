@@ -18,6 +18,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
+import { Route as SmokeC21RouteImport } from './routes/smoke.c2-1'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +65,11 @@ const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   path: '/cases/$caseId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SmokeC21Route = SmokeC21RouteImport.update({
+  id: '/smoke/c2-1',
+  path: '/smoke/c2-1',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/smoke/c2-1': typeof SmokeC21Route
   '/cases/': typeof CasesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/smoke/c2-1': typeof SmokeC21Route
   '/cases': typeof CasesIndexRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/smoke/c2-1': typeof SmokeC21Route
   '/cases/': typeof CasesIndexRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/watchlist'
     | '/cases/$caseId'
+    | '/smoke/c2-1'
     | '/cases/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/watchlist'
     | '/cases/$caseId'
+    | '/smoke/c2-1'
     | '/cases'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/watchlist'
     | '/cases/$caseId'
+    | '/smoke/c2-1'
     | '/cases/'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
+  SmokeC21Route: typeof SmokeC21Route
   CasesIndexRoute: typeof CasesIndexRoute
 }
 
@@ -212,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/smoke/c2-1': {
+      id: '/smoke/c2-1'
+      path: '/smoke/c2-1'
+      fullPath: '/smoke/c2-1'
+      preLoaderRoute: typeof SmokeC21RouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
+  SmokeC21Route: SmokeC21Route,
   CasesIndexRoute: CasesIndexRoute,
 }
 export const routeTree = rootRouteImport

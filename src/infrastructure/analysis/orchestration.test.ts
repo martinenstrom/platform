@@ -37,6 +37,7 @@ import type {
 } from '~/application/analysis/contributionPort'
 import { createInMemoryRepositories } from './inMemoryRepositories'
 import { createStubContributionProvider } from './providers'
+import { ContributionFailure } from '~/application/analysis/contributionPort'
 import {
   EMPLOYEE_BY_DEPARTMENT,
   TEST_ORGANIZATION,
@@ -467,6 +468,70 @@ describe('when the provider does not deliver', () => {
 
     // An optional entry is never on the required path, failed or not.
     expect(result.missingRequired).not.toContain('quant-validation')
+  })
+
+  it('records the category the provider classified, not a generic one', async () => {
+    /*
+     * The regression. The orchestrator used to wrap the call in `isolate`,
+     * which turned every throw into one market-data envelope, and then
+     * hard-coded `provider-error` — so an auth rejection, unparseable output
+     * and missing evidence all reached the record as the same category. The
+     * live client was classifying correctly the whole time; the seam above it
+     * discarded the answer.
+     *
+     * `evidence-unavailable` is used deliberately: nothing else in the
+     * orchestrator can produce it, so seeing it on the run proves it came from
+     * the provider rather than from a coincidence upstream.
+     */
+    const classifying: ContributionProvider = {
+      id: 'classifying',
+      version: '1',
+      kind: 'stub',
+      declare: () => ({
+        agentContractVersion: '0',
+        outputSchemaVersion: '0',
+        identity: { kind: 'scenario', scenarioId: 'success', stubVersion: '1' },
+      }),
+      contribute: () => {
+        throw new ContributionFailure('evidence-unavailable')
+      },
+    }
+
+    const result = await run(classifying)
+
+    expect(outcomeFor(result, 'macro-analysis')).toMatchObject({
+      state: 'failed',
+      failureCategory: 'evidence-unavailable',
+    })
+    const failed = (await repositories.runs.listForCase('case-1')).find(
+      (r) => r.departmentId === 'global-macro',
+    )
+    expect(failed!.failure).toMatchObject({ category: 'evidence-unavailable' })
+  })
+
+  it('records provider-error when the provider does not say why it failed', async () => {
+    // The near-miss: an unclassified throw must still land somewhere bounded,
+    // and must not borrow a category the provider never claimed.
+    const opaque: ContributionProvider = {
+      id: 'opaque',
+      version: '1',
+      kind: 'stub',
+      declare: () => ({
+        agentContractVersion: '0',
+        outputSchemaVersion: '0',
+        identity: { kind: 'scenario', scenarioId: 'success', stubVersion: '1' },
+      }),
+      contribute: () => {
+        throw new Error('something went wrong inside the provider')
+      },
+    }
+
+    const result = await run(opaque)
+
+    expect(outcomeFor(result, 'macro-analysis')).toMatchObject({
+      state: 'failed',
+      failureCategory: 'provider-error',
+    })
   })
 
   it('times a hung provider out rather than waiting', async () => {

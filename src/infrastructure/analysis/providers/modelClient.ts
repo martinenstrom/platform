@@ -32,7 +32,12 @@ export interface ModelRequest {
   system: string
   user: string
   maxTokens: number
-  temperature: number
+  /*
+   * No sampling parameters. The provider answered 400 — "`temperature` is
+   * deprecated for this model" — so the field is rejected by its PRESENCE, not
+   * its value: `0` fails exactly as `0.7` does, and no replacement parameter
+   * is substituted here. Behaviour is steered by the prompt.
+   */
 }
 
 /** What the provider reported spending. Absent when it did not say. */
@@ -100,7 +105,6 @@ export async function callModel(
       body: JSON.stringify({
         model: request.model,
         max_tokens: request.maxTokens,
-        temperature: request.temperature,
         system: request.system,
         messages: [{ role: 'user', content: request.user }],
       }),

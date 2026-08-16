@@ -6,3 +6,6 @@ node_modules
 dist
 .DS_Store
 .env
+
+# Local development database cluster (scripts/dev-db.ts)
+.pgdata/

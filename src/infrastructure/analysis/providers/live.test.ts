@@ -17,11 +17,8 @@ import {
 import { buildProvenance, type Quality } from '~/domain/shared/provenance'
 import type { ContributionRequest } from '~/application/analysis/contributionPort'
 import { NON_CONSUMING_BUDGET } from '~/domain/analysis'
-import {
-  createLiveContributionProvider,
-  LiveProviderFailure,
-  parseCandidates,
-} from './live'
+import { createLiveContributionProvider, parseCandidates } from './live'
+import { ContributionFailure } from '~/application/analysis/contributionPort'
 
 const AT = '2026-08-16T09:00:00.000Z'
 
@@ -108,7 +105,6 @@ function providerFor(body: unknown, set: EvidenceSet = realSet, status = 200) {
     apiKey: 'test-key-not-a-real-credential',
     model: 'claude-opus-5',
     maxTokens: 1_024,
-    temperature: 0,
     fetch: transport.fetch,
     loadEvidenceSet: async () => set,
   })
@@ -153,6 +149,43 @@ describe('what the model is asked for', () => {
     expect(declaration.identity.model.provider).toBe('anthropic')
     expect(declaration.identity.prompt.contentHash).toMatch(/^[0-9a-f]+$/)
     expect(declaration.identity.model.parametersHash).toMatch(/^[0-9a-f]+$/)
+  })
+
+  it('records exactly the parameters the request carries, and no others', async () => {
+    /*
+     * The stored identity must describe the call that was SENT.
+     *
+     * This provider used to send `temperature` and record it in `ModelRef`.
+     * The provider rejected the field outright — "`temperature` is deprecated
+     * for this model" (HTTP 400) — so it was removed from the body. Removing
+     * it from the body alone would have left `parametersHash` as the content
+     * address of a request that never existed, which is the one thing hashing
+     * the parameters is there to prevent.
+     *
+     * So this asserts BOTH directions against the same call: every recorded
+     * parameter appears in the wire body, and the body carries no shaping
+     * parameter the record omits.
+     */
+    const { provider, transport } = providerFor(answer(ONE_CLAIM))
+    const declaration = provider.declare(request())
+    await provider.contribute(request())
+
+    if (declaration.identity.kind !== 'model') throw new Error('unreachable')
+    const recorded = declaration.identity.model.parameters
+    const sent = JSON.parse(String(transport.calls[0]!.init.body)) as Record<
+      string,
+      unknown
+    >
+
+    // Recorded → sent. `maxTokens` is the wire's `max_tokens`.
+    expect(recorded).toEqual({ maxTokens: 1_024 })
+    expect(sent.max_tokens).toBe(1_024)
+
+    // Sent → recorded. No sampling parameter is present in either place.
+    for (const rejected of ['temperature', 'top_p', 'top_k']) {
+      expect(sent).not.toHaveProperty(rejected)
+      expect(recorded).not.toHaveProperty(rejected)
+    }
   })
 
   it('hashes a different brief differently', () => {
@@ -288,7 +321,7 @@ describe('failures are bounded categories, never provider prose', () => {
       usage: null,
     })
     await expect(provider.contribute(request())).rejects.toBeInstanceOf(
-      LiveProviderFailure,
+      ContributionFailure,
     )
     await expect(provider.contribute(request())).rejects.toMatchObject({
       category: 'malformed-output',
@@ -301,7 +334,6 @@ describe('failures are bounded categories, never provider prose', () => {
       apiKey: 'test-key-not-a-real-credential',
       model: 'claude-opus-5',
       maxTokens: 1_024,
-      temperature: 0,
       fetch: transport.fetch,
       loadEvidenceSet: async () => null,
     })

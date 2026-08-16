@@ -17,6 +17,7 @@ import type {
   ExecutionBudget,
   ExecutionIdentity,
   ProviderKind,
+  RunFailureCategory,
   RunState,
   RunUsage,
 } from '~/domain/analysis'
@@ -89,6 +90,30 @@ export interface ContributionDeclaration {
    * passing through a field that has one.
    */
   identity: ExecutionIdentity
+}
+
+/**
+ * How a provider reports a failure it can classify.
+ *
+ * Defined by the PORT rather than by any one provider, because the orchestrator
+ * has to read it and the application layer may not import infrastructure. A
+ * provider that knows why it failed throws this; one that does not throws
+ * anything, and the caller records `provider-error` — it errored, but it did
+ * not say how.
+ *
+ * This exists because the seam above it was flattening every live failure into
+ * one category. The client classified an auth rejection as
+ * `provider-unavailable`, and the record said `provider-error`, so the run said
+ * "the provider answered with an error" about a request the provider never
+ * accepted. A bounded vocabulary that cannot survive the trip to the record is
+ * a vocabulary in name only.
+ */
+export class ContributionFailure extends Error {
+  constructor(readonly category: RunFailureCategory) {
+    // No provider prose, here or anywhere: this message reaches logs.
+    super(`contribution failed: ${category}`)
+    this.name = 'ContributionFailure'
+  }
 }
 
 export interface ContributionProvider {

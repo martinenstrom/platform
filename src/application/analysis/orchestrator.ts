@@ -40,7 +40,6 @@
  * "four failures" is not.
  */
 
-import { isolate } from '~/application/shared/isolate'
 import { budgetOverruns } from '~/domain/analysis'
 import type {
   AgentClaim,
@@ -54,10 +53,11 @@ import {
   type CasePlaybook,
   type PlaybookEntry,
 } from './playbooks'
-import type {
-  ContributionProvider,
-  ContributionRequest,
-  ContributionResult,
+import {
+  ContributionFailure,
+  type ContributionProvider,
+  type ContributionRequest,
+  type ContributionResult,
 } from './contributionPort'
 import { resolveExecutionBudget, type BudgetCap } from './executionBudget'
 import { executeWithinRun } from './executionPipeline'
@@ -499,19 +499,25 @@ async function runEntry(
      * outlives the run's window is actually cancelled rather than abandoned.
      */
     async (signal) => {
-      const attempted = await isolate(`contribution:${entry.key}`, async () => {
+      try {
         const result = await provider.contribute({ ...request, signal })
-        return { state: 'ok' as const, data: result, provenance: undefined as never }
-      })
-      return attempted.state === 'ok'
-        ? { state: 'ok', value: attempted.data }
-        : /*
-           * Everything a provider throws is `provider-error` until a client
-           * exists that can tell "unreachable" from "answered with an error".
-           * Guessing between them from an exception would put a category the
-           * firm counts on top of something nobody measured.
-           */
-          { state: 'failed', category: 'provider-error' }
+        return { state: 'ok', value: result }
+      } catch (error) {
+        /*
+         * A provider that classified its own failure is believed. This
+         * replaced an `isolate` wrapper that turned every throw into one
+         * market-data envelope and then into `provider-error` — so an auth
+         * rejection, unparseable output and missing evidence were recorded as
+         * the same thing. The try/catch keeps the isolation `isolate` gave
+         * (nothing escapes to the other entries) without discarding the
+         * category on the way.
+         */
+        if (error instanceof ContributionFailure) {
+          return { state: 'failed', category: error.category }
+        }
+        // It errored, but it did not say how.
+        return { state: 'failed', category: 'provider-error' }
+      }
     },
     {
       random: options.random ?? systemRandom,
