@@ -1,45 +1,33 @@
 # Planning gate — C2: the first operational agent
 
-**Status:** approved, and C2-1 is partly built. Two of its three remaining
-pieces are done and green:
+**Status:** approved. **C2-1 is COMPLETE**, proved against the real provider.
 
 | C2-1 piece | State |
 |---|---|
-| The human acceptance boundary | **done** — commit `67d585f` |
-| The three-state execution budget | **done** — commit `e6aaf2d` |
-| The analysis execution pipeline | **done** — this stage |
-| The model client | not started |
+| The human acceptance boundary | **done** — `67d585f` |
+| The three-state execution budget | **done** — `e6aaf2d` |
+| The analysis execution pipeline | **done** — `1170cba` |
+| The model client | **done** — `8c95c84` |
+| The controlled live smoke proof | **done** — `36a10c0` |
 
-**The budget stage delivers:** `ExecutionBudget` as three states per dimension,
-`resolveExecutionBudget` collapsing the playbook proposal, a case constraint and
-the firm ceiling into one effective limit, that limit recorded write-once on the
-run (migration 0028), refusal of live work against an undecided dimension, and
-failure of a run whose reported spend exceeded what it was authorized.
+**The exit capability, demonstrated rather than asserted:** the firm
+commissioned one live analysis through the served runtime, received produced
+claims, held them in `awaiting-acceptance`, a person accepted them through the
+normal command, and the accepted claims entered `analysis.claims` and became
+citable — real PostgreSQL adapter, no in-memory fallback, no shortcut.
 
-**What it deliberately leaves:** a case constraint has no durable home — it
-reaches the resolver from the orchestrator's caller rather than from a column.
-Recorded as **TD-73**, with the reason a NULL column would have been worse.
+The recorded run: `claude-opus-5`, usage measured at 475 input / 1087 output
+tokens with cost `not-reported`, against a recorded budget of 8,000 tokens,
+$1.00 and 60s. Six produced claims, six institutional after acceptance.
 
-**The pipeline stage delivers** exactly what §6.3 ruled and nothing more:
+**Deliberately left, each recorded rather than hidden:** a case-level budget
+constraint has no durable home (**TD-73**); four of `composeConfidence`'s seven
+signals have no institutional definition, so a live claim's confidence is the
+model's proposal with only the two derivable caps applied, and says so in its
+own basis (**TD-75**).
 
-- `withTimeout` and `backoffDelayMs` extracted to `application/shared/`, used by
-  both pipelines unchanged. Nothing else was extracted, and the market-data
-  modules keep the parts that are keyed to their own error vocabulary.
-- `executeWithinRun`, owning the **run-level** deadline: attempts share one wall
-  clock, so retries cannot quietly consume several times the authorised time.
-  The signal is aborted on expiry, so an over-running call is cancelled rather
-  than abandoned while it keeps spending.
-- `isRetryableFailure`, keyed to `RunFailureCategory`. The entry that proves the
-  vocabularies could not be shared: **`malformed-output` is retryable here and
-  its market-data analogue is not**, because a sampled producer genuinely may
-  parse next time while a mismatched API schema fails identically forever.
-- Retries stay attempts of **one** run. The count reaches the record through
-  `RunFailure.attempt`, which stopped being hard-coded to 1.
-- No rate limiter and no circuit breaker, per §6.2.
-
-The orchestrator now executes through it, so this is a path the workflow takes
-rather than a module beside it. A hung provider is still `provider-timeout` and
-still retryable — that behaviour was deliberate and is unchanged.
+C2-2 — Agent Headquarters — is NOT started, and was deliberately excluded
+throughout.
 
 This gate lifts two standing constraints, and the four decisions the guard
 demanded (§4) are made.
@@ -499,7 +487,7 @@ this gate has not made.
 
 ## 10. Exit criteria
 
-- [ ] A live agent produces a real claim for a real case, end to end
+- [x] A live agent produces a real claim for a real case, end to end
 - [ ] **Nothing enters `repositories.claims` without an explicit human act** —
       asserted by driving a run to `awaiting-acceptance` and confirming the case
       has no claim, no eligibility change and nothing to verify
@@ -526,18 +514,18 @@ this gate has not made.
       database, not by application code
 - [ ] The claim is verified, challenged, aggregated and gated by the existing
       workflow, unchanged
-- [ ] The run records its exact model and prompt; a live run cannot present any
+- [x] The run records its exact model and prompt; a live run cannot present any
       other identity
 - [x] A run with no budget refuses to start
 - [x] A run exceeding its budget fails, and records no claim
 - [ ] Replay returns the recorded artifact and does not re-invoke the model
-- [ ] Recorded and stub providers still pass every existing test unchanged
-- [ ] `no-llm-dependency` is replaced by a narrower rule — the client is
+- [x] Recorded and stub providers still pass every existing test unchanged
+- [x] `no-llm-dependency` is replaced by a narrower rule — the client is
       reachable only through the provider, never from domain, application or
       presentation
 - [ ] Agent Headquarters shows the agent's real runs, claims, costs and failures
 - [ ] The mock `agents.tsx` no longer presents fiction as capability
-- [ ] Both suites green; typecheck clean
+- [x] Both suites green; typecheck clean
 
 ---
 
