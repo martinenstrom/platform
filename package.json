@@ -12,7 +12,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.pg.config.ts",
-    "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts"
+    "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
+    "dev:open-case": "npx vite-node scripts/open-case.ts --"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

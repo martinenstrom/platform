@@ -32,6 +32,17 @@ export const EVIDENCE_SQL = catalog({
   get: `SELECT id, ${ts('assembled_at')}, correlation_id, co_temporality, disagreements
         FROM analysis.evidence_sets WHERE id = $1`,
 
+  /**
+   * What the institution holds, newest first.
+   *
+   * `COLLATE "C"` on the tie-break for the reason every ordering here carries
+   * it: an order that varies by the server's collation is not an order.
+   */
+  list: `SELECT id, ${ts('assembled_at')}, correlation_id, co_temporality, disagreements
+         FROM analysis.evidence_sets
+         ORDER BY assembled_at DESC, id COLLATE "C" DESC
+         LIMIT $1`,
+
   items: `SELECT evidence_set_id, observation_id, subject_kind, subject, kind,
                  ${ts('observed_at')}, source_id, series_id, methodology,
                  content_hash, value, provenance
@@ -86,6 +97,30 @@ export function createEvidenceRepository(
       unitOfWork(scope, 'evidence.get', (client) =>
         readOne(client, setId, 'evidence.get'),
       ),
+
+    list: (limit) =>
+      unitOfWork(scope, 'evidence.list', async (client) => {
+        const rows = await run<EvidenceSetRow>(
+          client,
+          context,
+          'evidence.list',
+          EVIDENCE_SQL.list,
+          [limit],
+        )
+        /*
+         * Hydrated one set at a time, through the same reader `get` uses —
+         * which recomputes and verifies each content hash. A bulk join that
+         * skipped that would let this path return sets the single-set path
+         * would refuse, and a listing that trusts what `get` checks is a second
+         * standard of admissibility.
+         */
+        const sets = []
+        for (const row of rows) {
+          const found = await readOne(client, row.id, 'evidence.list')
+          if (found) sets.push(found)
+        }
+        return sets
+      }),
 
     save: (set) =>
       unitOfWork(scope, 'evidence.save', async (client) => {

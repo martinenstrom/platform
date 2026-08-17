@@ -851,6 +851,17 @@ function evidenceRepository(store: Store, scope: Scope): EvidenceRepository {
       guard(scope, 'evidence.get')
       return store.evidence.get(setId) ?? null
     },
+    async list(limit) {
+      guard(scope, 'evidence.list')
+      /* Newest first, with the id as a total tie-break. Mirrors the SQL. */
+      return [...store.evidence.values()]
+        .sort(
+          (a, b) =>
+            b.assembledAt.localeCompare(a.assembledAt) ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(0, limit)
+    },
     async save(set) {
       guard(scope, 'evidence.save')
       seal(set, 'evidence')

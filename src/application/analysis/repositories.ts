@@ -510,6 +510,16 @@ export interface EventRepository {
 /** Content-addressed. An evidence set is immutable, so writes never conflict. */
 export interface EvidenceRepository {
   get(setId: string): Promise<EvidenceSet | null>
+  /**
+   * The sets the institution holds, most recently assembled first:
+   * `assembledAt` descending, then `id` descending.
+   *
+   * An evidence set carries no case, deliberately — it is content-addressed and
+   * reusable, so the same observations assembled twice are one set that several
+   * cases may reason over. Commissioning therefore needs to offer what the firm
+   * actually holds, which is a question no per-case lookup can answer.
+   */
+  list(limit: number): Promise<EvidenceSet[]>
   save(set: EvidenceSet): Promise<EvidenceSet>
 }
 
@@ -834,7 +844,7 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
     'saveRisk',
   ],
   events: ['append', 'listForCase', 'recent'],
-  evidence: ['get', 'save'],
+  evidence: ['get', 'list', 'save'],
   results: ['get', 'put'],
   commands: ['find', 'record', 'appendOutcome'],
   playbooks: ['register', 'get'],
