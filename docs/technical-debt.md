@@ -1804,3 +1804,47 @@ number and never a pointer to the sources, so persisting the ceiling changes
 what resolution consumes and nothing about what a historical run reads back.
 `runCommands.test.ts` asserts exactly that by moving all three sources after the
 fact and re-reading the run — that test must keep passing unchanged.
+
+## TD-77 · retry attempts spend outside the recorded usage · open
+
+**Opened by the C2-2 budget gate**, from a measurement rather than a suspicion.
+
+`budgetOverruns` compares the authorized budget against the usage of the
+contribution that **succeeded** — `settled.value.usage`, one attempt. A failed
+attempt returns no usage at all: `executeWithinRun` classifies it and moves on,
+and the tokens or money it consumed are never represented anywhere.
+
+**So actual execution spend can exceed what the institutional run record appears
+to account for.** The record is not wrong about what it states — it states what
+the successful call reported — but a reader taking `usage` as the run's total
+cost would be reading a number that excludes every attempt before the last.
+
+**The measurement.** Of the eighteen live runs in the development database,
+six were recorded with `failure_attempt = 3`: the full retry policy ran, three
+provider calls were made, and each of those runs recorded no usage whatever.
+Twelve more failed non-retryably on the first attempt, also recording nothing.
+Only two runs report usage at all.
+
+**Why the gap is structural rather than a bug.** `ContributionResult` carries
+usage, and a failed attempt produces no result to carry it on — the provider
+throws a `ContributionFailure`, which is a bounded category and nothing else.
+There is no channel through which a failed attempt's usage could reach the run
+today, which is why this is debt rather than an oversight.
+
+**What building it needs:** a way for a failed attempt to report what it spent
+(the provider knows; the failure path discards it), somewhere on the run to
+accumulate it across attempts, and a decision about which number the budget is
+enforced against — the successful call, or the run's total. The third is the
+institutional question, and it is the one to answer first: enforcing against the
+total would fail runs whose useful work was affordable but whose retries were
+not, and enforcing against the successful call is what happens today.
+
+**Not in scope for C2-2 Stage C**, by ruling. It does not block commissioning:
+the budget still bounds the call that produces the work, and the run still
+refuses to start without one. It is expanded only if implementation exposes a
+correctness dependency that genuinely prevents commissioning.
+
+**What must not be weakened when it is built.** The run records the *effective*
+limit and never its sources, and `budgetOverruns` reads measured usage only —
+a provider that reported nothing must not be treated as having overrun, which
+would fail runs for a provider's reticence rather than for their spend.

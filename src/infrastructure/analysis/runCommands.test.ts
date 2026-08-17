@@ -218,9 +218,15 @@ describe('derived record identity', () => {
 
 describe('the playbook registry', () => {
   it('resolves the approved workflow for a case kind', () => {
+    /*
+     * v2 since the C2-2 budget gate. The highest version is the default for
+     * NEW cases, which is the whole reason registration is append-only: cases
+     * pinned to v1 keep v1, and `macroPlaybook.test.ts` holds v1's content hash
+     * to a literal so that stays true.
+     */
     expect(resolveForCaseKind('macro-regime')).toEqual({
       playbookId: 'macro-regime',
-      version: '1',
+      version: '2',
     })
   })
 

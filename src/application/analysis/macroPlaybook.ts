@@ -131,11 +131,88 @@ export const MACRO_REGIME_PLAYBOOK: CasePlaybook = Object.freeze({
 })
 
 /**
+ * What the firm authorizes `macro-analysis` to spend, as a **proposal**.
+ *
+ * The first of the three budget sources — a playbook-level execution proposal
+ * for one entry. **It is not the firm's hard global ceiling**, and must not be
+ * renamed, described or read as firm-wide policy: the absence of a durable
+ * firm-wide ceiling is TD-76, and this does not close it. A case may still
+ * constrain below this, and a firm ceiling would still cap it, because
+ * resolution is a minimum across every source that speaks.
+ *
+ * Approved 2026-08-17 from measured evidence, not inherited from the C2-1
+ * smoke constant:
+ *
+ * | dimension | value | what it protects against |
+ * |---|---|---|
+ * | tokens | 12,000 | an evidence set far larger than anyone intended; the only way one call can breach it, since provider output is capped at 4,096 |
+ * | cost | $1.00 | nothing enforceable — see below |
+ * | deadline | 90,000 ms | a hung provider holding a synchronous request open |
+ *
+ * The two successful live runs measured 1,562 and 1,459 tokens against
+ * one-observation evidence, and one completed its whole cycle in about 13
+ * seconds against a 60-second authorization. The headroom is deliberate rather
+ * than fitted: **breaching the token limit fails the run and discards the
+ * claims**, so a limit set near expected usage destroys work the firm already
+ * paid for. It is a circuit breaker for pathology, not a budgeting instrument.
+ *
+ * **The monetary figure is an authorization, not a control.** The Messages API
+ * reports token counts and no price, so `RunUsage` carries
+ * `cost: not-reported` and `budgetOverruns` — which reads measured cost only —
+ * can never evaluate it. It is named because `budgetPermitsStart` refuses a
+ * live run with an unmeasured dimension, and it says the firm authorizes this
+ * class of work up to a dollar. Nothing in Financial OS may present it as
+ * verified compliance with a spending ceiling, because nothing verified it.
+ *
+ * A per-token price is deliberately not derived here. `toRunUsage` refuses the
+ * same thing for the same reason: a computed number in a field the domain
+ * treats as a measurement is indistinguishable downstream from a real one.
+ */
+const MACRO_ANALYSIS_BUDGET = Object.freeze({
+  tokens: 12_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 90_000,
+})
+
+/**
+ * Version 2 — the same workflow, with `macro-analysis` authorized to run live.
+ *
+ * A new version rather than an edit, because registration is append-only and a
+ * budget is inside `playbookContentHash`: editing v1 in place would give two
+ * cases different workflows under one name, and only the order they started in
+ * would say which. **Cases pinned to v1 keep v1**, and therefore keep an entry
+ * with no budget — which is the correct consequence rather than a gap. A live
+ * run under a workflow that authorized no spend refuses to start, and that
+ * refusal is the budget design working.
+ *
+ * Only `macro-analysis` carries a budget. The other five entries are unchanged
+ * and remain unauthorized for live execution, because only that one desk has
+ * been measured and approved.
+ */
+const MACRO_REGIME_V2_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_ENTRIES.map((entry) =>
+    entry.key === 'macro-analysis'
+      ? Object.freeze({ ...entry, budget: MACRO_ANALYSIS_BUDGET })
+      : entry,
+  ),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V2: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '2',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V2_ENTRIES,
+})
+
+/**
  * Every playbook this build can register.
  *
  * A list rather than a lookup by id alone, because registration is keyed on
- * `(id, version)` and two versions of one playbook coexist by design.
+ * `(id, version)` and two versions of one playbook coexist by design. The
+ * highest version is the default for NEW cases; existing cases are unaffected.
  */
 export const COMPILED_PLAYBOOKS: readonly CasePlaybook[] = Object.freeze([
   MACRO_REGIME_PLAYBOOK,
+  MACRO_REGIME_PLAYBOOK_V2,
 ])

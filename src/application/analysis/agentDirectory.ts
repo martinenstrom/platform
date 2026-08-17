@@ -195,22 +195,45 @@ export async function agentDesk(
 
 function producingDesksFirst(a: AgentDesk, b: AgentDesk): number {
   if (a.isGovernance !== b.isGovernance) return a.isGovernance ? 1 : -1
-  return a.departmentId < b.departmentId ? -1 : a.departmentId > b.departmentId ? 1 : 0
+  return compareText(a.departmentId, b.departmentId)
+}
+
+/** Byte order, not locale order: an ordering that varies by host is not one. */
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
 
 /**
  * Which desks the registered workflows assign work to.
  *
- * Across every registered playbook and version, because a desk is
- * commissionable if **any** approved workflow asks it for something — and a
- * case pinned to an older version is still live work for whoever owes it.
+ * Across every registered playbook, because a desk is commissionable if **any**
+ * approved workflow asks it for something.
+ *
+ * ## One row per piece of work, at its current version
+ *
+ * Two versions of one playbook coexist by design, and both assign
+ * `macro-analysis` to Global Macro. That is one job the desk owes, described
+ * twice — so the highest version wins and the desk shows what the firm's
+ * current workflow asks of it. Listing both would put two identical rows in
+ * front of a reader whose only difference is a version number they cannot act
+ * on: work is commissioned against an **assignment**, which carries its own
+ * case's pin, and this list is what the desk is for rather than what any
+ * particular case is running.
+ *
+ * Older versions stay visible where they are load-bearing — on the runs that
+ * executed under them, and on the cases pinned to them.
  */
 function assignableWorkByDepartmentId(
   playbooks: readonly CasePlaybook[],
 ): Map<DepartmentId, readonly DeskAssignableWork[]> {
   const byDepartment = new Map<DepartmentId, DeskAssignableWork[]>()
 
-  for (const playbook of playbooks) {
+  /* Ascending, so a later version overwrites the entry an earlier one added. */
+  const ordered = [...playbooks].sort((a, b) =>
+    a.id === b.id ? compareText(a.version, b.version) : compareText(a.id, b.id),
+  )
+
+  for (const playbook of ordered) {
     for (const entry of playbook.entries) {
       const work: DeskAssignableWork = {
         playbookId: playbook.id,
@@ -222,17 +245,21 @@ function assignableWorkByDepartmentId(
         ...(entry.disciplineTag ? { disciplineTag: entry.disciplineTag } : {}),
       }
       const existing = byDepartment.get(entry.departmentId)
-      if (existing) existing.push(work)
-      else byDepartment.set(entry.departmentId, [work])
+      if (!existing) {
+        byDepartment.set(entry.departmentId, [work])
+        continue
+      }
+      const supersedes = existing.findIndex(
+        (candidate) =>
+          candidate.playbookId === work.playbookId && candidate.entryKey === work.entryKey,
+      )
+      if (supersedes === -1) existing.push(work)
+      else existing[supersedes] = work
     }
   }
 
   for (const work of byDepartment.values()) {
-    work.sort(
-      (a, b) =>
-        b.priority - a.priority ||
-        (a.entryKey < b.entryKey ? -1 : a.entryKey > b.entryKey ? 1 : 0),
-    )
+    work.sort((a, b) => b.priority - a.priority || compareText(a.entryKey, b.entryKey))
   }
   return byDepartment
 }
