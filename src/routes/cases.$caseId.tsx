@@ -226,10 +226,27 @@ export function CaseOverviewPage({ response }: { response: CaseOverviewResponse 
           ))}
         </Section>
 
+        {/*
+         * Runs are listed, and are NOT links from here.
+         *
+         * Deliberate, and worth stating because the alternative looks obviously
+         * right. This page is renderable without a router — the property its
+         * own header names, and what lets the rendered page be proved against a
+         * real institutional record rather than only through a loader. A
+         * `<Link>` here would need router context in twenty-five existing
+         * assertions and would trade that property for a second route to a
+         * surface the desk already reaches.
+         *
+         * The way into a run's review is Agent Headquarters → desk → the run.
+         * A case overview answers where the case stands; judging one desk's
+         * contribution is a different question with its own surface.
+         */}
         <Section title="Körningar" count={overview.runs.length}>
           {overview.runs.map((run) => (
             <Row key={run.id} primary={run.execution.playbookEntryKey}>
-              {run.id}
+              {run.state === 'awaiting-acceptance'
+                ? 'Väntar på beslut — öppnas från avdelningen'
+                : run.id}
             </Row>
           ))}
         </Section>

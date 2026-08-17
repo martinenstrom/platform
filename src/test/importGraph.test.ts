@@ -483,11 +483,9 @@ describe('C1 — the legacy stack is frozen', () => {
    * `routes/markets.tsx`.
    */
   const FROZEN_MOCK_CONSUMERS = [
-    'components/agents/AgentCard.tsx',
     'components/countryExplorer/FloatingMarketChips.tsx',
     'data/countryExplorer/mockNow.ts',
     'data/countryExplorer/trendSeries.ts',
-    'routes/agents.tsx',
     'routes/portfolio.tsx',
     'routes/reports.tsx',
     'services/avanzaMcp/serverFns.ts',
@@ -499,7 +497,15 @@ describe('C1 — the legacy stack is frozen', () => {
   it('shrinks as routes migrate, and is the migration metric', () => {
     // 13 at the freeze, one per migration thereafter. This number going down
     // is the only measure of C1 progress that cannot be argued with.
-    expect(FROZEN_MOCK_CONSUMERS).toHaveLength(11)
+    //
+    // 11 → 9 in C2-2 Stage A, and the two that left did not migrate to a real
+    // data source — they were DELETED. `routes/agents.tsx` and
+    // `components/agents/AgentCard.tsx` presented five invented agents with
+    // invented progress values, and Agent Headquarters replaced them with the
+    // seeded organization and its real runs. The metric counts consumers of
+    // the mock data, and a consumer that no longer exists is the strongest way
+    // to stop being one.
+    expect(FROZEN_MOCK_CONSUMERS).toHaveLength(9)
   })
 
   it('gains no new consumer of the mock data', () => {

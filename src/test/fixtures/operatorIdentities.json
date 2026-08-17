@@ -1,0 +1,152 @@
+[
+  {
+    "employeeId": "behavioural-head",
+    "displayName": "Head of Behavioural Finance",
+    "roleTitle": "Head of Behavioural Finance",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "behavioural-finance",
+    "departmentName": "Behavioural Finance",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "compliance-head",
+    "displayName": "Head of Compliance",
+    "roleTitle": "Head of Compliance",
+    "roleFunction": "governance",
+    "seniority": "head",
+    "departmentId": "compliance",
+    "departmentName": "Compliance",
+    "isGovernance": true
+  },
+  {
+    "employeeId": "devils-advocate-head",
+    "displayName": "Head of Devil's Advocate",
+    "roleTitle": "Head of Devil's Advocate",
+    "roleFunction": "governance",
+    "seniority": "head",
+    "departmentId": "devils-advocate",
+    "departmentName": "Devil's Advocate",
+    "isGovernance": true
+  },
+  {
+    "employeeId": "editorial-lead",
+    "displayName": "Editorial Director",
+    "roleTitle": "Editorial Director",
+    "roleFunction": "editorial",
+    "seniority": "head",
+    "departmentId": "editorial",
+    "departmentName": "Editorial",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "equity-head",
+    "displayName": "Head of Equity Research",
+    "roleTitle": "Head of Equity Research",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "equity-research",
+    "departmentName": "Equity Research",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "cio",
+    "displayName": "Chief Investment Officer",
+    "roleTitle": "Chief Investment Officer",
+    "roleFunction": "executive",
+    "seniority": "chief",
+    "departmentId": "executive",
+    "departmentName": "Executive",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "flow-head",
+    "displayName": "Head of Flow & Positioning",
+    "roleTitle": "Head of Flow & Positioning",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "flow-positioning",
+    "departmentName": "Flow & Positioning",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "macro-head",
+    "displayName": "Head of Macro",
+    "roleTitle": "Head of Macro",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "global-macro",
+    "departmentName": "Global Macro",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "mi-manager",
+    "displayName": "Market Intelligence Manager",
+    "roleTitle": "Market Intelligence Manager",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "market-intelligence-office",
+    "departmentName": "Market Intelligence Office",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "news-head",
+    "displayName": "Head of News Intelligence",
+    "roleTitle": "Head of News Intelligence",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "news-intelligence",
+    "departmentName": "News Intelligence",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "portfolio-manager",
+    "displayName": "Portfolio Strategy Manager",
+    "roleTitle": "Portfolio Strategy Manager",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "portfolio-strategy",
+    "departmentName": "Portfolio Strategy",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "quant-head",
+    "displayName": "Head of Quant & Technical Analysis",
+    "roleTitle": "Head of Quant & Technical Analysis",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "quant-technical",
+    "departmentName": "Quant & Technical Analysis",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "research-director",
+    "displayName": "Research Director",
+    "roleTitle": "Research Director",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "research-office",
+    "departmentName": "Research Office",
+    "isGovernance": false
+  },
+  {
+    "employeeId": "chief-risk-officer",
+    "displayName": "Chief Risk Officer",
+    "roleTitle": "Chief Risk Officer",
+    "roleFunction": "governance",
+    "seniority": "chief",
+    "departmentId": "risk",
+    "departmentName": "Risk",
+    "isGovernance": true
+  },
+  {
+    "employeeId": "verification-head",
+    "displayName": "Head of Verification",
+    "roleTitle": "Head of Verification",
+    "roleFunction": "governance",
+    "seniority": "head",
+    "departmentId": "verification",
+    "departmentName": "Verification",
+    "isGovernance": true
+  }
+]

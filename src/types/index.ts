@@ -118,26 +118,19 @@ export interface AIMarketBrief {
   observations: AIObservation[]
 }
 
-/**
- * Agents are the primary objects in the product: long-lived workers that observe
- * markets and the portfolio and report back. A run is one execution of an agent.
+/*
+ * `Agent` and `AgentStatus` lived here, describing a long-lived worker with an
+ * `activity` sentence and a 0–100 `progress` number. Both are gone.
+ *
+ * They were the shape of the simulated fleet, and nothing in the institution
+ * has that shape: a real desk is a `Department` in the seeded organization, and
+ * a real execution is an `AgentRunRecord` with a twelve-state machine, a
+ * recorded budget, measured usage and an execution identity. A run reports
+ * state transitions and never a completion fraction, so `progress` could only
+ * ever have been a number nobody measured — which is precisely what it was.
+ *
+ * Agent Headquarters reads `application/analysis/agentDirectory` instead.
  */
-export type AgentStatus = 'running' | 'finished' | 'waiting' | 'failed'
-
-export interface Agent {
-  id: string
-  name: string
-  /** One line on what this agent is for. */
-  role: string
-  status: AgentStatus
-  /** What the agent is doing now, or what it concluded when it last ran. */
-  activity: string
-  /** Headline result of the last completed run, if any. */
-  result?: string
-  lastRunAt: string
-  /** 0–100, only meaningful while `status` is 'running'. */
-  progress?: number
-}
 
 export type AnalysisStatus = 'completed' | 'running' | 'queued' | 'failed'
 

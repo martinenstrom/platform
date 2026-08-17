@@ -33,6 +33,7 @@ import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
 import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
+import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
 import { failAgentRun } from '~/application/analysis/commands/failAgentRun'
 import { aggregateManagerConclusion } from '~/application/analysis/commands/aggregateManagerConclusion'
 import { resolveConditionalRequirement } from '~/application/analysis/commands/resolveConditionalRequirement'
@@ -50,7 +51,14 @@ import {
   deriveRevisionId,
 } from '~/application/analysis/commands/eventIdentity'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
-import { buildEvidenceSet } from '~/domain/analysis'
+import {
+  buildEvidenceSet,
+  citeFrom,
+  observationRef,
+  type ContributionRejectionCode,
+  type EvidenceSet,
+} from '~/domain/analysis'
+import { buildProvenance } from '~/domain/shared/provenance'
 import type { AgentClaim, InvestmentImplication } from '~/domain/analysis'
 import { eligibilityPolicy } from '~/domain/analysis'
 
@@ -477,6 +485,208 @@ export async function runMacroToAggregation(
     aggregationClaimId: office.claimIds[0]!,
     evidenceSetId,
   }
+}
+
+/* ------------------------------------------------- work stopped at the human */
+
+/**
+ * A claim that actually cites the evidence it was given.
+ *
+ * `citeFrom` refuses an observation the set does not contain, so the citation
+ * is minted rather than written down — the same route the live provider takes,
+ * and the reason a hallucinated reference cannot become an `EvidenceRef` at
+ * all.
+ */
+function citingClaim(evidenceSet: EvidenceSet): AgentClaim {
+  const item = evidenceSet.items[0]!
+  return {
+    id: 'macro-1',
+    type: 'observation',
+    statement: 'The German 10-year sits at 2.41%, consistent with a restrictive stance.',
+    evidenceRefs: [citeFrom(evidenceSet, item.ref)],
+    contradictingEvidenceRefs: [],
+    confidence: {
+      level: 'moderate',
+      basis: [
+        'proposed by the model',
+        'no firm-derivable cap applies; the firm has not independently corroborated this level',
+      ],
+    },
+    temporalScope: { asOf: AT },
+    status: 'supported',
+  } as AgentClaim
+}
+
+/**
+ * A case whose macro contribution is produced and **not yet institutional**.
+ *
+ * `runMacroToAggregation` always accepts, because everything downstream of it
+ * needs accepted claims to have anything to review. This stops at the boundary
+ * instead, which is the state a person actually finds work in: recorded,
+ * durable, paid for, and outside `analysis.claims`.
+ *
+ * `settle: 'reject'` carries it one act further, so a scenario can hold a
+ * rejected run beside a failed one — the pair the whole vocabulary exists to
+ * keep apart.
+ *
+ * Deliberately the same commands in the same order as `contribute` above. A
+ * second way to produce a run would be a second workflow, and the point of
+ * these scenarios is that there is only one.
+ */
+export async function runMacroAwaitingAcceptance(
+  runtime: Runtime,
+  options: {
+    caseId: string
+    settle?: 'await' | 'reject'
+    rejection?: { code: ContributionRejectionCode; detail: string }
+  },
+): Promise<{ caseId: string; runId: string }> {
+  const { caseId } = options
+  const deps = await runtime.container.commandDeps()
+  const repositories = runtime.container.repositories
+
+  /*
+   * A real observation, and a claim that cites it.
+   *
+   * The rest of this harness reasons over an empty evidence set, which is
+   * enough for workflow scenarios and useless for a review: a reviewer's whole
+   * job is to look at what a claim rests on, and a claim resting on nothing
+   * would prove only that the page renders an empty list.
+   */
+  const observedAt = '2026-07-31T00:00:00.000Z'
+  const value = {
+    yieldPercent: '2.41',
+    changeBasisPoints: null,
+    observationDate: '2026-07-31',
+  }
+  const evidenceSet = buildEvidenceSet({
+    items: [
+      {
+        ref: observationRef(
+          {
+            subjectKind: 'series',
+            subject: 'de10y',
+            kind: 'yield',
+            observedAt,
+            sourceId: 'ecb',
+          },
+          value,
+        ),
+        value,
+        provenance: buildProvenance({
+          asOf: observedAt,
+          nowMs: Date.parse(AT),
+          quality: 'official-daily',
+          source: { providerId: 'ecb', providerName: 'ECB', trust: 'central-bank' },
+        }),
+      },
+    ],
+    assembledAt: AT,
+    correlationId: 'macro-flow',
+  })
+  await repositories.evidence.save(evidenceSet)
+
+  const committed = async (result: { outcome: string }, step: string) => {
+    if (result.outcome !== 'committed') {
+      throw new Error(`${step} did not commit: ${JSON.stringify(result)}`)
+    }
+  }
+
+  await committed(
+    await runCommand(
+      openInvestmentCase(deps.organization),
+      {
+        caseId,
+        subject: { kind: 'macro-regime', ref: 'ecb', displayName: 'ECB path' },
+        question: 'Does the ECB cut before Q2?',
+        ownerEmployeeId: 'research-director',
+        participatingDepartmentIds: ['research-office'],
+      },
+      envelope(`${caseId}-open`, 'research-director'),
+      deps,
+    ),
+    'OpenInvestmentCase',
+  )
+
+  await committed(
+    await runCommand(
+      instantiatePlaybook(deps.organization),
+      {
+        caseId,
+        playbookId: MACRO_REGIME_PLAYBOOK.id,
+        playbookVersion: MACRO_REGIME_PLAYBOOK.version,
+        onBehalfOfDepartmentId: 'research-office',
+      },
+      envelope(`${caseId}-playbook`, 'research-director', {
+        expectedVersion: (await repositories.cases.get(caseId))!.version,
+      }),
+      deps,
+    ),
+    'InstantiatePlaybook',
+  )
+
+  const assignment = (await repositories.assignments.listForCase(caseId)).find(
+    (candidate) => candidate.playbookEntryKey === 'macro-analysis',
+  )!
+
+  await committed(
+    await runCommand(
+      startAgentRun(deps.organization),
+      {
+        caseId,
+        assignmentId: assignment.id,
+        departmentId: 'global-macro',
+        evidenceSetId: evidenceSet.id,
+        ...DECLARATION,
+      },
+      envelope(`${caseId}-macro-analysis-start`, 'macro-head'),
+      deps,
+    ),
+    'StartAgentRun',
+  )
+
+  const runId = (await repositories.runs.listForCase(caseId)).find(
+    (run) => run.assignmentId === assignment.id && run.state === 'running',
+  )!.id
+
+  await committed(
+    await runCommand(
+      recordContribution(deps.organization),
+      {
+        caseId,
+        runId,
+        departmentId: 'global-macro',
+        claims: [citingClaim(evidenceSet)],
+        observedStates: ['running'],
+        usage: { state: 'not-applicable' },
+      },
+      envelope(`${caseId}-macro-analysis-record`, 'macro-head'),
+      deps,
+    ),
+    'RecordContribution',
+  )
+
+  if (options.settle === 'reject') {
+    await committed(
+      await runCommand(
+        rejectContribution(deps.organization),
+        {
+          caseId,
+          runId,
+          departmentId: 'global-macro',
+          code: options.rejection?.code ?? 'unsupported-by-evidence',
+          detail:
+            options.rejection?.detail ??
+            'The regime call is stated more firmly than the cited observations support.',
+        },
+        envelope(`${caseId}-macro-analysis-reject`, 'macro-head', { occurredAt: LATER }),
+        deps,
+      ),
+      'RejectContribution',
+    )
+  }
+
+  return { caseId, runId }
 }
 
 /* ---------------------------------------------------------- governance steps */

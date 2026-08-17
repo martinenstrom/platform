@@ -22,6 +22,19 @@ const RUN_STATE_TEXT: Readonly<Record<string, string>> = {
   'waiting-for-dependencies': 'väntar på underlag',
   ready: 'är redo att börja',
   running: 'arbetar med ett uppdrag',
+  /*
+   * The desk has finished and the institution has not. Phrased as work handed
+   * over rather than work completed, because nothing has entered the record: a
+   * person has to accept it first, and a line reading "lämnade in sitt
+   * underlag" here would be indistinguishable from the accepted case below.
+   */
+  'awaiting-acceptance': 'lämnade arbete för godkännande',
+  /*
+   * The code travels on the event, never the prose. What was wrong is written
+   * for whoever tries to fix the work; the floor sees that the firm declined
+   * it, which is the institutional fact.
+   */
+  rejected: 'fick sitt arbete avvisat',
   completed: 'lämnade in sitt underlag',
   failed: 'kunde inte slutföra uppdraget',
   'timed-out': 'hann inte slutföra uppdraget',

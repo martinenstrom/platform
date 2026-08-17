@@ -21,11 +21,39 @@ import { ruleById } from './fitness/rules'
 
 const TREE = loadTree()
 
-/** The files this stage added to the presentation surface. */
+/**
+ * Every file on the institution's presentation surface.
+ *
+ * Grows with the surface, and must: the guard below asserts the UI boundary
+ * rule actually SELECTS these files, and a file nobody added is a file the rule
+ * silently says nothing about.
+ *
+ * The Agent Headquarters entries arrived with C2-2 Stage A. They render desks
+ * derived from the seeded organization and runs read from the database, which
+ * is exactly the shape that would be tempting to "improve" by computing
+ * something locally.
+ */
 const HEADQUARTERS = [
   'routes/cases.$caseId.tsx',
   'components/headquarters/CaseStandingPanel.tsx',
   'presentation/analysis/caseStandingText.ts',
+  'routes/agents.index.tsx',
+  'routes/agents.$departmentId.tsx',
+  'components/agents/DeskCard.tsx',
+  'components/agents/RunRow.tsx',
+  'components/agents/RunStateBadge.tsx',
+  'presentation/analysis/runText.ts',
+  /*
+   * Stage B — Judgment. The first surface that can change institutional state,
+   * and therefore the one most worth holding to the boundary: it renders
+   * confidence, citation findings and run standing, every one of which is
+   * decided elsewhere and would be tempting to recompute here.
+   */
+  'routes/runs.$runId.tsx',
+  'components/agents/ProducedClaimCard.tsx',
+  'components/agents/JudgementPanel.tsx',
+  'components/agents/ActingAs.tsx',
+  'presentation/analysis/claimText.ts',
 ]
 
 /**
@@ -116,19 +144,33 @@ describe('the Headquarters surface', () => {
 
   it('reaches the institution through exactly one door', () => {
     /*
-     * The route holds the only infrastructure reference on this surface, and it
-     * is the published boundary. A second door would be a second place
-     * credentials and drivers could reach a bundle.
+     * One DOOR, which is a module — not one file that uses it.
+     *
+     * This asserted `doors).toEqual(['routes/cases.$caseId.tsx'])` while the
+     * surface had a single route, and the two readings were indistinguishable
+     * until Agent Headquarters added a second and a third. They are not the
+     * same property: what must stay true is that every route reaches the
+     * institution through the published `serverFns` boundary, because a second
+     * MODULE would be a second place credentials and drivers could reach a
+     * bundle. Three routes calling the same boundary are three callers of one
+     * door, and rewriting them to share a file would have satisfied the old
+     * assertion while changing nothing about the risk it exists to bound.
+     *
+     * So the set of infrastructure modules this surface names is what gets
+     * pinned — a strictly stronger claim, and one that does not have to be
+     * edited every time a page is added.
      */
-    const doors = TREE.filter(
-      (file) =>
-        HEADQUARTERS.includes(file.path) &&
-        file.imports.some(
-          (reference) =>
-            !reference.typeOnly && reference.specifier.startsWith('~/infrastructure'),
-        ),
-    ).map((file) => file.path)
+    const doors = new Set(
+      TREE.filter((file) => HEADQUARTERS.includes(file.path)).flatMap((file) =>
+        file.imports
+          .filter(
+            (reference) =>
+              !reference.typeOnly && reference.specifier.startsWith('~/infrastructure'),
+          )
+          .map((reference) => reference.specifier),
+      ),
+    )
 
-    expect(doors).toEqual(['routes/cases.$caseId.tsx'])
+    expect([...doors]).toEqual(['~/infrastructure/analysis/serverFns'])
   })
 })

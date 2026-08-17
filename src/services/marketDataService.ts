@@ -17,7 +17,6 @@
 
 import { createAvanzaMcpMarketDataService } from './avanzaMcpAdapter'
 import {
-  agents,
   aiMarketBrief,
   allocation,
   getMockQuote,
@@ -28,7 +27,6 @@ import {
   marketTrends,
   opportunities,
   portfolioSummary,
-  recentAnalyses,
   reports,
   riskScore,
   screenerRows,
@@ -36,10 +34,8 @@ import {
   watchlist,
 } from '~/data/mockData'
 import type {
-  Agent,
   AIMarketBrief,
   AllocationSlice,
-  AnalysisRun,
   Holding,
   Instrument,
   MarketIndexQuote,
@@ -57,7 +53,6 @@ import type {
 } from '~/types'
 
 export interface MarketDataService {
-  getAgents(): Promise<Agent[]>
   getMarketStatus(): Promise<MarketStatus>
   getMarketIndices(): Promise<MarketIndexQuote[]>
   getMarketTrends(): Promise<MarketTrend[]>
@@ -69,7 +64,6 @@ export interface MarketDataService {
   getWatchlist(): Promise<WatchlistItem[]>
   getOpportunities(): Promise<Opportunity[]>
   getMarketBrief(): Promise<AIMarketBrief>
-  getRecentAnalyses(): Promise<AnalysisRun[]>
   getReports(): Promise<ReportItem[]>
   getScreenerRows(): Promise<ScreenerRow[]>
   searchInstruments(query: string): Promise<Instrument[]>
@@ -82,7 +76,6 @@ export interface MarketDataService {
  * pretend to make requests it isn't making.
  */
 export const mockMarketDataService: MarketDataService = {
-  getAgents: async () => agents,
   getMarketStatus: async () => marketStatus,
   getMarketIndices: async () => marketIndices,
   getMarketTrends: async () => marketTrends,
@@ -94,7 +87,6 @@ export const mockMarketDataService: MarketDataService = {
   getWatchlist: async () => watchlist,
   getOpportunities: async () => opportunities,
   getMarketBrief: async () => aiMarketBrief,
-  getRecentAnalyses: async () => recentAnalyses,
   getReports: async () => reports,
   getScreenerRows: async () => screenerRows,
   searchInstruments: async (query) => searchInstrumentsLocal(query),

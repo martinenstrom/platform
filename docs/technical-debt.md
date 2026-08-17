@@ -1755,3 +1755,52 @@ over real signals, and narrow `DERIVABLE_CAPS` in `modelConfidence.ts` toward
 empty as each cap becomes genuinely derived. The long-term direction is that
 institutional confidence becomes increasingly firm-derived; the honest interim
 is that the firm says which parts it has verified.
+
+## TD-76 · the firm-wide execution ceiling has no durable home · open
+
+**Opened by the C2-2 planning gate**, by measurement rather than by suspicion,
+and kept **separate from TD-73 by ruling**. TD-73 is the *case* constraint —
+the middle of the three budget sources. This is the *firm ceiling*, the last
+word in the chain, and collapsing the two would hide that the outer bound is
+the one nothing holds.
+
+**What was measured.** For a live run commissioned from the product path, all
+three sources of `resolveExecutionBudget` are empty:
+
+| source | state |
+|---|---|
+| playbook proposal — `PlaybookEntry.budget` | the field exists and is inside `playbookContentHash`; **no entry of `MACRO_REGIME_PLAYBOOK` defines one** |
+| case constraint | no durable home — TD-73 |
+| firm ceiling — `OrchestrationOptions.firmBudgetCeiling` | **the only production caller that has ever supplied one is `smokeFns.SMOKE_BUDGET`**; every other occurrence is the type, the orchestrator's pass-through, or a test constant. No environment variable, no configuration module, no policy table |
+
+So `resolveExecutionBudget('live', { firmCeiling: {} })` yields `not-measured`
+tokens and cost, `budgetPermitsStart` returns false, and both `StartAgentRun`
+and `buildRunRecord` refuse. **A live run cannot be commissioned from the
+product until something supplies the numbers** — which is the budget design
+working exactly as intended, and is why this is recorded rather than patched.
+
+**The C2-2 ruling, and its stated limit.** Stage C will carry a budget on a new
+registered playbook version. That budget is a **versioned playbook-level
+execution proposal for `macro-analysis`** — the first of the three sources —
+and it is **not** the firm's hard global ceiling. It must not be renamed,
+described, or read as firm-wide policy anywhere in code, comment or interface.
+
+**What the absence therefore costs.** With no ceiling, nothing caps a later
+playbook proposing more. The resolution chain still holds — `min` across every
+source that spoke — but the outer bound is missing rather than generous, and a
+proposal is the only thing bounding spend.
+
+**What building it needs:** somewhere durable for firm policy to live, a
+command authorised to set it (a spending ceiling is policy a person sets, so it
+needs an actor, a mandate and a reason like every other institutional act), and
+the resolver reading it rather than taking it from the caller.
+
+**Deliberately not built inside C2-2**, by ruling. It is institutional policy
+machinery, and folding it into the stage that makes an agent usable would put
+two decisions of different kinds inside one boundary.
+
+**What must not be weakened when it is built.** The run stores the *resolved*
+number and never a pointer to the sources, so persisting the ceiling changes
+what resolution consumes and nothing about what a historical run reads back.
+`runCommands.test.ts` asserts exactly that by moving all three sources after the
+fact and re-reading the run — that test must keep passing unchanged.

@@ -9,10 +9,8 @@
 
 import { CATEGORICAL } from '~/lib/chartTheme'
 import type {
-  Agent,
   AIMarketBrief,
   AllocationSlice,
-  AnalysisRun,
   Holding,
   Instrument,
   MarketIndexQuote,
@@ -182,54 +180,6 @@ export const watchlist: WatchlistItem[] = [
     signal: 'hold',
   },
 ]
-
-/** The agent fleet — the primary objects in the product. */
-export const agents: Agent[] = [
-  {
-    id: 'market-analyst',
-    name: 'Marknadsanalytiker',
-    role: 'Bevakar index, sektorer och rapportflöde',
-    status: 'running',
-    activity: 'Läser kvartalsrapporter från verkstadssektorn',
-    lastRunAt: '2025-03-14T16:32:00+01:00',
-    progress: 64,
-  },
-  {
-    id: 'portfolio-agent',
-    name: 'Portföljagent',
-    role: 'Granskar innehav, vikter och exponering',
-    status: 'finished',
-    activity: 'Genomgång av innehav klar',
-    result: '2 uppslag hittade',
-    lastRunAt: '2025-03-14T16:12:00+01:00',
-  },
-  {
-    id: 'risk-agent',
-    name: 'Riskagent',
-    role: 'Följer koncentration, volatilitet och nedsidesrisk',
-    status: 'waiting',
-    activity: 'Väntar på stängningskurser',
-    lastRunAt: '2025-03-13T17:35:00+01:00',
-  },
-  {
-    id: 'news-agent',
-    name: 'Nyhetsagent',
-    role: 'Filtrerar nyhetsflödet mot dina innehav',
-    status: 'finished',
-    activity: 'Dagens genomgång klar',
-    result: '4 viktiga händelser idag',
-    lastRunAt: '2025-03-14T15:58:00+01:00',
-  },
-  {
-    id: 'earnings-agent',
-    name: 'Rapportagent',
-    role: 'Sammanfattar kommande och släppta rapporter',
-    status: 'failed',
-    activity: 'Datakällan svarade inte',
-    lastRunAt: '2025-03-14T09:20:00+01:00',
-  },
-]
-
 export const opportunities: Opportunity[] = [
   {
     id: 'op-1',
@@ -290,50 +240,6 @@ export const aiMarketBrief: AIMarketBrief = {
     },
   ],
 }
-
-export const recentAnalyses: AnalysisRun[] = [
-  {
-    id: 'an-1',
-    instrument: 'Evolution',
-    ticker: 'EVO',
-    type: 'Fundamental analys',
-    generatedAt: '2025-03-14T15:42:00+01:00',
-    status: 'completed',
-  },
-  {
-    id: 'an-2',
-    instrument: 'Volvo B',
-    ticker: 'VOLV B',
-    type: 'Teknisk analys',
-    generatedAt: '2025-03-14T14:18:00+01:00',
-    status: 'completed',
-  },
-  {
-    id: 'an-3',
-    instrument: 'Investor B',
-    ticker: 'INVE B',
-    type: 'Substansvärdering',
-    generatedAt: '2025-03-14T13:05:00+01:00',
-    status: 'running',
-  },
-  {
-    id: 'an-4',
-    instrument: 'Atlas Copco A',
-    ticker: 'ATCO A',
-    type: 'Riskgenomlysning',
-    generatedAt: '2025-03-14T11:30:00+01:00',
-    status: 'queued',
-  },
-  {
-    id: 'an-5',
-    instrument: 'SEB A',
-    ticker: 'SEB A',
-    type: 'Sektorjämförelse',
-    generatedAt: '2025-03-13T17:02:00+01:00',
-    status: 'failed',
-  },
-]
-
 export const marketTrends: MarketTrend[] = [
   {
     id: 'momentum',

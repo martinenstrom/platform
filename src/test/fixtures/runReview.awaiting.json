@@ -1,0 +1,226 @@
+{
+  "run": {
+    "id": "run-8eb9d4521d0f18e1cb2e320707f065b1",
+    "caseId": "review-awaiting",
+    "assignmentId": "asg-44d117d0ccb4b50e24a732e634d2fcbe",
+    "departmentId": "global-macro",
+    "employeeId": "macro-head",
+    "agentContractVersion": "0",
+    "outputSchemaVersion": "0",
+    "evidenceSetId": "82ca3d312fd92407fa9094529bfb6497",
+    "state": "awaiting-acceptance",
+    "startedAt": "2026-08-01T09:00:00.000Z",
+    "events": [
+      {
+        "runId": "run-8eb9d4521d0f18e1cb2e320707f065b1",
+        "at": "2026-08-01T09:00:00.000Z",
+        "state": "awaiting-acceptance"
+      },
+      {
+        "runId": "run-8eb9d4521d0f18e1cb2e320707f065b1",
+        "at": "2026-08-01T09:00:00.000Z",
+        "state": "running"
+      }
+    ],
+    "claims": [],
+    "budget": {
+      "tokens": {
+        "kind": "not-applicable"
+      },
+      "cost": {
+        "kind": "not-applicable"
+      },
+      "deadline": {
+        "kind": "limit",
+        "deadlineMs": 30000
+      }
+    },
+    "usage": {
+      "state": "not-applicable"
+    },
+    "missingOptionalInputs": [],
+    "execution": {
+      "playbookId": "macro-regime",
+      "playbookVersion": "1",
+      "playbookEntryKey": "macro-analysis",
+      "providerId": "stub",
+      "providerVersion": "1",
+      "providerKind": "stub",
+      "identity": {
+        "kind": "scenario",
+        "scenarioId": "success",
+        "stubVersion": "1"
+      }
+    }
+  },
+  "department": {
+    "id": "global-macro",
+    "name": "Global Macro",
+    "managerEmployeeId": "macro-head"
+  },
+  "investmentCase": {
+    "id": "review-awaiting",
+    "version": 2,
+    "subject": {
+      "kind": "macro-regime",
+      "ref": "ecb",
+      "displayName": "ECB path"
+    },
+    "question": "Does the ECB cut before Q2?",
+    "stage": "research",
+    "openedAt": "2026-08-01T09:00:00.000Z",
+    "ownerEmployeeId": "research-director",
+    "participatingDepartmentIds": [
+      "devils-advocate",
+      "global-macro",
+      "quant-technical",
+      "research-office",
+      "risk",
+      "verification"
+    ],
+    "transitions": [
+      {
+        "caseId": "review-awaiting",
+        "from": "intake",
+        "to": "research",
+        "at": "2026-08-01T09:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      }
+    ],
+    "playbookId": "macro-regime",
+    "playbookVersion": "1"
+  },
+  "assignment": {
+    "id": "asg-44d117d0ccb4b50e24a732e634d2fcbe",
+    "caseId": "review-awaiting",
+    "playbookEntryKey": "macro-analysis",
+    "departmentId": "global-macro",
+    "assigneeEmployeeId": "macro-head",
+    "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+    "status": "active",
+    "createdAt": "2026-08-01T09:00:00.000Z",
+    "startedAt": "2026-08-01T09:00:00.000Z",
+    "priority": 100
+  },
+  "evidenceSet": {
+    "id": "82ca3d312fd92407fa9094529bfb6497",
+    "items": [
+      {
+        "ref": {
+          "id": "e6e408ca77b237f17db2e56139b6db41",
+          "subjectKind": "series",
+          "subject": "de10y",
+          "kind": "yield",
+          "observedAt": "2026-07-31T00:00:00.000Z",
+          "sourceId": "ecb",
+          "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+        },
+        "value": {
+          "yieldPercent": "2.41",
+          "observationDate": "2026-07-31",
+          "changeBasisPoints": null
+        },
+        "provenance": {
+          "asOf": "2026-07-31T00:00:00.000Z",
+          "ageMs": 118800000,
+          "source": {
+            "trust": "central-bank",
+            "providerId": "ecb",
+            "providerName": "ECB"
+          },
+          "isProxy": false,
+          "quality": "official-daily",
+          "isDelayed": false,
+          "receivedAt": "2026-08-01T09:00:00.000Z",
+          "delayMinutes": null,
+          "asOfPrecision": "second"
+        }
+      }
+    ],
+    "coTemporality": {
+      "kind": "co-temporal",
+      "observedAt": "2026-07-31T00:00:00.000Z"
+    },
+    "disagreements": [],
+    "assembledAt": "2026-08-01T09:00:00.000Z",
+    "correlationId": "macro-flow"
+  },
+  "produced": [
+    {
+      "claim": {
+        "id": "clm-5a4cddbacb695f8e03dd34e5ff75c33e",
+        "type": "observation",
+        "status": "supported",
+        "statement": "The German 10-year sits at 2.41%, consistent with a restrictive stance.",
+        "confidence": {
+          "basis": [
+            "proposed by the model",
+            "no firm-derivable cap applies; the firm has not independently corroborated this level"
+          ],
+          "level": "moderate"
+        },
+        "evidenceRefs": [
+          {
+            "setId": "82ca3d312fd92407fa9094529bfb6497",
+            "contentHash": "c080f53d88ff52e96ad741443b3a1a39",
+            "observationId": "e6e408ca77b237f17db2e56139b6db41"
+          }
+        ],
+        "temporalScope": {
+          "asOf": "2026-08-01T09:00:00.000Z"
+        },
+        "contradictingEvidenceRefs": []
+      },
+      "supporting": [
+        {
+          "status": "resolved",
+          "item": {
+            "ref": {
+              "id": "e6e408ca77b237f17db2e56139b6db41",
+              "subjectKind": "series",
+              "subject": "de10y",
+              "kind": "yield",
+              "observedAt": "2026-07-31T00:00:00.000Z",
+              "sourceId": "ecb",
+              "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+            },
+            "value": {
+              "yieldPercent": "2.41",
+              "observationDate": "2026-07-31",
+              "changeBasisPoints": null
+            },
+            "provenance": {
+              "asOf": "2026-07-31T00:00:00.000Z",
+              "ageMs": 118800000,
+              "source": {
+                "trust": "central-bank",
+                "providerId": "ecb",
+                "providerName": "ECB"
+              },
+              "isProxy": false,
+              "quality": "official-daily",
+              "isDelayed": false,
+              "receivedAt": "2026-08-01T09:00:00.000Z",
+              "delayMinutes": null,
+              "asOfPrecision": "second"
+            }
+          },
+          "observationId": "e6e408ca77b237f17db2e56139b6db41"
+        }
+      ],
+      "contradicting": []
+    }
+  ],
+  "decision": {
+    "kind": "open"
+  },
+  "rejectionCodes": [
+    "unsupported-by-evidence",
+    "misread-the-brief",
+    "internally-inconsistent",
+    "duplicates-existing-work",
+    "insufficient-analysis",
+    "out-of-scope"
+  ]
+}

@@ -6,12 +6,33 @@
  * for the analysis runtime directly would put a database driver, and its
  * credentials, into the client bundle.
  *
- * ## Read-only, deliberately
+ * ## No longer read-only, and deliberately so
  *
- * Nothing here issues a command. Headquarters is where the firm is inspected,
- * not operated — publication and reconsideration are their own milestones, and
- * a read surface that quietly grew a write path would be the wrong place to
- * discover that.
+ * This module was read-only through C1 and C2-1, and its own comment said the
+ * firm was inspected here rather than operated. **C2-2 Stage B changed that on
+ * purpose**, and the change is recorded rather than made quietly: judging an
+ * agent's work is the act the acceptance boundary exists for, and a boundary a
+ * person could only exercise from a test is not a boundary the institution
+ * actually has.
+ *
+ * What did not change is the shape of the door:
+ *
+ * **One function per institutional act.** There is no generic
+ * `runCommand(type, payload)` here and there must never be one. A client able
+ * to name a command type would be choosing the firm's authority from a
+ * browser, and every mandate in the system would then be guarding a decision
+ * that had already been made somewhere else.
+ *
+ * **The client supplies the act, never the authority.** An acceptance carries
+ * a run id and the employee acting; the case and the department are read from
+ * the run on the server. A caller that could name its own department would be
+ * asserting the mandate it is about to be checked against.
+ *
+ * **Refusals are institutional answers, not errors.** A command the firm
+ * declines comes back as a refusal with its bounded code — `not-authorised`,
+ * `illegal-prior-state` — because a desk being told it may not judge another
+ * desk's work is the institution working correctly, and reporting it as a
+ * failure would send someone to look at the database.
  *
  * ## Errors say what happened, and nothing about how
  *
@@ -30,17 +51,79 @@
 import { createServerFn } from '@tanstack/react-start'
 import { caseOverview, type CaseOverview } from '~/application/analysis/caseOverview'
 import { caseListing, type CaseListing } from '~/application/analysis/caseListing'
+import {
+  agentDesk,
+  agentDirectory,
+  type AgentDesk,
+} from '~/application/analysis/agentDirectory'
+import { runReview, type RunReview } from '~/application/analysis/runReview'
+import {
+  operatorIdentities,
+  type OperatorIdentity,
+} from '~/application/analysis/operatorIdentity'
+import { registeredPlaybooks } from '~/application/analysis/playbookRegistry'
+import { runCommand } from '~/application/analysis/commands/runCommand'
+import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
+import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
+import type { RejectionCode } from '~/application/analysis/commandLog'
+import {
+  CONTRIBUTION_REJECTION_CODES,
+  type ContributionRejectionCode,
+  type RunState,
+} from '~/domain/analysis'
 import { createAnalysisContainer, type AnalysisContainer } from './container'
 import { systemClock } from '~/domain/shared/clock'
 
 /** Bounded. Never free text, and never anything read out of the failure. */
-export type CaseOverviewFailure = 'NOT_CONFIGURED' | 'SERVICE_UNAVAILABLE' | 'NOT_FOUND'
+export type AnalysisReadFailure = 'NOT_CONFIGURED' | 'SERVICE_UNAVAILABLE' | 'NOT_FOUND'
+
+/**
+ * The original name, kept because the case surfaces are written against it.
+ *
+ * The union was never about case overviews specifically — it is what any read
+ * through this boundary can fail with — and renaming it at every call site
+ * would be churn in files this stage otherwise does not touch.
+ */
+export type CaseOverviewFailure = AnalysisReadFailure
 
 export type CaseOverviewResponse =
-  { ok: true; overview: CaseOverview } | { ok: false; code: CaseOverviewFailure }
+  { ok: true; overview: CaseOverview } | { ok: false; code: AnalysisReadFailure }
 
 export type CaseListResponse =
-  { ok: true; cases: readonly CaseListing[] } | { ok: false; code: CaseOverviewFailure }
+  { ok: true; cases: readonly CaseListing[] } | { ok: false; code: AnalysisReadFailure }
+
+export type AgentDirectoryResponse =
+  { ok: true; desks: readonly AgentDesk[] } | { ok: false; code: AnalysisReadFailure }
+
+export type AgentDeskResponse =
+  { ok: true; desk: AgentDesk } | { ok: false; code: AnalysisReadFailure }
+
+export type RunReviewResponse =
+  { ok: true; review: RunReview } | { ok: false; code: AnalysisReadFailure }
+
+export type OperatorIdentitiesResponse =
+  | { ok: true; identities: readonly OperatorIdentity[] }
+  | { ok: false; code: AnalysisReadFailure }
+
+/**
+ * What came of an institutional act.
+ *
+ * Three outcomes, kept apart because they place different obligations on
+ * whoever reads them:
+ *
+ *   `ok`        the firm did it, and here is the run's new state
+ *   `refused`   the firm understood and declined. **Not a failure.** The
+ *               bounded code says which rule, so the surface can explain it
+ *   `failed`    something operational went wrong and nothing was decided
+ *
+ * Collapsing `refused` into `failed` would tell a person the system broke when
+ * what actually happened is that the institution said no — and those lead to
+ * completely different next actions.
+ */
+export type ActResponse =
+  | { ok: true; state: RunState }
+  | { ok: false; outcome: 'refused'; code: RejectionCode }
+  | { ok: false; outcome: 'failed'; code: AnalysisReadFailure }
 
 let container: Promise<AnalysisContainer> | null = null
 
@@ -149,6 +232,294 @@ export const getCaseListFn = createServerFn({ method: 'POST' }).handler(
     }
   },
 )
+
+/* --------------------------------------------------------- Agent Headquarters */
+
+/**
+ * Every desk the firm can commission, with the work it has actually done.
+ *
+ * The playbooks are read from the registry here rather than inside the
+ * derivation, for the reason the registry exists at all: what workflows this
+ * build ships is a composition fact, and a read model that imported them itself
+ * would decide it — which is one step from a second catalogue of who works
+ * here.
+ *
+ * `NOT_FOUND` is not among its outcomes. A firm whose registered playbooks
+ * assign work to nobody has an empty floor, which is a fact about the firm.
+ */
+export const getAgentDirectoryFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<AgentDirectoryResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      return {
+        ok: true,
+        desks: await agentDirectory({
+          repositories: analysis.repositories,
+          organization: deps.organization,
+          playbooks: registeredPlaybooks(),
+        }),
+      }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] agent directory failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)
+
+/**
+ * One desk, in full.
+ *
+ * `NOT_FOUND` here means the firm has no such desk to commission — either the
+ * department does not exist, or no registered playbook assigns it work. Both
+ * are the same answer to the reader's question, and distinguishing them on
+ * screen would explain the registry rather than the firm.
+ */
+export const getAgentDeskFn = createServerFn({ method: 'POST' })
+  .validator((departmentId: string) => departmentId)
+  .handler(async ({ data: departmentId }): Promise<AgentDeskResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const desk = await agentDesk({
+        repositories: analysis.repositories,
+        organization: deps.organization,
+        playbooks: registeredPlaybooks(),
+        departmentId,
+      })
+
+      if (!desk) return { ok: false, code: 'NOT_FOUND' }
+      return { ok: true, desk }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] agent desk failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/* --------------------------------------------------------------- the review */
+
+/**
+ * One run, assembled for the person judging it.
+ *
+ * Reads produced work — the claims an agent made that nobody has accepted —
+ * which no read path in the system could reach before this one.
+ */
+export const getRunReviewFn = createServerFn({ method: 'POST' })
+  .validator((runId: string) => runId)
+  .handler(async ({ data: runId }): Promise<RunReviewResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const review = await runReview({
+        repositories: analysis.repositories,
+        organization: deps.organization,
+        runId,
+      })
+
+      if (!review) return { ok: false, code: 'NOT_FOUND' }
+      return { ok: true, review }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] run review failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/**
+ * Who the operator may act as.
+ *
+ * **Operator identity, not authentication.** Nothing here establishes that the
+ * person at the keyboard is who they select, and the interface that renders
+ * this is required to say so.
+ */
+export const getOperatorIdentitiesFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<OperatorIdentitiesResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+      return { ok: true, identities: operatorIdentities(deps.organization) }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] operator identities failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)
+
+/* ----------------------------------------------------------- the two acts */
+
+/**
+ * The command id for one operator's act on one run.
+ *
+ * Derived on the server from what the act IS — never accepted from a client,
+ * which would let a replay be aimed at a record it did not create.
+ *
+ * **The acting employee is part of the identity, and has to be.** `runCommand`
+ * folds `accountableEmployeeId` into the payload hash, so two people accepting
+ * the same run are two different payloads. Under a fixed id the second would
+ * come back `payload-conflict` — meaning a desk that selected the wrong
+ * operator, was correctly refused, and then corrected it could never act at
+ * all. Keying on the pair makes a genuine retry by the same person replay to
+ * its original outcome, and a corrected attempt by the right person a fresh
+ * command.
+ */
+function actCommandId(act: 'accept' | 'reject', runId: string, employeeId: string): string {
+  return `${act}-${runId}-${employeeId}`
+}
+
+/** The envelope for a human act: the operator is both actor and initiator. */
+function operatorEnvelope(commandId: string, correlationId: string, employeeId: string) {
+  return {
+    commandId,
+    correlationId,
+    /*
+     * Both, deliberately. An orchestrator initiates agent work on the firm's
+     * behalf; this is a person deciding, so there is nobody else to name.
+     */
+    actor: { kind: 'employee' as const, employeeId },
+    initiator: { kind: 'employee' as const, employeeId },
+    occurredAt: systemClock.isoNow(),
+  }
+}
+
+/** Maps a command outcome onto the three answers the surface distinguishes. */
+function actResponse(
+  result: Awaited<ReturnType<typeof runCommand>>,
+  state: () => Promise<RunState | null>,
+): Promise<ActResponse> | ActResponse {
+  if (result.outcome === 'committed') {
+    return state().then((current): ActResponse =>
+      current ? { ok: true, state: current } : { ok: false, outcome: 'failed', code: 'NOT_FOUND' },
+    )
+  }
+  if (result.outcome === 'rejected') {
+    /* The institution declined. An answer, not a fault. */
+    return { ok: false, outcome: 'refused', code: result.rejection.code }
+  }
+  /*
+   * `failed` and `unresolved` alike. An unresolved commit is deliberately NOT
+   * reported as success: the outcome cannot yet be proven, and telling a person
+   * their acceptance landed when nobody knows would be the one lie this whole
+   * boundary exists to prevent. Re-reading the run is what settles it.
+   */
+  return { ok: false, outcome: 'failed', code: 'SERVICE_UNAVAILABLE' }
+}
+
+/**
+ * A person accepting an agent's work into the institution.
+ *
+ * The act C2-1 built and only a test could perform. The case and the department
+ * are read from the run: a caller able to name its own department would be
+ * asserting the very mandate it is about to be checked against.
+ */
+export const acceptContributionFn = createServerFn({ method: 'POST' })
+  .validator((input: { runId: string; actingEmployeeId: string }) => input)
+  .handler(async ({ data }): Promise<ActResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const run = await analysis.repositories.runs.get(data.runId)
+      if (!run) return { ok: false, outcome: 'failed', code: 'NOT_FOUND' }
+
+      const result = await runCommand(
+        acceptContribution(deps.organization),
+        { caseId: run.caseId, runId: run.id, departmentId: run.departmentId },
+        operatorEnvelope(
+          actCommandId('accept', run.id, data.actingEmployeeId),
+          run.caseId,
+          data.actingEmployeeId,
+        ),
+        deps,
+      )
+
+      return await actResponse(result, async () => {
+        const settled = await analysis.repositories.runs.get(run.id)
+        return settled?.state ?? null
+      })
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, outcome: 'failed', code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] accept contribution failed', error)
+      return { ok: false, outcome: 'failed', code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/**
+ * A person declining an agent's work.
+ *
+ * The code is checked against the firm's vocabulary here as well as in the
+ * command — not because the command is untrusted, but because this is the edge
+ * where an arbitrary string arrives, and a value that is not a reason the firm
+ * defines should not travel any further than the door it came in at.
+ *
+ * The prose is passed through untouched and is required by the command. A code
+ * alone teaches nobody anything.
+ */
+export const rejectContributionFn = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      runId: string
+      actingEmployeeId: string
+      code: ContributionRejectionCode
+      detail: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<ActResponse> => {
+    try {
+      if (!CONTRIBUTION_REJECTION_CODES.includes(data.code)) {
+        return { ok: false, outcome: 'refused', code: 'invariant-violated' }
+      }
+
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const run = await analysis.repositories.runs.get(data.runId)
+      if (!run) return { ok: false, outcome: 'failed', code: 'NOT_FOUND' }
+
+      const result = await runCommand(
+        rejectContribution(deps.organization),
+        {
+          caseId: run.caseId,
+          runId: run.id,
+          departmentId: run.departmentId,
+          code: data.code,
+          detail: data.detail,
+        },
+        operatorEnvelope(
+          actCommandId('reject', run.id, data.actingEmployeeId),
+          run.caseId,
+          data.actingEmployeeId,
+        ),
+        deps,
+      )
+
+      return await actResponse(result, async () => {
+        const settled = await analysis.repositories.runs.get(run.id)
+        return settled?.state ?? null
+      })
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, outcome: 'failed', code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] reject contribution failed', error)
+      return { ok: false, outcome: 'failed', code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
 
 /*
  * The C2-1 smoke proof, re-exported through the published boundary.
