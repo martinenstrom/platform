@@ -1,0 +1,160 @@
+{
+  "desk": {
+    "departmentId": "global-macro",
+    "name": "Global Macro",
+    "isGovernance": false,
+    "handles": [
+      "fx",
+      "macro",
+      "policy",
+      "rates"
+    ],
+    "manager": {
+      "employeeId": "macro-head",
+      "displayName": "Head of Macro",
+      "roleTitle": "Head of Macro",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "macro-regime",
+        "summary": "Reads the policy regime: official policy stance against what the market is pricing.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "macro-analysis",
+        "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+        "requirement": "required",
+        "priority": 100,
+        "disciplineTag": "macro"
+      }
+    ],
+    "runs": []
+  },
+  "entryKey": "macro-analysis",
+  "currentBrief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+  "cases": [
+    {
+      "investmentCase": {
+        "id": "commission-v1",
+        "version": 2,
+        "subject": {
+          "kind": "macro-regime",
+          "ref": "ecb",
+          "displayName": "ECB path"
+        },
+        "question": "Does the ECB cut before Q2?",
+        "stage": "research",
+        "openedAt": "2026-08-01T09:00:00.000Z",
+        "ownerEmployeeId": "research-director",
+        "participatingDepartmentIds": [
+          "devils-advocate",
+          "global-macro",
+          "quant-technical",
+          "research-office",
+          "risk",
+          "verification"
+        ],
+        "transitions": [
+          {
+            "caseId": "commission-v1",
+            "from": "intake",
+            "to": "research",
+            "at": "2026-08-01T09:00:00.000Z",
+            "byEmployeeId": "research-director",
+            "byDepartmentId": "research-office"
+          }
+        ],
+        "playbookId": "macro-regime",
+        "playbookVersion": "1"
+      },
+      "playbookId": "macro-regime",
+      "playbookVersion": "1",
+      "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+      "eligibility": {
+        "kind": "refused",
+        "reason": "no-authorized-budget",
+        "unmeasured": [
+          "tokens",
+          "cost",
+          "deadline"
+        ]
+      }
+    },
+    {
+      "investmentCase": {
+        "id": "commission-v2",
+        "version": 2,
+        "subject": {
+          "kind": "macro-regime",
+          "ref": "ecb",
+          "displayName": "ECB path"
+        },
+        "question": "Where is the German 10y heading, and what does it show about the ECB path?",
+        "stage": "research",
+        "openedAt": "2026-08-01T09:00:00.000Z",
+        "ownerEmployeeId": "research-director",
+        "participatingDepartmentIds": [
+          "devils-advocate",
+          "global-macro",
+          "quant-technical",
+          "research-office",
+          "risk",
+          "verification"
+        ],
+        "transitions": [
+          {
+            "caseId": "commission-v2",
+            "from": "intake",
+            "to": "research",
+            "at": "2026-08-01T09:00:00.000Z",
+            "byEmployeeId": "research-director",
+            "byDepartmentId": "research-office"
+          }
+        ],
+        "playbookId": "macro-regime",
+        "playbookVersion": "2"
+      },
+      "playbookId": "macro-regime",
+      "playbookVersion": "2",
+      "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+      "eligibility": {
+        "kind": "eligible",
+        "budget": {
+          "tokens": {
+            "kind": "limit",
+            "tokens": 12000
+          },
+          "cost": {
+            "kind": "limit",
+            "costMinorUnits": 100,
+            "currency": "USD"
+          },
+          "deadline": {
+            "kind": "limit",
+            "deadlineMs": 90000
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceSetId": "82ca3d312fd92407fa9094529bfb6497",
+      "assembledAt": "2026-08-01T09:00:00.000Z",
+      "observationCount": 1,
+      "sources": [
+        "ECB"
+      ],
+      "disagreementCount": 0,
+      "eligibility": {
+        "kind": "eligible"
+      }
+    }
+  ],
+  "providerKind": "live"
+}

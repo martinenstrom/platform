@@ -99,6 +99,29 @@ export interface OrchestrationOptions {
    */
   caseBudgetConstraint?: BudgetCap
   /**
+   * The entries this caller is asking the firm to execute.
+   *
+   * Absent — the default, and what every caller before Agent Headquarters
+   * did — means *every entry the playbook contains*, which is what running a
+   * case's playbook has always meant.
+   *
+   * Present, it narrows **what is attempted** and nothing else. This is the
+   * one thing the option must not be read as: it is not permission. A
+   * requested entry still has to satisfy its blocking dependencies, still has
+   * to pass `StartAgentRun`'s mandate, readiness, assignment-status and budget
+   * checks, and still runs under the budget the three policy sources resolve
+   * to. Selection says which work a person asked for; the institution decides
+   * whether that work may run, and answers exactly as it would have if the
+   * whole playbook had been commissioned.
+   *
+   * It is therefore a filter over `readyEntries`, deliberately, rather than a
+   * different playbook or a second code path. Filtering the playbook itself
+   * would change the dependency graph — an entry's blockers would vanish along
+   * with the entries carrying them — and an entry could then start on a
+   * premise the graph says is missing.
+   */
+  requestedEntryKeys?: readonly string[]
+  /**
    * Jitter for retry backoff, injected so a seeded test reproduces the exact
    * delay sequence. `Math.random()` is banned below the presentation layer for
    * the same reason `Date.now()` is: it makes behaviour unobservable.
@@ -163,6 +186,17 @@ export interface OrchestrationResult {
   blockedKeys: readonly string[]
   /** Required entries that did not complete. Drives case-level blocking. */
   missingRequired: readonly string[]
+  /**
+   * Entries this orchestration was not asked to execute.
+   *
+   * Always empty when `requestedEntryKeys` is absent. Named rather than left
+   * out of `outcomes`, for the reason the `waiting-for-dependencies` tail
+   * exists: an entry that simply did not appear would be indistinguishable
+   * from one the playbook never contained. What it must NOT be reported as is
+   * blocked or waiting — those say the work could not proceed, and "nobody
+   * asked for it" is a different fact about a different actor.
+   */
+  notRequestedKeys: readonly string[]
 }
 
 /** The three durable acts one entry can perform. */
@@ -227,14 +261,29 @@ export async function runPlaybook(
   const awaitingAcceptance = new Set<string>()
   const claimsByKey = new Map<string, readonly AgentClaim[]>()
 
+  /*
+   * What was asked for. `null` is "everything", which is what a playbook run
+   * has always meant and what every caller outside Agent Headquarters still
+   * means.
+   */
+  const requested = options.requestedEntryKeys
+    ? new Set(options.requestedEntryKeys)
+    : null
+  const wasRequested = (key: string) => requested === null || requested.has(key)
+
   for (;;) {
     /*
      * Anything already awaiting a person is not ready again. It has produced
      * its work; re-selecting it would loop forever, because it will never
      * complete without an act the orchestrator is not permitted to perform.
+     *
+     * The requested filter sits beside that one and not before `readyEntries`:
+     * readiness is computed over the whole graph, so an entry that was asked
+     * for but whose blockers are unmet is still unready, exactly as it would
+     * have been in a full run.
      */
     const ready = readyEntries(playbook, [...completed], [...failed]).filter(
-      (entry) => !awaitingAcceptance.has(entry.key),
+      (entry) => !awaitingAcceptance.has(entry.key) && wasRequested(entry.key),
     )
     if (ready.length === 0) break
 
@@ -275,7 +324,15 @@ export async function runPlaybook(
    * with it.
    */
   const blocked = blockedEntries(playbook, [...failed]).filter(
-    (entry) => !completed.has(entry.key) && !failed.has(entry.key),
+    (entry) =>
+      !completed.has(entry.key) &&
+      !failed.has(entry.key) &&
+      /*
+       * An entry nobody asked for is not blocked by anything. It would be
+       * blocked if it were attempted, and saying so before anyone attempted it
+       * would report a consequence of the graph as a consequence of a failure.
+       */
+      wasRequested(entry.key),
   )
   for (const entry of blocked) {
     outcomes.push({
@@ -307,8 +364,19 @@ export async function runPlaybook(
     ...awaitingAcceptance,
     ...blocked.map((entry) => entry.key),
   ])
+  const notRequested: string[] = []
   for (const entry of playbook.entries) {
     if (accountedFor.has(entry.key)) continue
+    /*
+     * Not asked for, so it is not waiting on anything. Recorded on its own
+     * list: `waiting-for-dependencies` is a statement that the graph stopped
+     * this work, and attributing a person's choice of scope to the graph would
+     * send whoever reads it looking for a dependency that was never the reason.
+     */
+    if (!wasRequested(entry.key)) {
+      notRequested.push(entry.key)
+      continue
+    }
     const waitingOn = entry.blockedBy.filter((key) => awaitingAcceptance.has(key))
     outcomes.push({
       entryKey: entry.key,
@@ -321,6 +389,14 @@ export async function runPlaybook(
   }
 
   const blockedKeys = blocked.map((e) => e.key)
+  /*
+   * Unchanged by selection, and deliberately: this drives case-level blocking,
+   * and a required entry that has not completed has not completed regardless
+   * of what any single commission asked for. Narrowing it to the requested
+   * entries would let a case whose required work is outstanding report itself
+   * as complete because the last person to press a button only asked for one
+   * desk.
+   */
   const missingRequired = playbook.entries
     .filter((e) => e.requirement === 'required' && !completed.has(e.key))
     .map((e) => e.key)
@@ -331,6 +407,7 @@ export async function runPlaybook(
     failedKeys: [...failed],
     blockedKeys,
     missingRequired,
+    notRequestedKeys: notRequested,
   }
 }
 

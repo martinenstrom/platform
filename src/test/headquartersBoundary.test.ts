@@ -54,6 +54,17 @@ const HEADQUARTERS = [
   'components/agents/JudgementPanel.tsx',
   'components/agents/ActingAs.tsx',
   'presentation/analysis/claimText.ts',
+  /*
+   * Stage C — the commission. The surface that spends the firm's money, and
+   * therefore the one where a locally computed answer would be most expensive:
+   * whether a case can take this work, and what the firm authorizes for it, are
+   * both decided by the read model against the case's pinned workflow version.
+   * A component that decided either would be able to offer a run the
+   * institution would refuse, or state an authorization no run would use.
+   */
+  'routes/agents_.$departmentId.commission.tsx',
+  'components/agents/CommissionPanel.tsx',
+  'presentation/analysis/commissionText.ts',
 ]
 
 /**

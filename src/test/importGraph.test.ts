@@ -1002,8 +1002,23 @@ describe('Phase C1C-1 — the external-work boundary', () => {
      *
      * So this reads `sourceOf` directly. The cost is that prose must not spell
      * the literal out; the comments here are worded around it deliberately.
+     *
+     * ## It sees a named constant too, since C2-2 Stage C
+     *
+     * The pattern matched only an object-literal property, so a module could
+     * hold the value in an exported constant and this would report that nobody
+     * declares live work anywhere — which is what happened the moment the live
+     * provider did exactly that, correctly, so that callers reasoning about
+     * live work refer to the provider's own declaration instead of restating
+     * the string. A guard that can be stepped around by moving a value into a
+     * constant is not asserting where the value lives.
+     *
+     * So both assignment forms are matched, and comparisons deliberately are
+     * not: reading the kind and deciding something (`providerKind === …`) is
+     * what the domain's budget and usage rules do all day. What must stay
+     * confined is SAYING that something IS live work.
      */
-    const declaresLive = /(provider)?[kK]ind:\s*'live'/
+    const declaresLive = /[kK][iI][nN][dD]\s*(?::\s*\w+\s*)?[:=]\s*'live'/
     const offenders = FILES.filter(
       (f) => !isTest(f) && declaresLive.test(sourceOf(f)),
     ).map((f) => f.path)
@@ -1120,16 +1135,54 @@ describe('Phase C1C-2 — contribution', () => {
      * The orchestrator holds the provider. Nothing else in the application
      * layer may call one: a second sequencer would be a second opinion about
      * when a transaction is open, and the boundary would hold in one of them.
+     *
+     * ## Strengthened at C2-2 Stage C, not relaxed
+     *
+     * This used to assert that no application module IMPORTS `contributionPort`,
+     * which is a proxy for the property rather than the property. Two things
+     * were wrong with it, and only the second showed up.
+     *
+     * It was too strict in one direction: `commissionAnalysis` names
+     * `ContributionProvider` as a **type**, to receive a provider and hand it
+     * to the one sequencer. It calls nothing. Passing the orchestrator a
+     * provider is what every caller of `runPlaybook` has always done, and doing
+     * it from the application layer rather than from `smokeFns` does not make
+     * it a second sequencer.
+     *
+     * And it was too weak in the other, which matters more: an import check
+     * cannot see a CALL. A module that named the port type-only and then
+     * invoked `provider.contribute()` around its own transaction — the exact
+     * failure this exists to prevent — would have satisfied the old assertion
+     * completely.
+     *
+     * So the property is asserted directly. Exactly one non-test application
+     * module may invoke a provider, and the modules permitted even to name the
+     * port are pinned, so a third becomes a deliberate act rather than an
+     * import somebody added.
      */
-    const callers = FILES.filter(
+    const invokesAProvider = /\.(contribute|declare)\s*\(/
+    const sequencers = FILES.filter(
       (f) =>
         inLayer(f, 'application/analysis/') &&
         !isTest(f) &&
-        !f.path.endsWith('orchestrator.ts') &&
+        invokesAProvider.test(codeOnly(sourceOf(f))),
+    ).map((f) => f.path)
+    expect(sequencers).toEqual(['application/analysis/orchestrator.ts'])
+
+    const namesThePort = FILES.filter(
+      (f) =>
+        inLayer(f, 'application/analysis/') &&
+        !isTest(f) &&
         !f.path.endsWith('contributionPort.ts') &&
         f.imports.some((specifier) => specifier.includes('contributionPort')),
-    ).map((f) => f.path)
-    expect(callers).toEqual([])
+    )
+      .map((f) => f.path)
+      .sort()
+    expect(namesThePort).toEqual([
+      /* Receives a provider and hands it to the orchestrator. Calls nothing. */
+      'application/analysis/commissionAnalysis.ts',
+      'application/analysis/orchestrator.ts',
+    ])
   })
 })
 

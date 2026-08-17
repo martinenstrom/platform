@@ -1848,3 +1848,56 @@ correctness dependency that genuinely prevents commissioning.
 limit and never its sources, and `budgetOverruns` reads measured usage only —
 a provider that reported nothing must not be treated as having overrun, which
 would fail runs for a provider's reticence rather than for their spend.
+
+## TD-78 · a registered playbook does not read back with its budget · open
+
+**Opened by C2-2 Stage C, by measurement rather than by suspicion**, while
+confirming the handoff facts against the development database rather than
+assuming them.
+
+`analysis.playbook_entries` has no budget columns. `PLAYBOOK_SQL.insertEntry`
+writes ten fields and `budget` is not among them, so a playbook registered
+through the PostgreSQL adapter reads back with `budget: undefined` on every
+entry. The in-memory adapter stores the object it was given and returns it
+intact, so **the two adapters disagree about what a registered playbook is** —
+and only one of them is durable.
+
+**The measurement.** In the development database, `playbooks.get('macro-regime',
+'2')` returns six entries, every one with no budget, while the compiled
+`MACRO_REGIME_PLAYBOOK_V2` carries 12,000 tokens / $1.00 / 90,000 ms on
+`macro-analysis`.
+
+**Why nothing is currently wrong because of it.** Two properties hold it
+harmless today, and both are load-bearing rather than lucky:
+
+- **The registry is the authority for a definition.** Every production path that
+  needs a playbook resolves it through `requirePlaybook`, which returns the
+  immutable definition this build ships. `StartAgentRun` does it, and so does
+  `commissionAnalysis`. Nothing reads a budget out of the store.
+- **`content_hash` is computed from the in-memory playbook before insertion**,
+  so registration idempotence and the conflict check are unaffected: a v2
+  registered with a different budget would still be refused as a conflicting
+  record.
+
+**What it costs.** The store cannot answer *"what did the firm authorize for
+this workflow version"* without the build that registered it. Audit is not
+impaired — the run records the **resolved** budget, which TD-76 already
+establishes as the durable authority for what any particular run was permitted —
+but the version-level authorization exists only in code.
+
+**Why it is debt rather than a defect.** A parity finding is a shared contract
+case, not a one-store fix: the port's documentation does not currently say
+whether `playbooks.get` must round-trip the budget, and the two adapters answer
+differently because nobody decided. **The decision comes first.** If the answer
+is that it must, the work is a migration, four columns, the mapping both ways,
+and a case in `repositoryContract.ts` so both stores are held to it. If the
+answer is that a stored playbook is a *record of registration* rather than a
+definition, the port should say so and the in-memory adapter should stop
+returning something PostgreSQL cannot.
+
+**What must not be weakened when it is settled.** `playbookContentHash` treats
+an absent budget as absent rather than as `budget: null` — deliberately, so
+every playbook written before budgets existed keeps the hash it already has.
+Whichever way this is decided, that must not change: rehashing the registry
+would make every case's pin refer to a version that no longer content-addresses
+the same way.

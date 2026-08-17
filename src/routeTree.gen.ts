@@ -21,6 +21,7 @@ import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as SmokeC21RouteImport } from './routes/smoke.c2-1'
+import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +83,12 @@ const SmokeC21Route = SmokeC21RouteImport.update({
   path: '/smoke/c2-1',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsDepartmentIdCommissionRoute =
+  AgentsDepartmentIdCommissionRouteImport.update({
+    id: '/agents_/$departmentId/commission',
+    path: '/agents/$departmentId/commission',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/smoke/c2-1': typeof SmokeC21Route
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
+  '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesByTo {
   '/smoke/c2-1': typeof SmokeC21Route
   '/agents': typeof AgentsIndexRoute
   '/cases': typeof CasesIndexRoute
+  '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +134,7 @@ export interface FileRoutesById {
   '/smoke/c2-1': typeof SmokeC21Route
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
+  '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/smoke/c2-1'
     | '/agents/'
     | '/cases/'
+    | '/agents/$departmentId/commission'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/smoke/c2-1'
     | '/agents'
     | '/cases'
+    | '/agents/$departmentId/commission'
   id:
     | '__root__'
     | '/'
@@ -169,6 +181,7 @@ export interface FileRouteTypes {
     | '/smoke/c2-1'
     | '/agents/'
     | '/cases/'
+    | '/agents_/$departmentId/commission'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +197,7 @@ export interface RootRouteChildren {
   SmokeC21Route: typeof SmokeC21Route
   AgentsIndexRoute: typeof AgentsIndexRoute
   CasesIndexRoute: typeof CasesIndexRoute
+  AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -272,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SmokeC21RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents_/$departmentId/commission': {
+      id: '/agents_/$departmentId/commission'
+      path: '/agents/$departmentId/commission'
+      fullPath: '/agents/$departmentId/commission'
+      preLoaderRoute: typeof AgentsDepartmentIdCommissionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +309,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmokeC21Route: SmokeC21Route,
   AgentsIndexRoute: AgentsIndexRoute,
   CasesIndexRoute: CasesIndexRoute,
+  AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

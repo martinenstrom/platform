@@ -58,6 +58,18 @@ import {
 } from '~/application/analysis/agentDirectory'
 import { runReview, type RunReview } from '~/application/analysis/runReview'
 import {
+  commissionAnalysis,
+  commissionBrief,
+  type CommissionBrief,
+  type CommissionResult,
+} from '~/application/analysis/commissionAnalysis'
+import {
+  createLiveContributionProvider,
+  LIVE_MAX_OUTPUT_TOKENS,
+  LIVE_MODEL_ID,
+  LIVE_PROVIDER_KIND,
+} from './providers/live'
+import {
   operatorIdentities,
   type OperatorIdentity,
 } from '~/application/analysis/operatorIdentity'
@@ -104,6 +116,21 @@ export type RunReviewResponse =
 export type OperatorIdentitiesResponse =
   | { ok: true; identities: readonly OperatorIdentity[] }
   | { ok: false; code: AnalysisReadFailure }
+
+export type CommissionBriefResponse =
+  { ok: true; brief: CommissionBrief } | { ok: false; code: AnalysisReadFailure }
+
+/**
+ * What came of commissioning work.
+ *
+ * `NOT_CONFIGURED` gains a sibling here that the read boundary does not need:
+ * a live desk cannot run without a model credential, and reporting that as a
+ * service outage would send an operator to look at the database.
+ */
+export type CommissionFailure = AnalysisReadFailure | 'NO_MODEL_CREDENTIAL'
+
+export type CommissionResponse =
+  { ok: true; result: CommissionResult } | { ok: false; code: CommissionFailure }
 
 /**
  * What came of an institutional act.
@@ -359,6 +386,120 @@ export const getOperatorIdentitiesFn = createServerFn({ method: 'POST' }).handle
   },
 )
 
+/* ------------------------------------------------------------ commissioning */
+
+/**
+ * What a person needs before asking a desk to do work.
+ *
+ * Every case the firm holds and every evidence set it holds, each carrying
+ * whether it can be commissioned and — where it cannot — the institution's own
+ * reason. Deliberately not pre-filtered to the eligible ones: "there are no
+ * cases" and "there are four cases and none of them can take this work, here is
+ * why each" are different things to put in front of somebody about to spend
+ * money.
+ *
+ * The provider kind is taken from the live provider itself rather than named
+ * here, so the eligibility this produces is the answer for the producer that
+ * would actually run. A literal restated at this call site could disagree with
+ * the provider constructed thirty lines below, and the screen would then offer
+ * work under rules nothing was going to apply.
+ */
+export const getCommissionBriefFn = createServerFn({ method: 'POST' })
+  .validator((input: { departmentId: string; entryKey?: string }) => input)
+  .handler(async ({ data }): Promise<CommissionBriefResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const brief = await commissionBrief({
+        repositories: analysis.repositories,
+        organization: deps.organization,
+        playbooks: registeredPlaybooks(),
+        departmentId: data.departmentId,
+        ...(data.entryKey ? { entryKey: data.entryKey } : {}),
+        providerKind: LIVE_PROVIDER_KIND,
+      })
+
+      if (!brief) return { ok: false, code: 'NOT_FOUND' }
+      return { ok: true, brief }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] commission brief failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/**
+ * A person commissioning a real analysis. **This spends money.**
+ *
+ * The write that closes the loop C2-1 opened: the same command sequence, the
+ * same orchestration, the same live provider — reachable from the product for
+ * the first time, and reachable only with a case, an evidence set and an
+ * employee the caller names explicitly.
+ *
+ * **The client supplies the act, never the authority.** It names what to work
+ * on and who is acting; the workflow, the brief and the budget are all read on
+ * the server from the version the case is pinned to. A caller that could send
+ * its own brief or its own budget would be choosing what the firm authorized
+ * from a browser.
+ *
+ * Synchronous, by ruling. The request is held for as long as the run's
+ * authorized deadline allows, which is what makes the result a fact read back
+ * from the record rather than a promise about one.
+ */
+export const commissionAnalysisFn = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      caseId: string
+      departmentId: string
+      entryKey: string
+      evidenceSetId: string
+      actingEmployeeId: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<CommissionResponse> => {
+    try {
+      const apiKey = process.env.ANTHROPIC_API_KEY
+      /*
+       * Refused before the runtime is even built. A live desk with no
+       * credential cannot produce anything, and starting a run that was always
+       * going to fail would spend an institutional record on a configuration
+       * mistake.
+       */
+      if (!apiKey) return { ok: false, code: 'NO_MODEL_CREDENTIAL' }
+
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      const result = await commissionAnalysis({
+        repositories: analysis.repositories,
+        deps,
+        provider: createLiveContributionProvider({
+          apiKey,
+          model: LIVE_MODEL_ID,
+          maxTokens: LIVE_MAX_OUTPUT_TOKENS,
+          loadEvidenceSet: (id) => analysis.repositories.evidence.get(id),
+        }),
+        caseId: data.caseId,
+        departmentId: data.departmentId,
+        entryKey: data.entryKey,
+        evidenceSetId: data.evidenceSetId,
+        actingEmployeeId: data.actingEmployeeId,
+        now: () => new Date(systemClock.isoNow()),
+      })
+
+      return { ok: true, result }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] commission analysis failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
 /* ----------------------------------------------------------- the two acts */
 
 /**
@@ -376,7 +517,11 @@ export const getOperatorIdentitiesFn = createServerFn({ method: 'POST' }).handle
  * its original outcome, and a corrected attempt by the right person a fresh
  * command.
  */
-function actCommandId(act: 'accept' | 'reject', runId: string, employeeId: string): string {
+function actCommandId(
+  act: 'accept' | 'reject',
+  runId: string,
+  employeeId: string,
+): string {
   return `${act}-${runId}-${employeeId}`
 }
 
@@ -402,7 +547,9 @@ function actResponse(
 ): Promise<ActResponse> | ActResponse {
   if (result.outcome === 'committed') {
     return state().then((current): ActResponse =>
-      current ? { ok: true, state: current } : { ok: false, outcome: 'failed', code: 'NOT_FOUND' },
+      current
+        ? { ok: true, state: current }
+        : { ok: false, outcome: 'failed', code: 'NOT_FOUND' },
     )
   }
   if (result.outcome === 'rejected') {

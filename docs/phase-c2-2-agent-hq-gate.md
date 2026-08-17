@@ -1,7 +1,13 @@
 # C2-2 — Agent Headquarters: the first usable agent
 
-**Status:** **approved**, with the rulings in §2. **Stage C is gated** on one
-open institutional decision (§3). Stage A may begin.
+**Status: CLOSED**, accepted 2026-08-17 after a manual live run commissioned
+from the product and judged by a person (§5, Stage C). All three stages are
+delivered and the §3 budget gate is discharged.
+
+**What is open, and stays open by ruling:** TD-76 (no durable firm-wide
+execution ceiling), TD-77 (retry spend outside recorded usage), TD-78 (a
+registered playbook does not read back with its budget). None of them blocked
+this capability and none was folded into it. See §8.
 
 C2-1 is closed at `6583a97`. It proved the institutional execution path. C2-2
 makes that path reachable from the product, and nothing more.
@@ -303,18 +309,91 @@ accepts.
 **User capability gained:** *the user can read work awaiting acceptance and accept
 or reject it, with a reason, from the interface.*
 
-### Stage C — the commission — **gated on §3**
+### Stage C — the commission — **DELIVERED and manually accepted**
 
-- [ ] The user selects an existing **open** case; with none selected, commissioning is unavailable and the UI says why
-- [ ] The user selects an existing institutional evidence set associated with that case; where none exists, commissioning is **refused** with an explanation
-- [ ] The user selects Global Macro, states the assignment, and commissions without touching an environment variable
-- [ ] Execution is synchronous; the UI shows only real recorded progression read from persisted state, with **no invented percentage**
-- [ ] The run lands in the Stage B review surface, where the same person judges it
-- [ ] A run that exceeds its budget or fails is reported honestly, with no claim to accept
-- [ ] The budget it ran under came from the source ruled in §3 — **never a constant copied from `smokeFns`**
+The §3 gate is discharged: `macro-regime` **v2** is registered and carries the
+approved `macro-analysis` budget — 12,000 tokens, $1.00 as an authorization
+rather than a measured control, 90,000 ms.
+
+**Verified:** unit **2215 pass / 8 skipped, 93 files**; PostgreSQL **792 pass,
+34 files**; `tsc --noEmit` clean. Render-verified as a complete journey from
+`/agents`, against `commissionFloor`, `commissionBrief`, `commissionResult` and
+`commissionReview` — four captures from one PostgreSQL database in
+`commission.pg.test.ts`, so the run the commission returns is the run the review
+resolves.
+
+- [x] The user selects an existing **open** case; with none selected, commissioning is unavailable and the UI says which choice is missing
+- [x] The user selects an existing institutional evidence set; a set with no observations is refused with an explanation, and a firm holding none refuses commissioning outright
+- [x] The user selects Global Macro, states the assignment by choosing the case and the registered brief it carries, and commissions without touching an environment variable
+- [x] Execution is synchronous; the surface shows only what the record says, with **no invented percentage**
+- [x] The run lands in the Stage B review surface, reached by clicking rather than by constructing a URL
+- [x] A run that exceeds its budget is reported honestly as `budget-exhausted`, stores no claim, and offers nothing to accept — asserted against the database
+- [x] The budget it ran under came from the source ruled in §3, resolved by `resolveExecutionBudget` from the playbook proposal alone
+- [x] **Selection is intent, not permission.** `requestedEntryKeys` filters ready entries inside `runPlaybook`; a requested entry whose dependencies are unmet still does not run, and an operator from another desk is declined by the mandate
+- [x] **A real live run, commissioned from the product by a person, and reviewed**
 
 **User capability gained:** *the user can commission a real analysis and follow it
 to a decision.* The loop closes.
+
+#### The manual live acceptance — 2026-08-17
+
+Executed personally, through the served product, end to end: Agent Headquarters
+→ Global Macro → Beställ analys → an existing `macro-regime` v2 case → an
+existing institutional ECB `EvidenceSet` → live execution → persisted
+`awaiting-acceptance` run → RunReview → acceptance → `completed`.
+
+Read back afterwards through the **normal read path** — `caseOverview` and
+`claims.listForCase`, the same derivations the case page consumes — on case
+`dev-1786988349282`:
+
+| | |
+|---|---|
+| run | `run-97de7f11c7ef9f8d903e92c0c366f73d`, `completed` |
+| accountable employee | `macro-head` — the operator, not a default |
+| provider / model | `live-anthropic`, `anthropic/claude-opus-5` |
+| workflow | `macro-regime` v2 · `macro-analysis` |
+| authorized | 12,000 tokens · $1.00 · 90,000 ms |
+| reported usage | 475 in / 1,362 out; **cost `not-reported`** |
+| evidence | `abb549c1…`, one ECB observation |
+| produced claims → institutional claims | 7 → 7, same ids across the boundary |
+| other five assignments | still `queued` |
+
+Three things this proves that no automated run could:
+
+**The commissioned entry was the only entry commissioned.** Five other
+assignments on the same case remain `queued` in the database. `requestedEntryKeys`
+narrowed what was attempted, in production, against a real playbook.
+
+**The monetary authorization stayed an authorization.** The record reads
+`cost: not-reported` beside a `$1.00` limit, exactly as `macroPlaybook`'s note
+says it must. Nothing in the interface presented it as verified compliance with
+a spending ceiling, because nothing verified it.
+
+**The model declined to answer beyond its evidence, and the record shows it.**
+Given one undescribed yield reading, the desk produced two `supported`
+observations about what that reading does and does not establish, and five
+`insufficient-evidence` claims explicitly refusing to characterise the macro
+regime, the policy path, a comparison, a rates view or an FX view — closing with
+a `recommendation` to withhold positioning and naming the series that would
+change it. **This is the strongest available evidence that the constraint on
+decision quality is now evidence, not agent capability**, and it is what points
+the next gate at evidence rather than at more agent machinery.
+
+#### What Stage C deliberately did not do
+
+**No free-text brief.** The brief a desk receives is the one its case's pinned
+playbook version states. It is inside `playbookContentHash` and is hashed into
+the run's prompt identity, so a caller-supplied brief would run the desk under a
+workflow the firm never registered. What a person supplies is *which question*,
+and that is the case they select.
+
+**No firm ceiling.** `commissionAnalysis` passes no `firmBudgetCeiling`, and
+`stageDeadlineMs` is read back off the resolved budget rather than chosen beside
+it — so the only deadline in force is the one the playbook proposed. TD-76 is
+untouched and unclosed.
+
+**No implicit case creation.** `scripts/open-case.ts` remains development
+tooling. Opening a case is its own institutional act.
 
 ---
 
@@ -347,3 +426,67 @@ governance and run standing are each derived in exactly one place today. This
 stage adds screens for facts that already exist — and the moment a component
 decides one of them, the institution holds two answers and only the screen knows
 which one it used.
+
+---
+
+## 8. Closing handoff
+
+Written at closure so the next session inherits facts rather than
+reconstructing them.
+
+### 8.1 What C2-2 leaves open, deliberately
+
+**These are preserved, not deferred quietly.** Each was measured, ruled on, and
+kept out of this phase on purpose.
+
+| | |
+|---|---|
+| **TD-76** | The firm-wide execution ceiling has no durable home. `commissionAnalysis` supplies **no** `firmBudgetCeiling`, and derives `stageDeadlineMs` from the resolved budget rather than choosing one beside it — so the only bound in force is the playbook's proposal. What the absence costs: nothing caps a later playbook proposing more. Building it needs somewhere durable for firm policy, a command authorised to set it, and the resolver reading it rather than taking it from the caller. |
+| **TD-77** | Retry attempts spend outside the recorded usage. `budgetOverruns` compares the authorization against the usage of the attempt that **succeeded**; a failed attempt reports nothing and its spend is represented nowhere. The institutional question to answer first is which number the budget is enforced against — the successful call, or the run's total. |
+| **TD-78** | A registered playbook does not read back with its budget. `analysis.playbook_entries` has no budget columns, so PostgreSQL returns entries with the budget stripped while the in-memory adapter returns it intact. Harmless today because `requirePlaybook` is the authority for a definition and `content_hash` is computed before insertion — but **the two adapters disagree, and the decision comes before the fix**: is a stored playbook a definition, or a record of registration? |
+
+### 8.2 Observed, unexplained, not converted into debt
+
+**PostgreSQL suite flakiness.** Across four full runs of the same code: one run
+failed a single test in `c1d1Resources.pg.test.ts`, one failed a single test in
+`commission.pg.test.ts`, and two were fully green at 34 files / 792 tests. Both
+failing tests pass in isolation, and the captured fixtures are byte-stable
+across repeated runs.
+
+**No cause is recorded, and no TD is opened, because none is known.** The
+failing assertion of the second occurrence was not captured. What to do about
+it: treat a single red PostgreSQL test as suspect until reproduced, and **check
+the file count regardless** — a worker-startup timeout silently skips a whole
+file, which exit code 0 does not reveal.
+
+### 8.3 Pre-existing and out of scope
+
+**`npx vite build` fails**, and failed at `988a327` before any Stage C work —
+`@modelcontextprotocol/sdk`'s stdio client pulls `node:stream` into the client
+bundle and rollup cannot externalise `PassThrough`. Measured at HEAD by stashing
+this phase's changes and rebuilding, so it is not attributed to C2-2 and was
+deliberately **not** fixed here: broadening a capability phase to repair an
+unrelated bundling defect is how two decisions of different kinds end up inside
+one boundary. The dev server is unaffected, which is why the manual live
+acceptance was possible.
+
+### 8.4 What must not be weakened later
+
+- **`requestedEntryKeys` is intent, never permission.** It filters entries that
+  are already *ready*. Anything that made it skip a dependency, a mandate, an
+  assignment-status check or a budget resolution would turn a scope choice into
+  an authority.
+- **`commissionEligibility` reports; it does not grant.** It asks
+  `StartAgentRun`'s questions in `StartAgentRun`'s order and resolves the budget
+  with `resolveExecutionBudget`. The command still refuses independently, and
+  would refuse identically if that function did not exist.
+- **The operator is the actor.** Booking a commissioned run to a department's
+  manager by default would put an auditable name on an act that person never
+  performed, and would make `department-contribution` decorative.
+- **No free-text brief.** The brief is inside `playbookContentHash` and is
+  hashed into the run's prompt identity. A caller-supplied one runs a desk under
+  a workflow the firm never registered.
+- **`src/test/offlineLiveProvider.ts` must never become reachable from the
+  product.** It declares the live kind so the budget rules apply, and answers
+  without calling anything. In production every run it wrote would carry a model
+  identity for a call nobody made.

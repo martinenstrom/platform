@@ -72,9 +72,30 @@ export function AgentDeskPage({ response }: { response: AgentDeskResponse }) {
         title={desk.name}
         description={`${desk.manager.displayName} · ${desk.manager.roleTitle}`}
         actions={
-          <Link to="/agents" className="type-metadata hover:text-content">
-            Alla avdelningar
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link to="/agents" className="type-metadata hover:text-content">
+              Alla avdelningar
+            </Link>
+            {/*
+             * The way in to the act, on the page that describes the desk.
+             *
+             * Rendered only where the firm's registered workflow actually asks
+             * this desk for something: a commission screen for a department no
+             * playbook assigns work to would offer a button the institution
+             * could only refuse. Whether any particular CASE can take the work
+             * is decided on the commission surface itself, by the read model,
+             * rather than guessed at here.
+             */}
+            {desk.assignableWork.length > 0 && (
+              <Link
+                to="/agents/$departmentId/commission"
+                params={{ departmentId: desk.departmentId }}
+                className="text-sm text-accent hover:underline"
+              >
+                Beställ analys
+              </Link>
+            )}
+          </div>
         }
       />
 

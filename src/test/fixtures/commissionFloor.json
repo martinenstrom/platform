@@ -1,0 +1,286 @@
+[
+  {
+    "departmentId": "global-macro",
+    "name": "Global Macro",
+    "isGovernance": false,
+    "handles": [
+      "fx",
+      "macro",
+      "policy",
+      "rates"
+    ],
+    "manager": {
+      "employeeId": "macro-head",
+      "displayName": "Head of Macro",
+      "roleTitle": "Head of Macro",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "macro-regime",
+        "summary": "Reads the policy regime: official policy stance against what the market is pricing.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "macro-analysis",
+        "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+        "requirement": "required",
+        "priority": 100,
+        "disciplineTag": "macro"
+      }
+    ],
+    "runs": [
+      {
+        "id": "run-2e651bdc88ff00699e318dfb7d7c6e79",
+        "caseId": "commission-v2",
+        "assignmentId": "asg-e5cd21d96a6d16118fca96da2dbe0021",
+        "departmentId": "global-macro",
+        "employeeId": "macro-head",
+        "agentContractVersion": "1",
+        "outputSchemaVersion": "1",
+        "evidenceSetId": "82ca3d312fd92407fa9094529bfb6497",
+        "state": "awaiting-acceptance",
+        "startedAt": "2026-08-01T09:00:00.000Z",
+        "events": [
+          {
+            "runId": "run-2e651bdc88ff00699e318dfb7d7c6e79",
+            "at": "2026-08-01T09:00:00.000Z",
+            "state": "awaiting-acceptance"
+          },
+          {
+            "runId": "run-2e651bdc88ff00699e318dfb7d7c6e79",
+            "at": "2026-08-01T09:00:00.000Z",
+            "state": "running"
+          }
+        ],
+        "claims": [],
+        "budget": {
+          "tokens": {
+            "kind": "limit",
+            "tokens": 12000
+          },
+          "cost": {
+            "kind": "limit",
+            "costMinorUnits": 100,
+            "currency": "USD"
+          },
+          "deadline": {
+            "kind": "limit",
+            "deadlineMs": 90000
+          }
+        },
+        "usage": {
+          "state": "measured",
+          "inputTokens": 900,
+          "outputTokens": 300,
+          "cost": {
+            "state": "not-reported"
+          }
+        },
+        "missingOptionalInputs": [],
+        "execution": {
+          "playbookId": "macro-regime",
+          "playbookVersion": "2",
+          "playbookEntryKey": "macro-analysis",
+          "providerId": "live-offline-double",
+          "providerVersion": "1",
+          "providerKind": "live",
+          "identity": {
+            "kind": "model",
+            "prompt": {
+              "id": "macro-analysis-brief",
+              "version": "1",
+              "contentHash": "b949f1d9c66c252ea547647140f1aa9e"
+            },
+            "model": {
+              "id": "offline-test-double",
+              "provider": "offline",
+              "parameters": {
+                "maxTokens": 4096
+              },
+              "parametersHash": "991fd70564eae6ee7981f724a49ae99e"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "departmentId": "quant-technical",
+    "name": "Quant & Technical Analysis",
+    "isGovernance": false,
+    "handles": [
+      "quant",
+      "statistics",
+      "technical"
+    ],
+    "manager": {
+      "employeeId": "quant-head",
+      "displayName": "Head of Quant & Technical Analysis",
+      "roleTitle": "Head of Quant & Technical Analysis",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "quant-statistics",
+        "summary": "Statistical corroboration: breadth, volatility, correlation and significance.",
+        "interpretive": false
+      },
+      {
+        "id": "quant-technical-reading",
+        "summary": "Technical and wave-based readings, which are interpretation rather than measurement.",
+        "interpretive": true
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "quant-validation",
+        "brief": "Test the macro view against the data: regime indicators, historical analogues, and whether the claimed relationships hold statistically.",
+        "requirement": "optional",
+        "priority": 80,
+        "disciplineTag": "quant"
+      }
+    ],
+    "runs": []
+  },
+  {
+    "departmentId": "research-office",
+    "name": "Research Office",
+    "isGovernance": false,
+    "handles": [
+      "aggregation"
+    ],
+    "manager": {
+      "employeeId": "research-director",
+      "displayName": "Research Director",
+      "roleTitle": "Research Director",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "research-director-reconciles",
+        "summary": "Reconciles the research desks, prioritises, and proposes the thesis for review.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "aggregation",
+        "brief": "Reconcile the contributions into a single thesis revision. State the position, the invalidation criteria, and which implementation implications the thesis carries. Record any perspective that was unavailable.",
+        "requirement": "required",
+        "priority": 90,
+        "disciplineTag": "aggregation"
+      }
+    ],
+    "runs": []
+  },
+  {
+    "departmentId": "devils-advocate",
+    "name": "Devil's Advocate",
+    "isGovernance": true,
+    "handles": [
+      "challenge"
+    ],
+    "manager": {
+      "employeeId": "devils-advocate-head",
+      "displayName": "Head of Devil's Advocate",
+      "roleTitle": "Head of Devil's Advocate",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "advocate-contests",
+        "summary": "Contests theses and claims with counter-evidence, and may propose a competing thesis.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "challenge",
+        "brief": "Argue the opposite case as strongly as the evidence permits. Identify the assumption the thesis cannot survive being wrong about.",
+        "requirement": "required",
+        "priority": 70,
+        "disciplineTag": "challenge"
+      }
+    ],
+    "runs": []
+  },
+  {
+    "departmentId": "risk",
+    "name": "Risk",
+    "isGovernance": true,
+    "handles": [
+      "risk",
+      "stress",
+      "tail-risk"
+    ],
+    "manager": {
+      "employeeId": "chief-risk-officer",
+      "displayName": "Chief Risk Officer",
+      "roleTitle": "Chief Risk Officer",
+      "seniority": "chief"
+    },
+    "responsibilities": [
+      {
+        "id": "risk-downside",
+        "summary": "Downside, adverse scenarios, tail risk and the limits attached to acceptance.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "risk-review",
+        "brief": "Assess the exposure acting on this thesis would create: sizing, concentration, liquidity and tail risk.",
+        "requirement": "conditional",
+        "priority": 70,
+        "disciplineTag": "risk"
+      }
+    ],
+    "runs": []
+  },
+  {
+    "departmentId": "verification",
+    "name": "Verification",
+    "isGovernance": true,
+    "handles": [
+      "verification"
+    ],
+    "manager": {
+      "employeeId": "verification-head",
+      "displayName": "Head of Verification",
+      "roleTitle": "Head of Verification",
+      "seniority": "head"
+    },
+    "responsibilities": [
+      {
+        "id": "verification-checks",
+        "summary": "Verifies every material number, unit, citation and date against its evidence.",
+        "interpretive": false
+      }
+    ],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "2",
+        "entryKey": "verification",
+        "brief": "Check every factual claim the thesis rests on against its cited evidence. Record discrepancies rather than correcting them.",
+        "requirement": "required",
+        "priority": 70,
+        "disciplineTag": "verification"
+      }
+    ],
+    "runs": []
+  }
+]

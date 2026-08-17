@@ -683,3 +683,120 @@ function spy(
     },
   }
 }
+
+/* ------------------------------------------------ commissioning one entry */
+
+/**
+ * Asking the firm for one specific piece of work.
+ *
+ * C2-2 Stage C needed a person to be able to commission `macro-analysis`
+ * without commissioning the whole playbook, and the ruling was explicit about
+ * the shape: extend the existing orchestration boundary, do not build a second
+ * path for one department. So the selection is a filter over the entries that
+ * are **ready**, and every one of these tests exists to prove that the filter
+ * narrows what is attempted without softening anything that decides whether it
+ * may run.
+ */
+describe('commissioning a requested entry', () => {
+  const requesting = (
+    keys: readonly string[],
+    provider = createStubContributionProvider(),
+  ) =>
+    runPlaybook(
+      MACRO_REGIME_PLAYBOOK,
+      provider,
+      context(),
+      { ...options, requestedEntryKeys: keys },
+      deps,
+    )
+
+  it('runs what was asked for, and leaves the rest of the firm alone', async () => {
+    const asked: string[] = []
+    const result = await requesting(
+      ['macro-analysis'],
+      spy((request) => asked.push(request.departmentId)),
+    )
+
+    /* One desk was asked, once. */
+    expect(asked).toEqual(['global-macro'])
+    expect(producedIn(result)).toEqual(['macro-analysis'])
+
+    /*
+     * And the entries nobody asked for are named as exactly that. Reporting
+     * them as `waiting-for-dependencies` would attribute a person's choice of
+     * scope to the dependency graph — `quant-validation` blocks on nothing at
+     * all, so "waiting" would have been simply untrue.
+     */
+    expect([...result.notRequestedKeys].sort()).toEqual([
+      'aggregation',
+      'challenge',
+      'quant-validation',
+      'risk-review',
+      'verification',
+    ])
+    expect(waitingIn(result)).toEqual([])
+    expect(result.blockedKeys).toEqual([])
+
+    /* Proved against the store, not the return value: one run exists. */
+    const runs = await repositories.runs.listForCase('case-1')
+    expect(runs.map((r) => r.execution.playbookEntryKey)).toEqual(['macro-analysis'])
+  })
+
+  it('does not let a request start work whose dependencies are unmet', async () => {
+    /*
+     * The rule the selection must never soften. `aggregation` blocks on
+     * `macro-analysis`, which has not run — so asking for it explicitly gets a
+     * person exactly what asking for the whole playbook would have: nothing,
+     * and a statement of what it is waiting for.
+     */
+    const asked: string[] = []
+    const result = await requesting(
+      ['aggregation'],
+      spy((request) => asked.push(request.departmentId)),
+    )
+
+    expect(asked).toEqual([])
+    expect(producedIn(result)).toEqual([])
+    expect(waitingIn(result)).toEqual(['aggregation'])
+    expect(await repositories.runs.listForCase('case-1')).toEqual([])
+  })
+
+  it('still reports the case-level work the firm owes', async () => {
+    /*
+     * `missingRequired` is not narrowed by the request, and must not be: it
+     * drives case-level blocking, and a required entry that has not completed
+     * has not completed regardless of what the last person to press a button
+     * asked for.
+     */
+    const result = await requesting(['macro-analysis'])
+    expect([...result.missingRequired].sort()).toEqual([
+      'aggregation',
+      'challenge',
+      'macro-analysis',
+      'verification',
+    ])
+    /*
+     * `macro-analysis` is on that list despite having just produced work, which
+     * is the acceptance boundary showing through: producing is not completing,
+     * and the case still owes a person's decision.
+     */
+    expect(producedIn(result)).toEqual(['macro-analysis'])
+  })
+
+  it('changes nothing when no request is made', async () => {
+    /*
+     * The default every caller before Agent Headquarters relied on. Absent, the
+     * option means the whole playbook — which is what running a case's playbook
+     * has always meant — and nothing lands on the not-requested list.
+     */
+    const result = await runPlaybook(
+      MACRO_REGIME_PLAYBOOK,
+      createStubContributionProvider(),
+      context(),
+      options,
+      deps,
+    )
+    expect(result.notRequestedKeys).toEqual([])
+    expect(producedIn(result)).toEqual(['macro-analysis', 'quant-validation'])
+  })
+})

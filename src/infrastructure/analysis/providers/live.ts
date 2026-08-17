@@ -32,6 +32,7 @@ import {
   type ConfidenceLevel,
   type EvidenceItem,
   type EvidenceSet,
+  type ProviderKind,
 } from '~/domain/analysis'
 import { resolveModelConfidence } from '~/application/analysis/modelConfidence'
 import {
@@ -45,6 +46,46 @@ import { stableHashHex } from '~/domain/shared/hash'
 import { callModel, type ModelClientConfig, type ModelResponse } from './modelClient'
 
 export const LIVE_PROVIDER_ID = 'live-anthropic'
+
+/**
+ * The kind of producer this is, declared once and used by everything.
+ *
+ * A provider kind is **declared by the provider**, and the guard in
+ * `importGraph.test.ts` exists so that exactly one non-test module can say it:
+ * a fixture must not be able to enter the record as live work because whoever
+ * wired it up passed the wrong string.
+ *
+ * Named here so callers that need to reason about live work — resolving what
+ * the firm authorizes for it, deciding whether a case can take it — refer to
+ * this rather than restating the literal. The factory below reads it too, so a
+ * caller's idea of what this provider is cannot drift from what it actually
+ * reports.
+ */
+export const LIVE_PROVIDER_KIND: ProviderKind = 'live'
+
+/**
+ * The model the firm's live desks run on.
+ *
+ * Bare id, no date suffix — the first C2-1 attempt invented
+ * `claude-opus-4-5-20251101` and the provider answered 404, which the client
+ * correctly mapped to `provider-error`.
+ *
+ * Here rather than at each call site: the model is part of the execution
+ * identity that every run records and every audit reads, and two callers naming
+ * their own would let two runs of the same workflow be produced by different
+ * models with nothing saying so.
+ */
+export const LIVE_MODEL_ID = 'claude-opus-5'
+
+/**
+ * The cap on one answer.
+ *
+ * Thinking is on by default on this model and shares `max_tokens` with the
+ * response text, so a tight cap truncates the JSON mid-answer. This bounds the
+ * ANSWER; what bounds the work is the run's token budget, which is resolved
+ * from the firm's policy sources and is a different thing entirely.
+ */
+export const LIVE_MAX_OUTPUT_TOKENS = 4_096
 
 /** The prompt is versioned and content-addressed, like everything else. */
 const PROMPT_ID = 'macro-analysis-brief'
@@ -211,7 +252,7 @@ export function createLiveContributionProvider(
   return {
     id: LIVE_PROVIDER_ID,
     version: config.version ?? '1',
-    kind: 'live',
+    kind: LIVE_PROVIDER_KIND,
     declare,
 
     async contribute(request: ContributionRequest): Promise<ContributionResult> {

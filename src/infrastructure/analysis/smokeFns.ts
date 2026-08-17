@@ -36,7 +36,11 @@ import { acceptContribution } from '~/application/analysis/commands/acceptContri
 import { deriveAssignmentId } from '~/application/analysis/commands/eventIdentity'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import { runPlaybook } from '~/application/analysis/orchestrator'
-import { createLiveContributionProvider } from './providers/live'
+import {
+  createLiveContributionProvider,
+  LIVE_MAX_OUTPUT_TOKENS,
+  LIVE_MODEL_ID,
+} from './providers/live'
 import { createAnalysisContainer, type AnalysisContainer } from './container'
 
 /**
@@ -50,12 +54,6 @@ const SMOKE_BUDGET = {
   deadlineMs: 60_000,
 }
 
-/*
- * The current Opus. Bare id, no date suffix — the first attempt invented
- * `claude-opus-4-5-20251101` and the provider answered 404, which the client
- * correctly mapped to `provider-error`.
- */
-const MODEL = 'claude-opus-5'
 const DEPARTMENT = 'global-macro'
 const ENTRY_KEY = 'macro-analysis'
 
@@ -200,13 +198,8 @@ async function execute(): Promise<SmokeResult> {
 
     const provider = createLiveContributionProvider({
       apiKey,
-      model: MODEL,
-      /*
-       * Thinking is ON by default on this model and shares `max_tokens` with
-       * the response text, so a tight cap truncates the JSON mid-answer. The
-       * run's token budget (8k) still bounds the whole call.
-       */
-      maxTokens: 4_096,
+      model: LIVE_MODEL_ID,
+      maxTokens: LIVE_MAX_OUTPUT_TOKENS,
       loadEvidenceSet: (id) => repositories.evidence.get(id),
     })
 
