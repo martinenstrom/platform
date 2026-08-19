@@ -47,6 +47,27 @@ const OBSERVATION_KEY = {
   subject: 'US10Y',
   kind: 'yield' as const,
   observedAt: '2026-07-28T00:00:00.000Z',
+  /*
+   * The v2 coordinate. Matches `YIELD_CONTENT.observationDate`, because that is
+   * what `yieldRef` supplies in production — a corpus whose key disagreed with
+   * the builder it stands for would pin an identity nothing mints.
+   */
+  referencePeriod: '2026-07-28',
+  sourceId: 'treasury',
+}
+
+/**
+ * The same observation as v1 held it: no reference period, no domain tag.
+ *
+ * Kept so the corpus can prove the v1 rule still reproduces its ids. Per gate
+ * §0.1 a v1 record stays a valid historical institutional record, and a
+ * guarantee nothing executes is a guarantee nobody has.
+ */
+export const OBSERVATION_KEY_V1 = {
+  subjectKind: 'instrument' as const,
+  subject: 'US10Y',
+  kind: 'yield' as const,
+  observedAt: '2026-07-28T00:00:00.000Z',
   sourceId: 'treasury',
 }
 
@@ -89,7 +110,14 @@ export const evidenceItemsFor = () => [
     // A quote payload needs a quote KIND. It used to inherit `yield` from the
     // spread key, which is the mismatch this stage refuses.
     ref: observationRef(
-      { ...OBSERVATION_KEY, subject: 'DE10Y', sourceId: 'bundesbank', kind: 'quote' },
+      {
+        ...OBSERVATION_KEY,
+        subject: 'DE10Y',
+        sourceId: 'bundesbank',
+        kind: 'quote',
+        /* A quote describes its instant, as `quoteRef` states. */
+        referencePeriod: OBSERVATION_KEY.observedAt,
+      },
       MARKET_QUOTE_CONTENT,
     ),
     value: MARKET_QUOTE_CONTENT,

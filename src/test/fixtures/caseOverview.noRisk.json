@@ -497,9 +497,15 @@
       "id": "a9a15a02a1edfdc2703a71d2346ee552",
       "items": [],
       "coTemporality": {
-        "kind": "empty"
+        "publication": {
+          "kind": "empty"
+        },
+        "reference": {
+          "kind": "empty"
+        }
       },
       "disagreements": [],
+      "revisions": [],
       "assembledAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow"
     }

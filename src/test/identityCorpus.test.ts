@@ -24,7 +24,7 @@ import {
   canonicalIdentityInput,
   canonicalValueString,
 } from '~/domain/shared/canonicalValue'
-import { observationRef, requirementInputHash } from '~/domain/analysis'
+import { observationRef, observationRefV1, requirementInputHash } from '~/domain/analysis'
 import { commandPayloadHash } from '~/application/analysis/commands/envelope'
 import { deriveEventId } from '~/application/analysis/commands/eventIdentity'
 import { playbookContentHash } from '~/application/analysis/playbooks'
@@ -38,7 +38,8 @@ import {
   type CorpusEntry,
 } from './identityCorpus'
 
-const OBSERVATION_KEY = {
+/** The v1 key, for the entry that proves history still reproduces. */
+const OBSERVATION_KEY_V1 = {
   subjectKind: 'instrument' as const,
   subject: 'US10Y',
   kind: 'yield' as const,
@@ -46,7 +47,10 @@ const OBSERVATION_KEY = {
   sourceId: 'treasury',
 }
 
+const OBSERVATION_KEY = { ...OBSERVATION_KEY_V1, referencePeriod: '2026-07-28' }
+
 const OBSERVATION_DOMAIN = 'financial-os:observation-content:v1'
+const OBSERVATION_KEY_DOMAIN_V2 = 'financial-os:observation-key:v2'
 
 const observation = (content: CanonicalValue) => () => ({
   canonical: canonicalIdentityInput(OBSERVATION_DOMAIN, content),
@@ -94,18 +98,80 @@ export const CORPUS: readonly CorpusEntry[] = [
     run: observation(POLICY_STATE_CONTENT),
   },
   {
+    /*
+     * The v1 observation id, still reproducible. Gate §0.1 promises that a v1
+     * record stays a valid historical institutional record; this is the promise
+     * executed rather than asserted in prose.
+     *
+     * Reviewed against evidence, not regenerated: `d4b7dc25…` is the exact id
+     * embedded in the evidence-set bytes this corpus pinned BEFORE v2 existed,
+     * which is the strongest available proof that the v1 rule is untouched.
+     */
+    name: 'a v1 observation id, unchanged by the v2 migration',
+    caller: 'identity.ts · observationRefV1',
+    previously: 'minted by observationRef, which now mints v2',
+    reason:
+      'v2 replaced observedAt with referencePeriod in the key and added the domain ' +
+      'tag canonical-value-v1 §9 requires. v1 records are not rewritten, so the v1 ' +
+      'rule survives as its own function and must keep producing its own ids.',
+    governedBy: 'DOMAIN_CONTRACT_VERSION',
+    expectedCanonical: 'instrument|US10Y|yield|2026-07-28T00:00:00.000Z|treasury||',
+    expectedHash: 'd4b7dc2534df61472726910297e33b77',
+    run: () => ({
+      canonical: 'instrument|US10Y|yield|2026-07-28T00:00:00.000Z|treasury||',
+      hash: observationRefV1(OBSERVATION_KEY_V1, YIELD_CONTENT).id,
+    }),
+  },
+  {
+    /*
+     * The v2 observation id. The corpus pinned no observation *id* before —
+     * its header noted the id as the one surface TD-61 had not moved — and v2
+     * moves it, so this is where it starts being pinned.
+     *
+     * `observedAt` is absent from these bytes on purpose. That absence is the
+     * whole of the change: a revised release of the same reference period keeps
+     * this id, which is what makes `isRevisionOf` fire and what lets
+     * `resolveCitation` report that a cited figure moved.
+     */
+    name: 'a v2 observation id, keyed on the reference period',
+    caller: 'identity.ts · observationRef',
+    previously:
+      'a bare |-joined string with no domain tag, keyed on observedAt rather than ' +
+      'on the period the observation describes',
+    reason:
+      'a revision publishes later, so keying on observedAt minted a fresh id and ' +
+      'the revision read as an unrelated observation — measured, and the reason ' +
+      'the v2 generation exists',
+    governedBy: 'DOMAIN_CONTRACT_VERSION',
+    expectedCanonical:
+      'financial-os:observation-key:v2|d5:s4:kinds5:yields15:referencePeriods10:2026-07-28s8:sourceIds8:treasurys7:subjects5:US10Ys11:subjectKinds10:instrument',
+    expectedHash: '3ef527d7017e130f511d876d21252a1f',
+    run: () => ({
+      canonical: canonicalIdentityInput(OBSERVATION_KEY_DOMAIN_V2, {
+        subjectKind: OBSERVATION_KEY.subjectKind,
+        subject: OBSERVATION_KEY.subject,
+        kind: OBSERVATION_KEY.kind,
+        sourceId: OBSERVATION_KEY.sourceId,
+        referencePeriod: OBSERVATION_KEY.referencePeriod,
+      }),
+      hash: observationRef(OBSERVATION_KEY, YIELD_CONTENT).id,
+    }),
+  },
+  {
     name: 'an evidence set over two observations',
     caller: 'evidence.ts · buildEvidenceSet',
     previously:
-      'items sorted with localeCompare; pairs encoded by canonicalJson; and the ' +
-      'second observation carried a quote payload under a yield kind',
+      'the same two observations under v1 ids, hashing to f08a40eb003007ce1c3edd' +
+      '38932326be — items sorted with localeCompare and pairs encoded by ' +
+      'canonicalJson before that',
     reason:
-      'both changed — the sort is now UTF-8 byte order and the pairs are canonical ' +
-      'value v1. The id binds membership, not payloads.',
+      'the set id binds [observationId, contentHash] pairs, and v2 changed the ' +
+      'observation ids. The content hashes are byte-identical either side of the ' +
+      'migration, which is the evidence that only the KEY rule moved.',
     governedBy: 'DOMAIN_CONTRACT_VERSION',
     expectedCanonical:
-      'financial-os:evidence-set:v1|l2:l2:s32:d4b7dc2534df61472726910297e33b77s32:3a2e7a3efb3aca5f126e060a262f81efl2:s32:d5239e2562d5074fe3dfe2dff286a6bfs32:502be687939c787741c42e7d8061bf67',
-    expectedHash: 'f08a40eb003007ce1c3edd38932326be',
+      'financial-os:evidence-set:v1|l2:l2:s32:3ef527d7017e130f511d876d21252a1fs32:3a2e7a3efb3aca5f126e060a262f81efl2:s32:b95b4db65801baa796d7539507b8e497s32:502be687939c787741c42e7d8061bf67',
+    expectedHash: 'c0cb83a8609b5dd2e01c42c229a7d5e2',
     run: () => {
       const set = buildCorpusEvidenceSet()
       return {
@@ -238,6 +304,8 @@ describe('the migration corpus', () => {
       'commands/eventIdentity.ts · deriveEventId',
       'evidence.ts · buildEvidenceSet',
       'identity.ts · observationRef',
+      // Both generations are production surfaces: v2 mints, v1 rehydrates.
+      'identity.ts · observationRefV1',
       'requirements.ts · requirementInputHash',
       'writeOnce.ts · every semantic-key family',
     ])
@@ -259,14 +327,49 @@ describe('the migration corpus', () => {
     }
   })
 
-  it('leaves the observation id unchanged, alone among the surfaces', () => {
-    /*
-     * `serializeKey` is a fixed-field-order serializer and never went through
-     * canonicalJson, so the observation *id* is the one identity TD-61 did not
-     * move. Recorded because "everything changed" would be inaccurate.
-     */
+  /*
+   * TD-61 left the observation id alone — it was the one identity that survived
+   * that migration, because `serializeKey` never went through canonicalJson.
+   * C3's v2 generation is what finally moves it, deliberately. The two
+   * assertions below are the whole migration guarantee, executed:
+   */
+  it('moves the observation id under v2, and only under v2', () => {
     expect(observationRef(OBSERVATION_KEY, YIELD_CONTENT).id).toBe(
+      '3ef527d7017e130f511d876d21252a1f',
+    )
+    expect(observationRefV1(OBSERVATION_KEY_V1, YIELD_CONTENT).id).toBe(
       'd4b7dc2534df61472726910297e33b77',
+    )
+  })
+
+  it('changes only the key rule, leaving what an observation SAID untouched', () => {
+    /*
+     * The migration's blast radius, bounded by measurement rather than by
+     * assertion. If a v2 content hash ever diverged from its v1 counterpart,
+     * every stored payload would have to be re-verified — so the corpus proves
+     * it does not, on the one input it pins both generations of.
+     */
+    const v1 = observationRefV1(OBSERVATION_KEY_V1, YIELD_CONTENT)
+    const v2 = observationRef(OBSERVATION_KEY, YIELD_CONTENT)
+    expect(v2.contentHash).toBe(v1.contentHash)
+    expect(v2.id).not.toBe(v1.id)
+    expect(v1.keyGeneration).toBe(1)
+    expect(v2.keyGeneration).toBe(2)
+  })
+
+  it('refuses to mint a generation from a key that does not fit it', () => {
+    /*
+     * The two refusals that keep the generations from blurring. Without them a
+     * v2 caller with no reference period would get an identity with no temporal
+     * coordinate, and a v1 caller holding one would get an id that silently
+     * dropped it — both wrong quietly, which is the failure mode versioning is
+     * for.
+     */
+    expect(() => observationRef(OBSERVATION_KEY_V1, YIELD_CONTENT)).toThrow(
+      /must state the period it describes/,
+    )
+    expect(() => observationRefV1(OBSERVATION_KEY, YIELD_CONTENT)).toThrow(
+      /the v1 key has no reference period/,
     )
   })
 })

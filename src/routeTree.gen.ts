@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EvidenceRouteImport } from './routes/evidence'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -20,12 +21,16 @@ import { Route as AgentsDepartmentIdRouteImport } from './routes/agents.$departm
 import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
-import { Route as SmokeC21RouteImport } from './routes/smoke.c2-1'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EvidenceRoute = EvidenceRouteImport.update({
+  id: '/evidence',
+  path: '/evidence',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketsRoute = MarketsRouteImport.update({
@@ -78,11 +83,6 @@ const RunsRunIdRoute = RunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SmokeC21Route = SmokeC21RouteImport.update({
-  id: '/smoke/c2-1',
-  path: '/smoke/c2-1',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AgentsDepartmentIdCommissionRoute =
   AgentsDepartmentIdCommissionRouteImport.update({
     id: '/agents_/$departmentId/commission',
@@ -92,6 +92,7 @@ const AgentsDepartmentIdCommissionRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/evidence': typeof EvidenceRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -100,13 +101,13 @@ export interface FileRoutesByFullPath {
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/smoke/c2-1': typeof SmokeC21Route
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/evidence': typeof EvidenceRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -115,7 +116,6 @@ export interface FileRoutesByTo {
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/smoke/c2-1': typeof SmokeC21Route
   '/agents': typeof AgentsIndexRoute
   '/cases': typeof CasesIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
@@ -123,6 +123,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/evidence': typeof EvidenceRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -131,7 +132,6 @@ export interface FileRoutesById {
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/smoke/c2-1': typeof SmokeC21Route
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
   '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
@@ -140,6 +140,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/evidence'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -148,13 +149,13 @@ export interface FileRouteTypes {
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/runs/$runId'
-    | '/smoke/c2-1'
     | '/agents/'
     | '/cases/'
     | '/agents/$departmentId/commission'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/evidence'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -163,13 +164,13 @@ export interface FileRouteTypes {
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/runs/$runId'
-    | '/smoke/c2-1'
     | '/agents'
     | '/cases'
     | '/agents/$departmentId/commission'
   id:
     | '__root__'
     | '/'
+    | '/evidence'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -178,7 +179,6 @@ export interface FileRouteTypes {
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/runs/$runId'
-    | '/smoke/c2-1'
     | '/agents/'
     | '/cases/'
     | '/agents_/$departmentId/commission'
@@ -186,6 +186,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EvidenceRoute: typeof EvidenceRoute
   MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
   ReportsRoute: typeof ReportsRoute
@@ -194,7 +195,6 @@ export interface RootRouteChildren {
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
-  SmokeC21Route: typeof SmokeC21Route
   AgentsIndexRoute: typeof AgentsIndexRoute
   CasesIndexRoute: typeof CasesIndexRoute
   AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
@@ -207,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/evidence': {
+      id: '/evidence'
+      path: '/evidence'
+      fullPath: '/evidence'
+      preLoaderRoute: typeof EvidenceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/markets': {
@@ -279,13 +286,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RunsRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/smoke/c2-1': {
-      id: '/smoke/c2-1'
-      path: '/smoke/c2-1'
-      fullPath: '/smoke/c2-1'
-      preLoaderRoute: typeof SmokeC21RouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/agents_/$departmentId/commission': {
       id: '/agents_/$departmentId/commission'
       path: '/agents/$departmentId/commission'
@@ -298,6 +298,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EvidenceRoute: EvidenceRoute,
   MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
   ReportsRoute: ReportsRoute,
@@ -306,7 +307,6 @@ const rootRouteChildren: RootRouteChildren = {
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
   RunsRunIdRoute: RunsRunIdRoute,
-  SmokeC21Route: SmokeC21Route,
   AgentsIndexRoute: AgentsIndexRoute,
   CasesIndexRoute: CasesIndexRoute,
   AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,

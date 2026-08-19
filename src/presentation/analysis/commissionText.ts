@@ -132,17 +132,49 @@ export const CASE_STAGE_LABEL: Record<CaseStage, string> = {
 }
 
 /** What an evidence set is, and whether the firm will reason over it. */
+/**
+ * How the set came to exist, in one line.
+ *
+ * `null` for a pre-C3 set, and the surface says so rather than leaving a blank:
+ * a set assembled before `AssembleEvidenceSet` existed genuinely has no
+ * recorded selection, and inventing one would describe an act nobody performed.
+ */
+export function evidenceSelectionText(offer: EvidenceOffer): string | null {
+  if (!offer.selection) return null
+  const selection = offer.selection
+  return (
+    `${selection.ruleId} · ${selection.subjectFamily} · ` +
+    `${selection.from}–${selection.to} · som firman visste ${selection.knownAt} · ` +
+    `sammanställt av ${selection.actorEmployeeId}`
+  )
+}
+
+/** Said once, where a set carries no recorded selection. */
+export const EVIDENCE_WITHOUT_SELECTION =
+  'Sammanställdes innan firman bokförde urvalsregler. Innehållet är läsbart och ' +
+  'citerbart, men urvalet kan inte reproduceras.'
+
 export function evidenceOfferText(offer: EvidenceOffer): {
   summary: string
   refusal: string | null
   tone: Tone
 } {
+  /*
+   * The derived members are named by their methodology rather than counted
+   * anonymously. `spread-2s10s@1` is what the firm actually holds, version
+   * included, and a reader choosing between two sets needs to see which
+   * derivation each one carries.
+   */
   const summary = [
     `${offer.observationCount} observationer`,
+    offer.derivedCount > 0
+      ? `${offer.derivedCount} härledda (${offer.derivedMethodologies.join(', ')})`
+      : null,
     offer.sources.length > 0 ? offer.sources.join(', ') : 'ingen källa',
     offer.disagreementCount > 0
       ? `${offer.disagreementCount} motsägelser mellan källor`
       : null,
+    offer.revisionCount > 0 ? `${offer.revisionCount} revideringar` : null,
   ]
     .filter((part): part is string => part !== null)
     .join(' · ')

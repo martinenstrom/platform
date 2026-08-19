@@ -52,22 +52,85 @@ export interface EvidenceItem {
   provenance: Provenance
 }
 
-/** Two sources covering the same subject with different content. */
+/**
+ * Two DIFFERENT sources describing the same period differently.
+ *
+ * Grouped on the **reference period**, never on the publication instant. That
+ * distinction is the whole of C3's §0.6 amendment, and it was measured before
+ * it was changed: grouping on `observedAt` found **zero** disagreements when two
+ * authoritative sources published the same reference-period figure sixteen
+ * hours apart — which is how macro data actually arrives. The detector was, for
+ * macro evidence, near-inert.
+ */
 export interface EvidenceDisagreement {
   subjectKind: string
   subject: string
   kind: string
+  /** What they disagree ABOUT. Absent only for pre-v2 observations. */
+  referencePeriod?: string
   /** The conflicting observations. Always two or more. */
   observationIds: readonly string[]
+  /** Always two or more DISTINCT sources. One source is never a disagreement. */
   sourceIds: readonly string[]
 }
 
-export type CoTemporality =
-  /** Every observation shares an `observedAt`. */
-  | { kind: 'co-temporal'; observedAt: string }
+/**
+ * One source restating the same period differently — a revised release.
+ *
+ * Separate from `EvidenceDisagreement` by ruling (§0.6), because overloading one
+ * shape made "the ECB revised its own print" indistinguishable from "the ECB and
+ * the Bundesbank disagree" — the same source listed twice, the same observation
+ * id listed twice, and a reader with no way to tell which had happened.
+ *
+ * Under v2 these are exactly the items sharing an `ObservationRef.id` with
+ * differing content: same subject, same source, same series, same methodology,
+ * same reference period, published later.
+ */
+export interface EvidenceRevision {
+  subjectKind: string
+  subject: string
+  kind: string
+  referencePeriod?: string
+  /** One source. A revision is a source correcting itself. */
+  sourceId: string
+  /** One observation identity, restated. */
+  observationId: string
+  /** Every version present, earliest publication first. */
+  versions: readonly { contentHash: string; observedAt: string }[]
+}
+
+/**
+ * How far apart a set's observations are, on the axis named.
+ *
+ * `unstated` is a real answer rather than a missing one: a v1 observation
+ * declares no reference period, so the firm genuinely does not know what period
+ * it described, and reporting a spread of zero would be a fabrication.
+ */
+export type TemporalSpread =
+  | { kind: 'empty' }
+  /** Every observation agrees on this coordinate. */
+  | { kind: 'aligned'; at: string }
   /** They do not. The spread is stated so a reader can judge it. */
   | { kind: 'mixed'; earliest: string; latest: string; spreadMs: number }
-  | { kind: 'empty' }
+  /** Not every observation states this coordinate. */
+  | { kind: 'unstated' }
+
+/**
+ * Co-temporality on **both** axes, because for macro evidence they differ and
+ * the second is the one that matters.
+ *
+ * A Friday equity close beside a Q2 GDP print is a six-week REFERENCE gap and
+ * possibly a zero-hour publication gap. Reporting only the second would tell an
+ * agent the two are contemporaneous when they describe moments six weeks apart —
+ * which is precisely the comparison a desk must be warned about rather than left
+ * to assume.
+ */
+export interface CoTemporality {
+  /** Spread in publication instants — when the sources put the figures out. */
+  publication: TemporalSpread
+  /** Spread in reference periods — what the figures actually describe. */
+  reference: TemporalSpread
+}
 
 export interface EvidenceSet {
   /** Content hash of the whole set. */
@@ -75,28 +138,50 @@ export interface EvidenceSet {
   items: readonly EvidenceItem[]
   coTemporality: CoTemporality
   disagreements: readonly EvidenceDisagreement[]
+  /** One source restating a period. Never folded into `disagreements`. */
+  revisions: readonly EvidenceRevision[]
   /** When the set was assembled — not when anything was observed. */
   assembledAt: string
   /** The resolution run that produced it. Traceability, never identity. */
   correlationId: string
 }
 
-function computeCoTemporality(items: readonly EvidenceItem[]): CoTemporality {
-  if (items.length === 0) return { kind: 'empty' }
-  /*
-   * Not an identity input -- co-temporality is derived for reading, and the set
-   * id hashes membership only. The ordering is named anyway: this is an identity
-   * module, and a reader should not have to work out which sorts matter.
-   */
-  const times = items.map((i) => i.ref.observedAt).sort(utf8ByteOrder)
-  const earliest = times[0]!
-  const latest = times[times.length - 1]!
-  if (earliest === latest) return { kind: 'co-temporal', observedAt: earliest }
+/**
+ * The spread of one coordinate across a set.
+ *
+ * `spreadMs` is computed only where both ends parse as instants. A reference
+ * period may legitimately be a quarter — `2026-Q2` — and subtracting two of
+ * those yields `NaN`, so the pair is reported as mixed with a spread of zero
+ * rather than as a number that means nothing. The ends are always stated, and
+ * they are what a reader judges.
+ */
+function spreadOf(values: readonly (string | undefined)[]): TemporalSpread {
+  if (values.length === 0) return { kind: 'empty' }
+  if (values.some((value) => value === undefined)) return { kind: 'unstated' }
+
+  const sorted = [...(values as string[])].sort(utf8ByteOrder)
+  const earliest = sorted[0]!
+  const latest = sorted[sorted.length - 1]!
+  if (earliest === latest) return { kind: 'aligned', at: earliest }
+
+  const difference = Date.parse(latest) - Date.parse(earliest)
   return {
     kind: 'mixed',
     earliest,
     latest,
-    spreadMs: Math.max(0, Date.parse(latest) - Date.parse(earliest)),
+    spreadMs: Number.isFinite(difference) ? Math.max(0, difference) : 0,
+  }
+}
+
+/*
+ * Not an identity input -- co-temporality is derived for reading, and the set
+ * id hashes membership only. The ordering is named anyway: this is an identity
+ * module, and a reader should not have to work out which sorts matter.
+ */
+function computeCoTemporality(items: readonly EvidenceItem[]): CoTemporality {
+  return {
+    publication: spreadOf(items.map((item) => item.ref.observedAt)),
+    reference: spreadOf(items.map((item) => item.ref.referencePeriod)),
   }
 }
 
@@ -112,25 +197,93 @@ function computeCoTemporality(items: readonly EvidenceItem[]): CoTemporality {
 function findDisagreements(items: readonly EvidenceItem[]): EvidenceDisagreement[] {
   const groups = new Map<string, EvidenceItem[]>()
   for (const item of items) {
-    const key = `${item.ref.subjectKind}|${item.ref.subject}|${item.ref.kind}|${item.ref.observedAt}`
+    /*
+     * Grouped on the period DESCRIBED, and deliberately not on the publication
+     * instant. `sourceId` is excluded so two sources can meet in one group at
+     * all — that is what a disagreement is.
+     *
+     * A v1 item states no reference period, so its only temporal coordinate is
+     * `observedAt` and it is grouped on that. Historical sets therefore keep
+     * reporting exactly what they reported, which §0.1 requires: the migration
+     * does not change what the firm previously said about its own evidence.
+     */
+    const period = item.ref.referencePeriod ?? `observed:${item.ref.observedAt}`
+    const key = `${item.ref.subjectKind}|${item.ref.subject}|${item.ref.kind}|${period}`
     groups.set(key, [...(groups.get(key) ?? []), item])
   }
 
   const disagreements: EvidenceDisagreement[] = []
   for (const group of groups.values()) {
     if (group.length < 2) continue
-    const contents = new Set(group.map((i) => i.ref.contentHash))
-    if (contents.size < 2) continue
+    /*
+     * Two DISTINCT sources, and two distinct contents. One source restating
+     * itself is a revision and is reported as one — overloading this shape to
+     * carry both is what §0.6 forbids.
+     */
+    if (new Set(group.map((i) => i.ref.sourceId)).size < 2) continue
+    if (new Set(group.map((i) => i.ref.contentHash)).size < 2) continue
+
     const first = group[0]!.ref
     disagreements.push({
       subjectKind: first.subjectKind,
       subject: first.subject,
       kind: first.kind,
+      ...(first.referencePeriod === undefined
+        ? {}
+        : { referencePeriod: first.referencePeriod }),
       observationIds: Object.freeze(group.map((i) => i.ref.id)),
       sourceIds: Object.freeze(group.map((i) => i.ref.sourceId)),
     })
   }
   return disagreements
+}
+
+/**
+ * Finds one source restating the same period differently.
+ *
+ * Grouped on the observation **id**, which under v2 already means *same
+ * subject, same source, same series, same methodology, same reference period* —
+ * so items sharing an id and differing in content are, by construction, a
+ * revised release and nothing else.
+ *
+ * Under v1 this can never fire: `observedAt` was in the key, so a revision
+ * published later minted a different id. That is the defect v2 exists to fix,
+ * and the silence here on a historical set is accurate rather than a gap.
+ */
+function findRevisions(items: readonly EvidenceItem[]): EvidenceRevision[] {
+  const groups = new Map<string, EvidenceItem[]>()
+  for (const item of items) {
+    groups.set(item.ref.id, [...(groups.get(item.ref.id) ?? []), item])
+  }
+
+  const revisions: EvidenceRevision[] = []
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    if (new Set(group.map((i) => i.ref.contentHash)).size < 2) continue
+
+    const first = group[0]!.ref
+    revisions.push({
+      subjectKind: first.subjectKind,
+      subject: first.subject,
+      kind: first.kind,
+      ...(first.referencePeriod === undefined
+        ? {}
+        : { referencePeriod: first.referencePeriod }),
+      sourceId: first.sourceId,
+      observationId: first.id,
+      versions: Object.freeze(
+        [...group]
+          .sort((a, b) => utf8ByteOrder(a.ref.observedAt, b.ref.observedAt))
+          .map((i) =>
+            Object.freeze({
+              contentHash: i.ref.contentHash,
+              observedAt: i.ref.observedAt,
+            }),
+          ),
+      ),
+    })
+  }
+  return revisions
 }
 
 /** Domain tag for evidence-set identity, per `docs/canonical-value-v1.md` §9. */
@@ -184,6 +337,7 @@ export function buildEvidenceSet(args: {
     items: Object.freeze(items.map((i) => Object.freeze(i))),
     coTemporality: computeCoTemporality(items),
     disagreements: Object.freeze(findDisagreements(items)),
+    revisions: Object.freeze(findRevisions(items)),
     assembledAt: args.assembledAt,
     correlationId: args.correlationId,
   })

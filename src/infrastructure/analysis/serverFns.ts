@@ -75,6 +75,8 @@ import {
 } from '~/application/analysis/operatorIdentity'
 import { registeredPlaybooks } from '~/application/analysis/playbookRegistry'
 import { runCommand } from '~/application/analysis/commands/runCommand'
+import { assembleEvidenceSet } from '~/application/analysis/commands/assembleEvidenceSet'
+import { evidenceDesk, type EvidenceDeskView } from '~/application/analysis/evidenceDesk'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
 import type { RejectionCode } from '~/application/analysis/commandLog'
@@ -116,6 +118,21 @@ export type RunReviewResponse =
 export type OperatorIdentitiesResponse =
   | { ok: true; identities: readonly OperatorIdentity[] }
   | { ok: false; code: AnalysisReadFailure }
+
+export type EvidenceDeskResponse =
+  { ok: true; view: EvidenceDeskView } | { ok: false; code: AnalysisReadFailure }
+
+/**
+ * What an assembly answers with.
+ *
+ * Three outcomes, kept apart for the reason `ActResponse` keeps them apart: a
+ * refusal is the institution declining and carries its bounded code, a failure
+ * is an operational fault, and only a commit names a set.
+ */
+export type AssembleResponse =
+  | { ok: true; assemblyId: string; evidenceSetId: string; observationCount: number; derivedCount: number }
+  | { ok: false; outcome: 'refused'; code: RejectionCode }
+  | { ok: false; outcome: 'failed'; code: AnalysisReadFailure }
 
 export type CommissionBriefResponse =
   { ok: true; brief: CommissionBrief } | { ok: false; code: AnalysisReadFailure }
@@ -668,13 +685,163 @@ export const rejectContributionFn = createServerFn({ method: 'POST' })
     }
   })
 
-/*
- * The C2-1 smoke proof, re-exported through the published boundary.
+/**
+ * What the firm holds for a family and a window, and what it has assembled.
  *
- * `no-ui-import-of-infrastructure` permits the presentation layer to name
- * exactly one kind of infrastructure module: a `serverFns` boundary. The smoke
- * route reached into `smokeFns` directly and the rule caught it — correctly, so
- * the fix is to use the sanctioned door rather than widen it. The function
- * itself stays in its own module; only its reachability changes.
+ * A read. It counts through the same `runSelection` the command runs, so the
+ * screen and the act cannot disagree about what a selection means — and it
+ * decides nothing: the command refuses independently.
  */
-export { c2SmokeProofFn, type SmokeResult } from './smokeFns'
+export const getEvidenceDeskFn = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      ruleId?: string
+      subjectFamily?: string
+      from?: string
+      to?: string
+      knownAt?: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<EvidenceDeskResponse> => {
+    try {
+      const analysis = await runtime()
+      const selection =
+        data.ruleId && data.subjectFamily && data.from && data.to
+          ? {
+              ruleId: data.ruleId,
+              subjectFamily: data.subjectFamily,
+              from: data.from,
+              to: data.to,
+              /*
+               * Resolved here for the READ only, and echoed back so the screen
+               * states the instant it counted at. The command resolves its own
+               * from `occurredAt`, because what the record must hold is when
+               * the ACT happened rather than when a screen was drawn.
+               */
+              knownAt: data.knownAt || systemClock.isoNow(),
+            }
+          : undefined
+
+      const view = await evidenceDesk({
+        repositories: analysis.repositories,
+        ...(selection ? { selection } : {}),
+      })
+      return { ok: true, view }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] evidence desk failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/**
+ * A person declaring a body of evidence fit for analysis.
+ *
+ * The governed replacement for `/smoke/c2-1`, which manufactured an evidence
+ * set with no actor, no mandate, no command, no ledger entry and no recorded
+ * selection. Everything the client supplies is the ACT — which rule, which
+ * window, who is acting. The authority is checked against the seeded firm by
+ * the command, and the selection is executed on the server.
+ *
+ * The command id is derived from the request rather than sent, so a
+ * double-click replays one act instead of filing two.
+ */
+export const assembleEvidenceSetFn = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      ruleId: string
+      subjectFamily: string
+      from: string
+      to: string
+      knownAt?: string
+      onBehalfOfDepartmentId: string
+      actingEmployeeId: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<AssembleResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+
+      /*
+       * Stable across a retry of the same request and distinct across two
+       * different ones — the two properties the ledger's primary key needs.
+       * A caller-supplied id would let one browser address another's act.
+       */
+      const commandId = [
+        'assemble',
+        data.ruleId,
+        data.subjectFamily,
+        data.from,
+        data.to,
+        data.knownAt ?? 'now',
+        data.actingEmployeeId,
+      ].join('-')
+
+      const result = await runCommand(
+        assembleEvidenceSet(deps.organization),
+        {
+          selection: {
+            ruleId: data.ruleId,
+            subjectFamily: data.subjectFamily,
+            from: data.from,
+            to: data.to,
+            ...(data.knownAt ? { knownAt: data.knownAt } : {}),
+          },
+          onBehalfOfDepartmentId: data.onBehalfOfDepartmentId,
+        },
+        {
+          ...operatorEnvelope(commandId, commandId, data.actingEmployeeId),
+          /*
+           * Deliberately NOT `systemClock.isoNow()` a second time. The envelope
+           * already stamped `occurredAt`, and the command resolves `knownAt`
+           * from it — two clock reads would let the record say the firm knew
+           * something at an instant other than the one it acted at.
+           */
+        },
+        deps,
+      )
+
+      if (result.outcome === 'committed') {
+        const assembly = result.value
+        return {
+          ok: true,
+          assemblyId: assembly.assemblyId,
+          evidenceSetId: assembly.evidenceSetId,
+          observationCount: assembly.observationCount,
+          derivedCount: assembly.derivedCount,
+        }
+      }
+      if (result.outcome === 'rejected') {
+        return { ok: false, outcome: 'refused', code: result.rejection.code }
+      }
+      return { ok: false, outcome: 'failed', code: 'SERVICE_UNAVAILABLE' }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, outcome: 'failed', code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] assemble evidence set failed', error)
+      return { ok: false, outcome: 'failed', code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/*
+ * `/smoke/c2-1` was retired here, in C3 Stage B, and is not coming back.
+ *
+ * It was the only production path that could write an `EvidenceSet`, and it did
+ * so with no actor, no mandate, no command, no ledger entry, no event and no
+ * recorded selection — beside nineteen governed acts. Gate §0.3 kept it alive
+ * only until a replacement genuinely existed, because removing the sole working
+ * evidence-write path ahead of one would have left the firm unable to produce
+ * evidence at all. `assembleEvidenceSetFn` above is that replacement.
+ *
+ * The records it created are untouched. The C2-2 run's evidence set and the
+ * seven claims citing it remain readable, resolvable and cited as the v1
+ * evidence they are (§0.1) — retiring the door does not rewrite what came
+ * through it.
+ *
+ * The fitness rule `evidence-assembled-only-by-the-governed-act` is what keeps
+ * a second door from being opened by accident.
+ */

@@ -23,6 +23,9 @@ const KEY = {
   subject: 'US10Y',
   kind: 'yield' as const,
   observedAt: '2026-07-28T00:00:00.000Z',
+  /* v2's temporal coordinate. These tests are about CONTENT, so any stable
+     period does; it is stated rather than defaulted because v2 has no default. */
+  referencePeriod: '2026-07-28',
   sourceId: 'treasury',
 }
 

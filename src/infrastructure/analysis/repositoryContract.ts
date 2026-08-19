@@ -19,6 +19,9 @@ import {
   buildAssignment,
   buildClaim,
   buildEvidenceSet,
+  buildObservation,
+  type EvidenceAssembly,
+  observationRefV1,
   buildRunRecord,
   budgetOverruns,
   NON_CONSUMING_BUDGET,
@@ -166,6 +169,8 @@ export function describeRepositoryContract(name: string, options: ContractOption
                 subject: 'US10Y',
                 kind: 'yield',
                 observedAt: AT,
+                /* The payload's own observation date, as `yieldRef` supplies it. */
+                referencePeriod: '2026-07-28',
                 sourceId: 'treasury',
               },
               /*
@@ -502,6 +507,61 @@ export function describeRepositoryContract(name: string, options: ContractOption
           unit: 'percent',
         })
         expect(stored?.assembledAt).toBe(AT)
+      })
+
+      it('round-trips both key generations, and keeps them distinguishable', async () => {
+        /*
+         * Gate §0.1, executed at the storage layer: a v1 record stays a valid
+         * historical institutional record and must remain resolvable AS v1.
+         *
+         * Both halves are load-bearing. `buildEvidenceSet` verifies every item
+         * by recomputing its id under the row's own generation, so a store that
+         * dropped `key_generation` or `reference_period` would rehydrate a v2
+         * item as an unverifiable one and this would fail on the set id — which
+         * is exactly the failure a silent column would otherwise hide until a
+         * citation stopped resolving in production.
+         */
+        const historical = buildEvidenceSet({
+          items: [
+            {
+              ref: observationRefV1(
+                {
+                  subjectKind: 'series',
+                  subject: 'US10Y',
+                  kind: 'yield',
+                  observedAt: AT,
+                  sourceId: 'treasury',
+                },
+                {
+                  yieldPercent: '4.0',
+                  changeBasisPoints: null,
+                  observationDate: '2026-07-28',
+                },
+              ),
+              value: {
+                yieldPercent: '4.0',
+                changeBasisPoints: null,
+                observationDate: '2026-07-28',
+              },
+              provenance: { source: { providerId: 'treasury' }, quality: 'ok' } as never,
+            },
+          ],
+          assembledAt: AT,
+          correlationId: 'corr-v1',
+        })
+
+        await repos.evidence.save(historical)
+        const readBack = await repos.evidence.get(historical.id)
+
+        expect(readBack?.id).toBe(historical.id)
+        expect(readBack?.items[0]!.ref.keyGeneration).toBe(1)
+        expect(readBack?.items[0]!.ref.referencePeriod).toBeUndefined()
+
+        const current = await repos.evidence.get(
+          (await repos.evidence.save(evidenceSet())).id,
+        )
+        expect(current?.items[0]!.ref.keyGeneration).toBe(2)
+        expect(current?.items[0]!.ref.referencePeriod).toBe('2026-07-28')
       })
     })
 
@@ -1019,6 +1079,436 @@ export function describeRepositoryContract(name: string, options: ContractOption
     })
 
     /* ------------------------------------------------- write-once records */
+
+    describe('durable observations', () => {
+      /**
+       * A Treasury par yield, as ingestion produces one.
+       *
+       * `published` is when the source put it out; `learned` is when the firm
+       * ingested it. Kept separate in every case below, because collapsing them
+       * is what makes "what did we know in March" unanswerable.
+       */
+      const yieldAt = (args: {
+        period: string
+        percent: string
+        published: string
+        learned: string
+        subject?: string
+      }) => {
+        const value = {
+          yieldPercent: args.percent,
+          changeBasisPoints: null,
+          observationDate: args.period,
+        }
+        return buildObservation({
+          ref: observationRef(
+            {
+              subjectKind: 'instrument',
+              subject: args.subject ?? 'rate:us10y',
+              kind: 'yield',
+              observedAt: args.published,
+              referencePeriod: args.period,
+              sourceId: 'treasury',
+              seriesId: 'BC_10YEAR',
+              methodology: 'par-yield',
+            },
+            value,
+          ),
+          value,
+          provenance: { source: { providerId: 'treasury' }, quality: 'ok' } as never,
+          recordedAt: args.learned,
+          correlationId: 'ingest-1',
+        })
+      }
+
+      const series = (from = '2026-08-10', to = '2026-08-20', knownAt?: string) =>
+        repos.observations.series({
+          subject: 'rate:us10y',
+          kind: 'yield',
+          sourceId: 'treasury',
+          from,
+          to,
+          ...(knownAt === undefined ? {} : { knownAt }),
+        })
+
+      it('records an observation and reads it back by its exact version', async () => {
+        const observation = yieldAt({
+          period: '2026-08-14',
+          percent: '4.10',
+          published: '2026-08-14T20:00:00.000Z',
+          learned: '2026-08-15T06:00:00.000Z',
+        })
+        const recorded = await repos.observations.record([observation], prov)
+        expect(recorded).toHaveLength(1)
+
+        const stored = await repos.observations.get(
+          observation.ref.id,
+          observation.ref.contentHash,
+        )
+        expect(stored?.ref.id).toBe(observation.ref.id)
+        expect(stored?.ref.referencePeriod).toBe('2026-08-14')
+        expect(stored?.ref.keyGeneration).toBe(2)
+        expect(stored?.recordedAt).toBe('2026-08-15T06:00:00.000Z')
+        expect(stored?.value).toEqual({
+          yieldPercent: '4.10',
+          changeBasisPoints: null,
+          observationDate: '2026-08-14',
+        })
+      })
+
+      it('is idempotent on re-ingesting an unchanged figure', async () => {
+        /*
+         * The property the whole ingestion act rests on. Polling the Treasury
+         * daily re-reads the same month page, so almost every observation it
+         * offers is already held — and that has to be a no-op reporting nothing
+         * new, not a conflict and not a duplicate.
+         */
+        const observation = yieldAt({
+          period: '2026-08-14',
+          percent: '4.10',
+          published: '2026-08-14T20:00:00.000Z',
+          learned: '2026-08-15T06:00:00.000Z',
+        })
+        expect(await repos.observations.record([observation], prov)).toHaveLength(1)
+
+        const relearned = { ...observation, recordedAt: '2026-08-16T06:00:00.000Z' }
+        expect(await repos.observations.record([relearned], prov)).toHaveLength(0)
+
+        const versions = await repos.observations.versions(observation.ref.id)
+        expect(versions).toHaveLength(1)
+        /* The first learning stands. A re-poll does not restate when we learned. */
+        expect(versions[0]!.recordedAt).toBe('2026-08-15T06:00:00.000Z')
+      })
+
+      it('keeps a revision beside the original rather than over it', async () => {
+        const original = yieldAt({
+          period: '2026-08-14',
+          percent: '4.10',
+          published: '2026-08-14T20:00:00.000Z',
+          learned: '2026-08-15T06:00:00.000Z',
+        })
+        const revised = yieldAt({
+          period: '2026-08-14',
+          percent: '4.12',
+          published: '2026-08-17T20:00:00.000Z',
+          learned: '2026-08-18T06:00:00.000Z',
+        })
+
+        await repos.observations.record([original], prov)
+        await repos.observations.record([revised], prov)
+
+        /* Same fact, two versions — which is what v2's key makes expressible. */
+        expect(revised.ref.id).toBe(original.ref.id)
+        expect(revised.ref.contentHash).not.toBe(original.ref.contentHash)
+
+        const versions = await repos.observations.versions(original.ref.id)
+        expect(versions).toHaveLength(2)
+        expect(versions.map((entry) => entry.recordedAt)).toEqual([
+          '2026-08-15T06:00:00.000Z',
+          '2026-08-18T06:00:00.000Z',
+        ])
+        /* The superseded value is still readable, exactly as published. */
+        expect(
+          (await repos.observations.get(original.ref.id, original.ref.contentHash))
+            ?.value,
+        ).toEqual({
+          yieldPercent: '4.10',
+          changeBasisPoints: null,
+          observationDate: '2026-08-14',
+        })
+      })
+
+      it('returns a series of individually citable observations, one per period', async () => {
+        await repos.observations.record(
+          [
+            yieldAt({
+              period: '2026-08-12',
+              percent: '4.05',
+              published: '2026-08-12T20:00:00.000Z',
+              learned: '2026-08-13T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-13',
+              percent: '4.08',
+              published: '2026-08-13T20:00:00.000Z',
+              learned: '2026-08-14T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.10',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+            }),
+          ],
+          prov,
+        )
+
+        const points = await series()
+        expect(points.map((point) => point.ref.referencePeriod)).toEqual([
+          '2026-08-12',
+          '2026-08-13',
+          '2026-08-14',
+        ])
+        /*
+         * Every element carries its own reference and content hash. That is the
+         * difference between a series-as-query and a stored Series aggregate: a
+         * claim cites the 13 August print, not "the series".
+         */
+        const ids = new Set(points.map((point) => point.ref.id))
+        expect(ids.size).toBe(3)
+        for (const point of points) expect(point.ref.contentHash).toMatch(/^[0-9a-f]+$/)
+      })
+
+      it('bounds a series by reference period, not by when it was learned', async () => {
+        await repos.observations.record(
+          [
+            yieldAt({
+              period: '2026-08-09',
+              percent: '4.00',
+              published: '2026-08-09T20:00:00.000Z',
+              learned: '2026-08-10T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.10',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-21',
+              percent: '4.20',
+              published: '2026-08-21T20:00:00.000Z',
+              learned: '2026-08-22T06:00:00.000Z',
+            }),
+          ],
+          prov,
+        )
+
+        expect((await series()).map((point) => point.ref.referencePeriod)).toEqual([
+          '2026-08-14',
+        ])
+      })
+
+      it('reports the latest version of a revised period by default', async () => {
+        await repos.observations.record(
+          [
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.10',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.12',
+              published: '2026-08-17T20:00:00.000Z',
+              learned: '2026-08-18T06:00:00.000Z',
+            }),
+          ],
+          prov,
+        )
+
+        const points = await series()
+        expect(points).toHaveLength(1)
+        expect((points[0]!.value as { yieldPercent: string }).yieldPercent).toBe('4.12')
+      })
+
+      it('reads the series as the institution knew it at an earlier moment', async () => {
+        /*
+         * The bitemporal question, and the reason `recordedAt` is stored.
+         *
+         * A decision taken on 16 August rested on 4.10, because that is what the
+         * firm held. Judging it against 4.12 — a figure that did not exist yet —
+         * would be judging it against evidence it could not have had.
+         */
+        await repos.observations.record(
+          [
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.10',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.12',
+              published: '2026-08-17T20:00:00.000Z',
+              learned: '2026-08-18T06:00:00.000Z',
+            }),
+          ],
+          prov,
+        )
+
+        const asKnownThen = await series(
+          '2026-08-10',
+          '2026-08-20',
+          '2026-08-16T00:00:00.000Z',
+        )
+        expect(asKnownThen).toHaveLength(1)
+        expect((asKnownThen[0]!.value as { yieldPercent: string }).yieldPercent).toBe(
+          '4.10',
+        )
+
+        /* Before the firm knew anything at all, the series is empty. */
+        expect(
+          await series('2026-08-10', '2026-08-20', '2026-08-01T00:00:00.000Z'),
+        ).toHaveLength(0)
+      })
+
+      it('does not mix two subjects into one series', async () => {
+        await repos.observations.record(
+          [
+            yieldAt({
+              period: '2026-08-14',
+              percent: '4.10',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+            }),
+            yieldAt({
+              period: '2026-08-14',
+              percent: '3.90',
+              published: '2026-08-14T20:00:00.000Z',
+              learned: '2026-08-15T06:00:00.000Z',
+              subject: 'rate:us2y',
+            }),
+          ],
+          prov,
+        )
+
+        const points = await series()
+        expect(points).toHaveLength(1)
+        expect(points[0]!.ref.subject).toBe('rate:us10y')
+      })
+
+      it('refuses an observation whose value does not match its reference', async () => {
+        /*
+         * The planted violation. A store that accepted this would hold a record
+         * no citation could ever be checked against — and would accept it
+         * silently, which is the failure worth refusing loudly.
+         */
+        const sound = yieldAt({
+          period: '2026-08-14',
+          percent: '4.10',
+          published: '2026-08-14T20:00:00.000Z',
+          learned: '2026-08-15T06:00:00.000Z',
+        })
+        expect(() =>
+          buildObservation({
+            ...sound,
+            value: {
+              yieldPercent: '9.99',
+              changeBasisPoints: null,
+              observationDate: '2026-08-14',
+            },
+          }),
+        ).toThrow(/not admissible/)
+      })
+    })
+
+    /* ------------------------------------------------- the assembly acts */
+
+    describe('the assembly acts', () => {
+      /**
+       * One recorded act, pointing at a set the store actually holds.
+       *
+       * The set is saved first, deliberately: the foreign key in migration
+       * `0033` is real, and an act pointing at a set the firm does not hold
+       * would be a record of nothing.
+       */
+      const act = (over: Partial<EvidenceAssembly> = {}): EvidenceAssembly => ({
+        assemblyId: 'asm-1',
+        evidenceSetId: evidenceSet().id,
+        selection: {
+          ruleId: 'sovereign-yield-curve@1',
+          subjectFamily: 'us-par-curve',
+          from: '2026-08-01',
+          to: '2026-08-31',
+          knownAt: '2026-08-20T09:00:00.000Z',
+        },
+        selectedSubjects: ['rate:us2y', 'rate:us10y'],
+        observationCount: 2,
+        derivedCount: 1,
+        assembledAt: '2026-08-20T09:00:00.000Z',
+        actorEmployeeId: 'research-director',
+        onBehalfOfDepartmentId: 'research-office',
+        correlationId: 'corr-1',
+        ...over,
+      })
+
+      it('records the act, the rule, the window and the knowledge time', async () => {
+        await repos.evidence.save(evidenceSet())
+        const recorded = await repos.assemblies.record(act(), prov)
+
+        expect(recorded.selection.ruleId).toBe('sovereign-yield-curve@1')
+        expect(recorded.selection.subjectFamily).toBe('us-par-curve')
+        expect(recorded.selection.from).toBe('2026-08-01')
+        expect(recorded.selection.to).toBe('2026-08-31')
+        expect(recorded.selection.knownAt).toBe('2026-08-20T09:00:00.000Z')
+        expect(recorded.selectedSubjects).toEqual(['rate:us2y', 'rate:us10y'])
+        expect(recorded.actorEmployeeId).toBe('research-director')
+        expect(recorded.onBehalfOfDepartmentId).toBe('research-office')
+
+        expect(await repos.assemblies.get('asm-1')).toEqual(recorded)
+      })
+
+      it('returns null for an act the firm never recorded', async () => {
+        expect(await repos.assemblies.get('asm-missing')).toBeNull()
+      })
+
+      it('replays the same act rather than filing a second one', async () => {
+        await repos.evidence.save(evidenceSet())
+        await repos.assemblies.record(act(), prov)
+        const replay = await repos.assemblies.record(act(), prov)
+
+        expect(replay.assemblyId).toBe('asm-1')
+        expect(await repos.assemblies.list(10)).toHaveLength(1)
+      })
+
+      it('refuses a DIFFERENT act filed under the same identity', async () => {
+        /*
+         * The planted violation. Two judgements under one command id is a real
+         * disagreement rather than a retry, and returning the stored one
+         * silently would hide which of the two the firm actually acted on.
+         */
+        await repos.evidence.save(evidenceSet())
+        await repos.assemblies.record(act(), prov)
+        await expect(
+          repos.assemblies.record(
+            act({ selection: { ...act().selection, to: '2026-09-30' } }),
+            prov,
+          ),
+        ).rejects.toThrow(ConflictingRecordError)
+      })
+
+      it('reaches one set from every act that produced it, newest first', async () => {
+        await repos.evidence.save(evidenceSet())
+        await repos.assemblies.record(act(), prov)
+        await repos.assemblies.record(
+          act({ assemblyId: 'asm-2', assembledAt: '2026-08-21T09:00:00.000Z' }),
+          prov,
+        )
+
+        const acts = await repos.assemblies.forSet(evidenceSet().id)
+        expect(acts.map((a) => a.assemblyId)).toEqual(['asm-2', 'asm-1'])
+        /* A set nobody assembled through the act is reached by none. */
+        expect(await repos.assemblies.forSet('no-such-set')).toEqual([])
+      })
+
+      it('lists the most recent acts, newest first and bounded', async () => {
+        await repos.evidence.save(evidenceSet())
+        await repos.assemblies.record(act(), prov)
+        await repos.assemblies.record(
+          act({ assemblyId: 'asm-2', assembledAt: '2026-08-21T09:00:00.000Z' }),
+          prov,
+        )
+
+        expect((await repos.assemblies.list(10)).map((a) => a.assemblyId)).toEqual([
+          'asm-2',
+          'asm-1',
+        ])
+        expect(await repos.assemblies.list(1)).toHaveLength(1)
+      })
+    })
 
     describe('write-once records', () => {
       it('keeps the first claim when the same id is written twice', async () => {

@@ -24,6 +24,7 @@ const YIELD_KEY = {
   subject: 'US10Y',
   kind: 'yield' as const,
   observedAt: '2026-07-28T00:00:00.000Z',
+  referencePeriod: '2026-07-28',
   sourceId: 'treasury',
 }
 
@@ -46,6 +47,7 @@ const POLICY_KEY = {
   subject: 'riksbank',
   kind: 'policy-state' as const,
   observedAt: '2026-07-28T00:00:00.000Z',
+  referencePeriod: '2026-06-15',
   sourceId: 'riksbank',
 }
 const POLICY_REGIME = {

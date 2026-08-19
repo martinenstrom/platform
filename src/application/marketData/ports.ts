@@ -165,6 +165,28 @@ export interface YieldProvider extends ProviderIdentity {
   ): Promise<GovernmentYield[]>
   /** Optional: not every yield source publishes a full term structure. */
   fetchYieldCurve?(countryCode: string, ctx: FetchContext): Promise<YieldCurve>
+  /**
+   * Every observation the source published in a range, not just the latest.
+   *
+   * Optional, like `fetchYieldCurve`, and for the same reason: history is a
+   * capability a source either has or does not, and a provider without one
+   * should not be made to stub it. `ProviderCapabilityMetadata.supportsHistory`
+   * is what declares it; this is what serves it.
+   *
+   * Distinct from `fetchYields`, which answers *what is it now*. This answers
+   * *what did it do*, which is the question a series is made of — and the two
+   * cannot be the same call, because the first collapses a term structure of
+   * observations into one point per symbol.
+   *
+   * `range` bounds the SOURCE's own observation dates, never our retrieval
+   * time. Implementations page the upstream however it paginates and return
+   * every published observation in the range, ascending.
+   */
+  fetchYieldHistory?(
+    symbols: readonly CanonicalSymbol[],
+    range: { from: string; to: string },
+    ctx: FetchContext,
+  ): Promise<GovernmentYield[]>
 }
 
 export interface CommodityProvider extends ProviderIdentity {

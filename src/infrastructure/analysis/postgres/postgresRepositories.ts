@@ -40,6 +40,11 @@ import {
   createEvidenceRepository,
   createResultStore,
 } from './evidenceRepositories'
+import { createObservationRepository, OBSERVATION_SQL } from './observationRepositories'
+import {
+  createEvidenceAssemblyRepository,
+  ASSEMBLY_SQL,
+} from './assemblyRepositories'
 import { AGGREGATION_SQL, createAggregationRepository } from './aggregationRepositories'
 import { COMMAND_SQL, createCommandLog } from './commandLog'
 import {
@@ -140,6 +145,8 @@ const CATALOGS = registerCatalogues([
   { name: 'claim', statements: CLAIM_SQL },
   { name: 'producedClaim', statements: PRODUCED_CLAIM_SQL },
   { name: 'evidence', statements: EVIDENCE_SQL },
+  { name: 'observations', statements: OBSERVATION_SQL },
+  { name: 'assemblies', statements: ASSEMBLY_SQL },
   { name: 'result', statements: RESULT_SQL },
   { name: 'review', statements: REVIEW_SQL },
   { name: 'event', statements: EVENT_SQL },
@@ -235,6 +242,8 @@ export async function createPostgresRepositories(
     reviews: createReviewRepository(scope, context, tenantId),
     events: createEventRepository(scope, context, tenantId),
     evidence: createEvidenceRepository(scope, context),
+    observations: createObservationRepository(scope, context),
+    assemblies: createEvidenceAssemblyRepository(scope, context),
     results: createResultStore(scope, context),
     commands: createCommandLog(scope, context, tenantId),
     playbooks: createPlaybookRepository(scope, context),

@@ -54,6 +54,7 @@ import {
   type Assignment,
   type AssignmentStatus,
   type CaseStage,
+  type EvidenceAssembly,
   type EvidenceSet,
   type ExecutionBudget,
   type InvestmentCase,
@@ -67,6 +68,7 @@ import type { CommandDeps } from './commands/runCommand'
 import type { DomainRejection } from './commands/envelope'
 import type { ContributionProvider } from './contributionPort'
 import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
+import { DERIVED_SOURCE_ID } from './deriveObservations'
 import { resolveExecutionBudget } from './executionBudget'
 import { runPlaybook } from './orchestrator'
 import { agentDesk, type AgentDesk } from './agentDirectory'
@@ -235,6 +237,32 @@ export interface EvidenceOffer {
   sources: readonly string[]
   /** Where the firm's own sources disagree. A reason to look, never a filter. */
   disagreementCount: number
+  /** One source restating a period. Never folded into the count above. */
+  revisionCount: number
+  /**
+   * Observations the firm derived, and the methodologies it derived them under.
+   *
+   * Read off the set's own members — a derived observation is a member like any
+   * other — so this counts what the desk will actually be given rather than
+   * what a screen believes should exist.
+   */
+  derivedCount: number
+  derivedMethodologies: readonly string[]
+  /**
+   * The recorded selection, when the set was assembled through the governed act.
+   *
+   * Absent for a pre-C3 set, and stated as absent rather than filled in. A set
+   * assembled before `AssembleEvidenceSet` existed has no selection rule, and
+   * manufacturing one would be inventing an act nobody performed.
+   */
+  selection?: {
+    ruleId: string
+    subjectFamily: string
+    from: string
+    to: string
+    knownAt: string
+    actorEmployeeId: string
+  }
   eligibility:
     | { kind: 'eligible' }
     /**
@@ -342,7 +370,19 @@ export async function commissionBrief(
     )
   }
 
-  const evidence = (await repositories.evidence.list(EVIDENCE_LIMIT)).map(toEvidenceOffer)
+  /*
+   * The acts are read once and joined in memory rather than one lookup per set.
+   * `forSet` returns every act that produced a set, newest first, and the
+   * newest is what the offer states — an older act over the same membership is
+   * a real record and is reached from the evidence desk, not from here.
+   */
+  const sets = await repositories.evidence.list(EVIDENCE_LIMIT)
+  const acts = await repositories.assemblies.list(EVIDENCE_LIMIT)
+  const newestActFor = new Map<string, EvidenceAssembly>()
+  for (const act of acts) {
+    if (!newestActFor.has(act.evidenceSetId)) newestActFor.set(act.evidenceSetId, act)
+  }
+  const evidence = sets.map((set) => toEvidenceOffer(set, newestActFor.get(set.id)))
 
   return {
     desk,
@@ -422,16 +462,42 @@ function pinnedEntry(
   return entry
 }
 
-function toEvidenceOffer(set: EvidenceSet): EvidenceOffer {
+function toEvidenceOffer(
+  set: EvidenceSet,
+  assembly: EvidenceAssembly | undefined,
+): EvidenceOffer {
   const sources = [
     ...new Set(set.items.map((item) => item.provenance.source.providerName)),
   ].sort()
+  /*
+   * A derived member declares itself: `sourceId: 'derived'` is the provenance
+   * model's own tier-4 source, and `methodology` carries the transformation and
+   * its version. Neither is inferred from the value.
+   */
+  const derived = set.items.filter((item) => item.ref.sourceId === DERIVED_SOURCE_ID)
   return {
     evidenceSetId: set.id,
     assembledAt: set.assembledAt,
     observationCount: set.items.length,
     sources,
     disagreementCount: set.disagreements.length,
+    revisionCount: set.revisions.length,
+    derivedCount: derived.length,
+    derivedMethodologies: [
+      ...new Set(derived.map((item) => item.ref.methodology ?? 'unstated')),
+    ].sort(),
+    ...(assembly === undefined
+      ? {}
+      : {
+          selection: {
+            ruleId: assembly.selection.ruleId,
+            subjectFamily: assembly.selection.subjectFamily,
+            from: assembly.selection.from,
+            to: assembly.selection.to,
+            knownAt: assembly.selection.knownAt,
+            actorEmployeeId: assembly.actorEmployeeId,
+          },
+        }),
     eligibility:
       set.items.length === 0
         ? { kind: 'refused', reason: 'no-observations' }

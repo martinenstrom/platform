@@ -144,13 +144,16 @@
   ],
   "evidence": [
     {
-      "evidenceSetId": "82ca3d312fd92407fa9094529bfb6497",
+      "evidenceSetId": "344e93445ba6bd8b6b8e734fbf0c079b",
       "assembledAt": "2026-08-01T09:00:00.000Z",
       "observationCount": 1,
       "sources": [
         "ECB"
       ],
       "disagreementCount": 0,
+      "revisionCount": 0,
+      "derivedCount": 0,
+      "derivedMethodologies": [],
       "eligibility": {
         "kind": "eligible"
       }

@@ -509,9 +509,15 @@
       "id": "a9a15a02a1edfdc2703a71d2346ee552",
       "items": [],
       "coTemporality": {
-        "kind": "empty"
+        "publication": {
+          "kind": "empty"
+        },
+        "reference": {
+          "kind": "empty"
+        }
       },
       "disagreements": [],
+      "revisions": [],
       "assembledAt": "2026-08-01T09:00:00.000Z",
       "correlationId": "macro-flow"
     }
@@ -625,7 +631,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 2,
-          "digest": "12f04656da2991ae74603c3c680f5c49f8965a8139255bf101ef9f9ff5719fcb"
+          "digest": "d20ac6a86d01ba07b050de61e5871c9ab4b65a27c26bb6ee3c79c5d3d38a3516"
         }
       }
     }

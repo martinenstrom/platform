@@ -135,7 +135,9 @@ export async function createTestDatabase(): Promise<TestDatabase> {
           analysis.run_events,
           analysis.runs, analysis.assignments, analysis.thesis_claim_links,
           analysis.thesis_revisions, analysis.case_participants, analysis.cases,
+          analysis.evidence_assemblies,
           analysis.evidence_items, analysis.evidence_sets,
+          analysis.observations,
           analysis.agent_results,
           analysis.command_outcomes, analysis.commands
         CASCADE

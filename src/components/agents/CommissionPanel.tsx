@@ -11,6 +11,8 @@ import {
   CASE_STAGE_LABEL,
   commissionRefusalText,
   evidenceOfferText,
+  evidenceSelectionText,
+  EVIDENCE_WITHOUT_SELECTION,
 } from '~/presentation/analysis/commissionText'
 import { budgetText, RUN_FAILURE_LABEL } from '~/presentation/analysis/runText'
 import { commissionAnalysisFn } from '~/infrastructure/analysis/serverFns'
@@ -184,6 +186,14 @@ export function CommissionPanel({
                       <span className="type-metadata tabular">
                         {offer.evidenceSetId.slice(0, 12)}… · sammanställt{' '}
                         {offer.assembledAt}
+                      </span>
+                      {/*
+                       * Why these observations and not others. Without it a
+                       * reader can see what was included and cannot tell
+                       * whether anything was left out.
+                       */}
+                      <span className="type-metadata">
+                        {evidenceSelectionText(offer) ?? EVIDENCE_WITHOUT_SELECTION}
                       </span>
                       {text.refusal && (
                         <span className="type-metadata text-warning">{text.refusal}</span>

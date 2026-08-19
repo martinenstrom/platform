@@ -25,6 +25,7 @@ import {
   buildRequirementResolution,
   buildClaim,
   buildEvidenceSet,
+  buildObservation,
   buildManagerAggregation,
   buildRunRecord,
   buildThesis,
@@ -38,6 +39,7 @@ import {
   type ChallengeStatus,
   type ComplianceReview,
   type DevilsAdvocateReview,
+  type DurableObservation,
   type EvidenceItem,
   type EvidenceRef,
   type AggregationInput,
@@ -45,6 +47,7 @@ import {
   type DisagreementMateriality,
   type CostBudget,
   type DeadlineBudget,
+  type EvidenceAssembly,
   type EvidenceSet,
   type ExecutionBudget,
   type ExecutionIdentity,
@@ -85,6 +88,8 @@ import type {
   ClaimEvidenceRow,
   ClaimRow,
   EvidenceItemRow,
+  EvidenceAssemblyRow,
+  ObservationRow,
   EvidenceSetRow,
   RequirementResolutionRow,
   ReviewRow,
@@ -628,33 +633,124 @@ export function toRun(
  * for queries that do not hydrate items; the recomputed values are
  * authoritative.
  */
+/**
+ * A stored observation row, back into a domain record.
+ *
+ * `buildObservation` verifies the reference against the value under the row's
+ * OWN key generation before the record exists — the same check
+ * `buildEvidenceSet` applies to an item. A row whose payload no longer matches
+ * its hash is refused loudly here rather than entering the domain as a
+ * plausible-looking value, which is the one thing an observation store must
+ * never do: every citation in the institution resolves against these.
+ */
+export function toObservation(row: ObservationRow): DurableObservation {
+  return build('observation', 'observations', () =>
+    buildObservation({
+      ref: present({
+        id: row.observation_id,
+        contentHash: row.content_hash,
+        keyGeneration: row.key_generation,
+        subjectKind: row.subject_kind,
+        subject: row.subject,
+        kind: row.kind,
+        sourceId: row.source_id,
+        seriesId: row.series_id,
+        methodology: row.methodology,
+        referencePeriod: row.reference_period,
+        observedAt: row.observed_at,
+      }) as DurableObservation['ref'],
+      /* Validated on the way out, not trusted. See `toEvidenceSet`. */
+      value: asCanonicalValue(row.value),
+      provenance: row.provenance as DurableObservation['provenance'],
+      recordedAt: row.recorded_at,
+      correlationId: row.correlation_id,
+    }),
+  )
+}
+
+/**
+ * A stored assembly act, back into a domain record.
+ *
+ * Nothing is verified here beyond shape, and deliberately: an assembly is a
+ * record of what a person did, not a content-addressed artifact. The set it
+ * points at verifies its own id on read, which is where that check belongs.
+ */
+export function toEvidenceAssembly(row: EvidenceAssemblyRow): EvidenceAssembly {
+  return build('evidence assembly', 'assemblies', () => ({
+    assemblyId: row.assembly_id,
+    evidenceSetId: row.evidence_set_id,
+    selection: {
+      ruleId: row.rule_id,
+      subjectFamily: row.subject_family,
+      from: row.window_from,
+      to: row.window_to,
+      knownAt: row.known_at,
+    },
+    selectedSubjects: row.selected_subjects,
+    observationCount: row.observation_count,
+    derivedCount: row.derived_count,
+    assembledAt: row.assembled_at,
+    actorEmployeeId: row.actor_employee_id,
+    onBehalfOfDepartmentId: row.on_behalf_of_department_id,
+    correlationId: row.correlation_id,
+  }))
+}
+
 export function toEvidenceSet(
   row: EvidenceSetRow,
   items: readonly EvidenceItemRow[],
 ): EvidenceSet {
-  const evidenceItems: EvidenceItem[] = items.map((item) => ({
-    ref: present({
-      id: item.observation_id,
-      subjectKind: item.subject_kind,
-      subject: item.subject,
-      kind: item.kind,
-      observedAt: item.observed_at,
-      sourceId: item.source_id,
-      seriesId: item.series_id,
-      methodology: item.methodology,
-      contentHash: item.content_hash,
-    }) as EvidenceItem['ref'],
+  const evidenceItems: EvidenceItem[] = items.map((item) => {
     /*
-     * Validated on the way out of the database, not trusted.
+     * A linked row whose observation is not in the store — the LEFT JOIN in
+     * `EVIDENCE_SQL.items` leaves the payload NULL.
      *
-     * A stored payload is external data by the time it comes back: it was
-     * written by some build, possibly an older one, and `EvidenceItem.value`
-     * is an identity input. A row that is not canonical is refused loudly here
-     * rather than producing a different semantic key further downstream.
+     * Refused by name rather than hydrated as an item with no payload. An
+     * evidence set that quietly returned fewer facts than it was assembled from
+     * would let a claim's basis shrink with nothing saying so, which is exactly
+     * what a content-addressed set exists to make impossible.
      */
-    value: asCanonicalValue(item.value),
-    provenance: item.provenance as EvidenceItem['provenance'],
-  }))
+    if (item.links_observation && item.value === null) {
+      throw new MalformedRowError(
+        'evidence item',
+        `"${item.observation_id}" links to an observation the store does not ` +
+          `hold at content hash "${item.content_hash}"`,
+        'evidence',
+      )
+    }
+
+    return {
+      ref: present({
+        id: item.observation_id,
+        subjectKind: item.subject_kind,
+        subject: item.subject,
+        kind: item.kind,
+        observedAt: item.observed_at,
+        sourceId: item.source_id,
+        seriesId: item.series_id,
+        methodology: item.methodology,
+        /*
+         * Read back rather than assumed. `buildEvidenceSet` verifies every item,
+         * and verification recomputes the id under the row's OWN generation — so
+         * hydrating a v1 row as v2, or the reverse, would report tampering on
+         * data that is intact. The column is what makes the two readable together.
+         */
+        keyGeneration: item.key_generation,
+        referencePeriod: item.reference_period,
+        contentHash: item.content_hash,
+      }) as EvidenceItem['ref'],
+      /*
+       * Validated on the way out of the database, not trusted.
+       *
+       * A stored payload is external data by the time it comes back: it was
+       * written by some build, possibly an older one, and `EvidenceItem.value`
+       * is an identity input. A row that is not canonical is refused loudly here
+       * rather than producing a different semantic key further downstream.
+       */
+      value: asCanonicalValue(item.value),
+      provenance: item.provenance as EvidenceItem['provenance'],
+    }
+  })
 
   const rebuilt = build('evidence set', 'evidence', () =>
     buildEvidenceSet({

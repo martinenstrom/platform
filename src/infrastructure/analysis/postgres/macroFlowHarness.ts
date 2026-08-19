@@ -568,6 +568,8 @@ export async function runMacroAwaitingAcceptance(
             subject: 'de10y',
             kind: 'yield',
             observedAt,
+            /* The payload's own observation date, as `yieldRef` supplies it. */
+            referencePeriod: value.observationDate,
             sourceId: 'ecb',
           },
           value,

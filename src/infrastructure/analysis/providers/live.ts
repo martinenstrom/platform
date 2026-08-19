@@ -36,6 +36,10 @@ import {
 } from '~/domain/analysis'
 import { resolveModelConfidence } from '~/application/analysis/modelConfidence'
 import {
+  briefEvidenceSet,
+  renderEvidenceBriefing,
+} from '~/application/analysis/evidenceBriefing'
+import {
   ContributionFailure,
   type ContributionDeclaration,
   type ContributionProvider,
@@ -137,14 +141,36 @@ export function renderSystemPrompt(): string {
     '  the firm applies its own caps and may lower it.',
     '- A forecast or recommendation MUST also carry "horizon", e.g. "3m".',
     '- State only what the cited observations show. Do not assert mechanisms.',
+    '- Each observation is given with the semantics the firm holds for it:',
+    '  subject, kind, unit, source, trust, quality, reference period, as-of.',
+    '  Use them. The reference period is what the figure DESCRIBES; the',
+    '  publication instant is when the source put it out, and they differ.',
+    '- Where the firm has already derived a figure, the observation says so and',
+    '  names the observations it was computed from. Cite that observation.',
+    '  Never compute a spread, a change or a ratio of your own from other',
+    '  observations: a number the firm did not derive is uncitable, and a claim',
+    '  resting on it is unsupported.',
   ].join('\n')
 }
 
+/**
+ * What the desk is given.
+ *
+ * **Changed in C3 Stage B, and the reason is decision quality rather than
+ * presentation.** This function used to send an observation id and a raw
+ * payload — the measured cause of the C2-2 run's five `insufficient-evidence`
+ * claims, because the model could not know that `{"yieldPercent":"2.41"}` was a
+ * German ten-year government bond yield published by the ECB for 15 August.
+ * Subject, kind, unit, source, trust, as-of and reference period were all on
+ * `item.ref` and `item.provenance`, and none of them was sent.
+ *
+ * `briefEvidenceSet` is a **rendering of the institutional record**, not a
+ * second evidence schema (gate §0.9): every field it emits is read off the set.
+ * Citation identity is unchanged — the ids shown are the canonical ones, and
+ * `citeFrom` still refuses anything outside the set.
+ */
 export function renderUserPrompt(brief: string, evidence: EvidenceSet): string {
-  const observations = evidence.items.map(
-    (item) => `- id: ${item.ref.id}\n  value: ${JSON.stringify(item.value)}`,
-  )
-  return [`Brief:\n${brief}`, '', `Evidence (${evidence.id}):`, ...observations].join(
+  return [`Brief:\n${brief}`, '', renderEvidenceBriefing(briefEvidenceSet(evidence))].join(
     '\n',
   )
 }

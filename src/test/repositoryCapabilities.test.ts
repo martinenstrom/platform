@@ -33,6 +33,8 @@ const PORT_INTERFACES: Readonly<Record<string, { file: string; name: string }>> 
   reviews: { file: 'repositories.ts', name: 'ReviewRepository' },
   events: { file: 'repositories.ts', name: 'EventRepository' },
   evidence: { file: 'repositories.ts', name: 'EvidenceRepository' },
+  assemblies: { file: 'repositories.ts', name: 'EvidenceAssemblyRepository' },
+  observations: { file: 'repositories.ts', name: 'ObservationRepository' },
   results: { file: 'resultStore.ts', name: 'ResultStore' },
   commands: { file: 'commandLog.ts', name: 'CommandLog' },
   playbooks: { file: 'repositories.ts', name: 'PlaybookRepository' },
@@ -124,7 +126,9 @@ describe('the runtime guard refuses an incomplete container', () => {
     Object.fromEntries(
       Object.entries(ANALYSIS_REPOSITORY_CAPABILITIES).map(([port, methods]) => [
         port,
-        Object.fromEntries((methods as readonly string[]).map((name) => [name, () => {}])),
+        Object.fromEntries(
+          (methods as readonly string[]).map((name) => [name, () => {}]),
+        ),
       ]),
     )
 

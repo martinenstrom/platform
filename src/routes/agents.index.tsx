@@ -19,7 +19,7 @@
  * and their runs all arrive already derived. This file arranges them.
  */
 
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { ServerOff, Users } from 'lucide-react'
 import { PageHeader, PageShell } from '~/components/layout/PageHeader'
 import { DashboardCard } from '~/components/ui/DashboardCard'
@@ -87,6 +87,16 @@ export function AgentFloorPage({ response }: { response: AgentDirectoryResponse 
           desks.length === 0
             ? 'Inga avdelningar kan tilldelas arbete.'
             : `${desks.length} avdelningar, ${total} registrerade körningar.`
+        }
+        actions={
+          /*
+           * Where the work a desk reasons over comes from. Placed here rather
+           * than in the global navigation, which is finished and not this
+           * stage's to change.
+           */
+          <Link to="/evidence" className="type-metadata hover:text-content">
+            Underlag firman håller
+          </Link>
         }
       />
 

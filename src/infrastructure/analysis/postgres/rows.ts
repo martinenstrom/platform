@@ -204,7 +204,49 @@ export interface EvidenceItemRow {
   source_id: string
   series_id: string | null
   methodology: string | null
+  /** Which key rule minted `observation_id`. 1 for every pre-C3 row. */
+  key_generation: number
+  /** The period described. NULL exactly when `key_generation` is 1. */
+  reference_period: string | null
   content_hash: string
+  /** True when the payload lives in `analysis.observations`. See migration 0032. */
+  links_observation: boolean
+  /** NULL on a linked row; the join supplies it. Present on a legacy row. */
+  value: unknown
+  provenance: unknown
+}
+
+export interface EvidenceAssemblyRow {
+  assembly_id: string
+  evidence_set_id: string
+  rule_id: string
+  subject_family: string
+  window_from: string
+  window_to: string
+  known_at: string
+  selected_subjects: string[]
+  observation_count: number
+  derived_count: number
+  assembled_at: string
+  actor_employee_id: string
+  on_behalf_of_department_id: string
+  correlation_id: string
+}
+
+export interface ObservationRow {
+  observation_id: string
+  content_hash: string
+  key_generation: number
+  subject_kind: string
+  subject: string
+  kind: string
+  source_id: string
+  series_id: string | null
+  methodology: string | null
+  reference_period: string | null
+  observed_at: string
+  recorded_at: string
+  correlation_id: string
   value: unknown
   provenance: unknown
 }

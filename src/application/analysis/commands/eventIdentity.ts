@@ -167,3 +167,16 @@ export function deriveChallengeId(commandId: string, ordinal: number): string {
     ordinal,
   })
 }
+
+/**
+ * The identity of the assembly act a command records.
+ *
+ * One `AssembleEvidenceSet` files one act, so the command is the entity and a
+ * retry addresses the same record rather than filing a second judgement nobody
+ * made. Deliberately NOT derived from the evidence set id: a set is
+ * content-addressed on membership, so two selections that pick the same
+ * observations would collide on one act — and they are two acts.
+ */
+export function deriveAssemblyId(commandId: string): string {
+  return derive('asm', { commandId, recordType: 'evidence-assembly', entityId: commandId })
+}

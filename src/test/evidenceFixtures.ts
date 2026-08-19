@@ -57,6 +57,8 @@ export function yieldRefFixture(fixture: YieldFixture): ObservationRef {
       subject: fixture.subject ?? 'US10Y',
       kind: 'yield',
       observedAt: fixture.observedAt ?? AT,
+      /* Mirrors `yieldRef`: the source's own observation date. */
+      referencePeriod: fixture.observationDate ?? '2026-07-28',
       sourceId: fixture.sourceId ?? 'treasury',
       ...(fixture.seriesId === undefined ? {} : { seriesId: fixture.seriesId }),
       ...(fixture.methodology === undefined ? {} : { methodology: fixture.methodology }),
@@ -106,6 +108,8 @@ export function buildQuoteEvidenceFixture(fixture: QuoteFixture): EvidenceItem {
         subject: fixture.subject ?? 'AAPL',
         kind: 'quote',
         observedAt: fixture.observedAt ?? AT,
+        /* Mirrors `quoteRef`: a quote describes the instant it was taken. */
+        referencePeriod: fixture.observedAt ?? AT,
         sourceId: fixture.sourceId ?? 'avanza',
       },
       quoteProjection(fixture),
@@ -144,6 +148,18 @@ export function buildPolicyStateEvidenceFixture(
     change: fixture.change ?? null,
   }
   const rate = fixture.effectiveFedFundsRate
+  /*
+   * Mirrors `policyStateRef`, including its refusal: a regime with no effective
+   * date describes no period the firm knows, and a fixture that quietly keyed
+   * on the confirmation date instead would test a shape production refuses.
+   */
+  if (regime.effectiveDate === null) {
+    throw new Error(
+      'buildPolicyStateEvidenceFixture: a policy state with no effective date ' +
+        'has no reference period, and production refuses it. A test that needs ' +
+        'that shape wants the refusal, not an observation.',
+    )
+  }
 
   return {
     ref: observationRef(
@@ -152,6 +168,7 @@ export function buildPolicyStateEvidenceFixture(
         subject: fixture.centralBank ?? 'riksbank',
         kind: 'policy-state',
         observedAt: fixture.observedAt ?? AT,
+        referencePeriod: regime.effectiveDate,
         sourceId: fixture.sourceId ?? 'riksbank',
         ...(fixture.seriesId === undefined ? {} : { seriesId: fixture.seriesId }),
         ...(fixture.rateType === undefined ? {} : { methodology: fixture.rateType }),

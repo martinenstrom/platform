@@ -275,6 +275,7 @@ describe('command declarations', () => {
     expect(commands.map((c) => c.type).sort()).toEqual([
       'AcceptContribution',
       'AggregateManagerConclusion',
+      'AssembleEvidenceSet',
       'FailAgentRun',
       'InstantiatePlaybook',
       'OpenInvestmentCase',

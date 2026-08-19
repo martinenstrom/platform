@@ -459,6 +459,7 @@ describe('observation identity', () => {
     subject: 'rate:us10y',
     kind: 'yield' as const,
     observedAt: '2026-07-24T00:00:00.000Z',
+    referencePeriod: '2026-07-24',
     sourceId: 'treasury',
     seriesId: 'BC_10YEAR',
     methodology: 'par-yield',
@@ -508,6 +509,48 @@ describe('observation identity', () => {
     })
     expect(revised.id).toBe(original.id)
     expect(isRevisionOf(revised, original)).toBe(true)
+  })
+
+  it('recognises a revision PUBLISHED LATER, which is how revisions arrive', () => {
+    /*
+     * The reason the v2 key exists, planted as the violation it was.
+     *
+     * A source does not revise a figure at the instant it first published it —
+     * it republishes days later. Under v1 that later `observedAt` was part of
+     * the key, so the revision minted a fresh id and read as an unrelated
+     * observation: a claim citing the original still resolved cleanly, and the
+     * firm never learned the number had moved beneath it.
+     */
+    const published = observationRef(
+      { ...key, observedAt: '2026-07-24T00:00:00.000Z' },
+      { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-24' },
+    )
+    const revisedLater = observationRef(
+      { ...key, observedAt: '2026-07-27T00:00:00.000Z' },
+      { yieldPercent: '4.71', changeBasisPoints: null, observationDate: '2026-07-24' },
+    )
+
+    expect(revisedLater.id).toBe(published.id)
+    expect(isRevisionOf(revisedLater, published)).toBe(true)
+  })
+
+  it('does not mistake the NEXT day for a revision of the last one', () => {
+    /*
+     * The near-miss. Without it the test above would also pass under a key that
+     * dropped time altogether, which would collapse a whole series into one
+     * observation and call every new print a revision of its predecessor.
+     */
+    const friday = observationRef(
+      { ...key, observedAt: '2026-07-24T00:00:00.000Z' },
+      { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-24' },
+    )
+    const monday = observationRef(
+      { ...key, observedAt: '2026-07-27T00:00:00.000Z', referencePeriod: '2026-07-27' },
+      { yieldPercent: '4.71', changeBasisPoints: null, observationDate: '2026-07-27' },
+    )
+
+    expect(monday.id).not.toBe(friday.id)
+    expect(isRevisionOf(monday, friday)).toBe(false)
   })
 
   it('treats a different methodology as a different observation', () => {
@@ -560,6 +603,7 @@ describe('the evidence set', () => {
       kind: 'yield',
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
+      referencePeriod: '2026-07-24',
     },
     yieldPayload,
   )
@@ -570,6 +614,7 @@ describe('the evidence set', () => {
       kind: 'policy-state',
       observedAt: '2026-07-26T00:00:00.000Z',
       sourceId: 'ecb',
+      referencePeriod: '2026-07-26',
     },
     policyPayload.regime,
   )
@@ -595,16 +640,28 @@ describe('the evidence set', () => {
     expect(setOf([A, B]).id).toBe(setOf([B, A]).id)
   })
 
-  it('states the spread when observations are not co-temporal', () => {
+  it('states the publication spread when observations are not co-temporal', () => {
     const set = setOf([A, B])
-    expect(set.coTemporality.kind).toBe('mixed')
-    if (set.coTemporality.kind !== 'mixed') throw new Error('unreachable')
+    expect(set.coTemporality.publication.kind).toBe('mixed')
+    if (set.coTemporality.publication.kind !== 'mixed') throw new Error('unreachable')
     // Two days apart — an agent comparing them must be told.
-    expect(set.coTemporality.spreadMs).toBe(2 * 86_400_000)
+    expect(set.coTemporality.publication.spreadMs).toBe(2 * 86_400_000)
   })
 
   it('reports co-temporality when everything shares a moment', () => {
-    expect(setOf([A]).coTemporality.kind).toBe('co-temporal')
+    expect(setOf([A]).coTemporality.publication.kind).toBe('aligned')
+  })
+
+  it('reports the REFERENCE spread beside the publication spread', () => {
+    /*
+     * The axis that matters for macro evidence, and the one the set could not
+     * state before. Two figures published an hour apart can describe periods six
+     * weeks apart, and an agent told only the first would read them as
+     * contemporaneous.
+     */
+    const set = setOf([A, B])
+    expect(set.coTemporality.reference.kind).toBe('mixed')
+    expect(set.coTemporality.publication.kind).toBe('mixed')
   })
 
   it('retains disagreement rather than resolving it', () => {
@@ -613,6 +670,8 @@ describe('the evidence set', () => {
       subject: 'rate:de10y',
       kind: 'yield' as const,
       observedAt: '2026-07-24T00:00:00.000Z',
+      /* The period both sources describe — which is what makes them rivals. */
+      referencePeriod: '2026-07-28',
     }
     const bundes = {
       yieldPercent: '3.24',
@@ -641,12 +700,107 @@ describe('the evidence set', () => {
     expect(set.items).toHaveLength(2)
   })
 
+  it('finds a cross-source disagreement published HOURS APART', () => {
+    /*
+     * The planted violation, and the measured pathology v2 exists to fix.
+     * Grouping on `observedAt` reported ZERO here: two authoritative sources
+     * publishing the same reference-period figure sixteen hours apart never met
+     * in a group, so macro disagreement was effectively undetectable.
+     */
+    const shared = {
+      subjectKind: 'instrument' as const,
+      subject: 'rate:de10y',
+      kind: 'yield' as const,
+      referencePeriod: '2026-07-28',
+    }
+    const bundesValue = {
+      yieldPercent: '3.24',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const rivalValue = {
+      yieldPercent: '3.31',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const bundesbank = observationRef(
+      { ...shared, observedAt: '2026-07-28T06:00:00.000Z', sourceId: 'bundesbank' },
+      bundesValue,
+    )
+    const rival = observationRef(
+      { ...shared, observedAt: '2026-07-28T22:00:00.000Z', sourceId: 'riksbank' },
+      rivalValue,
+    )
+    const set = setOf([
+      { ref: bundesbank, value: bundesValue },
+      { ref: rival, value: rivalValue },
+    ])
+
+    expect(set.disagreements).toHaveLength(1)
+    expect(set.disagreements[0]!.referencePeriod).toBe('2026-07-28')
+    expect([...set.disagreements[0]!.sourceIds].sort()).toEqual([
+      'bundesbank',
+      'riksbank',
+    ])
+    /* A disagreement is not a revision. The two shapes stay separate. */
+    expect(set.revisions).toHaveLength(0)
+  })
+
+  it('reports ONE source restating a period as a revision, not a disagreement', () => {
+    /*
+     * The near-miss. Same shape as the test above in every respect except that
+     * one source is correcting itself — which is a different institutional fact
+     * and must not arrive in the same field with its own name listed twice.
+     */
+    const shared = {
+      subjectKind: 'instrument' as const,
+      subject: 'rate:de10y',
+      kind: 'yield' as const,
+      referencePeriod: '2026-07-28',
+      sourceId: 'bundesbank',
+    }
+    const firstValue = {
+      yieldPercent: '3.24',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const correctedValue = {
+      yieldPercent: '3.26',
+      changeBasisPoints: null,
+      observationDate: '2026-07-28',
+    }
+    const first = observationRef(
+      { ...shared, observedAt: '2026-07-28T06:00:00.000Z' },
+      firstValue,
+    )
+    const corrected = observationRef(
+      { ...shared, observedAt: '2026-07-31T06:00:00.000Z' },
+      correctedValue,
+    )
+    const set = setOf([
+      { ref: first, value: firstValue },
+      { ref: corrected, value: correctedValue },
+    ])
+
+    expect(set.disagreements).toHaveLength(0)
+    expect(set.revisions).toHaveLength(1)
+    expect(set.revisions[0]!.sourceId).toBe('bundesbank')
+    expect(set.revisions[0]!.observationId).toBe(first.id)
+    /* Earliest publication first, so a reader can see which way it moved. */
+    expect(set.revisions[0]!.versions.map((v) => v.observedAt)).toEqual([
+      '2026-07-28T06:00:00.000Z',
+      '2026-07-31T06:00:00.000Z',
+    ])
+  })
+
   it('records agreement between two sources as no disagreement', () => {
     const shared = {
       subjectKind: 'instrument' as const,
       subject: 'rate:de10y',
       kind: 'yield' as const,
       observedAt: '2026-07-24T00:00:00.000Z',
+      /* The period both sources describe — which is what makes them rivals. */
+      referencePeriod: '2026-07-28',
     }
     const agreed = {
       yieldPercent: '3.24',
@@ -669,6 +823,7 @@ describe('citations resolve against the set they were made in', () => {
       kind: 'yield',
       observedAt: '2026-07-24T00:00:00.000Z',
       sourceId: 'treasury',
+      referencePeriod: '2026-07-24',
     },
     { yieldPercent: '4.69', changeBasisPoints: null, observationDate: '2026-07-28' },
   )
@@ -701,6 +856,7 @@ describe('citations resolve against the set they were made in', () => {
         kind: 'yield',
         observedAt: '2026-07-24T00:00:00.000Z',
         sourceId: 'treasury',
+        referencePeriod: '2026-07-24',
       },
       { yieldPercent: '4.33', changeBasisPoints: null, observationDate: '2026-07-28' },
     )

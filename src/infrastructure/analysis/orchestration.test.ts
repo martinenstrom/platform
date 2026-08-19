@@ -76,7 +76,8 @@ beforeEach(async () => {
     correlationId: 'corr-1',
     items: [],
     disagreements: [],
-    coTemporality: { kind: 'empty' },
+    revisions: [],
+    coTemporality: { publication: { kind: 'empty' }, reference: { kind: 'empty' } },
   })
 
   await runCommand(

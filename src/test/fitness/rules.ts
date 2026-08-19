@@ -1221,6 +1221,76 @@ const challengeThresholdOnlyInTheGate: FitnessRule = {
   },
 }
 
+/* ------------------------------------------------------------------ rule 18 */
+
+/**
+ * The one act that may declare a body of evidence fit for analysis.
+ *
+ * Until C3 Stage B the only production writer of an `EvidenceSet` was
+ * `/smoke/c2-1`: a route that hand-wrote one hard-coded observation and called
+ * `repositories.evidence.save` directly, with **no actor, no mandate, no
+ * command, no ledger entry, no event and no recorded selection** — while
+ * nineteen lesser acts all carried the full envelope.
+ *
+ * Assembly determines the ceiling on every claim the firm can make from the
+ * set: `citeFrom` refuses anything outside it, and `composeConfidence` is
+ * bounded by its properties. A second writer would be a second way to set that
+ * ceiling with nobody's name on it, and the whole of gate §0.3 rests on there
+ * not being one.
+ *
+ * The adapters that IMPLEMENT `save` are excluded — a port needs a body — as
+ * are the test harnesses that seed fixtures, which is what `isTest` and the
+ * named harness files below cover.
+ */
+const EVIDENCE_SAVE_IMPLEMENTORS = [
+  'infrastructure/analysis/inMemoryRepositories.ts',
+  'infrastructure/analysis/postgres/evidenceRepositories.ts',
+]
+
+/** Fixture seeders. Never reachable from the served application. */
+const EVIDENCE_TEST_HARNESSES = [
+  'infrastructure/analysis/decisionSeed.ts',
+  'infrastructure/analysis/aggregationHarness.ts',
+  'infrastructure/analysis/postgres/macroFlowHarness.ts',
+  /* The shared parity contract. Not named .test.ts, but only a suite runs it. */
+  'infrastructure/analysis/repositoryContract.ts',
+]
+
+const evidenceOnlyFromTheGovernedAct: FitnessRule = {
+  id: 'evidence-assembled-only-by-the-governed-act',
+  states:
+    'Only `AssembleEvidenceSet` writes an evidence set. Nothing else in the ' +
+    'application or infrastructure calls `evidence.save`.',
+  because:
+    'Whoever writes a set decides what a desk may conclude from it. A second ' +
+    'writer would set that ceiling with no actor, no mandate and no recorded ' +
+    'selection — which is exactly what `/smoke/c2-1` did, and what retiring it ' +
+    'was for. The door closes only if it stays closed.',
+  selects: (file) =>
+    !file.isTest &&
+    (under('application/', 'infrastructure/', 'components/', 'routes/')(file) ||
+      false) &&
+    !file.path.endsWith('application/analysis/commands/assembleEvidenceSet.ts') &&
+    !EVIDENCE_SAVE_IMPLEMENTORS.some((path) => file.path.endsWith(path)) &&
+    !EVIDENCE_TEST_HARNESSES.some((path) => file.path.endsWith(path)),
+  detect(file) {
+    const found: string[] = []
+    for (const node of nodes(file)) {
+      if (!ts.isCallExpression(node)) continue
+      const path = accessPath(node.expression)
+      /*
+       * Structural: any call whose callee ends in `.evidence.save`, however the
+       * repositories object was reached — `repositories.evidence.save`,
+       * `tx.evidence.save`, `this.repos.evidence.save`. Reading the set is
+       * untouched, which is the near-miss the meta-test requires.
+       */
+      if (path === null || !/(^|\.)evidence\.save$/.test(path)) continue
+      found.push(at(file, node, `calls ${path} outside AssembleEvidenceSet`))
+    }
+    return found
+  },
+}
+
 /* --------------------------------------------------------------- the registry */
 
 /**
@@ -1245,6 +1315,7 @@ export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noThrowingPortImplementations,
   noLocaleSensitiveIdentityOrder,
   challengeThresholdOnlyInTheGate,
+  evidenceOnlyFromTheGovernedAct,
 ]
 
 export function ruleById(id: string): FitnessRule {

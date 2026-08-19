@@ -157,6 +157,17 @@ export function quoteRef(quote: MarketQuote): ObservationRef {
       subject: quote.symbol,
       kind: 'quote',
       observedAt: quote.provenance.asOf,
+      /*
+       * A quote describes the instant it was taken, so publication and
+       * reference genuinely coincide here. Setting them equal is the claim
+       * being made — not a fallback for a field nobody had.
+       *
+       * `sourceDate` is preferred where the provider states one, because a
+       * date-precision source published a DATE and `asOf` is our midnight-UTC
+       * rendering of it. Keying on the rendering would make the identity depend
+       * on how we chose to widen a date into an instant.
+       */
+      referencePeriod: quote.provenance.sourceDate ?? quote.provenance.asOf,
       sourceId: quote.provenance.source.providerId,
     },
     {
@@ -193,6 +204,13 @@ export function yieldRef(governmentYield: GovernmentYield): ObservationRef {
       subject: governmentYield.symbol,
       kind: 'yield',
       observedAt: governmentYield.provenance.asOf,
+      /*
+       * The source's own observation date — the field `GovernmentYield` already
+       * documented as *"kept separate from `provenance.receivedAt` so a revision
+       * can be recognised."* It was always the right coordinate; until v2 the
+       * key could not carry it.
+       */
+      referencePeriod: governmentYield.observationDate,
       sourceId: governmentYield.provenance.source.providerId,
       seriesId: governmentYield.seriesId,
       methodology: governmentYield.methodology,
@@ -220,6 +238,8 @@ export function yieldCurveRef(curve: YieldCurve, provenance: Provenance): Observ
       subject: `curve:${curve.countryCode}`,
       kind: 'yield-curve',
       observedAt: provenance.asOf,
+      /* The one observation date `buildYieldCurve` proved every point shares. */
+      referencePeriod: curve.observationDate,
       sourceId: provenance.source.providerId,
       methodology: curve.methodology,
     },
@@ -246,12 +266,49 @@ export function policyStateRef(state: CentralBankPolicyState): ObservationRef {
   // Read once: it was called twice, and the second call is what a later
   // refactor turns into a different value from the one the guard tested.
   const effectiveRate = effectiveRateOf(state)
+  /*
+   * A regime whose transition is not inside the history we hold has NO known
+   * reference period, and it is refused rather than given one.
+   *
+   * The tempting fallback is `observationDate`. It is exactly wrong, and wrong
+   * in the worst case: `unknown` means the level has stood unchanged for longer
+   * than the lookback, so keying on the confirmation date would mint a fresh
+   * observation identity every calendar day for the most stable rate the firm
+   * holds — the v1 pathology, reinstated silently.
+   *
+   * `effectiveDateEarliestPossible` is not a substitute either. It is `null`
+   * whenever confidence is not `bounded`, and it is a lower bound rather than a
+   * date, so hashing it would key an identity on a value the source never
+   * published.
+   */
+  if (state.regime.effectiveDate === null) {
+    throw new Error(
+      `policyStateRef: ${state.centralBank} reports no effective date for the ` +
+        `level in force (confidence "${state.regime.effectiveDateConfidence}"), so ` +
+        `the firm does not know what period this observation describes. It is ` +
+        `refused rather than keyed on the confirmation date, which would mint a ` +
+        `new identity every day the rate does not move.`,
+    )
+  }
   return observationRef(
     {
       subjectKind: 'central-bank',
       subject: state.centralBank,
       kind: 'policy-state',
       observedAt: state.provenance.asOf,
+      /*
+       * The date the level took effect — not the date the bank last confirmed
+       * it. This is what closes the pathology Phase 6A worked around: the ECB
+       * republishes a standing rate every calendar day, so under v1 the key's
+       * `observedAt` minted a NEW observation identity daily for a rate that
+       * had not moved in thirty-nine days, and the content hash had to exclude
+       * the observation date to stop every one of them reading as a revision.
+       *
+       * Under v2 one policy state is one observation for as long as it stands,
+       * and a genuine change is a new reference period. The content-hash
+       * exclusion below is now belt-and-braces rather than load-bearing.
+       */
+      referencePeriod: state.regime.effectiveDate,
       sourceId: state.provenance.source.providerId,
       seriesId: state.seriesId,
       methodology: state.rateType,

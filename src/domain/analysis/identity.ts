@@ -19,9 +19,32 @@
  * unchanged and the `contentHash` differs. That divergence is precisely the
  * revision signal, and nothing else in the system can produce it.
  *
+ * ## Two generations of the key, permanently
+ *
+ * The paragraph above describes what **v2** does. Under **v1** it held only by
+ * accident, for the one adapter whose publication time was derived from its
+ * reference date — because v1 put `observedAt` in the key, so a revised release
+ * published a day later minted a *different* id and read as an unrelated
+ * observation. Measured, with the Treasury revising a Friday figure the
+ * following Monday: same reference period, different id, `isRevisionOf` false.
+ *
+ * v2 therefore **replaces `observedAt` in the key with `referencePeriod`** —
+ * what the observation describes, rather than when it was published — and adds
+ * the domain tag `docs/canonical-value-v1.md` §9 requires and v1 lacked.
+ *
+ * **v1 references remain valid historical institutional records.** They stay
+ * resolvable, stay citable, and report themselves as v1. Nothing rewrites one:
+ * an id whose meaning changed without its generation changing is the exact
+ * ambiguity versioning exists to prevent. See `phase-c3-evidence-gate.md` §0.1
+ * and the §0.6 amendment.
+ *
  * **`correlationId` is deliberately not part of identity.** It identifies a
  * resolution run — the same observation fetched twice has two correlation ids
  * and is one observation. It belongs on the `EvidenceSet`.
+ *
+ * **`observedAt` is not part of the v2 identity either, and for a related
+ * reason.** It says when a source published, which is provenance; the key says
+ * what was described. Both are kept on the reference, and only one is hashed.
  *
  * ## Why `subject` is a plain string
  *
@@ -40,6 +63,16 @@ import {
   type CanonicalValue,
 } from '~/domain/shared/canonicalValue'
 
+/**
+ * Which generation of the key rule minted a reference.
+ *
+ * Carried on the reference rather than inferred from its shape. Inference would
+ * have to read `referencePeriod`, and a record whose generation is guessed from
+ * a field is a record that verifies against the wrong rule the first time the
+ * guess is wrong.
+ */
+export type ObservationKeyGeneration = 1 | 2
+
 /** What an observation is ABOUT, without naming another domain's types. */
 export type SubjectKind =
   'instrument' | 'central-bank' | 'series' | 'index' | 'currency-pair'
@@ -54,18 +87,38 @@ export type ObservationKind =
   | 'series'
   | 'news'
   | 'sentiment'
+  /**
+   * A fact the firm computed from other observations — a curve slope, a
+   * breakeven, a change across publications.
+   *
+   * Its own kind rather than borrowing `yield`, because it is not one: a 2s10s
+   * spread has no `yieldPercent`, and forcing it into the yield projection
+   * would mean inventing a field to satisfy a shape. The projection below
+   * covers its inputs, so a derived fact whose inputs changed cannot keep the
+   * same content hash.
+   */
+  | 'derived-spread'
 
 /**
- * The parts that make an observation the observation it is.
+ * The parts that make an observation the observation it is, plus the one part
+ * that used to and no longer does.
  *
- * `observedAt` is the SOURCE's observation time, never our retrieval time —
- * the same distinction Phase 6A drew between an observation date and an
- * effective date, applied to identity.
+ * Shared by both generations, because a v1 record still has to be describable.
+ * Which fields are HASHED differs per generation and is decided by
+ * `serializeKeyV1` / `serializeKeyV2` — never by what a caller happens to set.
  */
 export interface ObservationNaturalKey {
   subjectKind: SubjectKind
   subject: string
   kind: ObservationKind
+  /**
+   * When the SOURCE published, never our retrieval time.
+   *
+   * **v1: part of the key. v2: provenance only.** Kept on every reference in
+   * both generations — a reader needs to know when a figure was published, and
+   * co-temporality is computed from it — but under v2 it is not hashed, which
+   * is what lets a revised release of the same period keep the same id.
+   */
   observedAt: string
   /** Provider id, e.g. `treasury`, `ecb`, `avanza`. */
   sourceId: string
@@ -73,17 +126,47 @@ export interface ObservationNaturalKey {
   seriesId?: string
   /** e.g. `par-yield`, `zero-coupon-fitted`. Two methodologies, two things. */
   methodology?: string
+  /**
+   * The period the observation DESCRIBES, as the source states it —
+   * `2026-08-14` for a daily figure, `2026-Q2` for a quarterly one.
+   *
+   * **Required under v2, absent under v1.** It is the v2 key's only temporal
+   * coordinate, so an observation without one would collapse a whole series
+   * into a single identity.
+   *
+   * Where publication and reference genuinely coincide — an intraday quote —
+   * the builder sets this to the instant and thereby states that they coincide.
+   * That is a claim the builder is making, not a default it is falling back to.
+   *
+   * Every producer already held the right field before this existed:
+   * `GovernmentYield.observationDate`, `PolicyRegime.effectiveDate`,
+   * `YieldCurve.observationDate`.
+   */
+  referencePeriod?: string
 }
 
 export interface ObservationRef extends ObservationNaturalKey {
+  /** Which key rule minted this. Read by verification; never guessed. */
+  keyGeneration: ObservationKeyGeneration
   /** Hash of the natural key. Stable across re-retrieval, forever. */
   id: string
   /** Hash of the normalized value. Differs iff the observation was revised. */
   contentHash: string
 }
 
-/** Canonical serialization: field order is fixed so the hash is reproducible. */
-function serializeKey(key: ObservationNaturalKey): string {
+/**
+ * The v1 key encoding: a bare `|`-joined string, with no domain tag.
+ *
+ * **Frozen. Never edited again.** Its only job is to reproduce the ids of
+ * observations the firm already holds, so a v1 citation still resolves and a
+ * stored v1 row still verifies. Changing it would not migrate history — it
+ * would make history unreadable.
+ *
+ * Its two defects are the reason v2 exists: no domain tag (against
+ * `docs/canonical-value-v1.md` §9), and `observedAt` where the reference period
+ * belonged.
+ */
+function serializeKeyV1(key: ObservationNaturalKey): string {
   return [
     key.subjectKind,
     key.subject,
@@ -93,6 +176,34 @@ function serializeKey(key: ObservationNaturalKey): string {
     key.seriesId ?? '',
     key.methodology ?? '',
   ].join('|')
+}
+
+/** Domain tag for the v2 observation key, per `docs/canonical-value-v1.md` §9. */
+const OBSERVATION_KEY_DOMAIN_V2 = 'financial-os:observation-key:v2'
+
+/**
+ * The v2 key encoding: canonical, domain-tagged, length-prefixed.
+ *
+ * `observedAt` is deliberately absent. `referencePeriod` is deliberately
+ * present and mandatory — see the module header.
+ *
+ * Optional fields are **omitted when absent** rather than written as empty
+ * strings. The canonical encoder length-prefixes every member, so an omitted
+ * field and a field holding `''` stay distinguishable — which the v1 `|`-join
+ * could not manage, and which is what makes an optional coordinate safe at all.
+ */
+function serializeKeyV2(
+  key: ObservationNaturalKey & { referencePeriod: string },
+): string {
+  return canonicalIdentityInput(OBSERVATION_KEY_DOMAIN_V2, {
+    subjectKind: key.subjectKind,
+    subject: key.subject,
+    kind: key.kind,
+    sourceId: key.sourceId,
+    referencePeriod: key.referencePeriod,
+    ...(key.seriesId === undefined ? {} : { seriesId: key.seriesId }),
+    ...(key.methodology === undefined ? {} : { methodology: key.methodology }),
+  })
 }
 
 /** Domain tag for observation content, per `docs/canonical-value-v1.md` §9. */
@@ -122,9 +233,52 @@ export function observationRef(
   key: ObservationNaturalKey,
   value: CanonicalValue,
 ): ObservationRef {
+  if (key.referencePeriod === undefined) {
+    throw new Error(
+      `observationRef: a v2 observation must state the period it describes. ` +
+        `"${key.subject}" (${key.kind}, ${key.sourceId}) states none, and the v2 ` +
+        `key has no other temporal coordinate — every observation of this ` +
+        `series would collapse into one identity. Where publication and ` +
+        `reference coincide, say so by passing the instant.`,
+    )
+  }
+  const withPeriod = { ...key, referencePeriod: key.referencePeriod }
   return Object.freeze({
     ...key,
-    id: stableHashHex(serializeKey(key)),
+    keyGeneration: 2 as const,
+    id: stableHashHex(serializeKeyV2(withPeriod)),
+    contentHash: stableHashHex(canonicalIdentityInput(OBSERVATION_CONTENT_DOMAIN, value)),
+  })
+}
+
+/**
+ * Mints a **v1** reference, for observations the firm already holds.
+ *
+ * Not deprecated and not a fallback. It is how a stored v1 row is rehydrated so
+ * `verifyObservationRef` can check it against the rule it was actually minted
+ * under. New observations are v2; historical ones stay v1 forever, and both
+ * must verify.
+ *
+ * **Refuses a key carrying `referencePeriod`.** v1 has no such coordinate, so
+ * accepting one would silently drop it and return an id that does not describe
+ * the key it was handed — a wrong identity produced quietly, which is worse
+ * than a refusal. A caller holding a reference period wants `observationRef`.
+ */
+export function observationRefV1(
+  key: ObservationNaturalKey,
+  value: CanonicalValue,
+): ObservationRef {
+  if (key.referencePeriod !== undefined) {
+    throw new Error(
+      `observationRefV1: the v1 key has no reference period, so ` +
+        `"${key.referencePeriod}" would be dropped from the id without trace. ` +
+        `An observation that states the period it describes is a v2 observation.`,
+    )
+  }
+  return Object.freeze({
+    ...key,
+    keyGeneration: 1 as const,
+    id: stableHashHex(serializeKeyV1(key)),
     contentHash: stableHashHex(canonicalIdentityInput(OBSERVATION_CONTENT_DOMAIN, value)),
   })
 }
@@ -156,6 +310,13 @@ export type ObservationRefMismatch =
 const PROJECTED_FIELDS: Partial<Record<ObservationKind, readonly string[]>> = {
   quote: ['value', 'absoluteChange', 'percentageChange', 'previousClose'],
   yield: ['yieldPercent', 'changeBasisPoints', 'observationDate'],
+  /*
+   * `inputs` is INSIDE the projection deliberately. A derived value whose
+   * inputs could change without its content hash changing would be a fact
+   * nobody could re-derive, and `resolveCitation` would report it as unrevised
+   * while it rested on different numbers.
+   */
+  'derived-spread': ['slopeBasisPoints', 'observationDate', 'inputs'],
   // `policy-state` is nested and conditional; see `observationContent`.
   'policy-state': [],
 }
@@ -289,16 +450,34 @@ export function verifyObservationRef(
   ref: ObservationRef,
   value: CanonicalValue,
 ): ObservationRefMismatch | null {
+  /*
+   * Recomputed under the reference's OWN generation, never under the current
+   * one. A v1 row checked against the v2 rule would fail every time and read as
+   * tampering; a v2 row checked against v1 would ignore its reference period
+   * and hash a coordinate v2 deliberately dropped. The generation is a property
+   * of the record, so it is what the check reads.
+   */
+  const base = {
+    subjectKind: ref.subjectKind,
+    subject: ref.subject,
+    kind: ref.kind,
+    observedAt: ref.observedAt,
+    sourceId: ref.sourceId,
+    ...(ref.seriesId === undefined ? {} : { seriesId: ref.seriesId }),
+    ...(ref.methodology === undefined ? {} : { methodology: ref.methodology }),
+  }
+  /*
+   * A v2 reference with no reference period cannot be reconstructed at all: the
+   * key it claims to hash does not exist. Reported as an id mismatch rather
+   * than thrown, because verification's whole contract is to return a code.
+   */
+  if (ref.keyGeneration === 2 && ref.referencePeriod === undefined) {
+    return 'observation-id-mismatch'
+  }
   const recomputedId = stableHashHex(
-    serializeKey({
-      subjectKind: ref.subjectKind,
-      subject: ref.subject,
-      kind: ref.kind,
-      observedAt: ref.observedAt,
-      sourceId: ref.sourceId,
-      ...(ref.seriesId === undefined ? {} : { seriesId: ref.seriesId }),
-      ...(ref.methodology === undefined ? {} : { methodology: ref.methodology }),
-    }),
+    ref.keyGeneration === 1
+      ? serializeKeyV1(base)
+      : serializeKeyV2({ ...base, referencePeriod: ref.referencePeriod! }),
   )
   if (recomputedId !== ref.id) return 'observation-id-mismatch'
 
@@ -311,7 +490,15 @@ export function verifyObservationRef(
   return recomputedHash === ref.contentHash ? null : 'observation-content-hash-mismatch'
 }
 
-/** True when both refs describe the same observation, revised or not. */
+/**
+ * True when both refs describe the same observation, revised or not.
+ *
+ * **Never true across generations.** A v1 and a v2 reference to what a reader
+ * would call the same figure have different ids, because they were minted under
+ * different rules — and saying they are the same observation would claim the
+ * firm had identified it twice under one identity, which is precisely what it
+ * did not do. Two generations, two records, both honest about which they are.
+ */
 export function sameObservation(a: ObservationRef, b: ObservationRef): boolean {
   return a.id === b.id
 }
@@ -320,6 +507,12 @@ export function sameObservation(a: ObservationRef, b: ObservationRef): boolean {
  * True when the same observation now says something different.
  *
  * The Fact Checker's revision detector: same identity, different content.
+ *
+ * **This works under v2 and effectively did not under v1.** A revised release
+ * carries a later `observedAt`, which v1 hashed into the key — so the revision
+ * minted a fresh id and read as an unrelated observation, and the number could
+ * move under a claim without anything noticing. v2 keys on the reference period
+ * instead, so a revision is exactly what this function has always described.
  */
 export function isRevisionOf(
   candidate: ObservationRef,

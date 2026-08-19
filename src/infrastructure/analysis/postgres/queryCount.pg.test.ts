@@ -101,6 +101,7 @@ const evidenceSet = (items: number) =>
           subject: `X${index}`,
           kind: 'yield',
           observedAt: AT,
+          referencePeriod: '2026-07-28',
           sourceId: 'treasury',
         },
         // A complete yield projection. It was `{ value: index }` -- the quote

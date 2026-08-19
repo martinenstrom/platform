@@ -102,6 +102,8 @@ export function evidenceSetsFor(revisionId: string): readonly EvidenceSet[] {
               subject: `US${n}0Y`,
               kind: 'yield',
               observedAt: '2026-07-28T08:00:00.000Z',
+              /* The payload's own observation date, as `yieldRef` supplies it. */
+              referencePeriod: '2026-07-28',
               sourceId: 'treasury',
             },
             /*

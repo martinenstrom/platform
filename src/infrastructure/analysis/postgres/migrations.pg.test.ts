@@ -82,6 +82,10 @@ describe('a clean database reaches the expected schema', () => {
       '0027',
       '0028',
       '0029',
+      '0030',
+      '0031',
+      '0032',
+      '0033',
     ])
   })
 
@@ -124,8 +128,10 @@ describe('a clean database reaches the expected schema', () => {
       'departments',
       'eligibility_policies',
       'employees',
+      'evidence_assemblies',
       'evidence_items',
       'evidence_sets',
+      'observations',
       'organization_seed_versions',
       'organizations',
       'playbook_entries',

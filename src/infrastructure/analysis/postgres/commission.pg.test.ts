@@ -118,6 +118,7 @@ function institutionalEvidence(): EvidenceSet {
             subject: 'de10y',
             kind: 'yield',
             observedAt,
+            referencePeriod: value.observationDate,
             sourceId: 'ecb',
           },
           value,

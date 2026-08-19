@@ -498,8 +498,12 @@ describe('repositories', () => {
     const set = {
       id: 'set-1',
       items: [],
-      coTemporality: { kind: 'empty' as const },
+      coTemporality: {
+        publication: { kind: 'empty' as const },
+        reference: { kind: 'empty' as const },
+      },
       disagreements: [],
+      revisions: [],
       assembledAt: 'T',
       correlationId: 'c',
     }

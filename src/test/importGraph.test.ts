@@ -914,6 +914,7 @@ describe('Phase C1A — the command foundation', () => {
     expect(handlers?.sort()).toEqual([
       'acceptContribution.ts',
       'aggregateManagerConclusion.ts',
+      'assembleEvidenceSet.ts',
       'definition.ts',
       'envelope.ts',
       'eventIdentity.ts',

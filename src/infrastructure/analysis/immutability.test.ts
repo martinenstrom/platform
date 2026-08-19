@@ -167,6 +167,7 @@ const evidenceSet = (): EvidenceSet =>
             subject: 'US10Y',
             kind: 'yield',
             observedAt: NOW,
+            referencePeriod: '2026-07-28',
             sourceId: 'treasury',
           },
           {

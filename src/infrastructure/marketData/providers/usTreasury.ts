@@ -213,6 +213,78 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
       return symbols.map((symbol) => toYield(symbol, observations, ctx))
     },
 
+    /**
+     * Every observation the Treasury published in a range.
+     *
+     * The same payload `fetchYields` reads, without the collapse to `.at(-1)`.
+     * That collapse is right for a quote tile and wrong for a series: the month
+     * page holds ~22 business days of the full curve, and taking the last one
+     * discards the history the firm is trying to acquire.
+     *
+     * Paged by calendar month because that is how the Treasury paginates. A
+     * range is walked month by month rather than requested wholesale, and a
+     * month the source has no page for contributes nothing rather than failing
+     * the range — an incomplete history is a fact about the source, not an
+     * error in the request.
+     *
+     * `changeBasisPoints` is deliberately left null on every point. `buildYield`
+     * derives it from a `previousYieldPercent` the caller supplies, and the
+     * honest previous value for a historical point is the prior PUBLICATION for
+     * that maturity — which the series query can compute across records and a
+     * per-point ingest cannot see. Deriving it from whatever happened to be
+     * adjacent in one page would report a change across a page boundary that no
+     * publication ever showed.
+     */
+    async fetchYieldHistory(symbols, range, ctx): Promise<GovernmentYield[]> {
+      if (symbols.length === 0) return []
+
+      const observations: TreasuryObservation[] = []
+      const from = new Date(`${range.from}T00:00:00.000Z`)
+      const to = new Date(`${range.to}T00:00:00.000Z`)
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw new HttpError(
+          'not-found',
+          `US Treasury: invalid range ${range.from}..${range.to}`,
+        )
+      }
+
+      let cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1))
+      while (cursor.getTime() <= to.getTime()) {
+        const url = `${BASE_URL}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${monthParam(cursor)}`
+        observations.push(...parseTreasuryXml(await http.getText(url, ctx.signal)))
+        cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
+      }
+
+      const inRange = observations
+        .filter((entry) => entry.date >= range.from && entry.date <= range.to)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
+      const out: GovernmentYield[] = []
+      for (const entry of inRange) {
+        for (const symbol of symbols) {
+          const { tag, maturity } = seriesFor(symbol)
+          const percent = entry.rates[tag]
+          // Absent means the Treasury published no value for that maturity that
+          // day. Omitted, never zero and never carried forward.
+          if (percent === undefined) continue
+          out.push(
+            buildYield({
+              symbol,
+              countryCode: 'US',
+              currency: USD,
+              maturity,
+              seriesId: tag,
+              methodology: 'par-yield',
+              observationDate: entry.date,
+              yieldPercent: percent,
+              provenance: provenanceFor(entry.date, ctx),
+            }),
+          )
+        }
+      }
+      return out
+    },
+
     async fetchYieldCurve(countryCode, ctx): Promise<YieldCurve> {
       if (countryCode !== 'US') {
         throw new HttpError(

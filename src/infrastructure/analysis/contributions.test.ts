@@ -63,6 +63,7 @@ function item(subject: string, value: string, quality: Quality): EvidenceItem {
         subject,
         kind: 'yield',
         observedAt: '2026-07-28T00:00:00.000Z',
+        referencePeriod: '2026-07-28',
         sourceId: quality === 'fixture' ? 'fixture' : 'ecb',
       },
       /*

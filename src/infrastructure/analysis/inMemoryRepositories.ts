@@ -52,6 +52,9 @@ import {
   type CioSubmission,
   type ComplianceReview,
   type DevilsAdvocateReview,
+  sameAssemblyAct,
+  type DurableObservation,
+  type EvidenceAssembly,
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
@@ -83,6 +86,8 @@ import {
   type ProducedClaimRepository,
   type EventRepository,
   type EvidenceRepository,
+  type EvidenceAssemblyRepository,
+  type ObservationRepository,
   type PlaybookRepository,
   type RequirementRepository,
   type ReviewRepository,
@@ -137,6 +142,10 @@ interface Store {
   risk: RiskReview[]
   events: TransitionEvent[]
   evidence: Map<string, EvidenceSet>
+  /** Keyed `${observationId}|${contentHash}`: a revision is a second entry. */
+  observations: Map<string, DurableObservation>
+  /** Keyed on the act, not on the set. See `domain/analysis/evidenceAssembly`. */
+  assemblies: Map<string, EvidenceAssembly>
   results: Map<string, StoredResult>
   commands: Map<string, { intent: CommandIntent; outcomes: CommandOutcome[] }>
   playbooks: Map<string, CasePlaybook>
@@ -173,6 +182,8 @@ function emptyStore(): Store {
     risk: [],
     events: [],
     evidence: new Map(),
+    observations: new Map(),
+    assemblies: new Map(),
     results: new Map(),
     commands: new Map(),
     playbooks: new Map(),
@@ -213,6 +224,8 @@ function snapshot(store: Store): Store {
     risk: [...store.risk],
     events: [...store.events],
     evidence: new Map(store.evidence),
+    observations: new Map(store.observations),
+    assemblies: new Map(store.assemblies),
     results: new Map(store.results),
     commands: new Map(store.commands),
     playbooks: new Map(store.playbooks),
@@ -885,6 +898,164 @@ function evidenceRepository(store: Store, scope: Scope): EvidenceRepository {
   }
 }
 
+/**
+ * Durable observations, in memory.
+ *
+ * Keyed on `(observationId, contentHash)` exactly as the SQL primary key is, so
+ * a revision is a second entry rather than a replacement here too. Nothing in
+ * this repository can overwrite a stored version — the map key includes the
+ * content, so a differing value simply cannot land on an existing entry.
+ */
+function observationRepository(store: Store, scope: Scope): ObservationRepository {
+  const keyOf = (observationId: string, contentHash: string) =>
+    `${observationId}|${contentHash}`
+
+  /** Ascending by reference period, then content hash. Mirrors the SQL. */
+  const byPeriod = (a: DurableObservation, b: DurableObservation) =>
+    byString(a.ref.referencePeriod ?? '', b.ref.referencePeriod ?? '') ||
+    byString(a.ref.contentHash, b.ref.contentHash)
+
+  /**
+   * Whether `candidate` is the version to report for its period.
+   *
+   * Later knowledge wins. The content hash is the tie-break rather than a
+   * preference: two versions recorded in the same instant have no natural
+   * order, and an arbitrary one would let the two adapters disagree about a
+   * series — which is exactly what the parity suite exists to catch.
+   */
+  const supersedes = (candidate: DurableObservation, held: DurableObservation) =>
+    candidate.recordedAt > held.recordedAt ||
+    (candidate.recordedAt === held.recordedAt &&
+      candidate.ref.contentHash > held.ref.contentHash)
+
+  return {
+    async record(observations) {
+      guard(scope, 'observations.record')
+      const recorded: DurableObservation[] = []
+      for (const observation of observations) {
+        const key = keyOf(observation.ref.id, observation.ref.contentHash)
+        /*
+         * Already held. The idempotency the ingestion act depends on: a re-poll
+         * that finds nothing revised records nothing and reports nothing new,
+         * which is a normal outcome rather than a failure.
+         */
+        if (store.observations.has(key)) continue
+        seal(observation, 'observation')
+        store.observations.set(key, observation)
+        recorded.push(observation)
+      }
+      return recorded
+    },
+
+    async get(observationId, contentHash) {
+      guard(scope, 'observations.get')
+      return store.observations.get(keyOf(observationId, contentHash)) ?? null
+    },
+
+    async versions(observationId) {
+      guard(scope, 'observations.versions')
+      return [...store.observations.values()]
+        .filter((observation) => observation.ref.id === observationId)
+        .sort(
+          (a, b) =>
+            byString(a.recordedAt, b.recordedAt) ||
+            byString(a.ref.contentHash, b.ref.contentHash),
+        )
+    },
+
+    async series(query) {
+      guard(scope, 'observations.series')
+      const matching = [...store.observations.values()].filter((observation) => {
+        const ref = observation.ref
+        if (ref.subject !== query.subject) return false
+        if (ref.kind !== query.kind) return false
+        if (ref.sourceId !== query.sourceId) return false
+        if (query.seriesId !== undefined && ref.seriesId !== query.seriesId) return false
+        if (query.methodology !== undefined && ref.methodology !== query.methodology) {
+          return false
+        }
+        const period = ref.referencePeriod
+        /*
+         * A v1 record describes no period, so it cannot be placed on a series
+         * axis at all. Excluded rather than guessed at — see gate §0.1.
+         */
+        if (period === undefined) return false
+        if (period < query.from || period > query.to) return false
+        /* Learned after the moment being asked about: not yet known. */
+        if (query.knownAt !== undefined && observation.recordedAt > query.knownAt) {
+          return false
+        }
+        return true
+      })
+
+      /*
+       * One record per reference period: the latest version the firm held at
+       * `knownAt`, or the latest it holds now. Later knowledge wins, with the
+       * content hash as the total tie-break so two versions recorded in the
+       * same instant still order identically in both adapters.
+       */
+      const latest = new Map<string, DurableObservation>()
+      for (const observation of matching) {
+        const period = observation.ref.referencePeriod!
+        const held = latest.get(period)
+        if (!held || supersedes(observation, held)) latest.set(period, observation)
+      }
+      return [...latest.values()].sort(byPeriod)
+    },
+  }
+}
+
+/**
+ * The assembly acts, in memory.
+ *
+ * Keyed on `assemblyId` exactly as the SQL primary key is. Write-once with a
+ * content comparison, because two different acts under one command id is a real
+ * disagreement rather than a retry — the same rule `results.put` follows.
+ */
+function assemblyRepository(store: Store, scope: Scope): EvidenceAssemblyRepository {
+  /** Newest first, `assemblyId` descending as the total tie-break. */
+  const newestFirst = (a: EvidenceAssembly, b: EvidenceAssembly) =>
+    byString(b.assembledAt, a.assembledAt) || byString(b.assemblyId, a.assemblyId)
+
+  return {
+    async record(assembly, _provenance) {
+      guard(scope, 'assemblies.record')
+      const existing = store.assemblies.get(assembly.assemblyId)
+      if (existing) {
+        if (!sameAssemblyAct(existing, assembly)) {
+          throw new ConflictingRecordError(
+            'Evidence assembly',
+            assembly.assemblyId,
+            'assemblies.record',
+            assembly.correlationId,
+          )
+        }
+        return existing
+      }
+      seal(assembly, 'assemblies')
+      store.assemblies.set(assembly.assemblyId, assembly)
+      return assembly
+    },
+
+    async get(assemblyId) {
+      guard(scope, 'assemblies.get')
+      return store.assemblies.get(assemblyId) ?? null
+    },
+
+    async forSet(evidenceSetId) {
+      guard(scope, 'assemblies.forSet')
+      return [...store.assemblies.values()]
+        .filter((assembly) => assembly.evidenceSetId === evidenceSetId)
+        .sort(newestFirst)
+    },
+
+    async list(limit) {
+      guard(scope, 'assemblies.list')
+      return [...store.assemblies.values()].sort(newestFirst).slice(0, limit)
+    },
+  }
+}
+
 function resultStore(store: Store, scope: Scope): ResultStore {
   return {
     async get(key) {
@@ -1100,6 +1271,8 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     reviews: reviewRepository(store, scope),
     events: eventRepository(store, scope),
     evidence: evidenceRepository(store, scope),
+    observations: observationRepository(store, scope),
+    assemblies: assemblyRepository(store, scope),
     results: resultStore(store, scope),
     commands: commandLog(store, scope),
     playbooks: playbookRepository(store, scope),

@@ -37,10 +37,13 @@ import type {
   CioSubmission,
   ComplianceReview,
   DevilsAdvocateReview,
+  DurableObservation,
+  EvidenceAssembly,
   EvidenceSet,
   InvestmentCase,
   InvestmentThesis,
   ManagerAggregation,
+  ObservationSeriesQuery,
   RequirementResolution,
   RiskReview,
   TransitionEvent,
@@ -524,6 +527,102 @@ export interface EvidenceRepository {
 }
 
 /**
+ * The assembly acts — who declared a body of evidence fit for analysis, by what
+ * rule, and against what the institution knew at the time.
+ *
+ * Append-only, keyed on the act rather than on the set. A set is
+ * content-addressed on its membership, so two selections that happen to select
+ * the same observations are one artifact reached by two acts; keying this on
+ * the set id would force one act to overwrite the other. See
+ * `domain/analysis/evidenceAssembly.ts`.
+ */
+export interface EvidenceAssemblyRepository {
+  /**
+   * Records one assembly. **Idempotent on `assemblyId`**, which is derived from
+   * the command id — so a retry addresses the same record rather than filing a
+   * second act nobody performed.
+   */
+  record(
+    assembly: EvidenceAssembly,
+    provenance: StorageProvenance,
+  ): Promise<EvidenceAssembly>
+
+  /** One act. `null` when the firm never recorded it. */
+  get(assemblyId: string): Promise<EvidenceAssembly | null>
+
+  /**
+   * Every act that produced this set, most recent first.
+   *
+   * Plural by construction and empty for a pre-C3 set — which is the honest
+   * answer for a set nobody assembled through this act. Nothing manufactures
+   * one.
+   */
+  forSet(evidenceSetId: string): Promise<EvidenceAssembly[]>
+
+  /** The most recent acts, newest first: `assembledAt` then `assemblyId`. */
+  list(limit: number): Promise<EvidenceAssembly[]>
+}
+
+/**
+ * Durable observations — the facts the institution has acquired.
+ *
+ * Independent of every evidence set, deliberately. Acquiring an observation and
+ * declaring a body of evidence fit for analysis are two different institutional
+ * acts (`phase-c3-evidence-gate.md` §0.3), and this port serves only the first.
+ * Nothing here assembles, selects or judges.
+ *
+ * **Append-only, keyed on `(id, contentHash)`.** A revision is a second record
+ * against the same observation id, not a replacement — so both versions stay
+ * readable and the firm can still answer what it believed before the revision
+ * arrived.
+ */
+export interface ObservationRepository {
+  /**
+   * Records observations the firm has acquired, and reports what was new.
+   *
+   * **Idempotent on `(ref.id, ref.contentHash)`, which IS the idempotency key.**
+   * Re-ingesting a figure the source has not revised is a no-op: the natural key
+   * plus the content already identify the version exactly, so a separate token
+   * would be a second answer to a question the identity already settles.
+   *
+   * A record whose content differs is a REVISION and is stored beside the
+   * original — never over it. Nothing in this port can overwrite a published
+   * value, because a store that could would be unable to say what the firm knew
+   * last month.
+   *
+   * Returns the observations that were newly recorded. An empty result means
+   * every one was already held, which is the normal outcome of a re-poll and
+   * must not be reported as a failure.
+   */
+  record(
+    observations: readonly DurableObservation[],
+    provenance: StorageProvenance,
+  ): Promise<readonly DurableObservation[]>
+
+  /** One exact version. `null` when the firm never held it. */
+  get(observationId: string, contentHash: string): Promise<DurableObservation | null>
+
+  /**
+   * Every version of one observation, oldest first by `recordedAt` then
+   * `contentHash`. The revision history of a single fact.
+   */
+  versions(observationId: string): Promise<DurableObservation[]>
+
+  /**
+   * A series: individually identifiable observations sharing a natural-key
+   * prefix, ordered by `referencePeriod` ascending then `contentHash`.
+   *
+   * **One record per reference period**, resolved by `knownAt` — the latest
+   * version the firm held at that instant, or the latest it holds now. A period
+   * the firm learned about only after `knownAt` is absent rather than
+   * back-dated.
+   *
+   * Never returns a stored aggregate. See `ObservationSeriesQuery`.
+   */
+  series(query: ObservationSeriesQuery): Promise<DurableObservation[]>
+}
+
+/**
  * Registered playbook versions.
  *
  * Append-only by design and by grant. A version a case has pinned can never be
@@ -760,6 +859,8 @@ export interface AnalysisRepositories {
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
+  assemblies: EvidenceAssemblyRepository
+  observations: ObservationRepository
   results: ResultStore
   commands: CommandLog
   playbooks: PlaybookRepository
@@ -845,6 +946,8 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   ],
   events: ['append', 'listForCase', 'recent'],
   evidence: ['get', 'list', 'save'],
+  assemblies: ['record', 'get', 'forSet', 'list'],
+  observations: ['record', 'get', 'versions', 'series'],
   results: ['get', 'put'],
   commands: ['find', 'record', 'appendOutcome'],
   playbooks: ['register', 'get'],

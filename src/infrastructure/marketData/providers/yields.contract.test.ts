@@ -71,6 +71,66 @@ describe('US Treasury — par yield curve', () => {
     expect(two!.tenorMonths).toBe(24)
   })
 
+  it('returns every published observation in a range, not just the latest', async () => {
+    /*
+     * The capability a series is made of. `fetchYields` collapses the month
+     * page to one point per symbol, which is right for a tile and discards
+     * exactly the history ingestion exists to acquire.
+     */
+    const history = await createUsTreasuryProvider(TREASURY).fetchYieldHistory!(
+      [US10Y],
+      { from: '2026-07-01', to: '2026-07-31' },
+      ctx(),
+    )
+
+    expect(history.length).toBeGreaterThan(10)
+    const dates = history.map((point) => point.observationDate)
+    expect(dates).toEqual([...dates].sort())
+    expect(new Set(dates).size).toBe(dates.length)
+    expect(history.every((point) => point.maturity === '10Y')).toBe(true)
+    expect(history.every((point) => point.methodology === 'par-yield')).toBe(true)
+  })
+
+  it('bounds history by the SOURCE observation date, not by retrieval time', async () => {
+    const history = await createUsTreasuryProvider(TREASURY).fetchYieldHistory!(
+      [US10Y],
+      { from: '2026-07-06', to: '2026-07-08' },
+      ctx(),
+    )
+    expect(history.map((point) => point.observationDate)).toEqual([
+      '2026-07-06',
+      '2026-07-07',
+      '2026-07-08',
+    ])
+  })
+
+  it('serves every requested maturity across the whole range', async () => {
+    const history = await createUsTreasuryProvider(TREASURY).fetchYieldHistory!(
+      [US10Y, US2Y],
+      { from: '2026-07-06', to: '2026-07-07' },
+      ctx(),
+    )
+    /* Two maturities × two publication dates, each individually identified. */
+    expect(history).toHaveLength(4)
+    expect(new Set(history.map((point) => point.symbol)).size).toBe(2)
+  })
+
+  it('reports no change on a historical point rather than inventing one', async () => {
+    /*
+     * `changeBasisPoints` is null on every historical point, deliberately. The
+     * honest prior value is the previous PUBLICATION for that maturity, which
+     * a per-point ingest cannot see across a page boundary — and deriving one
+     * from whatever happened to be adjacent would report a move no publication
+     * ever showed.
+     */
+    const history = await createUsTreasuryProvider(TREASURY).fetchYieldHistory!(
+      [US10Y],
+      { from: '2026-07-01', to: '2026-07-31' },
+      ctx(),
+    )
+    expect(history.every((point) => point.changeBasisPoints === null)).toBe(true)
+  })
+
   it('records par-yield methodology and the Treasury series id', async () => {
     const [ten] = await createUsTreasuryProvider(TREASURY).fetchYields([US10Y], ctx())
     // Not a constant-maturity series, not a fitted zero rate.

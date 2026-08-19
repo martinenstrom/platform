@@ -43,11 +43,29 @@ export const EVIDENCE_SQL = catalog({
          ORDER BY assembled_at DESC, id COLLATE "C" DESC
          LIMIT $1`,
 
-  items: `SELECT evidence_set_id, observation_id, subject_kind, subject, kind,
-                 ${ts('observed_at')}, source_id, series_id, methodology,
-                 content_hash, value, provenance
-          FROM analysis.evidence_items WHERE evidence_set_id = $1
-          ORDER BY observation_id COLLATE "C"`,
+  /*
+   * A linked row carries no payload; the observation does. COALESCE reads
+   * whichever shape the row is (migration 0032), so hydration branches in SQL
+   * rather than leaving both to be reconciled in TypeScript.
+   *
+   * A LEFT JOIN, not an inner one: a linked row whose observation is missing
+   * must reach the mapper as a NULL payload and be refused there by name,
+   * rather than vanishing from the set and turning a broken link into a
+   * silently smaller body of evidence.
+   */
+  items: `SELECT i.evidence_set_id, i.observation_id, i.subject_kind, i.subject,
+                 i.kind, ${ts('i.observed_at')}, i.source_id, i.series_id,
+                 i.methodology, i.key_generation, i.reference_period,
+                 i.content_hash, i.links_observation,
+                 COALESCE(i.value, o.value) AS value,
+                 COALESCE(i.provenance, o.provenance) AS provenance
+          FROM analysis.evidence_items i
+          LEFT JOIN analysis.observations o
+            ON i.links_observation
+           AND o.observation_id = i.observation_id
+           AND o.content_hash = i.content_hash
+          WHERE i.evidence_set_id = $1
+          ORDER BY i.observation_id COLLATE "C"`,
 
   /*
    * The id IS the hash of the composition, so a conflict means this set is
@@ -61,15 +79,31 @@ export const EVIDENCE_SQL = catalog({
   /** One statement for the whole set, rather than one round trip per item. */
   saveItems: `INSERT INTO analysis.evidence_items
                 (evidence_set_id, observation_id, subject_kind, subject, kind,
-                 observed_at, source_id, series_id, methodology, content_hash,
-                 value, provenance)
-              SELECT $1, o, sk, s, k, ob::timestamptz, src, ser, m, h,
-                     v::jsonb, p::jsonb
+                 observed_at, source_id, series_id, methodology,
+                 key_generation, reference_period, content_hash,
+                 links_observation, value, provenance)
+              SELECT $1, o, sk, s, k, ob::timestamptz, src, ser, m,
+                     kg::smallint, rp, h, lnk::boolean,
+                     CASE WHEN lnk::boolean THEN NULL ELSE v::jsonb END,
+                     CASE WHEN lnk::boolean THEN NULL ELSE p::jsonb END
               FROM unnest($2::text[], $3::text[], $4::text[], $5::text[],
                           $6::text[], $7::text[], $8::text[], $9::text[],
-                          $10::text[], $11::text[], $12::text[])
-                   AS batch(o, sk, s, k, ob, src, ser, m, h, v, p)
+                          $10::text[], $11::text[], $12::text[], $13::text[],
+                          $14::text[], $15::text[])
+                   AS batch(o, sk, s, k, ob, src, ser, m, kg, rp, h, v, p, lnk)
               ON CONFLICT DO NOTHING`,
+  /**
+   * Which of a set's observations the firm actually holds in the store.
+   *
+   * One statement for the whole set rather than one per item — `queryCount`
+   * asserts that saving a set costs a fixed number of statements however many
+   * observations it carries, and a per-item existence check would quietly make
+   * that false.
+   */
+  heldObservations: `SELECT observation_id, content_hash
+                     FROM analysis.observations
+                     WHERE (observation_id, content_hash)
+                           IN (SELECT * FROM unnest($1::text[], $2::text[]))`,
 })
 
 export function createEvidenceRepository(
@@ -147,6 +181,30 @@ export function createEvidenceRepository(
 
         if (set.items.length > 0) {
           const items = [...set.items]
+          /*
+           * An item LINKS when the firm actually holds the observation, and
+           * carries its own payload when it does not. Determined from the store
+           * rather than declared by the caller: whether the institution holds a
+           * fact is a property of the institution, and a caller asserting it
+           * would be asserting something it cannot know.
+           *
+           * A set is written once and is immutable, so this is decided once and
+           * never drifts. See migration 0032 and gate §0.3b.
+           */
+          const held = await run<{ observation_id: string; content_hash: string }>(
+            client,
+            context,
+            'evidence.save',
+            EVIDENCE_SQL.heldObservations,
+            [items.map((item) => item.ref.id), items.map((item) => item.ref.contentHash)],
+          )
+          const linked = new Set(
+            held.map((row) => `${row.observation_id}|${row.content_hash}`),
+          )
+          const linksObservation = items.map((item) =>
+            linked.has(`${item.ref.id}|${item.ref.contentHash}`),
+          )
+
           await run(client, context, 'evidence.save', EVIDENCE_SQL.saveItems, [
             set.id,
             items.map((item) => item.ref.id),
@@ -157,9 +215,12 @@ export function createEvidenceRepository(
             items.map((item) => item.ref.sourceId),
             items.map((item) => item.ref.seriesId ?? null),
             items.map((item) => item.ref.methodology ?? null),
+            items.map((item) => String(item.ref.keyGeneration)),
+            items.map((item) => item.ref.referencePeriod ?? null),
             items.map((item) => item.ref.contentHash),
             items.map((item) => JSON.stringify(item.value ?? null)),
             items.map((item) => JSON.stringify(item.provenance ?? {})),
+            linksObservation.map((flag) => String(flag)),
           ])
         }
         return (await readOne(client, set.id, 'evidence.save'))!

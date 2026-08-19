@@ -23,6 +23,7 @@ import {
   buildAssignment,
   buildClaim,
   buildEvidenceSet,
+  buildObservation,
   buildRunRecord,
   NON_CONSUMING_BUDGET,
   buildTransitionEvent,
@@ -118,6 +119,7 @@ const evidenceSet = (value = '4.1') =>
             subject: 'US10Y',
             kind: 'yield',
             observedAt: AT,
+            referencePeriod: '2026-07-28',
             sourceId: 'treasury',
           },
           {
@@ -294,6 +296,122 @@ describe('timestamps survive the round trip exactly', () => {
 })
 
 /* ------------------------------------------------------------- integrity */
+
+describe('evidence links to observations rather than copying them', () => {
+  /** The same yield, as an observation and as an evidence item over it. */
+  const linkable = () => {
+    const value = {
+      yieldPercent: '4.10',
+      changeBasisPoints: null,
+      observationDate: '2026-08-14',
+    }
+    const ref = observationRef(
+      {
+        subjectKind: 'instrument',
+        subject: 'rate:us10y',
+        kind: 'yield',
+        observedAt: '2026-08-14T20:00:00.000Z',
+        referencePeriod: '2026-08-14',
+        sourceId: 'treasury',
+        seriesId: 'BC_10YEAR',
+        methodology: 'par-yield',
+      },
+      value,
+    )
+    const provenance = {
+      source: { providerId: 'treasury' },
+      quality: 'official-daily',
+    } as never
+    return {
+      observation: buildObservation({
+        ref,
+        value,
+        provenance,
+        recordedAt: '2026-08-15T06:00:00.000Z',
+        correlationId: 'ingest-1',
+      }),
+      item: { ref, value, provenance },
+    }
+  }
+
+  it('stores no payload on an item whose observation the firm holds', async () => {
+    /*
+     * Gate §0.3b: one institutional truth for what an observation said. The row
+     * carries membership and the link; `analysis.observations` carries the fact.
+     */
+    const { observation, item } = linkable()
+    await repos.observations.record([observation], await repos.provenance())
+    const set = await repos.evidence.save(
+      buildEvidenceSet({ items: [item], assembledAt: AT, correlationId: 'c' }),
+    )
+
+    const rows = await db.owner.query(
+      `SELECT links_observation, value, provenance FROM analysis.evidence_items
+       WHERE evidence_set_id = $1`,
+      [set.id],
+    )
+    expect(rows.rows[0].links_observation).toBe(true)
+    expect(rows.rows[0].value).toBeNull()
+    expect(rows.rows[0].provenance).toBeNull()
+  })
+
+  it('reads the linked payload back through the observation store', async () => {
+    const { observation, item } = linkable()
+    await repos.observations.record([observation], await repos.provenance())
+    const saved = await repos.evidence.save(
+      buildEvidenceSet({ items: [item], assembledAt: AT, correlationId: 'c' }),
+    )
+
+    const read = await repos.evidence.get(saved.id)
+    expect(read?.items[0]!.value).toEqual({
+      yieldPercent: '4.10',
+      changeBasisPoints: null,
+      observationDate: '2026-08-14',
+    })
+    expect(read?.items[0]!.ref.referencePeriod).toBe('2026-08-14')
+  })
+
+  it('keeps its own payload when the firm holds no such observation', async () => {
+    /*
+     * The closed legacy shape. Nothing is fabricated for a set assembled from
+     * observations the store never held — §0.3b forbids inventing the linkage,
+     * and this is what "forward only" looks like at the row level.
+     */
+    const { item } = linkable()
+    const set = await repos.evidence.save(
+      buildEvidenceSet({ items: [item], assembledAt: AT, correlationId: 'c' }),
+    )
+
+    const rows = await db.owner.query(
+      `SELECT links_observation, value FROM analysis.evidence_items
+       WHERE evidence_set_id = $1`,
+      [set.id],
+    )
+    expect(rows.rows[0].links_observation).toBe(false)
+    expect(rows.rows[0].value).not.toBeNull()
+    expect((await repos.evidence.get(set.id))?.items[0]!.value).toEqual(item.value)
+  })
+
+  it('refuses a linked item whose observation has gone missing', async () => {
+    /*
+     * The planted violation. A set that quietly returned fewer facts than it
+     * was assembled from would let a claim's basis shrink with nothing saying
+     * so — so a broken link is refused by name rather than hydrated as an item
+     * with no payload.
+     */
+    const { observation, item } = linkable()
+    await repos.observations.record([observation], await repos.provenance())
+    const set = await repos.evidence.save(
+      buildEvidenceSet({ items: [item], assembledAt: AT, correlationId: 'c' }),
+    )
+
+    await db.owner.query(`DELETE FROM analysis.observations WHERE observation_id = $1`, [
+      observation.ref.id,
+    ])
+
+    await expect(repos.evidence.get(set.id)).rejects.toBeInstanceOf(MalformedRowError)
+  })
+})
 
 describe('what the adapter checks on the way out', () => {
   it('refuses an evidence set whose composition does not match its id', async () => {
@@ -719,7 +837,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0029')
+    expect(provenance.schemaVersion).toBe('0033')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 

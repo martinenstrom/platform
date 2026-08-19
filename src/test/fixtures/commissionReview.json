@@ -7,7 +7,7 @@
     "employeeId": "macro-head",
     "agentContractVersion": "1",
     "outputSchemaVersion": "1",
-    "evidenceSetId": "82ca3d312fd92407fa9094529bfb6497",
+    "evidenceSetId": "344e93445ba6bd8b6b8e734fbf0c079b",
     "state": "awaiting-acceptance",
     "startedAt": "2026-08-01T09:00:00.000Z",
     "events": [
@@ -123,16 +123,18 @@
     "priority": 100
   },
   "evidenceSet": {
-    "id": "82ca3d312fd92407fa9094529bfb6497",
+    "id": "344e93445ba6bd8b6b8e734fbf0c079b",
     "items": [
       {
         "ref": {
-          "id": "e6e408ca77b237f17db2e56139b6db41",
+          "id": "0baa25e8eab29d3d1503557e22ae2c6d",
           "subjectKind": "series",
           "subject": "de10y",
           "kind": "yield",
           "observedAt": "2026-07-31T00:00:00.000Z",
           "sourceId": "ecb",
+          "keyGeneration": 2,
+          "referencePeriod": "2026-07-31",
           "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
         },
         "value": {
@@ -158,10 +160,17 @@
       }
     ],
     "coTemporality": {
-      "kind": "co-temporal",
-      "observedAt": "2026-07-31T00:00:00.000Z"
+      "publication": {
+        "kind": "aligned",
+        "at": "2026-07-31T00:00:00.000Z"
+      },
+      "reference": {
+        "kind": "aligned",
+        "at": "2026-07-31"
+      }
     },
     "disagreements": [],
+    "revisions": [],
     "assembledAt": "2026-08-01T09:00:00.000Z",
     "correlationId": "commission"
   },
@@ -181,9 +190,9 @@
         },
         "evidenceRefs": [
           {
-            "setId": "82ca3d312fd92407fa9094529bfb6497",
+            "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
             "contentHash": "c080f53d88ff52e96ad741443b3a1a39",
-            "observationId": "e6e408ca77b237f17db2e56139b6db41"
+            "observationId": "0baa25e8eab29d3d1503557e22ae2c6d"
           }
         ],
         "temporalScope": {
@@ -196,12 +205,14 @@
           "status": "resolved",
           "item": {
             "ref": {
-              "id": "e6e408ca77b237f17db2e56139b6db41",
+              "id": "0baa25e8eab29d3d1503557e22ae2c6d",
               "subjectKind": "series",
               "subject": "de10y",
               "kind": "yield",
               "observedAt": "2026-07-31T00:00:00.000Z",
               "sourceId": "ecb",
+              "keyGeneration": 2,
+              "referencePeriod": "2026-07-31",
               "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
             },
             "value": {
@@ -225,7 +236,7 @@
               "asOfPrecision": "second"
             }
           },
-          "observationId": "e6e408ca77b237f17db2e56139b6db41"
+          "observationId": "0baa25e8eab29d3d1503557e22ae2c6d"
         }
       ],
       "contradicting": []

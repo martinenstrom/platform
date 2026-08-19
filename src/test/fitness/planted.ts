@@ -1203,6 +1203,55 @@ export const PLANTED: readonly RuleFixtures[] = [
     ],
   },
 
+  /* --------------------- evidence-assembled-only-by-the-governed-act */
+  {
+    ruleId: 'evidence-assembled-only-by-the-governed-act',
+    violations: [
+      {
+        path: 'infrastructure/analysis/smokeFns.ts',
+        what: 'a route manufacturing an evidence set with no actor and no mandate',
+        source: `
+          export async function proof(repositories: Repos, evidence: Set) {
+            await repositories.evidence.save(evidence)
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/commissionAnalysis.ts',
+        what: 'a read model quietly writing one on the way past',
+        source: `
+          export async function commission(tx: Tx, set: Set) {
+            const saved = await tx.evidence.save(set)
+            return saved.id
+          }
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/analysis/commissionAnalysis.ts',
+        what: 'reading a set, which every consumer must be able to do',
+        source: `
+          export async function load(repositories: Repos, id: string) {
+            const set = await repositories.evidence.get(id)
+            const all = await repositories.evidence.list(25)
+            return { set, all }
+          }
+        `,
+      },
+      {
+        path: 'application/analysis/resultStore.ts',
+        what: 'saving something that is not an evidence set',
+        source: `
+          export async function keep(repositories: Repos, result: Stored) {
+            await repositories.results.put(result)
+            await repositories.claims.save(result.claim)
+          }
+        `,
+      },
+    ],
+  },
+
   /* ------------------------------- challenge-threshold-only-in-the-gate */
   {
     ruleId: 'challenge-threshold-only-in-the-gate',
