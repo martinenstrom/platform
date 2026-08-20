@@ -10,7 +10,7 @@
  * sources" shape the execution budget already resolves by, and for the same
  * reason: a source that can only lower cannot be defeated by ordering.
  *
- * ## Only two caps are derivable today, and that is stated rather than hidden
+ * ## Three caps are derivable, and the rest is stated rather than hidden
  *
  * `composeConfidence` defines seven rules. Their inputs do not all exist:
  *
@@ -18,43 +18,78 @@
  * | --- | --- |
  * | `evidenceCount === 0` | **yes** — count the citations |
  * | `anyFixtureBacked` | **yes** — `isFixtureBacked`, already used by validation |
+ * | `anyStale` | **yes, for sovereign yields only** — `judgeStaleness`, C3 Stage C |
  * | `anyMissingProvenance` | not reachable — `EvidenceItem.provenance` is required, so a stored item always has it |
  * | `weakestEvidence` | **no** — no trust-to-level mapping exists in production |
- * | `anyStale` | **no** — the firm has no staleness policy |
  * | `conflictingEvidence` | **no** — no definition of conflict |
  * | `methodologyMismatch` | **no** — no definition of comparability |
  *
- * The four missing ones are recorded as **TD-75**. They are deliberately not
- * invented here, and the model is deliberately not asked to self-report them:
- * a signal the model supplied and the firm then treated as firm-derived would
- * be the model grading its own work through a longer route.
+ * `anyStale` moved from the second block to the first when the firm stated a
+ * staleness policy for sovereign yields, and for **no other family**: outside
+ * that scope `judgeStaleness` reports itself unable to judge, which passes the
+ * signal as `false` — the value that cannot lower anything — rather than as a
+ * finding. The remaining three are recorded as **TD-75**. They are deliberately
+ * not invented here, and the model is deliberately not asked to self-report
+ * them: a signal the model supplied and the firm then treated as firm-derived
+ * would be the model grading its own work through a longer route.
+ *
+ * ## Why a cap the domain composed is not always returned as the domain wrote it
+ *
+ * Two of the derivable caps — `no-evidence` and `fixture-evidence` — make
+ * `composeConfidence` return **early**, with a basis composed entirely of
+ * things the firm derived. Those are returned untouched.
+ *
+ * `stale-evidence` is applied in the composer's later section, after it has
+ * already written `bounded by the weakest evidence (…)` into the basis from the
+ * neutral value this module passed it. That sentence is not true: the firm
+ * never mapped evidence trust to a level, which is exactly why the neutral
+ * value was passed. So for a late cap the LEVEL and the CAP come from the
+ * domain — the rule stays in one place — and the basis is written here, from
+ * the domain's own words for the cap that bit plus the facts this module
+ * actually derived. What is never done is letting an un-earned sentence stand
+ * in the record because it arrived attached to an earned one.
  *
  * ## What an uncapped result may and may not say
  *
  * When no derivable cap applies, the result carries the model's proposal **and
  * says so**. It must not read as though the firm independently confirmed the
- * level, because it did not — it confirmed only that the two caps it can
- * currently compute do not bite.
+ * level, because it did not — it confirmed only that the caps it can currently
+ * compute do not bite.
  *
  * The long-term direction is that institutional confidence becomes
- * increasingly firm-derived as those signals acquire policy definitions. C2-1
- * does not solve that, and does not pretend to.
+ * increasingly firm-derived as those signals acquire policy definitions. One
+ * of the four now has one; three do not, and this does not pretend otherwise.
  */
 
 import {
   composeConfidence,
+  STALE_EVIDENCE_BASIS,
   type ClaimConfidence,
   type ClaimType,
+  type ConfidenceCap,
   type ConfidenceLevel,
   type EvidenceItem,
 } from '~/domain/analysis'
 import { isFixtureBacked } from './contributionValidation'
+import { judgeStaleness, stalenessBasis } from './evidenceStaleness'
+
+/**
+ * Caps whose basis the domain writes in full, because it returns before ever
+ * describing a signal this module passed as neutral.
+ */
+const EARLY_CAPS: readonly ConfidenceCap[] = ['no-evidence', 'fixture-evidence']
+
+/**
+ * Caps the domain composes alongside the neutral signals, so their basis has
+ * to be restated here. See the module header.
+ */
+const LATE_CAPS: readonly ConfidenceCap[] = ['stale-evidence']
 
 /**
  * The caps whose inputs genuinely exist. Anything else `composeConfidence`
  * can produce is not derivable yet and must never be claimed.
  */
-const DERIVABLE_CAPS = ['no-evidence', 'fixture-evidence'] as const
+const DERIVABLE_CAPS: readonly ConfidenceCap[] = [...EARLY_CAPS, ...LATE_CAPS]
 
 /**
  * Resolves one claim's confidence from the model's proposal and the evidence
@@ -63,16 +98,23 @@ const DERIVABLE_CAPS = ['no-evidence', 'fixture-evidence'] as const
  * `citedItems` are the resolved items behind the claim's citations, supporting
  * and contradicting alike — a claim resting on invented evidence is capped
  * whichever direction it cited it in.
+ *
+ * `assembledAt` is the instant the firm declared the evidence fit, and it is
+ * what staleness is measured against. Passed in rather than read from a clock
+ * so the same stored claim resolves to the same confidence forever.
  */
 export function resolveModelConfidence(
   proposed: ConfidenceLevel,
   claimType: ClaimType,
   citedItems: readonly EvidenceItem[],
+  assembledAt: string,
 ): ClaimConfidence {
+  const staleness = judgeStaleness(citedItems, assembledAt)
+
   /*
-   * `composeConfidence` is called rather than reimplemented, so the two caps
-   * the firm can derive keep exactly one definition — their level, their
-   * `cappedBy` and their basis wording all come from the domain.
+   * `composeConfidence` is called rather than reimplemented, so the caps the
+   * firm can derive keep exactly one definition — their level, their `cappedBy`
+   * and, where it is earned, their basis wording all come from the domain.
    *
    * The signals it cannot derive are passed as the values that CANNOT lower
    * anything: `false` for each undefined boolean, and the model's own proposal
@@ -87,8 +129,14 @@ export function resolveModelConfidence(
       anyFixtureBacked: citedItems.some(isFixtureBacked),
       // Not reachable: provenance is required on a stored evidence item.
       anyMissingProvenance: false,
-      // No institutional definition exists for any of these. TD-75.
-      anyStale: false,
+      /*
+       * Derived for sovereign yields and nothing else. Outside that scope
+       * `judged` is false and this is `false` — the neutral value — because a
+       * family the firm has stated no policy for has not been found fresh
+       * either.
+       */
+      anyStale: staleness.stale,
+      // No institutional definition exists for either of these. TD-75.
       conflictingEvidence: false,
       methodologyMismatch: false,
     },
@@ -102,11 +150,21 @@ export function resolveModelConfidence(
    * mapped evidence trust to a level. Recording it would be exactly the
    * misrepresentation this module exists to prevent.
    */
-  if (
-    composed.cappedBy &&
-    (DERIVABLE_CAPS as readonly string[]).includes(composed.cappedBy)
-  ) {
-    return composed
+  if (composed.cappedBy && DERIVABLE_CAPS.includes(composed.cappedBy)) {
+    /* The domain wrote the whole basis; nothing here improves on it. */
+    if (EARLY_CAPS.includes(composed.cappedBy)) return composed
+
+    return {
+      // The domain decided how far a stale reading lowers a claim; it still does.
+      level: composed.level,
+      cappedBy: composed.cappedBy,
+      basis: Object.freeze([
+        `proposed by the model (${proposed})`,
+        // The domain's own words for the rule that bit, not a second wording.
+        STALE_EVIDENCE_BASIS,
+        stalenessBasis(staleness),
+      ]),
+    }
   }
 
   return {

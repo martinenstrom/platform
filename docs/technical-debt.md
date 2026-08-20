@@ -1707,7 +1707,7 @@ comes from the harness's dynamic allocation path at all. Do **not** retry the
 test, rerun on failure, or mark it flaky-and-skip — the standing rule in TD-62
 holds here, and it holds more easily because there is nothing left to discover.
 
-## TD-75 · four confidence signals have no production derivation · open
+## TD-75 · three confidence signals have no production derivation · open
 
 **Opened by C2-1**, as a stated boundary of the live-model ruling rather than
 an oversight.
@@ -1723,7 +1723,7 @@ Measured, only two of the seven have the inputs to be derived at all:
 | `anyFixtureBacked` | **derivable** | — |
 | `anyMissingProvenance` | not reachable | `EvidenceItem.provenance` is required, so a stored item always has it |
 | `weakestEvidence` | **missing** | no production mapping from source trust to a `ConfidenceLevel` |
-| `anyStale` | **missing** | the firm has no definition of when an observation is stale |
+| `anyStale` | **derived, for sovereign yields only** | closed for that one family by C3 Stage C; see below |
 | `conflictingEvidence` | **missing** | no definition of when two sources conflict about one subject |
 | `methodologyMismatch` | **missing** | no definition of when two measures are comparable |
 
@@ -1751,10 +1751,41 @@ firm then treated as firm-derived would be the model grading its own work
 through a longer route — the exact inversion the ruling exists to prevent.
 
 **When it is built:** define the policies first, then wire `composeConfidence`
-over real signals, and narrow `DERIVABLE_CAPS` in `modelConfidence.ts` toward
-empty as each cap becomes genuinely derived. The long-term direction is that
-institutional confidence becomes increasingly firm-derived; the honest interim
-is that the firm says which parts it has verified.
+over real signals, and widen `DERIVABLE_CAPS` in `modelConfidence.ts` toward
+the full seven as each cap becomes genuinely derived. The long-term direction is
+that institutional confidence becomes increasingly firm-derived; the honest
+interim is that the firm says which parts it has verified.
+
+### `anyStale`, closed for one family — C3 Stage C, 2026-08-19
+
+The first of the four to acquire a production definition, and it acquires one
+**for sovereign yields and nothing else** (gate Decision 5). `judgeStaleness`
+in `application/analysis/evidenceStaleness.ts` holds a table keyed by
+methodology — `par-yield`, `zero-coupon-fitted`, `benchmark-bond-yield` and the
+derived `spread-2s10s@1` — each with a stated horizon of five days and the
+publication calendar that justifies it. Anything outside the table reports
+itself **unjudged**, which passes `anyStale` as `false`: the value that cannot
+lower anything. An undefined policy does not become a finding in either
+direction.
+
+Two properties of the definition, recorded because they were decisions rather
+than mechanics:
+
+- **Judged against `referencePeriod` and `assembledAt`**, never a clock. A
+  confidence resolved against wall-clock time would give the same stored claim
+  a different level a month later with nothing in the record saying why.
+- **Recency, for this cap, is the freshest cited in-scope observation.** Ruled
+  2026-08-19, and ruled narrowly: it governs the C3 sovereign-yield confidence
+  cap and is **not** a domain statement that staleness is always the age of the
+  freshest evidence. Freshness, historical coverage and completeness may need
+  separating for a later family. Within this cap: a claim citing three weeks of
+  history including yesterday's print is recent, because an observation cited
+  as historical context is context rather than stale evidence; a claim citing
+  only the old end of that same window is stale, and is capped.
+
+`weakestEvidence`, `conflictingEvidence` and `methodologyMismatch` are
+untouched, and this does not license deriving them by analogy: each still needs
+its own institutional policy decision.
 
 ## TD-76 · the firm-wide execution ceiling has no durable home · open
 
@@ -1901,3 +1932,204 @@ every playbook written before budgets existed keeps the hash it already has.
 Whichever way this is decided, that must not change: rehashing the registry
 would make every case's pin refer to a version that no longer content-addresses
 the same way.
+
+## TD-79 · a run can be dispatched whose input alone exceeds its authorised budget · open
+
+**Opened by the C3 Stage C exit attempt, 2026-08-19, by measurement.** The run
+that exposed it is preserved as institutional history:
+`run-90240a4400e6da472d20b94a3d87a9f7`, state `timed-out`, category
+`provider-timeout`, two attempts, no usage reported, no claims written.
+
+**What was measured.** The firm authorised 12,000 tokens for that run. The
+rendered request it dispatched was 139,734 characters — **≈ 28,350 input
+tokens**, before a single token of output. The ratio is calibrated on the
+accepted C2-2 run, whose 2,341-character prompt was measured by the provider at
+475 input tokens; the C3 prompt is denser in hex ids and JSON, which tokenise
+worse, so the estimate errs low.
+
+| | evidence items | prompt chars | input tokens |
+|---|---|---|---|
+| C2-2, accepted | 1 | 2,341 | 475, **measured** |
+| C3, timed out | 264 | 139,734 | ≈ 28,350, estimated |
+
+**The gap.** `budgetPermitsStart` checks only that every budget dimension is
+*decided* — "not measured is not unlimited". Nothing anywhere estimates the size
+of the request about to be sent and compares it against the tokens the firm
+authorised. `budgetOverruns` is the only token enforcement and it runs
+**afterwards**, on measured usage, settling the run as `budget-exhausted` and
+writing no claims.
+
+So the failure mode is: the firm authorises 12,000 tokens, dispatches a request
+whose input is 2.4× that, pays for it if the provider answers, and then refuses
+the answer. In this instance the 90-second deadline fired first, which is why
+the recorded category is `provider-timeout` rather than `budget-exhausted` —
+**but raising the deadline would not have produced a passing run.** Both bounds
+were exceeded; only one of them was reached first.
+
+**What it costs.** Spend the firm did not authorise, with nothing to show for
+it. Worse, it is spend the record cannot see: an aborted attempt reports no
+usage, so a provider that received and processed the request before the client
+hung up may well have billed for it and the firm holds no evidence either way.
+That is the same blind spot TD-77 records for retries, reached by a second
+route.
+
+**What was fixed, and what it does not fix.** The second Stage C exit attempt
+exposed a distinct defect on the refusal side: a run refused for overspending
+recorded no usage, so the firm could not say by how much. That is fixed —
+`FailAgentRun` now accepts measured usage and the overrun path passes it — and
+it is what will make this debt *answerable* when it is taken up: the next
+budget-refused run states exactly what it consumed. **It does not close this
+item.** Measuring after the money is spent is not the same as declining to spend
+it.
+
+**Why it is not solved in C3, by ruling (2026-08-19).** A pre-dispatch
+feasibility check is a **new institutional refusal** — the firm declining to
+start work it can see it cannot afford — plus a dependency on estimating tokens
+before a provider counts them. Both are decisions, not implementations: what
+estimator is trustworthy enough to refuse on, whether an estimate may block an
+act at all, and whether the refusal belongs to the run, the assembly or the
+commission. Building it inside the stage that was proving the evidence pipeline
+would settle three institutional questions at a keyboard.
+
+**What C3 does instead, and what it must not be read as.** The Stage C exit is
+re-run against a **five-business-day window** that fits the authorised budget
+with headroom. That is a choice of window for one run. It is **not** a finding
+that Global Macro may only reason over five days of history, it is **not** a
+limitation of the evidence architecture, and no code, comment, interface string
+or report may state it as one.
+
+**Related, and deliberately also not solved in C3.** The longer-term
+architecture may need a way to expose historical institutional evidence to an
+agent **without serialising every full observation into the model context** —
+264 observations rendered in full is what produced the 139,734 characters. That
+is a later measured design problem. `evidenceBriefing` is **not** to be
+optimised or compacted in C3: it renders the institutional record faithfully
+(gate §0.9), and compacting it under time pressure is how a rendering quietly
+becomes a second, lossier model of the evidence.
+
+## TD-80 · the attempt count on a budget-refused run is a default, not a measurement · open
+
+**Opened by the C3 Stage C diagnosis, 2026-08-19**, while establishing how many
+provider calls the two failed exit runs actually made.
+
+`failAgentRun` defaults `attempt` to 1. The orchestrator's budget-overrun path
+calls `settle(...)` without passing `settled.attempts`, which
+`executeWithinRun` had already computed and returned. So
+`run-132054669959f3ce20268241aa4b90fe` records `failure_attempt = 1` — and that
+1 is the default firing, not a count anybody measured. Whether earlier retryable
+attempts occurred inside its 66 seconds is not answerable from the record.
+
+The pipeline's own failure paths **do** thread the real number; this is one call
+site that does not.
+
+**Why it matters more than it looks.** It is the same class of blindness TD-77
+records for retry spend and TD-79 for pre-dispatch size: a number in the
+institutional record that reads as measured and is not. A reader cannot tell
+`attempt: 1` meaning *one call was made* from `attempt: 1` meaning *nobody
+passed a value*, and the two are different facts. The related loss on the same
+path — measured usage discarded on a budget refusal — was fixed in C3; this one
+was left, deliberately.
+
+**Why it was not fixed in C3, by ruling (2026-08-19).** The usage fix was scoped
+narrowly and on purpose. Threading the attempt count is a second change to the
+same settlement, and bundling it would have widened a fix that was ruled narrow
+precisely so it could be verified against one planted defect.
+
+**What building it needs:** pass `settled.attempts` at the overrun call site,
+and check every other `settle` caller for the same omission rather than fixing
+the one that was noticed. Worth a look at whether `attempt` should be required
+rather than defaulted, so the next call site cannot quietly under-report — that
+is a small institutional question about what an unstated attempt count means,
+and it should be answered before the field is threaded, not after.
+
+## TD-81 · no durable per-attempt category or timing on a run · open
+
+**Opened by the C3 Stage C exit attempts, 2026-08-19/20**, after the same
+question went unanswerable three times.
+
+A run records the **final** failure category and — on the pipeline path — a
+measured attempt count. It records nothing about the individual attempts:
+neither what each one failed with, nor when each began or ended.
+`run_events` carries `running` and the terminal state, and nothing between.
+
+**What that cost, concretely.** Two of the three failed exit runs made two
+attempts and ended `provider-timeout` at the shared deadline. In both, the
+first attempt failed with something retryable and non-deadline — necessarily
+`provider-unavailable` or `malformed-output`, because a deadline hit on attempt
+one would have ended the run at `attempts: 1` — and **which one is not
+recoverable**. Neither is how long it took.
+
+That second absence is the expensive one. The deadline is shared across
+attempts, so a first attempt that runs long leaves the second less time than a
+normal call needs. For `run-85158581ec24392d9a02b1283d030a9d` the arithmetic is
+fully determined except for the one unmeasured term:
+
+```
+T1 + backoff(<=0.5s) + T2 = 90.07 s      and a normal attempt measures 66.156 s
+```
+
+so if `T1` exceeded ~23.8 s the second attempt was doomed before it began — a
+complete explanation requiring no change in provider latency, and one the record
+cannot confirm or exclude. **The difference between the run that succeeded at
+66.156 s and the run that timed out therefore has to be reported as partially
+unexplained**, which is not a statement about the provider so much as about the
+firm's own instrumentation.
+
+**Distinct from TD-80**, which is about the attempt *count* being a default on
+the budget-overrun path. This is about per-attempt *facts* not existing on any
+path.
+
+**Why it was not built in C3, by ruling (2026-08-20).** It improves diagnosis;
+it is not required to prove the Stage C evidence capability, and C3 is not the
+stage that decides what the firm records about execution.
+
+**What building it needs:** an attempt-level event on the existing `run_events`
+shape is the obvious form, and the question to answer first is what an attempt
+event IS institutionally — a fact about the provider, or a fact about the run.
+It also touches the boundary `failAgentRun` states deliberately: **no provider
+response body, prompt, evidence excerpt or raw error text.** A per-attempt
+record must carry the bounded category and timing and nothing else, or it
+becomes the free-text failure field that rule exists to prevent.
+
+## TD-82 · the run envelope is calibrated on single samples, and provider latency is unmodelled · open
+
+**Opened by the C3 Stage C live proof, 2026-08-20**, by the accepted run
+disagreeing with the reasoning that authorized it.
+
+The v4 deadline of 180,000 ms was calibrated from **one** measured sample: a
+byte-identical 60-item request that completed in 66.156 s. The arithmetic was
+one normal attempt plus one full retry — 66.2 + 0.5 + 66.2 = 132.9 s — with
+~47 s of headroom.
+
+**The accepted run's provider phase took 131.331 s.** The envelope held, with
+~49 s to spare rather than the ~114 s a single-attempt reading implied, and a
+further retry would not have fitted inside it.
+
+**What that does and does not establish.** It does not establish that provider
+latency doubled: the record does not say how many attempts the 131.331 s covered
+(**TD-81**), so a single slow call and a retry behind a fast failure are
+indistinguishable. What it does establish is that **the firm sized an
+authorization from one observation of a distribution it has never characterised,
+and the next observation was twice the first.** The number was sufficient. The
+model behind the number was not confirmed, and must not be described as
+validated by this run.
+
+**Why this matters beyond one deadline.** Every execution authorization the firm
+issues — deadline, tokens, and whatever a later stage adds — is currently set
+from a handful of samples with no notion of spread, tail or trend. The token
+figure happened to land well (19,228 measured against a 24,000 breaker set from
+reasoning). The deadline landed with less room than intended. Neither outcome
+was predictable in advance, because nothing measures the distribution.
+
+**What building it needs:** a durable record of per-run and per-attempt
+execution timing (**TD-81** is the prerequisite), then a stated institutional
+policy on what an envelope is calibrated *against* — a median, a tail
+percentile, a worst observed case — because those are different institutional
+promises and the firm has never chosen between them. Sizing against a tail is a
+different act from sizing against a mean, and a circuit breaker that is really a
+budget is the confusion TD-79 already records from the other side.
+
+**Deliberately not solved in C3.** C3 proved the evidence capability. How the
+firm calibrates execution envelopes is execution-envelope architecture, and it
+belongs with TD-79 and TD-81 rather than inside the stage that happened to
+expose it.

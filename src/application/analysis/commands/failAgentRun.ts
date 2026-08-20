@@ -32,10 +32,12 @@ import {
   type Organization,
   type RunFailureCategory,
   type RunState,
+  type RunUsage,
 } from '~/domain/analysis'
 import { buildTransitionEvent } from '~/domain/analysis'
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
+import { asCanonicalValue } from '~/domain/shared/canonicalValue'
 import type { CommandDefinition } from './definition'
 
 /**
@@ -73,6 +75,31 @@ export interface FailAgentRunInput {
   attempt: number
   /** `timed-out` and `cancelled` are distinct facts from `failed`. */
   state?: RunState
+  /**
+   * What the call consumed, when the provider answered and the answer was
+   * refused anyway.
+   *
+   * **The case this exists for is `budget-exhausted`.** A run that overran its
+   * token authorization only reaches that verdict because the provider reported
+   * measured usage — `budgetOverruns` reads `measured` usage and nothing else,
+   * so a run cannot be refused for spending too much unless the firm was
+   * holding the number at the moment it refused. Until this field existed the
+   * number was then discarded, and the record could say THAT a run exceeded its
+   * budget but never BY HOW MUCH — which is the one measurement needed to
+   * decide what the limit should have been.
+   *
+   * **Measured only, and optional.** Most failures have nothing to report: a
+   * timed-out call was aborted before any accounting arrived, and the run keeps
+   * the `not-reported` it started with. Passing a non-measured usage here would
+   * be a no-op dressed as a decision, and worse, it would let a settlement
+   * overwrite a real measurement with silence — so it is refused rather than
+   * ignored.
+   *
+   * Recording spend is **not** accepting it. The claims are still not written,
+   * nothing is offered for acceptance, and the run is still a failure. What
+   * changes is only that the failure is now auditable.
+   */
+  usage?: RunUsage
 }
 
 export function failAgentRun(
@@ -100,6 +127,12 @@ export function failAgentRun(
       retryable: input.retryable,
       attempt: input.attempt,
       state: input.state ?? 'failed',
+      /*
+       * Omitted when absent, never written as null. Every failure recorded
+       * before this field existed therefore produces a byte-identical payload,
+       * so no stored command's identity moves.
+       */
+      ...(input.usage === undefined ? {} : { usage: asCanonicalValue(input.usage) }),
     }),
 
     async execute(repositories, context, input) {
@@ -113,6 +146,15 @@ export function failAgentRun(
       }
       if (input.attempt < 1) {
         reject('invariant-violated', `Attempt numbers start at 1`)
+      }
+      if (input.usage !== undefined && input.usage.state !== 'measured') {
+        reject(
+          'invariant-violated',
+          `A failure may record usage only when it was measured. ` +
+            `"${input.usage.state}" is what a run already carries when nobody ` +
+            `counted, and writing it here could overwrite a real measurement ` +
+            `with silence.`,
+        )
       }
 
       const run = await repositories.runs.get(input.runId)
@@ -157,6 +199,13 @@ export function failAgentRun(
           ...run,
           state: targetState,
           failure,
+          /*
+           * Only when this settlement measured something. Absent leaves the run
+           * with whatever it already held, which for an aborted call is the
+           * `not-reported` it started with — the truthful answer, since nothing
+           * was counted.
+           */
+          ...(input.usage === undefined ? {} : { usage: input.usage }),
           events: [
             ...run.events,
             {

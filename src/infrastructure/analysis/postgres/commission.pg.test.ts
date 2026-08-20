@@ -480,6 +480,28 @@ describe('a live run that overruns what the firm authorized', () => {
     const produced = await repositories.producedClaims.listForRun(result.runId)
     expect(produced).toHaveLength(0)
 
+    /*
+     * And the measurement survives, read back out of PostgreSQL.
+     *
+     * The C3 Stage C defect: a run refused for spending too much used to keep
+     * no record of what it spent, so the firm could say THAT the budget was
+     * exceeded and never BY HOW MUCH — the one number needed to decide what
+     * the limit should have been. `budgetOverruns` reads measured usage and
+     * nothing else, so the number is in hand at the moment of refusal.
+     *
+     * Recording it is not accepting it: the assertions above still hold.
+     */
+    const stored = (await repositories.runs.get(result.runId))!
+    expect(stored.usage).toEqual({
+      state: 'measured',
+      inputTokens: 12_000,
+      outputTokens: 4_000,
+      cost: { state: 'not-reported' },
+    })
+    expect(stored.budget.tokens).toEqual({ kind: 'limit', tokens: 12_000 })
+    expect(stored.failure?.category).toBe('budget-exhausted')
+    expect(stored.state).toBe('failed')
+
     const review = await runReview({
       repositories,
       organization: deps.organization,

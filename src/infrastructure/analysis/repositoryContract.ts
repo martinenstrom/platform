@@ -1983,6 +1983,49 @@ export function describeRepositoryContract(name: string, options: ContractOption
         expect(storedFree).not.toEqual(storedUnknown)
       })
 
+      it('keeps the measurement on a run that was REFUSED for spending it', async () => {
+        /*
+         * The C3 Stage C defect, as a contract case rather than a comment.
+         *
+         * A run refused by `budgetOverruns` reaches that verdict only because
+         * the provider reported measured usage — so the firm holds the number
+         * at the moment it refuses. It used to discard it, and the record could
+         * then say THAT a run exceeded its budget but never BY HOW MUCH, which
+         * is the one measurement needed to decide what the limit should be.
+         *
+         * Both stores are held to keeping it, and the run is still a failure:
+         * recording spend is not accepting it.
+         */
+        const { setId } = await seedCase()
+        const overran = {
+          state: 'measured' as const,
+          inputTokens: 9_100,
+          outputTokens: 3_400,
+          cost: { state: 'not-reported' as const },
+        }
+        await saveRun('run-overran', setId, {
+          state: 'failed',
+          budget: { ...LIVE_BUDGET, tokens: { kind: 'limit' as const, tokens: 12_000 } },
+          usage: overran,
+          failure: {
+            category: 'budget-exhausted',
+            retryable: false,
+            attempt: 1,
+            at: '2026-08-19T21:07:41.075Z',
+          },
+          execution: { ...run('x', setId).execution, providerKind: 'live' },
+        })
+
+        const stored = (await repos.runs.get('run-overran'))!
+        /* Every question the failed record now has to answer. */
+        expect(stored.usage).toEqual(overran)
+        expect(stored.budget.tokens).toEqual({ kind: 'limit', tokens: 12_000 })
+        expect(stored.failure?.category).toBe('budget-exhausted')
+        expect(stored.state).toBe('failed')
+        /* And the one it must keep answering the same way. */
+        expect(await repos.producedClaims.listForRun('run-overran')).toEqual([])
+      })
+
       it('enforces a token limit even when the cost is unknown', () => {
         /*
          * The semantic point of the whole change, asserted over the domain

@@ -1169,6 +1169,366 @@ remaining scope is therefore: staleness defined for sovereign yields,
 real live run commissioned from the product by a person, whose claims cite a
 term structure and a derived spread, judged by a person.
 
+#### Stage C rulings — the staleness cap, ruled 2026-08-19
+
+Four sub-decisions surfaced while implementing *staleness defined for sovereign
+yields* and were **taken to the CIO before the exit run rather than settled at
+the keyboard** (§0.11). All four approved; D2 approved with a qualification that
+narrows it, and the narrowed form is what binds.
+
+**D1 — `DERIVABLE_CAPS` is `['no-evidence', 'fixture-evidence',
+'stale-evidence']`.** §5's *"narrows `DERIVABLE_CAPS` by exactly one"* refers to
+the **unresolved TD-75 gap** shrinking from four undefined production signals to
+three, not to the set of caps the firm applies. **A cap the firm can already
+derive is never removed.** Measured, the literal reading would break a
+downstream rule: `contributionValidation` raises `uncapped-fixture-evidence`
+whenever a fixture-backed claim stays publishable, so dropping
+`fixture-evidence` would turn every fixture-backed claim into a validation
+defect.
+
+**D2 — recency, for this cap, is the freshest cited in-scope observation.**
+Ruled in these words:
+
+> For the C3 sovereign-yield confidence cap, evidence recency is determined by
+> the freshest cited in-scope observation.
+
+Observations deliberately cited as historical context must not make a trend
+claim stale merely by being old. **The ruling is deliberately not generalised:
+it is not a domain statement that staleness is always the age of the freshest
+evidence.** Future evidence families may require *freshness*, *historical
+coverage* and *completeness* as separate concepts — a quarterly series with one
+recent print and an eighteen-month hole is recent and badly incomplete, and this
+rule says nothing about the second. What is settled is one cap over one family.
+
+**D3 — freshness is judged against `assembledAt`, never wall-clock time.**
+Historical confidence must remain reproducible from the institutional record.
+Whether an old analysis is still *actionable today* is a separate future
+judgement, and it must never retroactively change the confidence that analysis
+had when it was produced.
+
+**D4 — the scope is `par-yield`, `zero-coupon-fitted`, `benchmark-bond-yield`
+and `spread-2s10s@1`.** The existing five-day sovereign-yield judgement is
+preserved — `CATEGORY_POLICY` already records it for `yields-us`, `yields-de`
+and `yields-se` — and with it the rule that **a derivation cannot escape a
+staleness judgement its underlying evidence would receive.** Anything outside
+the table reports itself *unjudged*, which passes the signal as the value that
+cannot lower anything: an undefined policy becomes a finding in neither
+direction.
+
+**The basis rewrite is a mechanical consequence, not a fifth ruling.**
+`composeConfidence` writes *"bounded by the weakest evidence (…)"* into the
+basis from the neutral value the application passes it, before it applies a late
+cap — a sentence the firm has not earned, because it never mapped evidence trust
+to a level. So for `stale-evidence` the **level and the cap come from the
+domain** and the basis is written by the application, from the domain's own
+words for the rule that bit plus the facts the application derived. It stands
+provided the recorded basis remains deterministic, reproducible and a truthful
+account of the facts that produced the cap. **If it ever requires competing
+semantic ownership of the rule, or changes what an already-recorded basis meant,
+that is a stop-and-report** (§0.11), not something to design around.
+
+#### §8.2 — one red run in Stage C, unidentified, and the control it earned
+
+**2026-08-19, during Stage C.** A full PostgreSQL run reported `1 failed | 817
+passed` at **35 files**, so again no worker-startup skip. The run before it and
+the two after it were fully green at 818 / 35.
+
+**Which test failed is not recorded, because the log was destroyed.** The run
+was piped through `tail -6`, so the summary survived and the `FAIL` block did
+not — and the suite exits 0 either way, which is the exact trap §8.2 already
+warns about. That the shape matches the previous three is **not** evidence it
+was the same defect; an unidentified failure is an unidentified failure, and
+counting it as a fourth instance of a known shape would be inferring the thing
+§8.2 refuses to infer. It is recorded as an occurrence, not as a recurrence.
+
+**The control this earned, stated because it cost a run to learn:** never pipe
+the PostgreSQL suite into `head` or `tail`. Redirect the whole log to a file and
+read the summary out of it. Exit 0 plus a truncated log means a red test can
+disappear leaving nothing to diagnose, and re-running only proves the next run
+was green.
+
+#### Stage C exit, first attempt — timed out, and what it measured
+
+**2026-08-19.** The product journey ran end to end and the exit did **not**
+pass. A person assembled `c0d6bcbaf06f88c6c324eaa70e5b4536` — 242 real Treasury
+observations plus 22 derived `spread-2s10s@1`, 264 items, rule
+`sovereign-yield-curve@1`, window 2026-07-20..2026-08-19 — and commissioned
+Global Macro against it. The run ended `timed-out` at 90.045 s against a 90,000
+ms authorised deadline, `provider-timeout`, two of three attempts, no usage
+reported, **no claims written**.
+
+**The run is preserved as institutional history** and is not obsoleted, retried
+in place or tidied away. A run that failed is a fact about what the firm
+attempted.
+
+**What the diagnosis measured, and what it did not.** Every mechanism behaved as
+designed: per-run deadline shared across attempts, abort, bounded category, the
+refusal to record an aborted attempt's partial value, the run kept as history.
+Two things are **not** recoverable from the record and are recorded as gaps
+rather than guesses — the first attempt's failure category (only the final
+attempt's is persisted), and whether the provider billed for a request it
+received before the client hung up.
+
+**The finding that mattered was not the deadline.** The rendered request was
+139,734 characters, ≈ 28,350 input tokens against a 12,000-token authorised
+budget — so `budgetOverruns` would have settled the run as `budget-exhausted`
+and written no claims even had it answered in time. Both bounds were exceeded;
+the deadline was simply reached first. **Raising the deadline would not have
+produced a passing run**, and it was not raised. Recorded as **TD-79**, and
+ruled out of C3.
+
+**The smallest defensible next action, approved 2026-08-19:** re-assemble over a
+**five-business-day window** — 2026-08-12 through 2026-08-18, 60 items,
+≈ 6,750 input tokens — and re-commission. No execution-budget policy is changed,
+no code is changed, and the 12,000-token and 90-second authorisations stand
+exactly as approved.
+
+**What that window is not.** It is a window chosen for one run so it fits a
+budget the firm already authorised. It is **not** a ruling that Global Macro may
+reason over only five days of history, and it must never be recorded, rendered
+or reported as a limitation of the evidence architecture. A five-day window
+still carries the full eleven-tenor term structure across five reference periods
+and five derived spreads, which is what the exit asks for.
+
+#### Stage C exit, second attempt — and the defect it exposed, fixed 2026-08-19
+
+**The run.** `run-132054669959f3ce20268241aa4b90fe`, evidence set
+`7b454f28d93f03971365edfe19164b27` — 60 items, the five-business-day window,
+2026-08-12..2026-08-19. It failed `budget-exhausted` after **66.156 s**, well
+inside the 90 s deadline. The provider answered, the JSON parsed, every citation
+resolved, claims were built — and then refused, because measured usage exceeded
+the 12,000-token authorization. **Zero produced claims**, by design.
+
+**Preserved.** Both failed runs and the accepted C2-2 run are `obsolete = false`
+and unchanged.
+
+**The defect the diagnosis found.** The run record said `usage_state:
+'not-reported'`, `input_tokens: null`, `output_tokens: null` — for a run refused
+*because of its usage*. That is not the provider's silence: `budgetOverruns`
+opens with `measuredCost(usage)` and returns nothing unless the state is
+`measured`, so reaching the refusal proves the firm was holding the numbers.
+`settle` → `failAgentRun` then dropped them, because the command had no usage
+input at all.
+
+So the record could say **that** a run exceeded its budget and never **by how
+much** — the one measurement needed to decide what the limit should be. The firm
+could not answer *what would have been enough* without spending the same call
+again. All that remained derivable was a bound: total > 12,000, output ≤ 4,096
+(`max_tokens`), therefore **input > 7,904** against a pre-run estimate of 6,747.
+
+**The fix, scoped to exactly that.** `FailAgentRunInput` gains an optional
+`usage`, **measured only**; the orchestrator's overrun path passes
+`settled.value.usage`. Nothing else changed: no request estimation, no
+pre-dispatch refusal, no prompt compaction, no historical summarisation. Claims
+are still not written and nothing is offered for acceptance — **recording spend
+is not accepting it.**
+
+**No institutional or schema decision was required, which was checked before
+building rather than assumed.** `usage` is already required on every
+`AgentRunRecord`; `usagePermitted` keys on provider kind alone and has no
+coupling to run state, so a failed live run carrying `measured` usage was
+already a legal record. The `runs` table already holds the columns and 0029's
+CHECK ties them to `usage_state` independently of state. The gap was entirely in
+the command's input surface.
+
+**One sub-decision, recorded rather than buried:** a non-measured usage on the
+failure path is **refused**, not ignored. A run that measured nothing already
+carries `not-reported` from the moment it started, so passing it would be a
+no-op dressed as a decision — and worse, it would let a settlement overwrite a
+real measurement with silence.
+
+**Payload compatibility.** `usage` is omitted from the command payload when
+absent, so every failure recorded before this field existed produces a
+byte-identical payload and no stored command's identity moves.
+
+**Verified.** The PG test plants the defect and catches it with the production
+symptom — *expected `{ state: 'not-reported' }` to deeply equal
+`{ state: 'measured' }`* — and passes with the fix. Unit **2337 pass / 8
+skipped, 98 files**; PostgreSQL **819 pass, 35 files**, two consecutive fully
+captured green runs; `tsc --noEmit` clean.
+
+**Still open, and deliberately not fixed here:** the overrun path records
+`attempt: 1` as `failAgentRun`'s default rather than threading
+`settled.attempts`, so the recorded attempt count on a budget-refused run is not
+a measurement. Outside the ruled scope of this fix.
+
+#### `macro-regime` v3 — the breaker recalibrated, ruled 2026-08-19
+
+**A third version rather than an edit**, for the reason v2 was a second one:
+registration is append-only and a budget is inside `playbookContentHash`.
+**v1 and v2 are unchanged**, and both failed Stage C runs stay readable against
+the 12,000 they were actually judged against.
+
+| | v2 | v3 |
+|---|---|---|
+| tokens | 12,000 | **24,000** |
+| cost | \$1.00 | \$1.00 — unchanged |
+| deadline | 90,000 ms | 90,000 ms — unchanged |
+
+**24,000 is a circuit-breaker calibration, not an expected-spend estimate**, and
+the distinction is the whole ruling. v2's 12,000 was ~8× headroom over two runs
+that consumed 1,562 and 1,459 tokens against **one observation**, decided before
+any curve existed. Curve-scale evidence is not pathology — it is the capability
+C3 was built to deliver — so the breaker was firing on normal operation, which
+is exactly what `MACRO_ANALYSIS_BUDGET`'s own note warns against: *a limit set
+near expected usage destroys work the firm already paid for.*
+
+So the new figure is **2× the pre-curve breaker**, chosen for material headroom
+over the normal shape rather than fitted just above it. It is deliberately not
+derived from the refused run's actual consumption — that measurement was
+destroyed by the defect this stage fixed, and fitting a limit to a number the
+firm could not read would be inventing precision.
+
+**It still breaks.** The 264-item full-serialization shape needs ≈ 28,350 input
+tokens before output and stays refused at 24,000. A limit admitting every shape
+the firm can render would authorize the pathology instead of catching it. A test
+holds that property rather than a comment.
+
+**Deadline unchanged on measured grounds:** the refused run's provider call
+completed in **66.156 s** inside a 90 s authorization, so nothing measured
+justifies moving it.
+
+**Consequences, taken rather than worked around.** `resolveForCaseKind` returns
+the highest version, so new cases pin v3 and three tests that pinned v2 as the
+default were updated — mechanical, and exactly what pinning a version is for.
+Cases on v1 and v2 keep them.
+
+**Recorded as debt, not fixed: TD-80.** The attempt count on a budget-refused
+run is `failAgentRun`'s default rather than `settled.attempts`, so it reads as
+measured and is not.
+
+#### Stage C exit, third attempt — and `macro-regime` v4, ruled 2026-08-20
+
+**The run.** `run-85158581ec24392d9a02b1283d030a9d`, v3, the same 60-item set,
+24,000 tokens. `timed-out` at **90.072 s**, `provider-timeout`, **two attempts —
+measured, not defaulted**, because the pipeline path threads `settled.attempts`.
+No usage, no parse, no claims. **The 24,000-token authorization played no part**:
+`budgetOverruns` is evaluated only when the pipeline returns `ok`, and it never
+did. The v3 breaker remains untested against this shape.
+
+**The comparison, and its limit.** Runs 2 and 3 sent **byte-identical requests** —
+same evidence set, same prompt content hash, same model, parameters, provider
+version and contract version, 78 minutes apart on one server process. One
+completed in **66.156 s**; the other retried and hit the wall. The mechanism is
+recorded and the magnitude is not: the deadline is shared across attempts and the
+backoff is at most 500 ms, so `T1 + T2 = 90.07 s`, and if the first attempt took
+more than ~23.8 s the second could never fit behind it. **Reported as partially
+unexplained** rather than attributed to provider latency nobody measured.
+Recorded as **TD-81**.
+
+**The structural finding.** At 90,000 ms a single normal attempt consumed
+**73.5%** of the envelope, so `maxAttempts: 3` authorized a retry policy the
+deadline could not afford.
+
+**v4 — the envelope widened, and only that.** Tokens stay at 24,000, money at
+\$1.00; neither was implicated. **180,000 ms** is sized to hold one normal
+attempt plus one full retry — 66.2 + 0.5 + 66.2 = 132.9 s — with ~47 s of
+headroom. 150,000 ms was rejected as too close to that requirement. It is
+deliberately **not** stretched to guarantee three full attempts: `maxAttempts`
+bounds how often the pipeline may try inside the envelope, not how much
+wall clock the firm authorizes, and the per-run deadline stays the superior
+circuit breaker. **It is an envelope calibration, not an expected duration** — a
+run that takes 180 s is being caught, not behaving as designed.
+
+**The synchronous path was checked before the deadline was raised, not after,**
+as the ruling required. `stageDeadlineMs` is read off the resolved budget rather
+than fixed in code; `vite.config.ts` sets no server timeout; neither Vite nor
+TanStack Start overrides Node's; Node v24 defaults are `requestTimeout` 300,000
+ms, socket timeout disabled, `headersTimeout` 60,000 ms against request headers
+rather than the response, `keepAliveTimeout` 5,000 ms between requests. A 185 s
+request was held open end to end on this runtime and completed, and the product
+itself already held a synchronous commission open for 90 s. **No bound below
+180 s exists.** Commissioning stays synchronous, by ruling.
+
+**v1, v2 and v3 unchanged; all three failed runs preserved** and still readable
+against the envelopes that judged them.
+
+#### Stage C complete — the live proof, accepted 2026-08-20
+
+**Stage Outcome.** A person commissioned Global Macro from the product against
+an evidence set the firm assembled from observations it ingested itself, and
+accepted the result. The desk read a **term structure** and a **derived spread it
+did not compute**, and every claim it made resolves to that set. C3's chain —
+*riktig källa → automatisk ingestion → tidsserie → provenance → derived
+observations → EvidenceSet → Global Macro → Macro View* — is proven end to end
+against real data. **The pipe is true.** It is not complete, and §7's limits
+stand unchanged.
+
+**The accepted run, read out of PostgreSQL rather than off a screen.**
+
+| | |
+|---|---|
+| run | `run-4016977fa8d71f147d52d54def06e364` · **`completed`** · `obsolete = false` |
+| case · workflow | `dev-1787181229708` · `macro-regime` **v4** |
+| evidence | `7b454f28d93f03971365edfe19164b27` — the governed 60-item set, **not reassembled** |
+| provider phase | `16:59:26.485Z` → `17:01:37.816Z` = **131.331 s** |
+| accepted by a person | `17:09:04.466Z`, assignment `completed` |
+| usage | **measured** — 15,531 in + 3,697 out = **19,228 tokens** |
+| authorized | 24,000 tokens · \$1.00 · 180,000 ms |
+
+**What the desk produced.** **14 institutional claims** in `analysis.claims`,
+citable: 8 `supported`, 3 `partially-supported`, 3 `insufficient-evidence`.
+**50 citations across 27 distinct observations**, every one resolving into the
+governed set with a matching content hash — **zero unresolvable, zero hash
+drift**. Nine tenors of the curve were cited, and `curve:us:2s10s` sixteen
+times.
+
+**The derivation held, which is the property §0.5 exists for.** All five derived
+spreads the set contains were cited, and each resolves to the two par yields it
+was computed from, both members of the same set:
+
+```
+2026-08-12  48bp   2y 4.2%   10y 4.68%
+2026-08-13  48bp   2y 4.15%  10y 4.63%
+2026-08-14  51bp   2y 4.17%  10y 4.68%
+2026-08-17  53bp   2y 4.19%  10y 4.72%
+2026-08-18  52bp   2y 4.19%  10y 4.71%
+```
+
+Exact decimal throughout, per §0.3c — no `19.99999999999997`. **Nothing
+downstream recomputed a spread.**
+
+**Measured against the finding that opened C3.** The C2-2 run, given one
+undescribed number, produced two supported observations and five
+`insufficient-evidence` claims. This run, given a described term structure,
+produced fourteen claims of which eight are supported. The three that remain
+`insufficient-evidence` are capped `no-evidence` — the desk asserting something
+and citing nothing for it, which is the cap working rather than the evidence
+failing.
+
+**The staleness cap did not fire, and that is correct.** The freshest cited
+observation describes 2026-08-18, one day behind assembly, inside the
+five-day sovereign-yield horizon.
+
+#### What the live proof cost, recorded rather than tidied away
+
+Three attempts failed before this one, and all three runs are preserved,
+`obsolete = false`. **None of the three failed on the evidence architecture.**
+
+| run | envelope | outcome |
+|---|---|---|
+| `run-90240a44…` | v2, 264 items | `provider-timeout` at 90.072 s, 2 attempts |
+| `run-13205466…` | v2, 60 items | `budget-exhausted` — complete valid answer at 66.156 s, refused, **usage discarded** |
+| `run-85158581…` | v3, 60 items | `provider-timeout` at 90.072 s, 2 attempts |
+
+Two produced institutional improvements that are now permanent: the second
+exposed the **usage-loss defect on the budget-refused settlement path**, fixed
+in this stage; the first and third exposed **TD-79**, **TD-80** and **TD-81**,
+recorded and deliberately not solved.
+
+**The v3 breaker is now measured, not argued.** 19,228 tokens: above the 12,000
+that refused run 2, below the 24,000 ruled at v3. The ruling was right, and it
+is now right *on evidence* rather than on reasoning.
+
+**The v4 envelope held, and its rationale did not — stated plainly rather than
+claimed as validation.** 180,000 ms was calibrated on the assumption of a
+~66.2 s attempt plus one full retry. The accepted run's provider phase took
+**131.331 s**, and the record does not say across how many attempts (**TD-81**).
+So the envelope's real headroom over what actually happened was **~49 s, not the
+~114 s a single-attempt reading implied**, and a further retry would not have
+fitted. The number was sufficient; the model behind it was not confirmed.
+Recorded as **TD-82**.
+
 **Stage C — the desk reads a curve.**
 The evidence representation the model receives carries the institutional
 semantics the firm already holds — subject, kind, unit, source, trust, as-of,
@@ -1262,3 +1622,137 @@ adds four of its own:
   Without both, it is a number with a provenance story rather than a traceable one.
 - **A regime read is a claim, never an observation.** Storing one as evidence
   would let the firm cite its own conclusion as support for itself.
+
+---
+
+## 9. C3 closed — 2026-08-20
+
+**Status: CLOSED. Manually accepted by the CIO.** Every stage exit in §5 is met
+and the live proof in Stage C was judged by a person, which is the only bar that
+proves it.
+
+### What the firm can do that it could not
+
+> A person assembles an institutional evidence set for a subject and a window —
+> drawn from observations the firm ingested itself from the US Treasury,
+> including a derived 2s10s traceable to the two yield observations it was
+> computed from — and commissions Global Macro against it, producing claims that
+> cite a real term structure instead of one undescribed number.
+
+That is §5's proposed capability, and it is now a thing that happened:
+`run-4016977fa8d71f147d52d54def06e364`, 14 institutional claims, 50 citations
+across 27 observations, every one resolving.
+
+### Impact on Financial OS
+
+The firm now holds **its own evidence**. Before C3, one production path could
+manufacture an evidence set and it was a smoke route with no actor, no mandate,
+no ledger entry and no recorded selection; the only institutional evidence in
+existence was one hand-written ECB reading. Now observations are ingested from
+an authoritative source under storage provenance, a **time series is a query
+over individually citable facts**, an evidence set is written by the **twentieth
+institutional act** with an actor, a mandate and a durably recorded, versioned
+selection rule, and the derivation the desk reasons over is a stored fact with
+its inputs inside its content hash.
+
+The property that matters most is not any one of those. It is that **a claim
+made in August resolves, byte for byte, to the evidence it was made from** — and
+that this was verified against the database rather than asserted.
+
+### Impact on future agents
+
+Every desk the firm staffs next inherits this without building it. The evidence
+briefing means an agent is told what a number *is* — subject, kind, unit,
+source, trust, publication instant, reference period — instead of being handed a
+hash and asked to infer. That change alone moved a desk from five refusals to
+eight supported claims, measured across two live runs. The next family is an
+adapter and a selection rule against an architecture that already holds, not
+another architecture.
+
+The boundaries hold for them too: an agent still cannot cite what it was not
+given, still cannot compute a spread the firm did not derive, and still cannot
+raise its own confidence.
+
+### Business impact
+
+The firm can now form a defensible view on **what the front end of the US curve
+is pricing**, with citations a reviewer can follow to a published Treasury
+figure and a derivation they can re-check by hand. That is the first
+investment-relevant question Financial OS can answer from its own records.
+
+It remains **one family and one question**. C3 does not answer *what macro regime
+are we in* — that needs growth, inflation and labour, and C3 builds none of them.
+No allocation, no risk posture, no client recommendation follows from this, and
+nothing in the product may suggest otherwise.
+
+### Financial OS maturity
+
+The institution crossed from *recording decisions* to **holding the evidence
+those decisions rest on**. Four capabilities now compose end to end: acquire,
+assemble, analyse, accept. The gap that remains is not in that chain — it is
+around it, in the **execution envelope**: how much a run may spend, how long it
+may take, and what the firm records about the attempts. Three of the four live
+exit attempts failed there, none in the evidence architecture, and that is the
+honest reading of where the immaturity now sits.
+
+### Next milestone
+
+**Investment Command Center v1 / UX architecture**, separately gated. C3's own
+§6 named the north star and its condition: *the Command Center visual remains the
+north star. C3 is about making what it would display true before making it
+beautiful.* What it would display is now true for one family.
+
+### Strategic value
+
+The firm can be **held to account for a number**. An institution that produces
+investment views without traceable evidence is producing opinions; one that can
+show which observation, from which source, describing which period, under which
+selection rule, judged fit by which person, is producing analysis. C3 bought
+that property for one evidence family and proved it with a real run — and the
+cost of the second family is now adapter work rather than architecture.
+
+### One verification-infrastructure failure at close, recorded as observed
+
+**2026-08-20.** During the closing boundary a PostgreSQL run reported **35 files
+failed, "no tests"** — `TypeError: Cannot read properties of undefined (reading
+'config')` on the first file and *"Vitest failed to find the current suite"* on
+the other 34. The embedded cluster started normally; **the suite never
+executed**, so this produced no information about the code either way.
+
+**A different class from the §8.2 flake**, which is a single red test in one
+file. This is a total runner-initialisation failure, and it is recorded as its
+own observation rather than folded into that count.
+
+**The one difference from every green run:** it was chained directly onto a
+preceding full suite inside a single shell command, so a second cluster began
+initialising as the first was tearing down. That is a **plausible mechanism, not
+a diagnosis** — it was not reproduced, and nothing was changed to make it go
+away. Runs before and after it, invoked alone, were green at 819 / 35.
+
+**The operational consequence, which is the part worth keeping:** run the
+PostgreSQL suite **one invocation at a time**, never two chained in one command
+and never two concurrently. The same session had already had to discard a
+concurrent third run for the same reason.
+
+### Open at close, and not to be read as delivered
+
+Inherited and untouched: **TD-25, TD-37, TD-73, TD-74, TD-75** (three signals
+remain underived), **TD-76, TD-77, TD-78**. The eligibility-basis question from
+C2-1 remains undecided. Thesis-level confidence (§0.7) and the durable record of
+an approved tactical allocation (§0.8) remain reported, not resolved.
+
+Opened by C3 and deliberately unsolved — all four are **execution envelope**,
+none is evidence architecture:
+
+- **TD-79** — a run can be dispatched whose input alone exceeds its authorized budget
+- **TD-80** — the attempt count on a budget-refused run is a default, not a measurement
+- **TD-81** — no durable per-attempt category or timing on a run
+- **TD-82** — the envelope is calibrated on single samples; provider latency is unmodelled
+
+**None of these is C3 capability, and no report may present them as delivered.**
+Also explicitly not delivered: prompt compaction, historical summarisation, any
+more efficient representation of historical evidence to an agent, twelve of the
+thirteen evidence families, and the `vite build` failure.
+
+**The honest summary stands as §7 wrote it before any of this was built: C3
+makes the pipe true. It does not make the view complete.**

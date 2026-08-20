@@ -206,6 +206,143 @@ export const MACRO_REGIME_PLAYBOOK_V2: CasePlaybook = Object.freeze({
 })
 
 /**
+ * Version 3 — the same workflow again, with the breaker recalibrated for
+ * curve-scale evidence.
+ *
+ * **Why a third version rather than an edit.** The same rule that produced v2:
+ * registration is append-only and a budget is inside `playbookContentHash`.
+ * Editing v2 in place would give two cases different authorizations under one
+ * name, and only the order they started in would say which. **v1 and v2 are
+ * unchanged**, and every case pinned to either keeps exactly what it pinned —
+ * including the two failed C3 Stage C runs, which stay readable against the
+ * 12,000 they were actually judged against.
+ *
+ * **Why 24,000, and why that is not an estimate of expected spend.** The C3
+ * Stage C exit measured what v2's figure was calibrated on and what it was not:
+ *
+ *   the two runs that set it   1,562 and 1,459 tokens, against ONE observation
+ *   a 60-item term structure   refused at 12,000; input alone > 7,904
+ *   the 264-item full window   ≈ 28,350 input tokens before any output
+ *
+ * v2's 12,000 was ~8× headroom over one-observation runs, decided before any
+ * curve existed. Curve-scale evidence is not pathology — it is the capability
+ * C3 was built to deliver — so the breaker was firing on normal operation,
+ * which is precisely the failure the note above warns about: *a limit set near
+ * expected usage destroys work the firm already paid for.*
+ *
+ * So 24,000 is **2× the pre-curve breaker**, chosen for material headroom over
+ * the normal shape rather than fitted just above it. It is deliberately NOT
+ * derived from the exact consumption of the refused run — that measurement was
+ * discarded by the defect this stage fixed, and fitting a limit to a number the
+ * firm could not read would be inventing precision.
+ *
+ * **It is still a circuit breaker, and it still breaks.** The 264-item
+ * full-serialization shape needs ≈ 28,350 input tokens before output, so it
+ * remains refused at 24,000. A limit that admitted every shape the firm can
+ * render would authorize the pathology instead of catching it.
+ *
+ * **Deadline and money are unchanged, and the reason is measured.** The refused
+ * run's provider call completed in 66.156 s inside a 90 s authorization, so
+ * there is no basis to move the deadline. The monetary figure remains an
+ * authorization rather than a control, for the reason stated above: the
+ * Messages API reports no price, so nothing can verify compliance with it.
+ */
+const MACRO_ANALYSIS_BUDGET_V3 = Object.freeze({
+  tokens: 24_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 90_000,
+})
+
+const MACRO_REGIME_V3_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_ENTRIES.map((entry) =>
+    entry.key === 'macro-analysis'
+      ? Object.freeze({ ...entry, budget: MACRO_ANALYSIS_BUDGET_V3 })
+      : entry,
+  ),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V3: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '3',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V3_ENTRIES,
+})
+
+/**
+ * Version 4 — the same authorization again, with the run envelope widened to
+ * the latency curve-scale evidence actually has.
+ *
+ * **Why a fourth version.** Same rule as v2 and v3: registration is
+ * append-only and the budget is inside `playbookContentHash`. **v1, v2 and v3
+ * are unchanged**, and all three failed C3 Stage C runs stay readable against
+ * the envelopes they were actually judged against.
+ *
+ * **Only the deadline moves.** Tokens stay at the 24,000 breaker v3 set and
+ * money stays at $1.00 — neither was implicated. The third exit attempt never
+ * reached a usage measurement at all, so nothing about the token limit was
+ * tested, let alone found wanting.
+ *
+ * **Why 180,000 ms, as an envelope calibration rather than an expected
+ * duration.** The measured facts, from two runs of a byte-identical 60-item
+ * request:
+ *
+ *   one successful attempt        66.156 s
+ *   backoff before a retry        <= 500 ms (floor(random x 500) at attempt 1)
+ *   a run that retried once       terminated by the shared 90 s deadline
+ *
+ * The deadline is shared across attempts, so a first attempt that fails after
+ * a normal-length call leaves the second one less time than the first needed.
+ * At 90,000 ms one attempt already consumed 73.5% of the envelope, which made
+ * the retry policy unusable in practice: a second attempt could essentially
+ * never fit behind a first.
+ *
+ * So the envelope is sized to hold **one normal attempt plus one full retry**:
+ * 66.2 + 0.5 + 66.2 = 132.9 s, and 180,000 ms leaves ~47 s of headroom above
+ * that. 150,000 ms was considered and rejected as sitting too close to the
+ * measured two-attempt requirement.
+ *
+ * **It is deliberately NOT sized to guarantee three full attempts.**
+ * `maxAttempts: 3` is a ceiling on how many times the pipeline may try inside
+ * the authorized envelope — not a promise that the envelope will hold three
+ * full-length calls. The per-run deadline remains the superior circuit
+ * breaker, and widening it to ~210s+ to guarantee three would weaken it for
+ * the sake of a count that was never the control.
+ *
+ * **This is not an expected-duration target.** A run that takes 180 s is not
+ * behaving as designed; it is being caught. The expected shape is one attempt
+ * at roughly 66 s.
+ *
+ * **The synchronous path was checked before this was raised, not after.**
+ * `stageDeadlineMs` is read off the resolved budget rather than fixed in code,
+ * `vite.config.ts` configures no server timeout, neither Vite nor TanStack
+ * Start overrides Node's, and Node's own `requestTimeout` is 300,000 ms with
+ * the socket timeout disabled. A 185 s request was held open end to end on
+ * this runtime and completed. Commissioning stays synchronous, by ruling.
+ */
+const MACRO_ANALYSIS_BUDGET_V4 = Object.freeze({
+  tokens: 24_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+const MACRO_REGIME_V4_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_ENTRIES.map((entry) =>
+    entry.key === 'macro-analysis'
+      ? Object.freeze({ ...entry, budget: MACRO_ANALYSIS_BUDGET_V4 })
+      : entry,
+  ),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V4: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '4',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V4_ENTRIES,
+})
+
+/**
  * Every playbook this build can register.
  *
  * A list rather than a lookup by id alone, because registration is keyed on
@@ -215,4 +352,6 @@ export const MACRO_REGIME_PLAYBOOK_V2: CasePlaybook = Object.freeze({
 export const COMPILED_PLAYBOOKS: readonly CasePlaybook[] = Object.freeze([
   MACRO_REGIME_PLAYBOOK,
   MACRO_REGIME_PLAYBOOK_V2,
+  MACRO_REGIME_PLAYBOOK_V3,
+  MACRO_REGIME_PLAYBOOK_V4,
 ])

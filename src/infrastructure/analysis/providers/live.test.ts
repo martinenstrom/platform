@@ -67,6 +67,46 @@ const fixtureSet: EvidenceSet = buildEvidenceSet({
   correlationId: 'corr-2',
 })
 
+/**
+ * A US par yield describing a date well behind the assembly.
+ *
+ * Its `methodology` is what puts it inside the one family the firm has stated
+ * a staleness policy for; the items above carry none and are therefore
+ * deliberately unjudged, which is why every other test here is unaffected.
+ */
+const STALE_YIELD: EvidenceItem = {
+  ref: observationRef(
+    {
+      subjectKind: 'instrument',
+      subject: 'rate:us10y',
+      kind: 'yield',
+      observedAt: '2026-07-20T20:00:00.000Z',
+      referencePeriod: '2026-07-20',
+      sourceId: 'treasury',
+      seriesId: 'BC_10YEAR',
+      methodology: 'par-yield',
+    },
+    { yieldPercent: '4.21', changeBasisPoints: null, observationDate: '2026-07-20' },
+  ),
+  value: { yieldPercent: '4.21', changeBasisPoints: null, observationDate: '2026-07-20' },
+  provenance: buildProvenance({
+    asOf: '2026-07-20T20:00:00.000Z',
+    nowMs: Date.parse(AT),
+    quality: 'official-daily',
+    source: {
+      providerId: 'treasury',
+      providerName: 'U.S. Department of the Treasury',
+      trust: 'issuer',
+    },
+  }),
+}
+
+const staleYieldSet: EvidenceSet = buildEvidenceSet({
+  items: [STALE_YIELD],
+  assembledAt: AT,
+  correlationId: 'corr-3',
+})
+
 /** A transport that answers with a canned body and records what it was sent. */
 function fakeTransport(body: unknown, status = 200) {
   const calls: { url: string; init: RequestInit }[] = []
@@ -301,6 +341,32 @@ describe('confidence is a proposal the firm may lower', () => {
     const [claim] = (await provider.contribute(request())).claims
     expect(claim!.confidence.level).toBe('insufficient')
     expect(claim!.confidence.cappedBy).toBe('no-evidence')
+  })
+
+  it('caps a claim resting on a stale sovereign yield, end to end', async () => {
+    /*
+     * The third derivable cap, through the whole provider rather than through
+     * `resolveModelConfidence` alone — what this proves is the wiring: that the
+     * set's own `assembledAt` is what staleness is measured against, and that
+     * the resulting cap survives onto the claim the firm stores.
+     */
+    const { provider } = providerFor(
+      answer([
+        {
+          ...ONE_CLAIM[0],
+          observationIds: [STALE_YIELD.ref.id],
+          confidence: 'high',
+        },
+      ]),
+      staleYieldSet,
+    )
+    const [claim] = (
+      await provider.contribute(request({ evidenceSetId: staleYieldSet.id }))
+    ).claims
+
+    expect(claim!.confidence.level).toBe('moderate')
+    expect(claim!.confidence.cappedBy).toBe('stale-evidence')
+    expect(claim!.confidence.basis.join(' ')).toMatch(/stale beyond 5 days/)
   })
 })
 

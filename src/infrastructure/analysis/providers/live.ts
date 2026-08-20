@@ -170,9 +170,11 @@ export function renderSystemPrompt(): string {
  * `citeFrom` still refuses anything outside the set.
  */
 export function renderUserPrompt(brief: string, evidence: EvidenceSet): string {
-  return [`Brief:\n${brief}`, '', renderEvidenceBriefing(briefEvidenceSet(evidence))].join(
-    '\n',
-  )
+  return [
+    `Brief:\n${brief}`,
+    '',
+    renderEvidenceBriefing(briefEvidenceSet(evidence)),
+  ].join('\n')
 }
 
 /* ------------------------------------------------------------------ parsing */
@@ -352,7 +354,17 @@ function toAgentClaim(
     statement: candidate.statement,
     evidenceRefs,
     contradictingEvidenceRefs: [],
-    confidence: resolveModelConfidence(candidate.confidence, candidate.type, items),
+    /*
+     * `assembledAt` is what staleness is judged against — the instant the firm
+     * declared this evidence fit — and it is the same coordinate the claim's
+     * own `temporalScope.asOf` carries just below. One moment, not two.
+     */
+    confidence: resolveModelConfidence(
+      candidate.confidence,
+      candidate.type,
+      items,
+      evidence.assembledAt,
+    ),
     temporalScope: {
       asOf: evidence.assembledAt,
       ...(candidate.horizon ? { horizon: candidate.horizon } : {}),

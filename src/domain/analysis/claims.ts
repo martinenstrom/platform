@@ -85,6 +85,18 @@ export function isPublishable(confidence: ClaimConfidence): boolean {
   )
 }
 
+/**
+ * The sentence the stale-evidence rule writes into a basis.
+ *
+ * Named rather than inlined because a caller now has to describe the same cap:
+ * `resolveModelConfidence` passes several signals as neutral values and must
+ * therefore rewrite the basis rather than repeat a bound the firm never
+ * derived — but the words for the cap that DID bite must stay the domain's, or
+ * one rule ends up with two wordings and a reader comparing a claim against
+ * the record finds two versions of the firm's own reasoning.
+ */
+export const STALE_EVIDENCE_BASIS = 'some evidence is stale'
+
 const ORDER: readonly ConfidenceLevel[] = ['insufficient', 'low', 'moderate', 'high']
 
 function weaker(a: ConfidenceLevel, b: ConfidenceLevel): ConfidenceLevel {
@@ -177,7 +189,7 @@ export function composeConfidence(
   if (signals.anyStale) {
     level = weaker(level, level === 'high' ? 'moderate' : 'low')
     cappedBy = 'stale-evidence'
-    basis.push('some evidence is stale')
+    basis.push(STALE_EVIDENCE_BASIS)
   }
   if (signals.conflictingEvidence) {
     level = weaker(level, 'low')

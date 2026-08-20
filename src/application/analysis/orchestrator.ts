@@ -46,6 +46,7 @@ import type {
   AgentRunRecord,
   RunFailureCategory,
   RunState,
+  RunUsage,
 } from '~/domain/analysis'
 import {
   blockedEntries,
@@ -683,6 +684,14 @@ async function runEntry(
    * offering someone the option to accept spend the firm never authorized puts
    * the decision in the wrong place. `budget-exhausted` already exists in the
    * failure vocabulary for exactly this.
+   *
+   * **The usage IS recorded, and that is not the same as accepting it.** The
+   * C3 Stage C exit measured what discarding it costs: a run refused for
+   * exceeding 12,000 tokens, whose record could not say what it had actually
+   * spent, so the firm could not answer what the limit should have been
+   * without running the same call again. `budgetOverruns` reads measured usage
+   * and nothing else, so reaching this branch means the number is in hand —
+   * throwing it away here was the defect, not a privacy boundary.
    */
   const overrun = budgetOverruns(run.budget, settled.value.usage)
   if (overrun.length > 0) {
@@ -691,6 +700,11 @@ async function runEntry(
       state: 'failed',
       // Repeating it would spend the same overrun again.
       retryable: false,
+      /*
+       * Measured by construction: `budgetOverruns` returned something, which
+       * it only does for `measured` usage.
+       */
+      usage: settled.value.usage,
     })
     return stage({
       failureCategory: 'budget-exhausted',
@@ -788,6 +802,12 @@ async function settle(
     retryable: boolean
     /** Attempts made inside this ONE run. Defaults to the single attempt. */
     attempt?: number
+    /**
+     * What the refused call consumed, where this settlement measured it.
+     * Only the budget-overrun path has one; an aborted or unreachable call
+     * measured nothing and passes none.
+     */
+    usage?: RunUsage
   },
 ): Promise<void> {
   await runCommand(
@@ -800,6 +820,7 @@ async function settle(
       retryable: failure.retryable,
       attempt: failure.attempt ?? 1,
       state: failure.state,
+      ...(failure.usage === undefined ? {} : { usage: failure.usage }),
     },
     {
       commandId: context.commandIdFor(entry.key, 'fail'),
