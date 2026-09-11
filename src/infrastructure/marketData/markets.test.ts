@@ -400,8 +400,19 @@ describe('example-data wording is no longer globally misleading', () => {
   })
 
   it('does not claim the Markets page is entirely live', () => {
-    // Two rows have no source and the analysis panel has none at all.
-    const route = read('src/routes/markets.tsx')
-    expect(route).toMatch(/ej tillgängliga/i)
+    /*
+     * The Command Center v1 gate moved the market overview to `/markets` and
+     * required the disclosure to move with it — so this now reads the component
+     * the route renders rather than the route file, which is four lines of
+     * wiring.
+     *
+     * What it protects is unchanged and is now stronger: the page states
+     * whether every category is actually serving live data, from
+     * `hasDegradedCategory`, instead of leaving a fixture or a stale value
+     * looking identical to a live one.
+     */
+    const screen = read('src/components/lightDashboard/LightCommandCenter.tsx')
+    expect(screen).toMatch(/hasDegradedCategory/)
+    expect(screen).toMatch(/ej tillgängliga/i)
   })
 })

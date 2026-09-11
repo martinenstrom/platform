@@ -70,6 +70,16 @@ export const MATURITY_MONTHS: Record<Maturity, number> = {
  */
 export type YieldMethodology =
   | 'par-yield'
+  /**
+   * The Treasury's Par REAL Yield Curve — TIPS.
+   *
+   * Deliberately NOT `par-yield`, although the Treasury fits it the same way.
+   * A real yield and a nominal yield at the same tenor are different
+   * quantities, and `methodologiesAreComparable` is what stops them being
+   * drawn as one curve. Their DIFFERENCE is meaningful — that is the
+   * breakeven — but that is a derivation with its own identity, never a curve.
+   */
+  | 'par-real-yield'
   | 'constant-maturity'
   | 'zero-coupon-fitted'
   | 'benchmark-bond-yield'

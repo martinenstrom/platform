@@ -80,6 +80,7 @@ function organization(over: Partial<Organization> = {}): Organization {
       },
     ],
     teams: [],
+    agentPrincipals: [],
     employees: [
       {
         id: 'cio',

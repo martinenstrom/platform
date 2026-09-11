@@ -94,12 +94,34 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
       staleWhileRevalidate: true,
     },
+    /*
+     * The broker-routed international indices share the Swedish index policy:
+     * same feed, same provider, same refresh economics.
+     */
+    'equity-index-intl-broker': {
+      ttlOpenMs: 60 * SECOND,
+      ttlClosedMs: 15 * MINUTE,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+      staleWhileRevalidate: true,
+    },
     'equity-index-intl': {
       ttlOpenMs: 60 * SECOND,
       ttlClosedMs: 15 * MINUTE,
       // Proxy ETFs remain OFF until decision D1 is resolved. Turning this on
       // also obliges the presentation layer to disclose the substitution.
-      fallback: { ...PRICE_FALLBACK, allowProxy: false },
+      //
+      // `maxStaleMs` is 5 days, aligned with the other two index families on
+      // 2026-08-25. It inherited the 4-hour PRICE_FALLBACK default while this
+      // category had no live provider, and that became wrong the moment Yahoo
+      // gave it one: London closes at 16:30 UTC and the FTSE 100 level was
+      // being discarded around 20:30, replaced by a fixture constant for the
+      // rest of the night while the close was still the correct observation.
+      //
+      // This is a RETENTION ceiling, not a freshness horizon. The two are set
+      // independently and mean different things: an open-session observation
+      // is disclosed INAKTUELL after 15 minutes (see `freshness.ts`) while the
+      // resolver may still retain it for days as the last real observation.
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY, allowProxy: false },
       staleWhileRevalidate: true,
     },
     /*

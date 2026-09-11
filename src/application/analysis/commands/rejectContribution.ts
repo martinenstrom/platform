@@ -1,8 +1,13 @@
 /**
- * A human declining an agent's work.
+ * An accountable principal declining an agent's work.
  *
  * The counterpart to accepting, and the reason acceptance is a decision rather
  * than a formality. A firm that could only accept would accept.
+ *
+ * A person or an authorised desk agent, on the same terms as accepting — the
+ * authority that may adopt a desk's work may refuse it, and one that could only
+ * adopt would have no judgement at all. Which kind declined is recorded in its
+ * own field; see `ContributionRejection`.
  *
  * ## Rejection is institutional knowledge, not discarded history
  *
@@ -30,6 +35,7 @@
  */
 
 import {
+  actorFieldsOf,
   buildRunRecord,
   buildTransitionEvent,
   canTransitionRun,
@@ -88,12 +94,19 @@ export function rejectContribution(
         reject('not-found', `Case "${input.caseId}" no longer exists.`)
       }
 
-      const accountable = context.actor.employeeId
+      /*
+       * Declining is an institutional act too, and carries the same
+       * accountability rule as adopting: a person or an authorised desk agent,
+       * never a system actor. A rejection the orchestrator issued because it
+       * scheduled the run would teach the firm nothing about the work.
+       */
+      const accountable = context.actor.employeeId ?? context.actor.agentPrincipalId
       if (accountable === null) {
         reject(
           'unknown-actor',
-          'Declining work must name the employee who declined it. A rejection ' +
-            'nobody is accountable for teaches the firm nothing.',
+          'Declining work must name the accountable institutional principal ' +
+            'that declined it. A rejection nobody is accountable for teaches ' +
+            'the firm nothing.',
         )
       }
 
@@ -152,7 +165,16 @@ export function rejectContribution(
           rejection: {
             code: input.code,
             detail: input.detail,
-            rejectedByEmployeeId: accountable,
+            /*
+             * The principal in its own field, never a single id column holding
+             * either kind. `rejected_by_employee_id` references
+             * `analysis.employees`, so an agent written there fails at the
+             * foreign key — which is exactly what happened between P4 and
+             * migration 0044.
+             */
+            ...(context.actor.employeeId
+              ? { rejectedByEmployeeId: context.actor.employeeId }
+              : { rejectedByAgentPrincipalId: context.actor.agentPrincipalId! }),
             rejectedAt: context.occurredAt,
           },
           /*
@@ -187,7 +209,7 @@ export function rejectContribution(
           ...(run.revisionId ? { revisionId: run.revisionId } : {}),
           fromState: run.state,
           toState: 'rejected',
-          actorEmployeeId: accountable,
+          ...actorFieldsOf(context.actor),
           actorDepartmentId: run.departmentId,
           occurredAt: context.occurredAt,
           correlationId: context.correlationId,

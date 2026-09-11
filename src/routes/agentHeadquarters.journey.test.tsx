@@ -3,8 +3,8 @@
  *
  * Two, and they meet in the middle:
  *
- *   Stage B  `/agents` → desk → awaiting run → review → decide
- *   Stage C  `/agents` → desk → commission → live run → review → decide
+ *   Stage B  Huvudkontoret → desk → awaiting run → review → decide
+ *   Stage C  Huvudkontoret → desk → commission → live run → review → decide
  *
  * The second one ends where the first one begins, on purpose. That is the loop
  * C2-2 exists to close, and proving it as two separate screens that each render
@@ -63,6 +63,7 @@ import {
  */
 vi.mock('~/infrastructure/analysis/serverFns', () => ({
   getAgentDirectoryFn: vi.fn(),
+  getCaseListFn: vi.fn(),
   getAgentDeskFn: vi.fn(),
   getRunReviewFn: vi.fn(),
   getOperatorIdentitiesFn: vi.fn(),
@@ -72,7 +73,8 @@ vi.mock('~/infrastructure/analysis/serverFns', () => ({
   rejectContributionFn: vi.fn(),
 }))
 
-import { AgentFloorPage } from './agents.index'
+import { HeadquartersPage } from './headquarters'
+import { commandCenterView } from '~/application/analysis/commandCenter'
 import { AgentDeskPage } from './agents.$departmentId'
 import { RunReviewPage } from './runs.$runId'
 import { CommissionPage } from './agents_.$departmentId.commission'
@@ -91,6 +93,24 @@ import type { OperatorIdentity } from '~/application/analysis/operatorIdentity'
 import type { CommissionResponse } from '~/infrastructure/analysis/serverFns'
 
 const desks = floorFixture as unknown as readonly AgentDesk[]
+
+/**
+ * The Command Center view over a set of desks.
+ *
+ * The floor is projected by the application read model rather than assembled
+ * here, so these suites are held to the same counting the product does — a
+ * hand-built view would let the page pass against numbers the firm never
+ * produced.
+ */
+const viewOf = (entries: readonly AgentDesk[]) =>
+  commandCenterView({
+    cases: [],
+    desks: entries,
+    activity: [],
+    evidenceSetCount: 0,
+    latestAssemblyAt: null,
+  })
+
 const review = reviewFixture as unknown as RunReview
 const identities = operatorFixture as unknown as readonly OperatorIdentity[]
 
@@ -101,6 +121,22 @@ const deskWithAwaitingWork = desks.find((desk) =>
 const awaitingRun = deskWithAwaitingWork.runs.find(
   (run) => run.state === 'awaiting-acceptance',
 )!
+
+/**
+ * The entrance to a desk's workspace.
+ *
+ * Found by href rather than by name: a desk module IS the link, so its
+ * accessible name is its whole content, and the desk's name also appears on
+ * the run rows beneath the floor. What the journey needs is the way in, and
+ * the href is what a click actually follows.
+ */
+const deskLink = (departmentId: string) => {
+  const link = screen
+    .getAllByRole('link')
+    .find((candidate) => candidate.getAttribute('href') === `/agents/${departmentId}`)
+  if (!link) throw new Error(`No entrance to desk "${departmentId}" on the floor`)
+  return link
+}
 
 /**
  * The real pages, wired to the real routes, served from captured state.
@@ -116,7 +152,12 @@ async function startAtHeadquarters() {
   const floorRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/agents',
-    component: () => <AgentFloorPage response={{ ok: true, desks }} />,
+    component: () => (
+      <HeadquartersPage
+        center={{ ok: true, view: viewOf(desks) }}
+        cases={{ ok: true, cases: [] }}
+      />
+    ),
   })
 
   const deskRoute = createRoute({
@@ -180,10 +221,10 @@ describe('a person can reach work awaiting their decision', () => {
     const { router, user } = await startAtHeadquarters()
 
     /* 1. The floor. */
-    expect(screen.getByRole('heading', { name: 'Agenter' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Huvudkontor' })).toBeInTheDocument()
 
     /* 2. Into the desk that owes a decision. */
-    await user.click(screen.getByRole('link', { name: deskWithAwaitingWork.name }))
+    await user.click(deskLink(deskWithAwaitingWork.departmentId))
     await waitFor(() =>
       expect(
         screen.getByRole('heading', { name: deskWithAwaitingWork.name }),
@@ -213,7 +254,7 @@ describe('a person can reach work awaiting their decision', () => {
   it('lands on the review with everything needed to judge the work', async () => {
     const { user } = await startAtHeadquarters()
 
-    await user.click(screen.getByRole('link', { name: deskWithAwaitingWork.name }))
+    await user.click(deskLink(deskWithAwaitingWork.departmentId))
     await waitFor(() => screen.getByRole('heading', { name: deskWithAwaitingWork.name }))
     await user.click(screen.getByRole('link', { name: 'Granska och besluta' }))
     await waitFor(() => screen.getByRole('heading', { name: 'Ditt beslut' }))
@@ -237,7 +278,7 @@ describe('a person can reach work awaiting their decision', () => {
 describe('the run row leads to the work, and the case stays context', () => {
   it('does not make the case overview the primary destination', async () => {
     const { user } = await startAtHeadquarters()
-    await user.click(screen.getByRole('link', { name: deskWithAwaitingWork.name }))
+    await user.click(deskLink(deskWithAwaitingWork.departmentId))
     await waitFor(() => screen.getByRole('heading', { name: deskWithAwaitingWork.name }))
 
     const runs = screen.getByRole('heading', { name: /^Körningar/ }).closest('section')!
@@ -262,7 +303,7 @@ describe('the run row leads to the work, and the case stays context', () => {
 
   it('offers no decision shortcut on work that is already settled', async () => {
     const { user } = await startAtHeadquarters()
-    await user.click(screen.getByRole('link', { name: deskWithAwaitingWork.name }))
+    await user.click(deskLink(deskWithAwaitingWork.departmentId))
     await waitFor(() => screen.getByRole('heading', { name: deskWithAwaitingWork.name }))
 
     const runs = screen.getByRole('heading', { name: /^Körningar/ }).closest('section')!
@@ -332,7 +373,12 @@ async function startAtHeadquartersToCommission() {
   const floorRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/agents',
-    component: () => <AgentFloorPage response={{ ok: true, desks: commissionDesks }} />,
+    component: () => (
+      <HeadquartersPage
+        center={{ ok: true, view: viewOf(commissionDesks) }}
+        cases={{ ok: true, cases: [] }}
+      />
+    ),
   })
 
   const deskRoute = createRoute({
@@ -435,10 +481,10 @@ describe('a person can commission a real analysis and follow it to a decision', 
     const { router, user } = await startAtHeadquartersToCommission()
 
     /* 1. The floor. */
-    expect(screen.getByRole('heading', { name: 'Agenter' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Huvudkontor' })).toBeInTheDocument()
 
     /* 2. Into the desk that can be commissioned. */
-    await user.click(screen.getByRole('link', { name: macroDesk.name }))
+    await user.click(deskLink(macroDesk.departmentId))
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: macroDesk.name })).toBeInTheDocument(),
     )
@@ -535,7 +581,7 @@ describe('a person can commission a real analysis and follow it to a decision', 
   it('will not commission until all three choices have been made', async () => {
     const { user } = await startAtHeadquartersToCommission()
 
-    await user.click(screen.getByRole('link', { name: macroDesk.name }))
+    await user.click(deskLink(macroDesk.departmentId))
     await waitFor(() => screen.getByRole('heading', { name: macroDesk.name }))
     await user.click(screen.getByRole('link', { name: 'Beställ analys' }))
     await waitFor(() => screen.getByRole('button', { name: 'Beställ analys' }))

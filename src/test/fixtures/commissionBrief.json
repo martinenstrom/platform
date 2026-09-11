@@ -6,8 +6,7 @@
     "handles": [
       "fx",
       "macro",
-      "policy",
-      "rates"
+      "policy"
     ],
     "manager": {
       "employeeId": "macro-head",
@@ -25,7 +24,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "macro-analysis",
         "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
         "requirement": "required",

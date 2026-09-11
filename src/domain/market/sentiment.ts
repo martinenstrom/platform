@@ -17,6 +17,7 @@
  */
 
 import type { Provenance, Quality } from './provenance'
+import type { SessionState } from './observations'
 
 export type SentimentLabel = 'risk-off' | 'neutral' | 'risk-on'
 
@@ -34,6 +35,14 @@ export interface SentimentComponent {
   inputAsOf: string
   /** Quality of the input itself. Drives the degradation rule above. */
   inputQuality: Quality
+  /**
+   * True where this component is measured through something other than the
+   * thing it describes — the credit leg of Cross-Asset Risk Appetite is two
+   * ETFs standing in for credit spreads. The aggregate must never hide it.
+   */
+  isProxy?: boolean
+  /** What the proxy contaminates. Present only when `isProxy`. */
+  proxyNote?: string
 }
 
 export interface MarketSentiment {
@@ -47,6 +56,27 @@ export interface MarketSentiment {
    * stay interpretable. Required when `origin === 'derived'`.
    */
   formulaVersion: string
+  /**
+   * `max(component) - min(component)` on the component scale, when the
+   * methodology defines one.
+   *
+   * **State and confidence are different questions.** A score of 45 from
+   * components at 43/45/47 and one from 5/45/85 are the same number and
+   * entirely different statements. Dispersion carries that second fact and
+   * **never modifies the score** — no smoothing, no suppression, no dynamic
+   * weights.
+   */
+  dispersion?: number
+  /**
+   * The score's OWN session, where the methodology defines one.
+   *
+   * Cross-Asset Risk Appetite is a US-session measure: `closed` means this is
+   * the last complete reading of the most recent common session, retained
+   * rather than recomputed. The disclosure layer needs it, because without it
+   * the score falls to the generic unknown-session horizon and a perfectly
+   * valid overnight reading is reported stale fifteen minutes after the bell.
+   */
+  session?: SessionState
   provenance: Provenance
 }
 

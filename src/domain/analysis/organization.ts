@@ -77,6 +77,52 @@ export interface Role {
    * prioritise and return work, not to block on correctness grounds.
    */
   canBlockPublication: boolean
+  /**
+   * Whether the role may convene an investment committee.
+   *
+   * Authority to CALL the committee that answers a question — not authority
+   * over the work it produces, which stays with the department that owns the
+   * case. Held explicitly rather than inferred from seniority, so it can be
+   * granted and withdrawn without touching anything else.
+   *
+   * Only `executive` and `manager` roles may hold it, enforced below.
+   * Commissioning the firm's work is a management act: a specialist who could
+   * grant it to itself could set the whole firm working, and a control function
+   * that held it would be commissioning the work it exists to check.
+   *
+   * Optional at the call site and normalised to `false` by `buildRole`, because
+   * a capability nobody granted is a capability nobody holds. Every role that
+   * predates this authority therefore keeps exactly the powers it had.
+   */
+  canConveneCommittee?: boolean
+  /**
+   * Whether the role may back an autonomous department-analysis principal.
+   *
+   * The three department-level analytical and workflow acts the
+   * `department-manager` mandate covers: assembling evidence, the managerial
+   * synthesis, and submitting the resulting revision to Verification. It is
+   * **not** personnel authority, organisation administration, committee
+   * convening or CIO authority, and holding it grants none of them.
+   *
+   * Explicit, because role FUNCTION is not a safe discriminator: the firm's
+   * agent principals already hold manager-function roles (`head-of-macro`,
+   * `head-of-rates`), and a rule reading `function === 'manager'` would have
+   * given the Macro and Rates agents department authority nobody granted them,
+   * through a field chosen for a different reason.
+   *
+   * Consulted only on the institutional-agent branch of `department-manager`.
+   * A human manager's authority is unchanged and still comes from the org
+   * chart: the department names them as its manager.
+   *
+   * Management roles only, enforced below. A specialist granting itself
+   * department authority would collapse the desk's act into the manager's
+   * judgement; the chief is excluded because the CIO consumes department
+   * analysis and performs none.
+   *
+   * Optional at the call site and normalised to `false`, because a capability
+   * nobody granted is a capability nobody holds.
+   */
+  canManageDepartmentAnalysis?: boolean
 }
 
 export function buildRole(role: Role): Role {
@@ -84,6 +130,23 @@ export function buildRole(role: Role): Role {
     throw new Error(
       `Role "${role.id}" is ${role.function} and cannot block publication. ` +
         `Blocking authority belongs to independent governance functions.`,
+    )
+  }
+  if (
+    role.canConveneCommittee &&
+    role.function !== 'executive' &&
+    role.function !== 'manager'
+  ) {
+    throw new Error(
+      `Role "${role.id}" is ${role.function} and cannot convene a committee. ` +
+        `Commissioning the firm's work is an executive or management act.`,
+    )
+  }
+  if (role.canManageDepartmentAnalysis && role.function !== 'manager') {
+    throw new Error(
+      `Role "${role.id}" is ${role.function} and cannot hold department ` +
+        `analysis authority. Evidence assembly, managerial synthesis and ` +
+        `submission to governance are a department manager's acts.`,
     )
   }
   if (role.function === 'governance' && !role.canBlockPublication) {
@@ -94,6 +157,9 @@ export function buildRole(role: Role): Role {
   }
   return Object.freeze({
     ...role,
+    /* A capability nobody granted is a capability nobody holds. */
+    canConveneCommittee: role.canConveneCommittee ?? false,
+    canManageDepartmentAnalysis: role.canManageDepartmentAnalysis ?? false,
     responsibilities: Object.freeze(role.responsibilities),
   })
 }
@@ -101,7 +167,14 @@ export function buildRole(role: Role): Role {
 /* ---------------------------------------------------------------- employees */
 
 /**
- * An employee of the firm. An AI agent is an employee, not a feature.
+ * A human employee of the firm.
+ *
+ * **This used to say "an AI agent is an employee, not a feature."** That was
+ * the right instinct — agents are institutional participants rather than
+ * plumbing — expressed the wrong way. An agent is now an `AgentPrincipal`, held
+ * beside the employees: it participates and is accountable, and it is still not
+ * a person. Modelling one as an employee gave the firm staff with a seniority
+ * nobody has and a reporting line to nobody.
  *
  * `seniority` exists because the behavioural specification calls for senior
  * professionals with 15-30 years of experience rather than assistants, and a
@@ -155,6 +228,24 @@ export interface Department {
 
 /* ------------------------------------------------------------- organization */
 
+/**
+ * A named Financial OS specialist that may act for one desk.
+ *
+ * Held beside the employees and never among them. An agent is not staff: it has
+ * no seniority, no reporting line and no person behind it. What it does have is
+ * the institutional position the mandate engine reads — a department and a role
+ * — which is why it can be authorized by the same rules without any of them
+ * being widened.
+ */
+export interface AgentPrincipal {
+  id: string
+  departmentId: string
+  roleId: string
+  displayName: string
+  /** Retired principals stay, so their past acts keep resolving. */
+  active: boolean
+}
+
 export interface Organization {
   id: OrganizationId
   name: string
@@ -164,6 +255,14 @@ export interface Organization {
   departments: readonly Department[]
   teams: readonly Team[]
   employees: readonly Employee[]
+  /**
+   * The firm's autonomous specialists.
+   *
+   * A separate collection on purpose. Merging them into  would give
+   * the firm fake staff in every roster and seat, and the human/agent boundary
+   * is the thing this model exists to keep.
+   */
+  agentPrincipals: readonly AgentPrincipal[]
 }
 
 /* --------------------------------------------------------------- projections */

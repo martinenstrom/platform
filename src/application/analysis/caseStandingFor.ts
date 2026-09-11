@@ -29,14 +29,19 @@
  */
 
 import {
+  applicablePeerExaminations,
   caseStanding,
   eligibilityPolicy,
   UnknownEligibilityPolicyError,
+  type Assignment,
   type CaseStanding,
   type CioSubmission,
   type InvestmentCase,
   type InvestmentThesis,
+  type ManagerAggregation,
   type Organization,
+  type PeerExaminationReview,
+  type PeerScrutinyStanding,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 import { revisionEligibility } from './eligibility'
@@ -50,7 +55,57 @@ export interface StandingFacts {
   hasDevilsAdvocate: boolean
   hasRisk: boolean
   hasDecision: boolean
+  /**
+   * The work the case was actually assigned, and the examinations it received.
+   *
+   * Both are needed because they answer different halves of one question:
+   * whether this case OWES a peer examination, and whether it has HAD one.
+   */
+  assignments: readonly Assignment[]
+  peerExaminations: readonly PeerExaminationReview[]
+  /** Every aggregation the case holds. The current revision's names the owner. */
+  aggregations: readonly ManagerAggregation[]
 }
+
+/**
+ * Whether the case owes peer scrutiny, and whether it has received it.
+ *
+ * **Applicability comes from the instantiated workflow, not from a policy.**
+ * A case running a playbook that assigned a peer examination owes one; a case
+ * running one that did not, does not. Reading an eligibility policy here would
+ * be standing answering eligibility's question — and for an unsubmitted case
+ * no policy has been chosen yet, so any answer would be a guess dressed as a
+ * fact.
+ *
+ * **Completeness uses the domain's own reading** of which examinations stand
+ * for the current revision. Not "some peer review exists somewhere": an
+ * examination of a superseded revision is not scrutiny of this one.
+ */
+function peerScrutinyFor(
+  facts: StandingFacts,
+  currentRevisionId: string | null,
+): PeerScrutinyStanding {
+  const assigned = facts.assignments.some(
+    (assignment) => assignment.playbookEntryKey === PEER_EXAMINATION_ENTRY,
+  )
+  if (!assigned) return { applicability: 'not-applicable' }
+  if (!currentRevisionId) return { applicability: 'required', complete: false }
+
+  const standing = applicablePeerExaminations(
+    facts.peerExaminations,
+    facts.investmentCase.id,
+    currentRevisionId,
+  )
+  /*
+   * Complete once a qualifying examination exists — whatever it found. An
+   * examination that raised a material objection has still been performed, and
+   * whether that objection blocks is the challenge gate's answer.
+   */
+  return { applicability: 'required', complete: standing.length > 0 }
+}
+
+/** The playbook entry a peer examination is performed under. */
+const PEER_EXAMINATION_ENTRY = 'peer-examination'
 
 /**
  * Derives standing from facts already read.
@@ -113,6 +168,16 @@ export async function standingFrom(input: {
     hasDevilsAdvocate: facts.hasDevilsAdvocate,
     hasRisk: facts.hasRisk,
     riskRequirement: forCurrent?.riskRequirement ?? 'unresolved',
+    peerScrutiny: peerScrutinyFor(facts, current?.revisionId ?? null),
+    /*
+     * The desk that produced the current revision. `submitForCioDecision` is
+     * called with the department that synthesised the work, so the standing
+     * names the same actor the command expects rather than an array position.
+     */
+    submittingDepartmentId:
+      facts.aggregations.find(
+        (aggregation) => aggregation.producedRevisionId === current?.revisionId,
+      )?.departmentId ?? null,
     hasSubmission: facts.submissions.length > 0,
     hasDecision: facts.hasDecision,
     blockers: forCurrent?.eligibility.blockedBy ?? [],
@@ -129,13 +194,31 @@ export async function standingForCase(input: {
   const { repositories, organization, investmentCase, now } = input
   const caseId = investmentCase.id
 
-  const [revisions, verification, devilsAdvocate, risk, decision] = await Promise.all([
+  const [
+    revisions,
+    verification,
+    devilsAdvocate,
+    peerExaminations,
+    risk,
+    decision,
+    assignments,
+  ] = await Promise.all([
     repositories.theses.listForCase(caseId),
     repositories.reviews.verificationsForCase(caseId),
     repositories.reviews.challengesForCase(caseId),
+    repositories.reviews.peerExaminationsForCase(caseId),
     repositories.reviews.riskForCase(caseId),
     repositories.decisions.getForCase(caseId),
+    repositories.assignments.listForCase(caseId),
   ])
+
+  /* The aggregation that produced each revision names the desk that owns it. */
+  const aggregations: ManagerAggregation[] = []
+  for (const revision of revisions) {
+    if (!revision.aggregationId) continue
+    const found = await repositories.aggregations.get(revision.aggregationId)
+    if (found) aggregations.push(found)
+  }
 
   const submissions: CioSubmission[] = []
   for (const revision of revisions) {
@@ -157,6 +240,9 @@ export async function standingForCase(input: {
       hasDevilsAdvocate: devilsAdvocate.length > 0,
       hasRisk: risk.length > 0,
       hasDecision: decision !== null,
+      assignments,
+      peerExaminations,
+      aggregations,
     },
   })
 }

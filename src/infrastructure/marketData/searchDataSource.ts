@@ -27,6 +27,7 @@ export function createSearchDataSource(
     runAttempt: container.runAttempt,
     singleFlight: (key, execute) => container.singleFlight.run(key, execute),
     correlationId,
+    chainGapsSeen: container.chainGapsSeen,
   }
 
   return {

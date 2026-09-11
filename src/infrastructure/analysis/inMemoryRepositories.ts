@@ -52,6 +52,7 @@ import {
   type CioSubmission,
   type ComplianceReview,
   type DevilsAdvocateReview,
+  type PeerExaminationReview,
   sameAssemblyAct,
   type DurableObservation,
   type EvidenceAssembly,
@@ -60,6 +61,7 @@ import {
   type InvestmentThesis,
   isRunTerminal,
   type ManagerAggregation,
+  type ProducedSynthesis,
   type RequirementResolution,
   type RunEvent,
   type ReviewAttribution,
@@ -84,6 +86,7 @@ import {
   type CaseRepository,
   type ClaimRepository,
   type ProducedClaimRepository,
+  type ProducedSynthesisRepository,
   type EventRepository,
   type EvidenceRepository,
   type EvidenceAssemblyRepository,
@@ -136,8 +139,14 @@ interface Store {
   runEvents: RunEvent[]
   claims: Map<string, { claim: AgentClaim; caseId: string; runId: string }>
   producedClaims: Map<string, { caseId: string; claims: readonly AgentClaim[] }>
+  /** Keyed on the producing run. One run, one synthesis. */
+  producedSyntheses: Map<string, ProducedSynthesis>
   verifications: VerificationReview[]
   challenges: DevilsAdvocateReview[]
+  /* Kept apart from `challenges` for the reason the port states: a peer
+   * examination that raised nothing is a record, and merging the two lists
+   * would erase it. */
+  peerExaminations: PeerExaminationReview[]
   compliance: ComplianceReview[]
   risk: RiskReview[]
   events: TransitionEvent[]
@@ -176,8 +185,10 @@ function emptyStore(): Store {
     runEvents: [],
     claims: new Map(),
     producedClaims: new Map(),
+    producedSyntheses: new Map(),
     verifications: [],
     challenges: [],
+    peerExaminations: [],
     compliance: [],
     risk: [],
     events: [],
@@ -218,8 +229,10 @@ function snapshot(store: Store): Store {
     runEvents: [...store.runEvents],
     claims: new Map(store.claims),
     producedClaims: new Map(store.producedClaims),
+    producedSyntheses: new Map(store.producedSyntheses),
     verifications: [...store.verifications],
     challenges: [...store.challenges],
+    peerExaminations: [...store.peerExaminations],
     compliance: [...store.compliance],
     risk: [...store.risk],
     events: [...store.events],
@@ -655,6 +668,50 @@ function producedClaimRepository(store: Store, scope: Scope): ProducedClaimRepos
   }
 }
 
+/**
+ * The Research Office's unadopted synthesis, kept apart for the same reason.
+ *
+ * See `ProducedSynthesisRepository`. Model output is operational until an
+ * accountable principal adopts it, and the separation is what stops a synthesis
+ * reaching `thesis_revisions` without one.
+ */
+function producedSynthesisRepository(
+  store: Store,
+  scope: Scope,
+): ProducedSynthesisRepository {
+  return {
+    async record(candidate) {
+      guard(scope, 'producedSyntheses.record')
+      const existing = store.producedSyntheses.get(candidate.runId)
+      if (existing) {
+        /*
+         * One run produces one synthesis. The content hash already covers the
+         * artifact AND the basis, so comparing it answers "is this the same
+         * candidate" exactly — a retry matches, a second different synthesis
+         * does not.
+         */
+        if (existing.contentHash !== candidate.contentHash) {
+          throw new ConflictingRecordError(
+            'Produced synthesis',
+            candidate.runId,
+            'producedSyntheses.record',
+          )
+        }
+        return
+      }
+      store.producedSyntheses.set(
+        candidate.runId,
+        seal(candidate, 'producedSyntheses'),
+      )
+    },
+
+    async get(runId) {
+      guard(scope, 'producedSyntheses.get')
+      return store.producedSyntheses.get(runId) ?? null
+    },
+  }
+}
+
 function claimRepository(store: Store, scope: Scope): ClaimRepository {
   return {
     async get(claimId) {
@@ -760,9 +817,11 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
           ? store.verifications
           : kind === 'devils-advocate'
             ? store.challenges
-            : kind === 'compliance'
-              ? store.compliance
-              : store.risk
+            : kind === 'peer-examination'
+              ? store.peerExaminations
+              : kind === 'compliance'
+                ? store.compliance
+                : store.risk
       return allocated(all, caseId, revisionId)
     },
     async get(reviewId) {
@@ -771,6 +830,7 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
         [
           ...store.verifications,
           ...store.challenges,
+          ...store.peerExaminations,
           ...store.compliance,
           ...store.risk,
         ].find((review) => review.reviewId === reviewId) ?? null
@@ -781,6 +841,9 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
     },
     async challengesForCase(caseId) {
       return list(store.challenges, caseId, 'reviews.challengesForCase')
+    },
+    async peerExaminationsForCase(caseId) {
+      return list(store.peerExaminations, caseId, 'reviews.peerExaminationsForCase')
     },
     async complianceForCase(caseId) {
       return list(store.compliance, caseId, 'reviews.complianceForCase')
@@ -800,6 +863,13 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
       seal(review, 'reviews.devilsAdvocate')
       if (!store.challenges.some((r) => sameReview('devils-advocate', r, review))) {
         store.challenges.push(review)
+      }
+    },
+    async savePeerExamination(review) {
+      guard(scope, 'reviews.savePeerExamination')
+      seal(review, 'reviews.peerExamination')
+      if (!store.peerExaminations.some((r) => sameReview('peer-examination', r, review))) {
+        store.peerExaminations.push(review)
       }
     },
     async saveCompliance(review) {
@@ -1268,6 +1338,7 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     runs: runRepository(store, scope),
     claims: claimRepository(store, scope),
     producedClaims: producedClaimRepository(store, scope),
+    producedSyntheses: producedSynthesisRepository(store, scope),
     reviews: reviewRepository(store, scope),
     events: eventRepository(store, scope),
     evidence: evidenceRepository(store, scope),

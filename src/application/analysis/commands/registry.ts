@@ -27,6 +27,7 @@ import { resolveConditionalRequirement } from './resolveConditionalRequirement'
 import { submitForVerification } from './submitForVerification'
 import { recordVerificationReview } from './recordVerificationReview'
 import { recordDevilsAdvocateReview } from './recordDevilsAdvocateReview'
+import { recordPeerExamination } from './recordPeerExamination'
 import { recordRiskReview } from './recordRiskReview'
 import { submitForCioDecision } from './submitForCioDecision'
 import { recordCaseDecision } from './recordCaseDecision'
@@ -58,6 +59,7 @@ export function productionCommands(
     submitForVerification(organization),
     recordVerificationReview(organization),
     recordDevilsAdvocateReview(organization),
+    recordPeerExamination(organization),
     recordRiskReview(organization),
     submitForCioDecision(organization),
     recordCaseDecision(organization),

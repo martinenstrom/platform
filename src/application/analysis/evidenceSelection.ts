@@ -39,12 +39,20 @@ import type { ObservationRepository } from './repositories'
 import { deriveCurveSlope, SPREAD_2S10S } from './deriveObservations'
 import type { Maturity } from '~/domain/market'
 
-/** One series in a family, with the tenor the institution knows it to be. */
+/**
+ * One series in a family.
+ *
+ * `maturity` is a term-structure coordinate and is present only where the
+ * family has one. A listed security has no tenor, and giving it a placeholder
+ * would put a fact in the record that means nothing — the same reason
+ * `derived-spread` is not a `yield`. It is read only by the derivation path,
+ * which a family without derivations never enters.
+ */
 interface FamilyMember {
   subject: string
   /** The provider's own series identifier, part of the natural key. */
   seriesId: string
-  maturity: Maturity
+  maturity?: Maturity
 }
 
 /**
@@ -61,13 +69,23 @@ interface FamilyDerivation {
   longSubject: string
 }
 
+/**
+ * A family of observations a rule selects together.
+ *
+ * `methodology`, `countryCode` and `derivations` are curve coordinates and are
+ * optional for the same reason `maturity` is: a family that has none must not
+ * carry placeholders. The selection path below reads `members` and is generic;
+ * everything term-structure-specific lives in the derivation branch, which a
+ * family declaring no derivations never enters.
+ */
 interface SubjectFamily {
   id: string
   /** Whose figures these are. Part of the natural key, never inferred. */
   sourceId: string
   kind: DurableObservation['ref']['kind']
-  methodology: string
-  countryCode: string
+  /** Part of the natural key where the source distinguishes methodologies. */
+  methodology?: string
+  countryCode?: string
   members: readonly FamilyMember[]
   derivations: readonly FamilyDerivation[]
 }
@@ -128,7 +146,43 @@ export const SOVEREIGN_YIELD_CURVE_V1: SelectionRule = {
   families: [US_PAR_CURVE],
 }
 
-export const SELECTION_RULES: readonly SelectionRule[] = [SOVEREIGN_YIELD_CURVE_V1]
+/**
+ * The governed price history of one listed security.
+ *
+ * The second family the firm holds, and the first that is not a curve. Its
+ * members are securities rather than tenors, so it declares no maturities, no
+ * country and no derivations — and the selection path treats it exactly like
+ * the curve, which is the point: the evidence architecture was general, and
+ * this is what proves it rather than asserting it.
+ *
+ * One member, deliberately. A registry with one correct security is a stronger
+ * claim than a universe nobody has verified.
+ *
+ * `seriesId` is the provider's own symbol; `subject` is the governed
+ * `SecurityId`. Both are recorded, and neither stands in for the other.
+ */
+const NVDA_PRICE_HISTORY: SubjectFamily = {
+  id: 'nvda-daily-close',
+  sourceId: 'yahoo',
+  kind: 'price-close',
+  members: [{ subject: 'sec-nvda', seriesId: 'NVDA' }],
+  derivations: [],
+}
+
+export const EQUITY_PRICE_HISTORY_V1: SelectionRule = {
+  id: 'equity-price-history@1',
+  states:
+    'Every settled daily close the firm holds for the named security, one ' +
+    'version per session as the firm knew it at the stated instant. It ' +
+    'contains no intraday quote, no session range and no volume: the governed ' +
+    'source publishes a close and the firm holds only what it published.',
+  families: [NVDA_PRICE_HISTORY],
+}
+
+export const SELECTION_RULES: readonly SelectionRule[] = [
+  SOVEREIGN_YIELD_CURVE_V1,
+  EQUITY_PRICE_HISTORY_V1,
+]
 
 /** What a caller may offer, as data the surface can render without inventing it. */
 export interface SelectionRuleOffer {
@@ -249,6 +303,19 @@ export async function runSelection(
         (candidate) => candidate.ref.referencePeriod === short.ref.referencePeriod,
       )
       if (!long) continue
+
+      /*
+       * A curve slope is a fact about a country's term structure, so a family
+       * that declares a derivation must say whose curve it is. Refused rather
+       * than defaulted: a slope attributed to no country, or to a guessed one,
+       * would be a derived observation nobody could check.
+       */
+      if (!family.countryCode) {
+        throw new Error(
+          `Family "${family.id}" declares a derivation but states no country. ` +
+            `A curve slope belongs to a term structure, and this one has none.`,
+        )
+      }
 
       const slope = deriveCurveSlope({
         short: { observation: short, maturity: shortLeg.maturity as '2Y' },

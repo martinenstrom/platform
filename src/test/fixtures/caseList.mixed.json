@@ -75,6 +75,10 @@
           "status": "complete"
         },
         {
+          "step": "peer-examination",
+          "status": "not-applicable"
+        },
+        {
           "step": "verification",
           "status": "complete"
         },
@@ -152,6 +156,10 @@
         {
           "step": "work-aggregated",
           "status": "complete"
+        },
+        {
+          "step": "peer-examination",
+          "status": "not-applicable"
         },
         {
           "step": "verification",
@@ -275,6 +283,10 @@
         {
           "step": "work-aggregated",
           "status": "complete"
+        },
+        {
+          "step": "peer-examination",
+          "status": "not-applicable"
         },
         {
           "step": "verification",

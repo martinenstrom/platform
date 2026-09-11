@@ -21,9 +21,13 @@ import {
   MACRO_REGIME_PLAYBOOK_V2,
   MACRO_REGIME_PLAYBOOK_V3,
   MACRO_REGIME_PLAYBOOK_V4,
+  MACRO_REGIME_PLAYBOOK_V5,
+  MACRO_REGIME_PLAYBOOK_V6,
 } from './macroPlaybook'
-import { playbookContentHash } from './playbooks'
+import { playbookContentHash, type PlaybookEntry } from './playbooks'
 import { resolveForCaseKind, requirePlaybook } from './playbookRegistry'
+import { resolveExecutionBudget } from './executionBudget'
+import { budgetPermitsStart } from '~/domain/analysis'
 
 /** Recorded when v2 was registered. Only ever changes if v1 was edited. */
 const V1_CONTENT_HASH = '670b2744c081c87c99213c34aadd27ec'
@@ -223,21 +227,366 @@ describe('version 4 widens the run envelope, and only that', () => {
   })
 })
 
-describe('the registry ships all four, and defaults new cases to the newest', () => {
-  it('registers exactly four versions of one playbook', () => {
+/* ============================== version 5: two desks, then synthesis ====== */
+
+describe('version 5 seats a second analytical desk', () => {
+  const entry = (key: string) =>
+    MACRO_REGIME_PLAYBOOK_V5.entries.find((e) => e.key === key)!
+
+  it('is a different workflow by content from every predecessor', () => {
+    const hash = playbookContentHash(MACRO_REGIME_PLAYBOOK_V5)
+    for (const previous of [
+      MACRO_REGIME_PLAYBOOK,
+      MACRO_REGIME_PLAYBOOK_V2,
+      MACRO_REGIME_PLAYBOOK_V3,
+      MACRO_REGIME_PLAYBOOK_V4,
+    ]) {
+      expect(hash).not.toBe(playbookContentHash(previous))
+    }
+  })
+
+  /* ------------------------------------------- epistemic independence ---- */
+
+  it('lets Macro and Rates form their views without reading each other', () => {
+    /*
+     * The invariant of this version, and the reason it is asserted in both
+     * directions. A dependency either way would turn a second opinion into a
+     * response: a desk that reads the other's conclusion first is producing
+     * peer commentary, and a disagreement it then reports is not evidence that
+     * two qualified readings of the subject differ.
+     */
+    expect(entry('rates-analysis').blockedBy).toEqual([])
+    expect(entry('macro-analysis').blockedBy).toEqual([])
+
+    expect(entry('rates-analysis').optionalInputs).toEqual([])
+    expect(entry('macro-analysis').optionalInputs).toEqual([])
+  })
+
+  it('never lets another desk’s output become an input to the Rates analysis', () => {
+    /*
+     * Stated as a property rather than as "blockedBy is empty", so it keeps
+     * holding if the entry ever legitimately gains a dependency on something
+     * that is NOT another desk's conclusion.
+     */
+    const rates = entry('rates-analysis')
+    const upstream = [...rates.blockedBy, ...rates.optionalInputs]
+    for (const forbidden of ['macro-analysis', 'aggregation', 'quant-validation']) {
+      expect(upstream).not.toContain(forbidden)
+    }
+  })
+
+  /* ------------------------------------------------------ synthesis ------ */
+
+  it('makes aggregation wait for both analytical desks', () => {
+    /*
+     * Rates is REQUIRED, so synthesis before it lands would let a required
+     * analysis arrive after the thesis it was supposed to inform.
+     */
+    expect([...entry('aggregation').blockedBy].sort()).toEqual([
+      'macro-analysis',
+      'rates-analysis',
+    ])
+    expect(entry('rates-analysis').requirement).toBe('required')
+  })
+
+  it('leaves Quant exactly where v4 had it', () => {
+    /* Not broadened by this slice. */
+    const v4 = MACRO_REGIME_PLAYBOOK_V4.entries.find((e) => e.key === 'quant-validation')!
+    expect(entry('quant-validation')).toEqual(v4)
+    expect(entry('aggregation').optionalInputs).toEqual(['quant-validation'])
+  })
+
+  /* ------------------------------------------------ examination order ---- */
+
+  it('cannot examine a revision before one exists', () => {
+    /*
+     * `placeVerdict` refuses a verdict on a `proposed` or `under-analysis`
+     * revision. The graph respects that lifecycle rather than scheduling work
+     * the command would reject.
+     */
+    expect(entry('peer-examination').blockedBy).toEqual(['aggregation'])
+  })
+
+  it('orders examination strictly after both analyses, transitively', () => {
+    const reaches = (from: string, target: string): boolean => {
+      const node = MACRO_REGIME_PLAYBOOK_V5.entries.find((e) => e.key === from)
+      if (!node) return false
+      return node.blockedBy.some((k) => k === target || reaches(k, target))
+    }
+    expect(reaches('peer-examination', 'macro-analysis')).toBe(true)
+    expect(reaches('peer-examination', 'rates-analysis')).toBe(true)
+    /* And not the other way round, which would be a cycle. */
+    expect(reaches('rates-analysis', 'peer-examination')).toBe(false)
+  })
+
+  /* --------------------------------------- two acts, one department ------ */
+
+  it('keeps the Rates analysis and the Rates examination separate assignments', () => {
+    /*
+     * The same desk performs both, and they must not be collapsed because of
+     * it: one is Rates forming its own view, the other is Rates reading the
+     * synthesised revision afterwards. Different keys, different positions in
+     * the graph, different questions.
+     */
+    const rates = MACRO_REGIME_PLAYBOOK_V5.entries.filter(
+      (e) => e.departmentId === 'rates',
+    )
+    expect(rates.map((e) => e.key).sort()).toEqual(['peer-examination', 'rates-analysis'])
+    expect(entry('rates-analysis').blockedBy).not.toEqual(
+      entry('peer-examination').blockedBy,
+    )
+    for (const e of rates) expect(e.requirement).toBe('required')
+  })
+
+  it('assigns both to a desk that actually handles the discipline', () => {
+    /* `validateRegistry` enforces this; asserted so the reason is visible. */
+    for (const key of ['rates-analysis', 'peer-examination']) {
+      expect(entry(key).departmentId).toBe('rates')
+      expect(entry(key).disciplineTag).toBe('rates')
+    }
+  })
+
+  /* ------------------------------------------------ carried forward ------ */
+
+  it('carries v4’s budget and the conditional Risk rule unchanged', () => {
+    const v4Macro = MACRO_REGIME_PLAYBOOK_V4.entries.find(
+      (e) => e.key === 'macro-analysis',
+    )!
+    expect(entry('macro-analysis')).toEqual(v4Macro)
+
+    const v4Risk = MACRO_REGIME_PLAYBOOK_V4.entries.find((e) => e.key === 'risk-review')!
+    expect(entry('risk-review')).toEqual(v4Risk)
+  })
+
+  it('changes nothing else about the workflow', () => {
+    /*
+     * Every entry v4 had, still there, and only `aggregation` altered. The two
+     * new entries are additions; nothing was rewritten to make room for them.
+     */
+    const changed = MACRO_REGIME_PLAYBOOK_V4.entries.filter(
+      (before) => JSON.stringify(before) !== JSON.stringify(entry(before.key)),
+    )
+    expect(changed.map((e) => e.key)).toEqual(['aggregation'])
+
+    const added = MACRO_REGIME_PLAYBOOK_V5.entries
+      .map((e) => e.key)
+      .filter((key) => !MACRO_REGIME_PLAYBOOK_V4.entries.some((e) => e.key === key))
+    expect(added.sort()).toEqual(['peer-examination', 'rates-analysis'])
+  })
+
+  it('leaves every earlier version byte-identical', () => {
+    /*
+     * The append-only rule, asserted against the hash rather than by reading.
+     * v1's is pinned to the literal recorded when v2 was registered; the rest
+     * are proved not to have moved by being compared to each other.
+     */
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK)).toBe(V1_CONTENT_HASH)
+    const hashes = [
+      MACRO_REGIME_PLAYBOOK,
+      MACRO_REGIME_PLAYBOOK_V2,
+      MACRO_REGIME_PLAYBOOK_V3,
+      MACRO_REGIME_PLAYBOOK_V4,
+      MACRO_REGIME_PLAYBOOK_V5,
+    ].map(playbookContentHash)
+    expect(new Set(hashes).size).toBe(5)
+  })
+})
+
+describe('version 6 authorizes the path to a synthesis, and nothing beyond it', () => {
+  const entry = (key: string) =>
+    MACRO_REGIME_PLAYBOOK_V6.entries.find((candidate) => candidate.key === key)!
+
+  /** What the firm resolves for this entry when a live producer asks to start. */
+  const permitsLive = (candidate: PlaybookEntry) =>
+    budgetPermitsStart(
+      'live',
+      resolveExecutionBudget('live', {
+        ...(candidate.budget ? { proposed: candidate.budget } : {}),
+        firmCeiling: {},
+      }),
+    )
+
+  it('is a different workflow by content from every predecessor', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK_V6)).not.toBe(
+      playbookContentHash(MACRO_REGIME_PLAYBOOK_V5),
+    )
+  })
+
+  /* --------------------------------------------------------- the budgets -- */
+
+  it('gives Rates the envelope v4 approved, not a second number of its own', () => {
+    /*
+     * The same object, deliberately. Two constants holding identical values
+     * would be two things to keep in step, and a divergence between what the
+     * firm authorizes for two desks reading the same evidence through the same
+     * provider would be silent.
+     */
+    const v4Macro = MACRO_REGIME_PLAYBOOK_V4.entries.find(
+      (candidate) => candidate.key === 'macro-analysis',
+    )!
+    expect(entry('rates-analysis').budget).toBe(v4Macro.budget)
+    expect(entry('macro-analysis').budget).toBe(v4Macro.budget)
+  })
+
+  it('keeps the curve-scale breaker exactly where v3 and v4 put it', () => {
+    /*
+     * Measured with the provider's own token counter against the sets the firm
+     * holds: the 60-observation term structure needs 19,658 tokens for one full
+     * attempt and fits; the 264-observation window needs 70,029 and stays
+     * refused. Rates differs from Macro by 31 tokens — the length of its brief.
+     */
+    for (const key of ['macro-analysis', 'rates-analysis']) {
+      expect(entry(key).budget).toEqual({
+        tokens: 24_000,
+        cost: { costMinorUnits: 100, currency: 'USD' },
+        deadlineMs: 180_000,
+      })
+      expect(19_658).toBeLessThan(entry(key).budget!.tokens!)
+      expect(70_029).toBeGreaterThan(entry(key).budget!.tokens!)
+    }
+  })
+
+  it('budgets the Research Office for the shape a synthesis actually has', () => {
+    expect(entry('aggregation').budget).toEqual({
+      tokens: 12_000,
+      cost: { costMinorUnits: 100, currency: 'USD' },
+      deadlineMs: 180_000,
+    })
+  })
+
+  it('admits every real synthesis shape and still refuses the pathology', () => {
+    /*
+     * Measured the same way, on the real `aggregation` brief. A synthesis
+     * prompt carries claim IDS rather than observations, so it scales with how
+     * many claims the desks produced:
+     *
+     *   14 + 14 claims, the largest desk runs on record    6,335 per attempt
+     *   50 + 50 claims, stress                             8,999 per attempt
+     *   250 + 250 claims, pathology                       23,499 per attempt
+     */
+    const authorized = entry('aggregation').budget!.tokens!
+    expect(6_335).toBeLessThan(authorized)
+    expect(8_999).toBeLessThan(authorized)
+    expect(23_499).toBeGreaterThan(authorized)
+  })
+
+  it('does not copy the desk figure onto work of a different shape', () => {
+    /* Narrower than a desk, because it reads no evidence of its own. */
+    expect(entry('aggregation').budget!.tokens!).toBeLessThan(
+      entry('macro-analysis').budget!.tokens!,
+    )
+  })
+
+  /* ------------------------------------------------- what stays unopened -- */
+
+  it('lets exactly Macro, Rates and the Research Office start live work', () => {
+    const permitted = MACRO_REGIME_PLAYBOOK_V6.entries
+      .filter(permitsLive)
+      .map((candidate) => candidate.key)
+      .sort()
+    expect(permitted).toEqual(['aggregation', 'macro-analysis', 'rates-analysis'])
+  })
+
+  it('leaves every unopened entry refusing live work', () => {
+    /*
+     * Not an omission. No governance autonomy has been approved, and a version
+     * that budgeted every entry it happened to contain would be authorizing
+     * autonomy nobody decided on.
+     */
+    for (const key of [
+      'quant-validation',
+      'verification',
+      'challenge',
+      'risk-review',
+      'peer-examination',
+    ]) {
+      expect(entry(key).budget).toBeUndefined()
+      expect(permitsLive(entry(key))).toBe(false)
+    }
+  })
+
+  it('changes nothing about what a stub may do, anywhere', () => {
+    for (const candidate of MACRO_REGIME_PLAYBOOK_V6.entries) {
+      expect(
+        budgetPermitsStart(
+          'stub',
+          resolveExecutionBudget('stub', {
+            ...(candidate.budget ? { proposed: candidate.budget } : {}),
+            firmCeiling: {},
+          }),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  /* ------------------------------------------------ the workflow is v5's -- */
+
+  it('still makes aggregation wait for both analytical desks', () => {
+    /*
+     * The dependency is not relaxed to make an autonomous run easier to reach.
+     * A synthesis that could proceed without the second independent view would
+     * be a different workflow wearing v5's topology.
+     */
+    expect([...entry('aggregation').blockedBy].sort()).toEqual([
+      'macro-analysis',
+      'rates-analysis',
+    ])
+  })
+
+  it('changes nothing except two budgets', () => {
+    const withoutBudget = ({ budget: _budget, ...rest }: PlaybookEntry) => rest
+    expect(MACRO_REGIME_PLAYBOOK_V6.entries.map(withoutBudget)).toEqual(
+      MACRO_REGIME_PLAYBOOK_V5.entries.map(withoutBudget),
+    )
+
+    const changed = MACRO_REGIME_PLAYBOOK_V5.entries.filter(
+      (before) => JSON.stringify(before) !== JSON.stringify(entry(before.key)),
+    )
+    expect(changed.map((candidate) => candidate.key).sort()).toEqual([
+      'aggregation',
+      'rates-analysis',
+    ])
+  })
+
+  it('leaves every earlier version byte-identical', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK)).toBe(V1_CONTENT_HASH)
+    const hashes = [
+      MACRO_REGIME_PLAYBOOK,
+      MACRO_REGIME_PLAYBOOK_V2,
+      MACRO_REGIME_PLAYBOOK_V3,
+      MACRO_REGIME_PLAYBOOK_V4,
+      MACRO_REGIME_PLAYBOOK_V5,
+      MACRO_REGIME_PLAYBOOK_V6,
+    ].map(playbookContentHash)
+    expect(new Set(hashes).size).toBe(6)
+  })
+})
+
+describe('the registry ships all six, and defaults new cases to the newest', () => {
+  it('registers exactly six versions of one playbook', () => {
     expect(COMPILED_PLAYBOOKS.map((p) => `${p.id}@${p.version}`)).toEqual([
       'macro-regime@1',
       'macro-regime@2',
       'macro-regime@3',
       'macro-regime@4',
+      'macro-regime@5',
+      'macro-regime@6',
     ])
   })
 
-  it('resolves a new macro case to v4', () => {
+  it('resolves a new macro case to v6', () => {
     expect(resolveForCaseKind(MACRO_REGIME_CASE_KIND)).toEqual({
       playbookId: 'macro-regime',
-      version: '4',
+      version: '6',
     })
+  })
+
+  it('still resolves v5 by identity, for the cases that pinned it', () => {
+    expect(requirePlaybook('macro-regime', '5')).toBe(MACRO_REGIME_PLAYBOOK_V5)
+  })
+
+  it('still resolves v4 by identity, for the cases that pinned it', () => {
+    expect(requirePlaybook('macro-regime', '4')).toBe(MACRO_REGIME_PLAYBOOK_V4)
   })
 
   it('still resolves v1 by identity, for the cases that pinned it', () => {

@@ -1,5 +1,5 @@
 /**
- * Avanza — delayed Swedish equity and index quotes, via the local
+ * Avanza — Swedish equity quotes and index levels, via the local
  * `avanza-mcp` server.
  *
  * Avanza is a **broker**, not the venue. It redistributes Stockholmsbörsen
@@ -30,9 +30,11 @@
  *
  *  - `updated` is NOT an observation time. It moved to Saturday 18:17 for a
  *    trade that happened Friday 17:29. Only `timeOfLast` is used.
- *  - `isRealTime: false` on every response from the public API. The feed is
- *    delayed and is never presented otherwise. Avanza does not quantify the
- *    delay, so `delayMinutes` stays `null`.
+ *  - `isRealTime: false` on every EQUITY response. The Swedish equity feed is
+ *    delayed and is never presented otherwise. **Index levels differ**: DAX
+ *    and Nasdaq 100 report `true`, Nikkei reports `false`, so `toIndexQuote`
+ *    reads the flag per observation instead of assuming it. Avanza does not
+ *    quantify the delay either way, so `delayMinutes` stays `null`.
  *  - `search_instruments` returns Swedish-formatted strings (`"354,80"`, NBSP
  *    thousands separators) and carries no timestamp at all. It is not used for
  *    quotes. `get_stock_quote` returns real numbers and `timeOfLast`.
@@ -51,7 +53,11 @@ import {
   type Provenance,
   type SessionState,
 } from '~/domain/market'
-import type { FetchContext, QuoteProvider } from '~/application/marketData/ports'
+import type {
+  CommodityProvider,
+  FetchContext,
+  QuoteProvider,
+} from '~/application/marketData/ports'
 import { HttpError } from './httpClient'
 import { orderBookIdFor, type AvanzaInstrument } from './avanza/map'
 
@@ -88,6 +94,30 @@ interface AvanzaQuotePayload {
   /** Provider housekeeping. Deliberately never read — see the module note. */
   updated?: unknown
   isRealTime?: unknown
+}
+
+/**
+ * `get_stock_info`. Carries identity AND the quote, which is why index levels
+ * use it rather than `get_stock_quote`: the binding can verify what it fetched
+ * in the same call that fetched it.
+ */
+interface AvanzaInfoPayload {
+  isin?: unknown
+  type?: unknown
+  /** Echoed back by Avanza. Verified, so a redirect cannot pass unnoticed. */
+  orderbookId?: unknown
+  name?: unknown
+  listing?: { tickerSymbol?: unknown }
+  quote?: {
+    last?: unknown
+    change?: unknown
+    changePercent?: unknown
+    highest?: unknown
+    lowest?: unknown
+    timeOfLast?: unknown
+    isRealTime?: unknown
+  }
+  marketPlace?: { currentStatus?: unknown }
 }
 
 /** `get_marketplace_info`. Avanza's own statement about the venue's session. */
@@ -223,7 +253,9 @@ function abandonOnAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 
 /* ---------------------------------------------------------------- provider */
 
-export function createAvanzaProvider(callTool: AvanzaToolCall): QuoteProvider {
+export function createAvanzaProvider(
+  callTool: AvanzaToolCall,
+): QuoteProvider & CommodityProvider {
   const gate = createGate(MAX_CONCURRENCY, MAX_QUEUE_DEPTH)
 
   const call = <T>(ctx: FetchContext, name: string, args: Record<string, unknown>) =>
@@ -233,6 +265,36 @@ export function createAvanzaProvider(callTool: AvanzaToolCall): QuoteProvider {
     id: AVANZA_PROVIDER_ID,
     name: AVANZA_SOURCE.providerName,
     attributionUrl: AVANZA_SOURCE.attributionUrl,
+
+    /**
+     * Gold and Brent spot.
+     *
+     * The same transport, the same identity verification and the same
+     * normalization as everything else this adapter serves — the split exists
+     * because the pipeline routes on capability, not because commodities need
+     * different handling. Both bindings are `fetchWith: 'info'`, so each
+     * observation verifies its own identity in the call that fetched it.
+     *
+     * No session lookup: both are `sessionModel: 'unknown'` by ruling, since
+     * Avanza's beQuoted schedule describes its quoting window rather than the
+     * commodity market. Asking would produce a Stockholm answer to a question
+     * about a market that trades nearly around the clock.
+     */
+    async fetchCommodities(symbols, ctx): Promise<MarketQuote[]> {
+      const instruments = symbols.map((symbol) => ({
+        symbol,
+        instrument: orderBookIdFor(symbol),
+      }))
+
+      return Promise.all(
+        instruments.map(async ({ symbol, instrument }) => {
+          const info = await call<AvanzaInfoPayload>(ctx, 'get_stock_info', {
+            instrument_id: instrument.orderBookId,
+          })
+          return toIndexQuote(symbol, instrument, info, ctx)
+        }),
+      )
+    },
 
     async fetchQuotes(symbols, ctx): Promise<MarketQuote[]> {
       // Resolve identities BEFORE any network work, so an unmapped symbol is a
@@ -263,6 +325,24 @@ export function createAvanzaProvider(callTool: AvanzaToolCall): QuoteProvider {
 
       return Promise.all(
         instruments.map(async ({ symbol, instrument }) => {
+          /*
+           * Index levels take `get_stock_info` rather than `get_stock_quote`,
+           * because it returns the ISIN and the type alongside the price. That
+           * is what lets the binding verify what it fetched in the same call
+           * that fetched it, instead of trusting an order book id that Avanza
+           * is free to reassign.
+           *
+           * It also carries `isRealTime` and the instrument's own market state,
+           * so freshness is read per observation rather than assumed for the
+           * feed — DAX and Nasdaq 100 report real-time where Nikkei does not.
+           */
+          if (instrument.fetchWith === 'info') {
+            const info = await call<AvanzaInfoPayload>(ctx, 'get_stock_info', {
+              instrument_id: instrument.orderBookId,
+            })
+            return toIndexQuote(symbol, instrument, info, ctx)
+          }
+
           const payload = await call<AvanzaQuotePayload>(ctx, 'get_stock_quote', {
             instrument_id: instrument.orderBookId,
           })
@@ -271,6 +351,178 @@ export function createAvanzaProvider(callTool: AvanzaToolCall): QuoteProvider {
       )
     },
   }
+}
+
+/**
+ * One index level, identity-checked against the reviewed binding.
+ *
+ * ## Why identity is verified at fetch time
+ *
+ * An order book id is a number Avanza controls. It can be retired, and it can
+ * be **reassigned** — and a reassigned id is the dangerous case, because it
+ * keeps returning a plausible price for an instrument nobody asked for. The
+ * map records what each id is supposed to be; this asserts it on every fetch.
+ *
+ * Both checks are load-bearing and neither is redundant:
+ *
+ *  - **ISIN** catches a reassignment. `DE0008469008` is the DAX and nothing
+ *    else, whatever the instrument is called this quarter.
+ *  - **type** catches the far likelier mistake. Avanza lists thousands of
+ *    certificates and warrants written on these indices; a binding pointed at
+ *    `BULL DAX X20` by accident would serve a leveraged product's price as an
+ *    index level, and the number would look entirely reasonable.
+ *
+ * A mismatch throws, which the pipeline reports as a provider error on the
+ * category. The chain then continues to fixture and the disclosure layer says
+ * so. **It never serves the instrument it actually got.**
+ */
+/**
+ * Rejects a payload that is not demonstrably the reviewed instrument.
+ *
+ * ## What each check is for
+ *
+ * `type` catches the likeliest mistake by a wide margin. Avanza lists
+ * thousands of certificates and warrants written on these underlyings — 744
+ * gold certificates and 1084 gold warrants against one gold spot quote — and
+ * every one of them returns a number that would look reasonable on a tape.
+ *
+ * `orderbookId` catches a redirect: Avanza answering about a different book
+ * than the one asked for means the response is about something else, whatever
+ * it contains.
+ *
+ * The identity anchor then differs by class, and the difference is real:
+ *
+ *  - **strong** — an ISIN, issued outside Avanza. One field, decisive. It
+ *    survives a rename and it survives a reassigned order book id.
+ *  - **composite** — no such anchor exists. `isin` holds a placeholder
+ *    (`"GC"`, `"BRENT"`), so the evidence is agreement across the placeholder,
+ *    the instrument name and the ticker at once. Three fields that would all
+ *    have to change together for the wrong instrument to pass. Weaker than an
+ *    ISIN, and never to be described as equivalent to one — but it fails
+ *    closed on exactly the same terms.
+ *
+ * Any mismatch throws. The pipeline reports a provider error on the category,
+ * the chain continues to fixture, and the disclosure layer says so. **The
+ * instrument actually received is never served.**
+ */
+function verifyIdentity(
+  symbol: CanonicalSymbol,
+  instrument: AvanzaInstrument,
+  payload: AvanzaInfoPayload,
+): void {
+  const reject = (field: string, got: unknown, want: unknown): never => {
+    throw new HttpError(
+      'schema',
+      `Avanza order book ${instrument.orderBookId} returned ${field} ` +
+        `${JSON.stringify(got)} for ${symbol}; expected ${JSON.stringify(want)}. ` +
+        `Refusing to serve an unverified instrument.`,
+    )
+  }
+
+  if (payload?.type !== instrument.expectedType) {
+    reject('type', payload?.type, instrument.expectedType)
+  }
+
+  /*
+   * Only checked when Avanza sends it. `get_stock_info` returns `orderbookId`
+   * for every instrument bound here, but the field is absent from the older
+   * recorded payloads, and a check that turned missing data into a rejection
+   * would fail closed on the wrong thing.
+   */
+  if (
+    payload?.orderbookId !== undefined &&
+    String(payload.orderbookId) !== instrument.orderBookId
+  ) {
+    reject('orderbookId', payload.orderbookId, instrument.orderBookId)
+  }
+
+  const identity = instrument.identity
+  if (identity.class === 'strong') {
+    if (payload?.isin !== identity.isin) {
+      reject('ISIN', payload?.isin, identity.isin)
+    }
+    return
+  }
+
+  /* Composite: no single field carries the identity, so all three must agree. */
+  if (payload?.isin !== identity.identifier) {
+    reject('identifier', payload?.isin, identity.identifier)
+  }
+  if (payload?.name !== instrument.expectedName) {
+    reject('name', payload?.name, instrument.expectedName)
+  }
+  if (payload?.listing?.tickerSymbol !== instrument.expectedTicker) {
+    reject('ticker', payload?.listing?.tickerSymbol, instrument.expectedTicker)
+  }
+}
+
+export function toIndexQuote(
+  symbol: CanonicalSymbol,
+  instrument: AvanzaInstrument,
+  payload: AvanzaInfoPayload,
+  ctx: FetchContext,
+): MarketQuote {
+  verifyIdentity(symbol, instrument, payload)
+
+  const quote = payload.quote
+  const value = requireFiniteNumber(quote?.last, 'quote.last', symbol)
+  const timeOfLast = requireFiniteNumber(quote?.timeOfLast, 'quote.timeOfLast', symbol)
+
+  const now = ctx.clock.now()
+  /*
+   * Freshness is read per observation, never assumed for the feed.
+   *
+   * The Swedish equity path hard-codes `delayed` because every response it has
+   * ever seen carried `isRealTime: false`. That is not true of the index
+   * levels: DAX and Nasdaq 100 report `true`, Nikkei reports `false`, and the
+   * three arrive from the same provider in the same call. Assigning one
+   * blanket quality would either understate two of them or promote a stale
+   * Tokyo close to a live tick.
+   *
+   * `true` becomes `near-realtime` rather than `realtime`: Avanza is a broker
+   * redistributing a level it did not compute, and `realtime` in this domain
+   * means an exchange-grade tick from the venue itself.
+   */
+  const realTime = quote?.isRealTime === true
+  const provenance: Provenance = {
+    asOf: new Date(timeOfLast).toISOString(),
+    asOfPrecision: 'second',
+    receivedAt: now.toISOString(),
+    ageMs: Math.max(0, now.getTime() - timeOfLast),
+    source: AVANZA_SOURCE,
+    quality: realTime ? 'near-realtime' : 'delayed',
+    isDelayed: !realTime,
+    // Avanza does not quantify its delay anywhere in the payload.
+    delayMinutes: null,
+    venue: venueFrom(instrument),
+    isProxy: false,
+  }
+
+  const percentageChange = optionalFiniteNumber(quote?.changePercent)
+
+  return buildQuote({
+    symbol,
+    value,
+    percentageChange,
+    absoluteChange:
+      percentageChange === null ? null : optionalFiniteNumber(quote?.change),
+    dayHigh: optionalFiniteNumber(quote?.highest),
+    dayLow: optionalFiniteNumber(quote?.lowest),
+    /*
+     * The instrument's own venue schedule where that schedule describes the
+     * market, and `unknown` where it describes only Avanza's quoting window —
+     * see `AvanzaSessionModel`. Correcting this here, at the provider
+     * boundary, is what keeps the frozen freshness policy general.
+     */
+    session:
+      instrument.sessionModel === 'unknown'
+        ? 'unknown'
+        : sessionFrom(payload?.marketPlace?.currentStatus),
+    changePeriod: 'intraday',
+    sourcePrecision: decimalsOf(value),
+    requestedPrecision: null,
+    provenance,
+  })
 }
 
 /**

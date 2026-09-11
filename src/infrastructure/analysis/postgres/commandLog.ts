@@ -54,6 +54,16 @@ interface CommandRow {
   organization_seed_version: string
   mandate_kind: string
   mandate_discipline: string | null
+  /**
+   * The department the mandate is about.
+   *
+   * Null on rows written before migration 0039, and on mandates where the
+   * actor's own department IS the mandate's — which was every one of them until
+   * a convenor could act on another desk's case.
+   */
+  mandate_department_id: string | null
+  /** Set on an institutional-agent act; null on employee and system acts. */
+  actor_agent_principal_id: string | null
   authorization_basis: string
   initiator_kind: string
   initiator_id: string
@@ -79,7 +89,8 @@ const COMMAND_COLUMNS = `
   actor_kind, actor_employee_id, actor_role_id, actor_role_function,
   actor_department_id, actor_department_is_governance, actor_department_handles,
   actor_authentication, organization_seed_version,
-  mandate_kind, mandate_discipline, authorization_basis,
+  mandate_kind, mandate_discipline, mandate_department_id, authorization_basis,
+  actor_agent_principal_id,
   initiator_kind, initiator_id, correlation_id,
   ${ts('occurred_at')}, ${ts('received_at')}
 `
@@ -102,10 +113,11 @@ export const COMMAND_SQL = catalog({
               actor_department_id, actor_department_is_governance,
               actor_department_handles, actor_authentication,
               organization_seed_version, mandate_kind, mandate_discipline,
+              mandate_department_id, actor_agent_principal_id,
               authorization_basis, initiator_kind, initiator_id, correlation_id,
               occurred_at, received_at, provenance_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                   $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+                   $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
            ON CONFLICT (command_id, tenant_id) DO NOTHING`,
 
   /*
@@ -124,8 +136,32 @@ export const COMMAND_SQL = catalog({
                   WHERE command_id = $1 AND tenant_id = $2`,
 })
 
+/**
+ * The department a mandate is about, where it names one.
+ *
+ * Written explicitly because the actor's department stopped being a safe proxy
+ * for it: a convenor acts on a case another desk owns.
+ */
+function mandateDepartmentOf(mandate: Mandate): string | null {
+  if ('departmentId' in mandate) return mandate.departmentId
+  if ('owningDepartmentId' in mandate) return mandate.owningDepartmentId
+  if ('proposedByDepartmentId' in mandate) return mandate.proposedByDepartmentId
+  return null
+}
+
 function toMandate(row: CommandRow): Mandate {
   switch (row.mandate_kind) {
+    case 'investment-committee-convenor':
+      /*
+       * No fallback to `actor_department_id`. For every other department-scoped
+       * mandate the two coincide; for this one they deliberately do not, and
+       * guessing would make the ledger say the Chairman convened for their own
+       * desk. Migration 0039 constrains the column to be present.
+       */
+      return {
+        kind: 'investment-committee-convenor',
+        owningDepartmentId: row.mandate_department_id!,
+      }
     case 'governance-verdict':
       return { kind: 'governance-verdict', discipline: row.mandate_discipline! }
     case 'department-contribution':
@@ -149,6 +185,36 @@ function toMandate(row: CommandRow): Mandate {
   }
 }
 
+/**
+ * The stored actor kind, mapped exhaustively.
+ *
+ * **This used to be `row.actor_kind === 'system' ? 'system' : 'employee'`**,
+ * which was correct while two kinds existed and became a falsification the
+ * moment a third did: an institutional agent would have rehydrated as a human
+ * employee, and the ledger would have reported a person performing an act no
+ * person performed.
+ *
+ * Unknown values fail closed. A principal kind this build does not understand
+ * is not a reason to guess the most familiar one — it is a reason to refuse,
+ * the same discipline `toMandate` and the authentication check already apply.
+ */
+function toActorKind(stored: string): ActorSnapshot['kind'] {
+  switch (stored) {
+    case 'employee':
+      return 'employee'
+    case 'institutional-agent':
+      return 'institutional-agent'
+    case 'system':
+      return 'system'
+    default:
+      throw new MalformedRowError(
+        'command',
+        `unknown actor kind "${stored}"`,
+        'commands.find',
+      )
+  }
+}
+
 function toActor(row: CommandRow): ActorSnapshot {
   if (row.actor_authentication !== 'system-asserted') {
     throw new MalformedRowError(
@@ -158,8 +224,9 @@ function toActor(row: CommandRow): ActorSnapshot {
     )
   }
   return {
-    kind: row.actor_kind === 'system' ? 'system' : 'employee',
+    kind: toActorKind(row.actor_kind),
     employeeId: row.actor_employee_id,
+    agentPrincipalId: row.actor_agent_principal_id,
     roleId: row.actor_role_id,
     roleFunction: (row.actor_role_function as RoleFunction | null) ?? null,
     departmentId: row.actor_department_id,
@@ -333,6 +400,8 @@ export function createCommandLog(
           actor.organizationSeedVersion,
           intent.mandate.kind,
           'discipline' in intent.mandate ? intent.mandate.discipline : null,
+          mandateDepartmentOf(intent.mandate),
+          actor.agentPrincipalId,
           intent.authorizationBasis,
           intent.initiator.kind,
           initiatorId(intent.initiator),

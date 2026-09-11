@@ -186,9 +186,33 @@ export function commandPayloadHash(input: {
   thesisRevisionId?: string
   expectedVersion?: number
   accountableEmployeeId: string | null
+  /**
+   * Set only when a named Financial OS specialist is accountable.
+   *
+   * Deliberately NOT folded into `accountableEmployeeId`: an agent id in a
+   * field defined as an employee id would make the record say a person was
+   * accountable when none was.
+   */
+  accountableAgentPrincipalId?: string | null
   reason?: string
   payload: CanonicalValue
 }): string {
+  /*
+   * ## The tenth key is present only for an agent act
+   *
+   * The canonical object encoding is length-prefixed by member count, so a key
+   * that is absent is absent from the bytes. Employee and system acts therefore
+   * hash exactly as they always have — measured, not assumed: the nine-key form
+   * reproduces every historical hash byte for byte, and `identityCorpus`
+   * pins the literal `d9:` string.
+   *
+   * An agent act encodes `d10:` and so cannot collide with a system act, which
+   * also has no accountable employee but carries nine keys.
+   *
+   * This is why no canonicalization version bump is needed. A bump would signal
+   * that existing vectors need reinterpreting, and they do not.
+   */
+  const agentPrincipalId = input.accountableAgentPrincipalId
   return stableHashHex(
     canonicalIdentityInput(COMMAND_PAYLOAD_DOMAIN, {
       canonicalization: PAYLOAD_CANONICALIZATION_VERSION,
@@ -198,6 +222,14 @@ export function commandPayloadHash(input: {
       thesisRevisionId: input.thesisRevisionId ?? null,
       expectedVersion: input.expectedVersion ?? null,
       accountable: input.accountableEmployeeId,
+      ...(agentPrincipalId
+        ? {
+            accountablePrincipal: {
+              kind: 'institutional-agent',
+              id: agentPrincipalId,
+            },
+          }
+        : {}),
       reason: input.reason ?? null,
       payload: input.payload,
     }),

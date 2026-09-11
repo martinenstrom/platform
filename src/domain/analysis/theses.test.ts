@@ -28,6 +28,11 @@ import {
   type InvestmentThesis,
   type VerificationReview,
 } from './index'
+import { eligibilityPolicy } from '~/domain/analysis'
+
+/** Version 1's mandates, read from the registry rather than restated. */
+const DA_ONLY = eligibilityPolicy('1').challengeMandates
+
 
 const thesis = (over: Partial<InvestmentThesis> = {}): InvestmentThesis =>
   buildThesis({
@@ -373,6 +378,7 @@ describe('governance runs per revision', () => {
         ],
       },
       'material',
+      DA_ONLY,
     )
     expect(results.find((r) => r.revisionId === 'buy-r1')?.passed).toBe(true)
     expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
@@ -386,6 +392,7 @@ describe('governance runs per revision', () => {
         verification: [caseVerification('verified')],
       },
       'material',
+      DA_ONLY,
     )
     expect(results.every((r) => r.passed)).toBe(true)
   })
@@ -398,6 +405,7 @@ describe('governance runs per revision', () => {
         verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
       },
       'material',
+      DA_ONLY,
     )
     expect(results.find((r) => r.revisionId === 'sell-r1')?.passed).toBe(false)
   })
@@ -410,6 +418,7 @@ describe('governance runs per revision', () => {
       'case-1',
       { verification: [revisionVerification('th-buy', 'buy-r1', 'verified')] },
       'material',
+      DA_ONLY,
     )
     expect(results[0]!.passed).toBe(false)
     expect(results[0]!.blockers.map((b) => b.kind)).toContain('verification-missing')
@@ -423,6 +432,7 @@ describe('governance runs per revision', () => {
         verification: [revisionVerification('th-buy', 'buy-r1', 'verified')],
       },
       'material',
+      DA_ONLY,
     )
     expect(results[0]!.passed).toBe(false)
   })
@@ -452,6 +462,7 @@ describe('the CIO decision', () => {
         decidedBy: {
           kind: 'employee',
           employeeId: 'cio',
+          agentPrincipalId: null,
           roleId: 'role-cio',
           roleFunction: 'executive',
           departmentId: 'executive',

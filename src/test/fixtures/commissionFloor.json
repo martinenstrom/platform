@@ -6,8 +6,7 @@
     "handles": [
       "fx",
       "macro",
-      "policy",
-      "rates"
+      "policy"
     ],
     "manager": {
       "employeeId": "macro-head",
@@ -25,7 +24,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "macro-analysis",
         "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
         "requirement": "required",
@@ -139,12 +138,48 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "quant-validation",
         "brief": "Test the macro view against the data: regime indicators, historical analogues, and whether the claimed relationships hold statistically.",
         "requirement": "optional",
         "priority": 80,
         "disciplineTag": "quant"
+      }
+    ],
+    "runs": []
+  },
+  {
+    "departmentId": "rates",
+    "name": "Rates",
+    "isGovernance": false,
+    "handles": [
+      "rates"
+    ],
+    "manager": {
+      "employeeId": "rates-head",
+      "displayName": "Head of Rates",
+      "roleTitle": "Head of Rates",
+      "seniority": "head"
+    },
+    "responsibilities": [],
+    "assignableWork": [
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "6",
+        "entryKey": "rates-analysis",
+        "brief": "Form an independent view of the rates market for the subject: the policy path priced, nominal and real curve structure, inflation compensation, and what the curve is attributing the move to. Do not reconcile with another desk; state your own view and what would change it.",
+        "requirement": "required",
+        "priority": 100,
+        "disciplineTag": "rates"
+      },
+      {
+        "playbookId": "macro-regime",
+        "playbookVersion": "6",
+        "entryKey": "peer-examination",
+        "brief": "Read the synthesised revision as a qualified peer. Say on the record whether you agree. Challenge any claim you consider materially unsupported, naming the claim; if the argument survives your reading, record that you examined it and raised nothing.",
+        "requirement": "required",
+        "priority": 70,
+        "disciplineTag": "rates"
       }
     ],
     "runs": []
@@ -172,7 +207,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "aggregation",
         "brief": "Reconcile the contributions into a single thesis revision. State the position, the invalidation criteria, and which implementation implications the thesis carries. Record any perspective that was unavailable.",
         "requirement": "required",
@@ -205,7 +240,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "challenge",
         "brief": "Argue the opposite case as strongly as the evidence permits. Identify the assumption the thesis cannot survive being wrong about.",
         "requirement": "required",
@@ -240,7 +275,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "risk-review",
         "brief": "Assess the exposure acting on this thesis would create: sizing, concentration, liquidity and tail risk.",
         "requirement": "conditional",
@@ -273,7 +308,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "4",
+        "playbookVersion": "6",
         "entryKey": "verification",
         "brief": "Check every factual claim the thesis rests on against its cited evidence. Record discrepancies rather than correcting them.",
         "requirement": "required",

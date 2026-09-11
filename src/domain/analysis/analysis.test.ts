@@ -61,6 +61,20 @@ import type { CanonicalValue } from '~/domain/shared/canonicalValue'
 
 /* ------------------------------------------------------------- test fixtures */
 
+/**
+ * Version 1's challenge mandates, READ from the registry rather than restated.
+ *
+ * These gate tests were written when the Devil's Advocate was the only
+ * challenger there was, so `['devils-advocate']` is what they have always
+ * meant. Taking it from the policy rather than typing it means this file fails
+ * if version 1 ever stops being Devil's-Advocate-only — which it must not.
+ */
+const DA_ONLY = eligibilityPolicy('1').challengeMandates
+const V1_MANDATES = {
+  challengeBlocksAtOrAbove: eligibilityPolicy('1').challengeBlocksAtOrAbove,
+  challengeMandates: DA_ONLY,
+}
+
 const responsibilities = [{ id: 'r1', summary: 'Analyse', interpretive: false }]
 
 const specialistRole = buildRole({
@@ -123,6 +137,7 @@ function firm(extraDepartments: Department[] = []): Organization {
       ...extraDepartments,
     ],
     teams: [],
+    agentPrincipals: [],
     employees: [
       {
         id: 'cio',
@@ -1053,6 +1068,7 @@ describe('the governance gate', () => {
     const result = evaluateGate({
       ...riskSettled,
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
     })
     expect(result.passed).toBe(false)
     expect(kinds(result)).toContain('verification-missing')
@@ -1062,6 +1078,7 @@ describe('the governance gate', () => {
     expect(
       evaluateGate({
         challengeBlocksAtOrAbove: 'material',
+        challengeMandates: DA_ONLY,
         ...riskSettled,
         verification: verification(),
       }).passed,
@@ -1071,6 +1088,7 @@ describe('the governance gate', () => {
   it('blocks on a correction requirement', () => {
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification({ status: 'correction-required' }),
     })
@@ -1085,6 +1103,7 @@ describe('the governance gate', () => {
      */
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification({
         status: 'correction-required',
@@ -1127,6 +1146,7 @@ describe('the governance gate', () => {
     expect(
       evaluateGate({
         challengeBlocksAtOrAbove: 'material',
+        challengeMandates: DA_ONLY,
         ...riskSettled,
         verification: review,
       }).passed,
@@ -1159,6 +1179,8 @@ describe('the governance gate', () => {
 
   const challenge = (over: Partial<Challenge> = {}) =>
     buildChallenge({
+      challengerKind: 'devils-advocate',
+      byDepartmentId: 'devils-advocate',
       id: 'ch-1',
       contests: 'claim-1',
       kind: 'contradicting-evidence',
@@ -1171,6 +1193,7 @@ describe('the governance gate', () => {
   it('blocks while a material challenge is unresolved', () => {
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: challengeReview([challenge()]),
@@ -1188,6 +1211,7 @@ describe('the governance gate', () => {
     const review = challengeReview([challenge({ materiality: 'non-material' })])
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: review,
@@ -1201,6 +1225,7 @@ describe('the governance gate', () => {
   it('blocks on a decision-critical challenge', () => {
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification(),
       devilsAdvocate: challengeReview([challenge({ materiality: 'decision-critical' })]),
@@ -1251,6 +1276,7 @@ describe('the governance gate', () => {
   it('reports every blocker at once, so one pass fixes them all', () => {
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       ...riskSettled,
       verification: verification({ status: 'unresolved-discrepancy' }),
       compliance: {
@@ -1274,6 +1300,8 @@ describe('the governance gate', () => {
   it('refuses an objection with nothing behind it', () => {
     expect(() =>
       buildChallenge({
+        challengerKind: 'devils-advocate',
+        byDepartmentId: 'devils-advocate',
         id: 'ch-2',
         contests: 'claim-1',
         kind: 'contradicting-evidence',
@@ -1288,6 +1316,8 @@ describe('the governance gate', () => {
     // Naming a fragile assumption is legitimate without a counter-observation.
     expect(() =>
       buildChallenge({
+        challengerKind: 'devils-advocate',
+        byDepartmentId: 'devils-advocate',
         id: 'ch-3',
         contests: 'claim-1',
         kind: 'fragile-assumption',
@@ -1302,6 +1332,8 @@ describe('the governance gate', () => {
   it('refuses an assumption challenge that nothing could settle', () => {
     expect(() =>
       buildChallenge({
+        challengerKind: 'devils-advocate',
+        byDepartmentId: 'devils-advocate',
         id: 'ch-4',
         contests: 'claim-1',
         kind: 'overconfidence',
@@ -1351,6 +1383,7 @@ describe('the conditional Risk gate', () => {
       kinds(
         evaluateGate({
           challengeBlocksAtOrAbove: 'material',
+          challengeMandates: DA_ONLY,
           verification: verified(),
           riskRequirement: 'unresolved',
         }),
@@ -1362,7 +1395,7 @@ describe('the conditional Risk gate', () => {
     // The safe direction: forgetting to supply it must be visible, not silent.
     expect(
       kinds(
-        evaluateGate({ challengeBlocksAtOrAbove: 'material', verification: verified() }),
+        evaluateGate({ ...V1_MANDATES, verification: verified() }),
       ),
     ).toEqual(['risk-requirement-unresolved'])
   })
@@ -1374,6 +1407,7 @@ describe('the conditional Risk gate', () => {
      */
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       verification: verified(),
       riskRequirement: 'unresolved',
       risk: risk('accepted'),
@@ -1385,6 +1419,7 @@ describe('the conditional Risk gate', () => {
   it('satisfies the gate with an explicit not-required and no review', () => {
     const result = evaluateGate({
       challengeBlocksAtOrAbove: 'material',
+      challengeMandates: DA_ONLY,
       verification: verified(),
       riskRequirement: 'not-required',
     })
@@ -1398,6 +1433,7 @@ describe('the conditional Risk gate', () => {
       kinds(
         evaluateGate({
           challengeBlocksAtOrAbove: 'material',
+          challengeMandates: DA_ONLY,
           verification: verified(),
           riskRequirement: 'not-required',
           risk: risk('accepted'),
@@ -1411,6 +1447,7 @@ describe('the conditional Risk gate', () => {
       kinds(
         evaluateGate({
           challengeBlocksAtOrAbove: 'material',
+          challengeMandates: DA_ONLY,
           verification: verified(),
           riskRequirement: 'required',
         }),
@@ -1423,6 +1460,7 @@ describe('the conditional Risk gate', () => {
       kinds(
         evaluateGate({
           challengeBlocksAtOrAbove: 'material',
+          challengeMandates: DA_ONLY,
           verification: verified(),
           riskRequirement: 'required',
           risk: risk('rejected'),
@@ -1436,6 +1474,7 @@ describe('the conditional Risk gate', () => {
       expect(
         evaluateGate({
           challengeBlocksAtOrAbove: 'material',
+          challengeMandates: DA_ONLY,
           verification: verified(),
           riskRequirement: 'required',
           risk: risk(status),

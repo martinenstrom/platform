@@ -88,8 +88,7 @@ export type ObservationKind =
   | 'news'
   | 'sentiment'
   /**
-   * A fact the firm computed from other observations — a curve slope, a
-   * breakeven, a change across publications.
+   * A curve slope the firm computed from two yield observations.
    *
    * Its own kind rather than borrowing `yield`, because it is not one: a 2s10s
    * spread has no `yieldPercent`, and forcing it into the yield projection
@@ -98,6 +97,47 @@ export type ObservationKind =
    * same content hash.
    */
   | 'derived-spread'
+  /**
+   * Market-implied inflation compensation — a nominal yield minus the real
+   * yield at the same tenor and reference date.
+   *
+   * **Separate from `derived-spread` for the same reason `derived-spread` is
+   * separate from `yield`.** A breakeven is not a slope: `slopeBasisPoints`
+   * would be the wrong name for it, and renaming that field to something
+   * neutral is not available — it sits inside the content hash of every 2s10s
+   * observation already stored, so changing it would restate history rather
+   * than extend it.
+   *
+   * **It is a price, not a forecast.** What it measures is what the market
+   * charges to hold a nominal Treasury rather than an inflation-linked one,
+   * which bundles expected inflation with an inflation-risk premium and with
+   * the relative liquidity of the two securities. Nothing in this kind, its
+   * subject or its projection may call it "expected inflation".
+   */
+  | 'derived-breakeven'
+  /**
+   * The settled closing price of a listed security for one trading session.
+   *
+   * **Not a `quote`.** A quote is what a security is worth at an instant and it
+   * moves between two reads of the same second; a close is a final fact about a
+   * named day, which is what makes it citable. A desk that cited a quote would
+   * be citing something that no longer exists.
+   *
+   * **Named for what it holds, not for what a price series usually holds.** It
+   * is a close, not a bar: the governed source projects a closing value per
+   * session and nothing else, so `open`, `high`, `low` and `volume` are absent
+   * rather than present-and-null. A desk cannot cite a session range from this,
+   * which is correct — the firm does not hold one. Admitting those fields is a
+   * later decision requiring a source that actually publishes them.
+   *
+   * The reference period is the SESSION DATE, so one close per security per
+   * trading day has one identity, and a venue restating a session — a corrected
+   * close, a late print — revises that observation rather than adding a second.
+   *
+   * The subject is a `SecurityId`, never a ticker: identity has to survive the
+   * symbol changing.
+   */
+  | 'price-close'
 
 /**
  * The parts that make an observation the observation it is, plus the one part
@@ -317,6 +357,15 @@ const PROJECTED_FIELDS: Partial<Record<ObservationKind, readonly string[]>> = {
    * while it rested on different numbers.
    */
   'derived-spread': ['slopeBasisPoints', 'observationDate', 'inputs'],
+  /* Same discipline, its own honest field name. See `derived-breakeven`. */
+  'derived-breakeven': ['breakevenBasisPoints', 'observationDate', 'inputs'],
+  /*
+   * Both fields, because both are the fact. The session date is inside the
+   * projection rather than only in the key so a restated close for a named day
+   * cannot keep its content hash — the same discipline `yield` applies with
+   * `observationDate`.
+   */
+  'price-close': ['close', 'sessionDate'],
   // `policy-state` is nested and conditional; see `observationContent`.
   'policy-state': [],
 }

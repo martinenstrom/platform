@@ -253,6 +253,7 @@ const REVISION_COLUMNS = `
   revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
   statement, position, lifecycle, invalidation_criteria, horizon, implications,
   proposed_by_department_id, proposed_by_employee_id,
+  proposed_by_agent_principal_id,
   ${ts('proposed_at')}, ${ts('revised_at')}, revision_reason, aggregation_id,
   revision_cause
 `
@@ -277,9 +278,10 @@ export const THESIS_SQL = catalog({
            (revision_id, thesis_id, revision_number, supersedes_revision_id, case_id,
             statement, position, lifecycle, invalidation_criteria, horizon,
             implications, proposed_by_department_id, proposed_by_employee_id,
+            proposed_by_agent_principal_id,
             proposed_at, revised_at, revision_reason, aggregation_id,
             revision_cause)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT (revision_id) DO UPDATE SET lifecycle = EXCLUDED.lifecycle`,
 
   saveLinks: `INSERT INTO analysis.thesis_claim_links (revision_id, claim_id, relation)
@@ -349,7 +351,9 @@ export function createThesisRepository(
           revision.horizon ?? null,
           [...revision.implications],
           revision.proposedByDepartmentId,
-          revision.proposedByEmployeeId,
+          /* Exactly one principal; the other column stays null. */
+          revision.proposedByEmployeeId ?? null,
+          revision.proposedByAgentPrincipalId ?? null,
           revision.proposedAt,
           revision.revisedAt ?? null,
           revision.revisionReason ?? null,

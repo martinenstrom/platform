@@ -34,7 +34,8 @@ import { unitOfWork, type Scope } from './transaction'
 
 const AGGREGATION_COLUMNS = `
   id, case_id, thesis_id, source_revision_id, produced_revision_id,
-  manager_employee_id, department_id, rationale, ${ts('aggregated_at')}
+  manager_employee_id, manager_agent_principal_id, synthesis_run_id,
+  department_id, rationale, ${ts('aggregated_at')}
 `
 
 export const AGGREGATION_SQL = catalog({
@@ -69,9 +70,10 @@ export const AGGREGATION_SQL = catalog({
 
   save: `INSERT INTO analysis.aggregations
            (id, case_id, tenant_id, thesis_id, source_revision_id,
-            produced_revision_id, manager_employee_id, department_id,
+            produced_revision_id, manager_employee_id,
+            manager_agent_principal_id, synthesis_run_id, department_id,
             rationale, aggregated_at, provenance_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (id) DO NOTHING`,
 
   /* One statement per collection, never one per row. */
@@ -220,7 +222,10 @@ export function createAggregationRepository(
           aggregation.thesisId,
           aggregation.sourceRevisionId,
           aggregation.producedRevisionId,
-          aggregation.managerEmployeeId,
+          /* Exactly one principal; the other column stays null. */
+          aggregation.managerEmployeeId ?? null,
+          aggregation.managerAgentPrincipalId ?? null,
+          aggregation.synthesisRunId ?? null,
           aggregation.departmentId,
           aggregation.rationale,
           aggregation.aggregatedAt,

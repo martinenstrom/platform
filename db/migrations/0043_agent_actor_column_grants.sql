@@ -1,0 +1,24 @@
+-- Column-level UPDATE grant for the assignment's agent assignee.
+--
+-- The runtime holds **column-level** UPDATE on `analysis.assignments` — nine
+-- columns, the ones a running workflow may legitimately change — rather than
+-- blanket UPDATE on the table. That is deliberate: it is what stops application
+-- code rewriting an assignment's case, department or playbook entry.
+--
+-- Migration 0040 added `assignee_agent_principal_id` without extending that
+-- list, so an autonomous desk picking up its own work failed with
+-- `StoragePermissionError` on `assignments.save`. The column existed, the
+-- constraint allowed it, and the runtime could not write it.
+--
+-- Only this one grant is needed:
+--
+--   * `transition_events` and the INSERT/SELECT paths hold table-level grants,
+--     so their new columns were already covered.
+--   * `runs.agent_principal_id` is written on INSERT and never updated — the
+--     accountable principal of a run does not change after it starts — so it
+--     needs no place in the restricted UPDATE list.
+--
+-- Corrected forward rather than by editing 0040, for the reason 0041 was: an
+-- applied migration is history.
+
+GRANT UPDATE (assignee_agent_principal_id) ON analysis.assignments TO finos_app;

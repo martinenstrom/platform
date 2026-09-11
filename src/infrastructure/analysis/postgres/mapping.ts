@@ -24,6 +24,7 @@ import {
   buildChallenge,
   buildRequirementResolution,
   buildClaim,
+  buildProducedSynthesis,
   buildEvidenceSet,
   buildObservation,
   buildManagerAggregation,
@@ -37,8 +38,10 @@ import {
   type CaseTransition,
   type Challenge,
   type ChallengeStatus,
+  type ChallengerKind,
   type ComplianceReview,
   type DevilsAdvocateReview,
+  type PeerExaminationReview,
   type DurableObservation,
   type EvidenceItem,
   type EvidenceRef,
@@ -52,7 +55,11 @@ import {
   type ExecutionBudget,
   type ExecutionIdentity,
   type TokenBudget,
+  type InvestmentImplication,
   type ManagerAggregation,
+  type ProducedSynthesis,
+  type ProposedClaimDisposition,
+  type ProposedOptionalInput,
   type OptionalInputRecord,
   type ProviderKind,
   type RunMoneyCost,
@@ -87,6 +94,7 @@ import type {
   ChallengeRow,
   ClaimEvidenceRow,
   ClaimRow,
+  ProducedSynthesisRow,
   EvidenceItemRow,
   EvidenceAssemblyRow,
   ObservationRow,
@@ -231,6 +239,7 @@ export function toThesis(
           position: row.position,
           proposedByDepartmentId: row.proposed_by_department_id,
           proposedByEmployeeId: row.proposed_by_employee_id,
+          proposedByAgentPrincipalId: row.proposed_by_agent_principal_id,
           proposedAt: row.proposed_at,
           implications: row.implications as InvestmentThesis['implications'],
           supportingClaimIds: of('supporting'),
@@ -265,7 +274,8 @@ export function toAssignment(row: AssignmentRow): Assignment {
           caseId: row.case_id,
           playbookEntryKey: row.playbook_entry_key,
           departmentId: row.department_id,
-          assigneeEmployeeId: row.assignee_employee_id,
+          assigneeEmployeeId: row.assignee_employee_id ?? undefined,
+          assigneeAgentPrincipalId: row.assignee_agent_principal_id ?? undefined,
           brief: row.brief,
           status: row.status,
           createdAt: row.created_at,
@@ -294,6 +304,75 @@ function toEvidenceRefs(
       observationId: row.observation_id,
       contentHash: row.content_hash,
     }))
+}
+
+/**
+ * A stored Research Office synthesis candidate.
+ *
+ * Rebuilt through `buildProducedSynthesis`, which recomputes the content hash
+ * from the row's own artifact and basis. The stored digest is then compared
+ * against it: a candidate that no longer hashes to what it says it does is a
+ * malformed row, not a candidate with an interesting hash. Corruption-evident,
+ * not tamper-proof — see `synthesisHashMatches`.
+ */
+export function toProducedSynthesis(row: ProducedSynthesisRow): ProducedSynthesis {
+  const candidate = build('produced synthesis', 'produced_syntheses', () =>
+    buildProducedSynthesis({
+      runId: row.run_id,
+      artifact: {
+        statement: row.statement,
+        position: row.position,
+        rationale: row.rationale,
+        invalidationCriteria: row.invalidation_criteria,
+        ...(row.horizon === null ? {} : { horizon: row.horizon }),
+        implications: expectArray(
+          row.implications,
+          'produced synthesis',
+          'implications',
+        ) as InvestmentImplication[],
+        inputRunIds: expectArray(
+          row.input_run_ids,
+          'produced synthesis',
+          'input_run_ids',
+        ) as string[],
+        dispositions: expectArray(
+          row.dispositions,
+          'produced synthesis',
+          'dispositions',
+        ) as ProposedClaimDisposition[],
+        optionalInputs: expectArray(
+          row.optional_inputs,
+          'produced synthesis',
+          'optional_inputs',
+        ) as ProposedOptionalInput[],
+      },
+      basis: {
+        caseId: row.case_id,
+        sourceRevisionId: row.source_revision_id,
+        playbookId: row.playbook_id,
+        playbookVersion: row.playbook_version,
+        observedCompletedRunIds: expectArray(
+          row.observed_completed_run_ids,
+          'produced synthesis',
+          'observed_completed_run_ids',
+        ) as string[],
+      },
+      producedAt: row.produced_at,
+    }),
+  )
+
+  if (
+    candidate.contentHash !== row.content_hash ||
+    candidate.canonicalizationVersion !== row.canonicalization_version
+  ) {
+    throw new MalformedRowError(
+      'produced synthesis',
+      `stored digest ${row.content_hash} (v${row.canonicalization_version}) does ` +
+        `not match the candidate it is stored with`,
+      'produced_syntheses',
+    )
+  }
+  return seal(candidate, 'produced_syntheses')
 }
 
 export function toClaim(
@@ -562,7 +641,8 @@ export function toRun(
           caseId: row.case_id,
           assignmentId: row.assignment_id,
           departmentId: row.department_id,
-          employeeId: row.employee_id,
+          employeeId: row.employee_id ?? undefined,
+          agentPrincipalId: row.agent_principal_id ?? undefined,
           agentContractVersion: row.agent_contract_version,
           outputSchemaVersion: row.output_schema_version,
           evidenceSetId: row.evidence_set_id,
@@ -595,7 +675,16 @@ export function toRun(
                 rejection: {
                   code: row.rejection_code as ContributionRejectionCode,
                   detail: row.rejection_detail!,
-                  rejectedByEmployeeId: row.rejected_by_employee_id!,
+                  /* Exactly one, and absent is absent — never a null id. */
+                  ...(row.rejected_by_employee_id
+                    ? { rejectedByEmployeeId: row.rejected_by_employee_id }
+                    : {}),
+                  ...(row.rejected_by_agent_principal_id
+                    ? {
+                        rejectedByAgentPrincipalId:
+                          row.rejected_by_agent_principal_id,
+                      }
+                    : {}),
                   rejectedAt: row.rejected_at!,
                 },
               }
@@ -882,6 +971,27 @@ export function toVerification(
   )
 }
 
+/**
+ * The challenger mandate, or a refusal.
+ *
+ * A CHECK constraint already limits the column to the two known values, so this
+ * is the second line of defence rather than the first — but a mapper that
+ * coerced an unrecognised string into `devils-advocate` would convert a
+ * database fault into a false statement about who scrutinised a conclusion,
+ * which is the one thing the peer/Devil's-Advocate distinction exists to
+ * prevent.
+ */
+function challengerKindOf(row: ChallengeRow): ChallengerKind {
+  if (row.challenger_kind === 'peer' || row.challenger_kind === 'devils-advocate') {
+    return row.challenger_kind
+  }
+  throw new Error(
+    `challenge ${row.id} carries challenger_kind ` +
+      `${JSON.stringify(row.challenger_kind)}, which is not a known mandate. ` +
+      `Refusing to reconstruct it as an institutional act.`,
+  )
+}
+
 export function toDevilsAdvocate(
   row: ReviewRow,
   challenges: readonly ChallengeRow[],
@@ -894,6 +1004,18 @@ export function toDevilsAdvocate(
       buildChallenge(
         present({
           id: challenge.id,
+          /*
+           * Read, never defaulted.
+           *
+           * Migration 0034 backfilled both columns from the parent review and
+           * made them NOT NULL, so the database is the authority on a
+           * challenge's provenance. A fallback here would quietly turn a row
+           * the database should never have produced into a valid-looking
+           * institutional act — and it would outlive the migration that made
+           * it unnecessary.
+           */
+          challengerKind: challengerKindOf(challenge),
+          byDepartmentId: challenge.by_department_id,
           contests: challenge.contests_claim_id,
           contestsThesis: challenge.contests_thesis_id,
           kind: challenge.kind,
@@ -923,6 +1045,49 @@ export function toDevilsAdvocate(
     } as DevilsAdvocateReview,
     'reviews.devilsAdvocate',
   )
+}
+
+/**
+ * A peer examination, reconstructed from the same challenge rows.
+ *
+ * It shares `toDevilsAdvocate`'s children deliberately — a challenge is a
+ * challenge whichever mandate raised it, and Half A made that mandate explicit
+ * on the row rather than implicit in which query found it. What differs is the
+ * envelope: who examined, whom they examined, and the fact that an empty
+ * challenge list is a finding rather than an empty review.
+ */
+export function toPeerExamination(
+  row: ReviewRow,
+  challenges: readonly ChallengeRow[],
+  evidence: readonly ChallengeEvidenceRow[],
+): PeerExaminationReview {
+  const base = toDevilsAdvocate(row, challenges, evidence)
+  return seal(
+    {
+      ...base,
+      /*
+       * Read, never inferred. A zero-challenge examination has no challenge to
+       * derive the examined desk from, and that is exactly the case the
+       * eligibility basis must tell apart from "nobody looked" — so a null here
+       * is a row the database should not have produced, not a default to fill.
+       */
+      examinedDepartmentId: examinedDepartmentOf(row),
+    } as PeerExaminationReview,
+    'reviews.peerExamination',
+  )
+}
+
+/** Fail closed, for the same reason as `challengerKindOf`. */
+function examinedDepartmentOf(row: ReviewRow): string {
+  const examined = row.examined_department_id
+  if (typeof examined !== 'string' || examined.length === 0) {
+    throw new Error(
+      `Review ${row.id} is a peer examination with no examined department. ` +
+        `Migration 0036 constrains this column to be present for this kind, so ` +
+        `the row was written outside the schema or the SELECT omitted it.`,
+    )
+  }
+  return examined
 }
 
 export function toCompliance(row: ReviewRow): ComplianceReview {
@@ -1083,13 +1248,16 @@ export function toManagerAggregation(
   return seal(
     build('manager aggregation', 'aggregations', () =>
       buildManagerAggregation(
-        {
+        present({
           id: row.id,
           caseId: row.case_id,
           thesisId: row.thesis_id,
           sourceRevisionId: row.source_revision_id,
           producedRevisionId: row.produced_revision_id,
+          /* Absent is absent: `present()` drops whichever column is null. */
           managerEmployeeId: row.manager_employee_id,
+          managerAgentPrincipalId: row.manager_agent_principal_id,
+          synthesisRunId: row.synthesis_run_id,
           departmentId: row.department_id,
           aggregatedAt: row.aggregated_at,
           rationale: row.rationale,
@@ -1111,7 +1279,7 @@ export function toManagerAggregation(
                 explanation: record.explanation,
               }) as unknown as OptionalInputRecord,
           ),
-        },
+        }) as unknown as ManagerAggregation,
         {
           claimsInScope: records.map((record) => ({
             claimId: record.claimId,
@@ -1158,6 +1326,7 @@ export function toRequirementResolution(
         evaluatedBy: {
           kind: 'employee',
           employeeId: row.evaluated_by_employee_id,
+          agentPrincipalId: null,
           roleId: row.evaluated_by_role_id,
           roleFunction: row.evaluated_by_role_function as RoleFunction,
           departmentId: row.evaluated_by_department_id,

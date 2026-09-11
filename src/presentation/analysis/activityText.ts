@@ -57,6 +57,12 @@ const CASE_STAGE_TEXT: Readonly<Record<string, string>> = {
 
 export interface ActivityLine {
   at: string
+  /**
+   * The department the event belongs to, carried through so a surface can put
+   * the persona's face beside it. The name alone would force the reader of
+   * this line to map a string back to an identity.
+   */
+  departmentId: string
   departmentName: string
   text: string
   caseId: string
@@ -76,7 +82,13 @@ export function toActivityLine(
   const departmentName = names[item.departmentId] ?? item.departmentId
   const table = item.subject === 'run' ? RUN_STATE_TEXT : CASE_STAGE_TEXT
   const text = table[item.toState] ?? `gick vidare till ${item.toState}`
-  return { at: item.at, departmentName, text, caseId: item.caseId }
+  return {
+    at: item.at,
+    departmentId: item.departmentId,
+    departmentName,
+    text,
+    caseId: item.caseId,
+  }
 }
 
 export function toActivityLines(

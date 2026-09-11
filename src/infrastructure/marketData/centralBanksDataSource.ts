@@ -34,6 +34,7 @@ export function createCentralBanksDataSource(
     runAttempt: container.runAttempt,
     singleFlight: (key, execute) => container.singleFlight.run(key, execute),
     correlationId,
+    chainGapsSeen: container.chainGapsSeen,
   }
 
   /**

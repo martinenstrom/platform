@@ -39,6 +39,7 @@
  */
 
 import type {
+  ContributionRejection,
   ContributionRejectionCode,
   ExecutionBudget,
   ExecutionIdentity,
@@ -144,6 +145,31 @@ export const REJECTION_CODE_LABEL: Record<ContributionRejectionCode, string> = {
   'duplicates-existing-work': 'Tillför inget nytt',
   'insufficient-analysis': 'Analysen gick inte tillräckligt långt',
   'out-of-scope': 'Riktigt, men inte den här avdelningens arbete',
+}
+
+/**
+ * Who declined the work, named as what they are.
+ *
+ * A rejection is declined by exactly one accountable principal, and that
+ * principal is a person or a desk agent. Reading only the employee field left a
+ * blank wherever an agent had refused work — which reads as "nobody declined
+ * this" rather than as the institutional act it was.
+ */
+export function rejectedByText(rejection: ContributionRejection): string {
+  if (rejection.rejectedByAgentPrincipalId) {
+    /*
+     * Said out loud. A desk agent's id rendered bare would read as a person's,
+     * and the human/agent boundary is not something a reader should have to
+     * infer from an id's spelling.
+     */
+    return `${rejection.rejectedByAgentPrincipalId} (agent)`
+  }
+  /*
+   * The domain guarantees exactly one principal, but presentation may not
+   * import the domain to assert it — so an empty pair renders as the honest
+   * answer rather than as a blank, which would read as "nobody declined this".
+   */
+  return rejection.rejectedByEmployeeId ?? 'okänd principal'
 }
 
 /* ---------------------------------------------------------------- producers */

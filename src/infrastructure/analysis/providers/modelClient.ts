@@ -52,6 +52,20 @@ export interface ModelResponse {
   /** Concatenated text blocks. Tool protocols are not used; see §3. */
   text: string
   usage: ModelUsage | null
+  /**
+   * Why the model stopped, verbatim, or `null` where it did not say.
+   *
+   * Carried because the alternative is a lie the record cannot detect. An
+   * answer cut off at `max_tokens` is syntactically broken JSON, and a parser
+   * reading only the text reports `malformed-output` — sending whoever
+   * investigates to the model's formatting discipline when the actual cause is
+   * the firm's own answer cap. Measured, not theoretical: the first live
+   * Research Office synthesis failed three identical attempts this way.
+   *
+   * It is the raw provider string rather than a category, because the mapping
+   * onto a failure belongs to the caller that knows what it asked for.
+   */
+  stopReason: string | null
 }
 
 export type ModelCallOutcome =
@@ -155,7 +169,12 @@ function readMessage(body: unknown): ModelResponse | null {
     .map((block) => block.text)
     .join('')
 
-  return { model, text, usage: readUsage(message.usage) }
+  return {
+    model,
+    text,
+    usage: readUsage(message.usage),
+    stopReason: typeof message.stop_reason === 'string' ? message.stop_reason : null,
+  }
 }
 
 /**

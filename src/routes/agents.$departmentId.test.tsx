@@ -12,6 +12,7 @@
  * as they are rather than as a summary somebody would find friendlier.
  */
 
+import { rejectedByText } from '~/presentation/analysis/runText'
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import {
@@ -131,7 +132,7 @@ describe('every run reads as what it is', () => {
     ).toBeInTheDocument()
     expect(within(card).getByText(rejected.rejection!.detail)).toBeInTheDocument()
     expect(
-      within(card).getByText(new RegExp(rejected.rejection!.rejectedByEmployeeId)),
+      within(card).getByText(new RegExp(rejectedByText(rejected.rejection!))),
     ).toBeInTheDocument()
   })
 

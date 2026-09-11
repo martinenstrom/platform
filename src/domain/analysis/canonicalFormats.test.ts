@@ -39,6 +39,8 @@ const BASIS: BasisContent = {
   blockers: [],
   verification: null,
   devilsAdvocate: null,
+  /* Nobody examined. The empty list is the fact, and the digest binds it. */
+  peerScrutiny: [],
   risk: null,
   riskRequirement: 'not-required',
   riskRuleId: null,

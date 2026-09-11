@@ -22,13 +22,32 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { CaseListPage } from './cases.index'
+import { HeadquartersPage } from './headquarters'
+import { commandCenterView } from '~/application/analysis/commandCenter'
+import type { AgentDesk } from '~/application/analysis/agentDirectory'
 import mixed from '~/test/fixtures/caseList.mixed.json'
 import type { CaseListing } from '~/application/analysis/caseListing'
 import type { CaseListResponse } from '~/infrastructure/analysis/serverFns'
 import { ACT_LABEL, STAGE_LABEL } from '~/presentation/analysis/caseStandingText'
 
 const cases = mixed as unknown as readonly CaseListing[]
+
+/**
+ * The Command Center view over a set of desks.
+ *
+ * The floor is projected by the application read model rather than assembled
+ * here, so these suites are held to the same counting the product does — a
+ * hand-built view would let the page pass against numbers the firm never
+ * produced.
+ */
+const viewOf = (entries: readonly AgentDesk[]) =>
+  commandCenterView({
+    cases: [],
+    desks: entries,
+    activity: [],
+    evidenceSetCount: 0,
+    latestAssemblyAt: null,
+  })
 
 /**
  * A router, because the queue links to cases and `Link` needs one.
@@ -47,8 +66,13 @@ async function withRouter(ui: ReactNode) {
     path: '/cases/$caseId',
     component: () => null,
   })
+  const deskRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/agents/$departmentId',
+    component: () => null,
+  })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([caseRoute]),
+    routeTree: rootRoute.addChildren([caseRoute, deskRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   /*
@@ -62,8 +86,22 @@ async function withRouter(ui: ReactNode) {
   return render(<RouterProvider router={router as any} />)
 }
 
+/*
+ * The queue moved into `/headquarters` when the Command Center v1 gate merged
+ * the desk floor and the case list into one investment floor. These assertions
+ * came with it: what they protect — that a settled case and a case waiting on
+ * somebody never render alike — is a property of the queue, not of the route it
+ * happened to live on.
+ *
+ * The desk half is supplied empty; this file is about the work.
+ */
 const renderQueue = (entries: readonly CaseListing[] = cases) =>
-  withRouter(<CaseListPage response={{ ok: true, cases: entries }} />)
+  withRouter(
+    <HeadquartersPage
+      center={{ ok: true, view: viewOf([]) }}
+      cases={{ ok: true, cases: entries }}
+    />,
+  )
 
 const card = (heading: RegExp) =>
   screen.getByRole('heading', { name: heading }).closest('section')!
@@ -81,9 +119,17 @@ describe('the queue leads with what is owed', () => {
     expect(screen.getByRole('heading', { name: /^Avgjorda \(1\)$/ })).toBeInTheDocument()
   })
 
-  it('summarises the firm at the top', async () => {
+  it('states the case counts on the queue itself, not on a title strip', async () => {
     await renderQueue()
-    expect(screen.getByText('2 pågående, 1 avgjorda.')).toBeInTheDocument()
+    /*
+     * The page-title strip that used to repeat these counts above the
+     * workstation is gone. The counts belong to the sections that hold the
+     * cases, and asserting the strip's absence keeps it from coming back: a
+     * figure printed twice is a figure that can disagree with itself.
+     */
+    expect(screen.getByRole('heading', { name: /^Pågående \(2\)$/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^Avgjorda \(1\)$/ })).toBeInTheDocument()
+    expect(screen.queryByText(/registrerade körningar/)).not.toBeInTheDocument()
   })
 
   it('links every case to its own page', async () => {
@@ -147,14 +193,15 @@ describe('the empty and failed states', () => {
   it('says a firm holding nothing is holding nothing, not that something broke', async () => {
     await renderQueue([])
     expect(screen.getByText('Inga ärenden ännu')).toBeInTheDocument()
-    expect(screen.getByText('Inga ärenden.')).toBeInTheDocument()
     /* No sections at all — an empty "Pågående (0)" would read as a lost list. */
     expect(screen.queryByRole('heading', { name: /^Pågående/ })).not.toBeInTheDocument()
   })
 
   it('renders a failure as a sentence, never as its code', async () => {
     const failed: CaseListResponse = { ok: false, code: 'SERVICE_UNAVAILABLE' }
-    await withRouter(<CaseListPage response={failed} />)
+    await withRouter(
+      <HeadquartersPage center={{ ok: true, view: viewOf([]) }} cases={failed} />,
+    )
 
     expect(screen.getByText('Analysmiljön svarar inte just nu.')).toBeInTheDocument()
     expect(screen.queryByText(/SERVICE_UNAVAILABLE|postgres/)).not.toBeInTheDocument()
@@ -166,7 +213,12 @@ describe('the empty and failed states', () => {
      * other is a database to go and look at. Same blank page for both would
      * send an operator to the wrong place.
      */
-    await withRouter(<CaseListPage response={{ ok: false, code: 'NOT_CONFIGURED' }} />)
+    await withRouter(
+      <HeadquartersPage
+        center={{ ok: true, view: viewOf([]) }}
+        cases={{ ok: false, code: 'NOT_CONFIGURED' }}
+      />,
+    )
     expect(
       screen.getByText('Analysmiljön saknar databaskonfiguration.'),
     ).toBeInTheDocument()

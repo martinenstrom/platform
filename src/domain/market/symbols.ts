@@ -67,6 +67,26 @@ export const SYM_US10Y = s('rate:us10y')
 export const SYM_US20Y = s('rate:us20y')
 export const SYM_US30Y = s('rate:us30y')
 
+/*
+ * US Treasury REAL yields — TIPS.
+ *
+ * A separate instrument from the nominal at the same tenor, not a variant of
+ * it. `rate:us10y` and `rate:us10y-real` describe two different securities the
+ * Treasury issues and publishes separately, and the difference between them is
+ * the market's compensation for expected inflation.
+ *
+ * **There is no 2Y real yield.** The Treasury's real curve begins at 5Y
+ * because TIPS are not issued at that point, so a 2Y breakeven cannot be
+ * derived from this source and the short end of the real curve simply does not
+ * exist. Probed 2026-08-26: the series carries TC_5YEAR, TC_7YEAR, TC_10YEAR,
+ * TC_20YEAR and TC_30YEAR, and nothing shorter.
+ */
+export const SYM_US5Y_REAL = s('rate:us5y-real')
+export const SYM_US7Y_REAL = s('rate:us7y-real')
+export const SYM_US10Y_REAL = s('rate:us10y-real')
+export const SYM_US20Y_REAL = s('rate:us20y-real')
+export const SYM_US30Y_REAL = s('rate:us30y-real')
+
 export const SYM_DE10Y = s('rate:de10y')
 export const SYM_SE10Y = s('rate:se10y')
 
@@ -232,6 +252,17 @@ export const INSTRUMENTS: Readonly<Record<CanonicalSymbol, InstrumentRef>> =
 
           bond(SYM_US2Y, '2Y U.S. Yield', 'US', 24),
           bond(SYM_US10Y, '10Y U.S. Yield', 'US', 120),
+          /*
+           * Real yields carry the same unit and precision as the nominals —
+           * they are yields, in percent — and are distinguished by name rather
+           * than by a flag, so a reader of a chart legend cannot mistake one
+           * for the other.
+           */
+          bond(SYM_US5Y_REAL, '5Y U.S. Real Yield', 'US', 60),
+          bond(SYM_US7Y_REAL, '7Y U.S. Real Yield', 'US', 84),
+          bond(SYM_US10Y_REAL, '10Y U.S. Real Yield', 'US', 120),
+          bond(SYM_US20Y_REAL, '20Y U.S. Real Yield', 'US', 240),
+          bond(SYM_US30Y_REAL, '30Y U.S. Real Yield', 'US', 360),
           bond(SYM_DE10Y, '10Y Germany Yield', 'DE', 120),
           bond(SYM_SE10Y, 'Sweden 10Y Yield', 'SE', 120),
 
@@ -287,6 +318,23 @@ export const OVERVIEW_YIELD_SYMBOLS = [SYM_US10Y, SYM_DE10Y, SYM_US2Y, SYM_SE10Y
  * The US par curve, ascending. One issuer, one methodology, one observation
  * date — the only curve in the product that can honestly be drawn.
  */
+/**
+ * The US REAL curve, ascending.
+ *
+ * Five points rather than thirteen: the Treasury publishes no real yield below
+ * 5Y. Kept as its own list rather than folded into the par curve, because a
+ * curve mixing nominal and real points is not a curve — the two answer
+ * different questions and `methodologiesAreComparable` exists to stop exactly
+ * that.
+ */
+export const US_REAL_CURVE_SYMBOLS = [
+  SYM_US5Y_REAL,
+  SYM_US7Y_REAL,
+  SYM_US10Y_REAL,
+  SYM_US20Y_REAL,
+  SYM_US30Y_REAL,
+] as const
+
 export const US_PAR_CURVE_SYMBOLS = [
   SYM_US1M,
   SYM_US2M,

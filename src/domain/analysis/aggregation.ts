@@ -262,10 +262,32 @@ export interface ManagerAggregation {
   /** The revision this produced. One aggregation, one revision. */
   producedRevisionId: RevisionId
 
-  /** Accountable, and deliberately not the run's employee or provider. */
-  managerEmployeeId: EmployeeId
+  /**
+   * Accountable, and deliberately not the run's employee or provider.
+   *
+   * Exactly one of these two, enforced by the database. A synthesis the
+   * Research Office agent adopted is the agent's act, and attributing it to the
+   * human Research Director would put a person's name on a position they never
+   * read.
+   */
+  managerEmployeeId?: EmployeeId
+  /** The institutional agent that adopted the synthesis, where one did. */
+  managerAgentPrincipalId?: string
   departmentId: DepartmentId
   aggregatedAt: string
+
+  /**
+   * The persisted synthesis candidate this aggregation adopted.
+   *
+   * Absent for a directly authored synthesis: a human manager may state and
+   * stand behind a position in one act, and no historical aggregation is given
+   * a synthetic candidate to look like one that was adopted.
+   *
+   * Present for every agent synthesis, so the institution can prove
+   * `model artifact → this exact persisted candidate → this exact institutional
+   * position` by join. Matching prose is a coincidence that usually holds.
+   */
+  synthesisRunId?: string
 
   /** Why the synthesis reads as it does. Prose, and the only prose here. */
   rationale: string
@@ -310,6 +332,22 @@ export function buildManagerAggregation(
     throw new Error(
       `Aggregation "${aggregation.id}" declares no input contributions. A ` +
         `synthesis of nothing is not a synthesis.`,
+    )
+  }
+  /*
+   * Exactly one accountable principal. Mirrors
+   * `aggregations_one_accountable_principal` from migration 0040, so a record
+   * the database would refuse does not reach it.
+   */
+  const accountable = [
+    aggregation.managerEmployeeId,
+    aggregation.managerAgentPrincipalId,
+  ].filter((principal) => principal !== undefined).length
+  if (accountable !== 1) {
+    throw new Error(
+      `Aggregation "${aggregation.id}" names ${accountable} accountable ` +
+        `principals. A synthesis is stood behind by exactly one — the firm has ` +
+        `to know who to ask.`,
     )
   }
 

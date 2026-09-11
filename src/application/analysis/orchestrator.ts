@@ -47,6 +47,7 @@ import type {
   RunFailureCategory,
   RunState,
   RunUsage,
+  AssertedActor,
 } from '~/domain/analysis'
 import {
   blockedEntries,
@@ -71,6 +72,19 @@ import { failAgentRun } from './commands/failAgentRun'
 // ledger module directly: the orchestrator's only durable surface is
 // `runCommand`, and a fitness rule keeps it that way.
 import type { CommandEnvelope, DomainRejection } from './commands/envelope'
+
+/**
+ * An entry the record already shows completed, with what it produced.
+ *
+ * Read off persisted runs by the caller that holds them, rather than looked up
+ * here: the orchestrator's only durable surface is `runCommand`, and giving it
+ * a second way to read the store would give the firm two answers to what has
+ * completed.
+ */
+export interface SatisfiedEntry {
+  entryKey: string
+  claims: readonly AgentClaim[]
+}
 
 export interface OrchestrationOptions {
   /** Per-contribution deadline. */
@@ -122,6 +136,28 @@ export interface OrchestrationOptions {
    * premise the graph says is missing.
    */
   requestedEntryKeys?: readonly string[]
+  /**
+   * What the RECORD already shows completed, and the claims it produced.
+   *
+   * Readiness is otherwise computed only over what ran in THIS invocation,
+   * because `completed` starts empty. That is right for a whole-playbook run,
+   * where every dependency does run here — and wrong for every commission of a
+   * single entry, which is what Agent Headquarters does: `macro-analysis`
+   * completed in an earlier invocation, so `aggregation` was never ready, and
+   * an entry with blockers could not be commissioned at all.
+   *
+   * It is **not** a way past the dependency rule, and it does not widen what
+   * may run. The entries named here have genuinely completed and been accepted;
+   * `StartAgentRun` recomputes the same question from the same rows and refuses
+   * an entry whose blockers have not completed, so a caller that named an
+   * unsatisfied entry here would be declined at the command boundary exactly as
+   * before. This only stops the orchestrator from contradicting the record.
+   *
+   * The claims travel with the keys deliberately. A dependent entry's provider
+   * is handed its upstream claims, and seeding a key without them would hand a
+   * synthesis an empty argument to reconcile while reporting success.
+   */
+  satisfiedEntries?: readonly SatisfiedEntry[]
   /**
    * Jitter for retry backoff, injected so a seeded test reproduces the exact
    * delay sequence. `Math.random()` is banned below the presentation layer for
@@ -203,6 +239,21 @@ export interface OrchestrationResult {
 /** The three durable acts one entry can perform. */
 export type OrchestrationAct = 'start' | 'record' | 'fail'
 
+/**
+ * The id of whoever is accountable, whatever kind of principal they are.
+ *
+ * A system actor has none, and the orchestrator refuses rather than inventing
+ * one: a desk's work is performed by a principal that can answer for it.
+ */
+function accountablePrincipalOf(actor: AssertedActor): string {
+  if (actor.kind === 'employee') return actor.employeeId
+  if (actor.kind === 'institutional-agent') return actor.agentPrincipalId
+  throw new Error(
+    'A system actor cannot be accountable for a desk contribution. The ' +
+      'orchestrator dispatches work; it does not perform it.',
+  )
+}
+
 export interface OrchestrationContext {
   caseId: string
   evidenceSetId: string
@@ -210,7 +261,18 @@ export interface OrchestrationContext {
   revisionId?: string
   /** Assignment id per playbook entry key. */
   assignmentIdFor: (entryKey: string) => string
-  employeeIdFor: (departmentId: string) => string
+  /**
+   * The principal accountable for a desk's acts.
+   *
+   * An `AssertedActor` rather than an employee id, because a desk's work may
+   * now be performed by a human operator OR by the desk's own institutional
+   * agent, and the orchestrator must not decide which. It dispatches; the
+   * caller says who is accountable, and `authorize` still rules on whether
+   * that principal may act.
+   *
+   * The orchestrator itself is never the actor. It is the `initiator`.
+   */
+  actorFor: (departmentId: string) => AssertedActor
   /**
    * The command id for one act on one entry.
    *
@@ -261,6 +323,16 @@ export async function runPlaybook(
   /** Entries that produced work and are waiting on a person. */
   const awaitingAcceptance = new Set<string>()
   const claimsByKey = new Map<string, readonly AgentClaim[]>()
+
+  /*
+   * What earlier invocations already finished. Seeded before the first wave so
+   * readiness is judged against the record rather than against this call's
+   * history alone — see `satisfiedEntries`.
+   */
+  for (const satisfied of options.satisfiedEntries ?? []) {
+    completed.add(satisfied.entryKey)
+    claimsByKey.set(satisfied.entryKey, satisfied.claims)
+  }
 
   /*
    * What was asked for. `null` is "everything", which is what a playbook run
@@ -424,7 +496,7 @@ async function runEntry(
 ): Promise<StageOutcome> {
   const startedAt = context.now().toISOString()
   const departmentId = entry.departmentId
-  const employeeId = context.employeeIdFor(departmentId)
+  const actor = context.actorFor(departmentId)
   const assignmentId = context.assignmentIdFor(entry.key)
 
   const stage = (over: Partial<StageOutcome>): StageOutcome => ({
@@ -485,7 +557,7 @@ async function runEntry(
     caseId: context.caseId,
     assignmentId,
     departmentId,
-    employeeId,
+    accountablePrincipalId: accountablePrincipalOf(actor),
     ...(context.revisionId ? { revisionId: context.revisionId } : {}),
     brief: entry.brief,
     evidenceSetId: context.evidenceSetId,
@@ -497,7 +569,7 @@ async function runEntry(
   const envelope = (act: OrchestrationAct, reason?: string): CommandEnvelope => ({
     commandId: context.commandIdFor(entry.key, act),
     correlationId: context.correlationId,
-    actor: { kind: 'employee', employeeId },
+    actor,
     // Who set it in motion, which is not who is accountable for it.
     initiator: { kind: 'orchestrator', orchestratorId: context.orchestratorId },
     occurredAt: context.now().toISOString(),
@@ -723,6 +795,12 @@ async function runEntry(
       // Passed through exactly as reported. The orchestrator has no basis for
       // converting one usage state into another.
       usage: settled.value.usage,
+      /*
+       * And the synthesis, where the provider produced one — unedited, for the
+       * reason the claims are unedited. The command decides whether this step
+       * is entitled to produce one; the orchestrator only carries it.
+       */
+      ...(settled.value.synthesis ? { synthesis: settled.value.synthesis } : {}),
     },
     envelope('record'),
     deps,
@@ -825,7 +903,7 @@ async function settle(
     {
       commandId: context.commandIdFor(entry.key, 'fail'),
       correlationId: context.correlationId,
-      actor: { kind: 'employee', employeeId: context.employeeIdFor(departmentId) },
+      actor: context.actorFor(departmentId),
       initiator: { kind: 'orchestrator', orchestratorId: context.orchestratorId },
       occurredAt: context.now().toISOString(),
       reason: FAILURE_REASONS[failure.category],

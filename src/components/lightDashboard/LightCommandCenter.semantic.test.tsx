@@ -450,26 +450,40 @@ describe('live mode', () => {
 /* --------------------------------------------------------- navigation */
 
 describe('navigation', () => {
-  it('offers Headquarters, and points it at the case queue', async () => {
+  it('offers Headquarters, and points it at the investment floor', async () => {
     /*
      * An approved intentional change, asserted here rather than absorbed into
      * the golden snapshot — the same treatment D5/D10 had. The snapshot proves
      * nothing else moved; this states what was added and why it is there.
      *
      * Headquarters is the entry point to the institution: without a nav item
-     * the case queue exists but is reachable only by typing a URL, which is a
+     * the floor exists but is reachable only by typing a URL, which is a
      * capability nobody has.
+     *
+     * It points at `/headquarters` since Command Center v1 merged the desk
+     * directory and the case queue into one floor. `/cases` still resolves and
+     * redirects there.
      */
     await renderOverview()
 
     const link = screen.getByRole('link', { name: /Huvudkontor/ })
-    expect(link.getAttribute('href')).toBe('/cases')
+    expect(link.getAttribute('href')).toBe('/headquarters')
   })
 
   it('keeps the existing entries and their order', async () => {
     /*
-     * The nav is finished work. This names the order so an addition cannot
-     * quietly reshuffle it, which a snapshot diff would show but not explain.
+     * This names the order so a change cannot quietly reshuffle it, which a
+     * snapshot diff would show but not explain.
+     *
+     * **Reordered by Command Center v1, then shortened by the ruling that
+     * followed it.** This screen is the product home again, and it is the
+     * market view — so `Marknader` left the rail. `/markets` redirects here,
+     * and an entry linking the reader back to the page they are on is a
+     * routing table rendered as navigation.
+     *
+     * `Portfölj` and `Rapporter` remain, and remain mock-backed. They are out
+     * of the primary navigation and reachable from this rail; putting real
+     * read models behind them is a capability decision, not a placement one.
      */
     await renderOverview()
 
@@ -478,13 +492,11 @@ describe('navigation', () => {
       .map((node) => node.textContent?.trim())
       .filter((label): label is string =>
         [
-          'Översikt',
-          'Marknader',
+          'Kommandocentral',
           'Bevakning',
-          'Portfölj',
-          'Analys',
           'Huvudkontor',
-          'Nyheter',
+          'Underlag',
+          'Portfölj',
           'Rapporter',
           'Aviseringar',
           'Inställningar',
@@ -492,13 +504,11 @@ describe('navigation', () => {
       )
 
     expect(labels).toEqual([
-      'Översikt',
-      'Marknader',
+      'Kommandocentral',
       'Bevakning',
-      'Portfölj',
-      'Analys',
       'Huvudkontor',
-      'Nyheter',
+      'Underlag',
+      'Portfölj',
       'Rapporter',
       'Aviseringar',
       'Inställningar',

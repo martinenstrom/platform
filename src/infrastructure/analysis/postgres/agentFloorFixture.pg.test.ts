@@ -103,13 +103,18 @@ describe('an Agent Headquarters floor holding runs in four states', () => {
     })
 
     /*
-     * The registry assigns work to six departments, and the seed contains more
-     * than six. A floor that listed every department would be describing the
-     * org chart rather than the desks the firm can commission.
+     * The registry assigns work to seven departments, and the seed contains
+     * more than seven. A floor that listed every department would be
+     * describing the org chart rather than the desks the firm can commission.
+     *
+     * Seven since playbook v5: `rates` appears because v5 gives it work —
+     * `rates-analysis` and `peer-examination` — and a desk with no assignable
+     * entry is not commissionable however real its seat is.
      */
     expect(desks.map((desk) => desk.departmentId)).toEqual([
       'global-macro',
       'quant-technical',
+      'rates',
       'research-office',
       'devils-advocate',
       'risk',

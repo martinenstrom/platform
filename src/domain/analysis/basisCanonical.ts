@@ -42,7 +42,16 @@
 import { utf8ByteLength } from '../shared/sha256'
 import type { EligibilityBasis } from './decisions'
 
-export const BASIS_CANONICALIZATION_VERSION = 2
+/**
+ * v3 adds `peerScrutiny`.
+ *
+ * A bump rather than an append, because the version is the FIRST element of
+ * the encoding: every digest ever produced under v2 was taken over bytes that
+ * did not mention peer scrutiny, and a v3 rendering of the same basis is a
+ * different string by construction. Old witnesses stay verifiable against the
+ * bases they attest; they simply are not v3 witnesses.
+ */
+export const BASIS_CANONICALIZATION_VERSION = 3
 
 /**
  * Separates this attestation from every other digest in the system.
@@ -97,6 +106,7 @@ export const BASIS_FIELD_DISPOSITION = {
     'storageProvenanceId',
     'verification',
     'devilsAdvocate',
+    'peerScrutiny',
     'riskRequirement',
     'riskRuleId',
     'riskRuleVersion',
@@ -209,7 +219,47 @@ export function canonicalBasisInput(subject: BasisSubject, basis: BasisContent):
           ),
         ]),
 
-    // 6 — Risk: the three-state resolution, its rule, and the review if required
+    /*
+     * 6 — peer scrutiny: which desks examined, and what each still contests.
+     *
+     * A LIST with no null case. An empty list is "nobody examined", which is a
+     * fact the digest must bind: a witness that could not tell an unexamined
+     * revision from an examined one would let the most consequential edit of
+     * all — inserting an examination that never happened — go unnoticed.
+     *
+     * Ordered by `reviewId` alone, for the reason the Devil's Advocate's
+     * challenges are: ids are unique, so the key is already total, and sorting
+     * on anything else would move the digest when a fact is corrected rather
+     * than when the record changes.
+     *
+     * Both department ids are bound. They are the answer to "who examined
+     * whom", and a digest that omitted them would let an examination be
+     * reattributed to a desk that never performed it while the witness still
+     * verified.
+     */
+    int(basis.peerScrutiny.length),
+    list(
+      [...basis.peerScrutiny]
+        .sort((a, b) => codeUnitOrder(a.reviewId, b.reviewId))
+        .map((examination) =>
+          list([
+            str(examination.reviewId),
+            int(examination.sequence),
+            str(examination.byDepartmentId),
+            str(examination.examinedDepartmentId),
+            int(examination.openChallenges.length),
+            list(
+              [...examination.openChallenges]
+                .sort((a, b) => codeUnitOrder(a.challengeId, b.challengeId))
+                .map((challenge) =>
+                  list([str(challenge.challengeId), str(challenge.materiality)]),
+                ),
+            ),
+          ]),
+        ),
+    ),
+
+    // 7 — Risk: the three-state resolution, its rule, and the review if required
     str(basis.riskRequirement),
     strOrNull(basis.riskRuleId),
     strOrNull(basis.riskRuleVersion),
@@ -221,7 +271,7 @@ export function canonicalBasisInput(subject: BasisSubject, basis: BasisContent):
           str(basis.risk.status),
         ]),
 
-    // 7 — required work: the deletion this witness exists for
+    // 8 — required work: the deletion this witness exists for
     int(basis.requiredWork.length),
     list(
       [...basis.requiredWork]
@@ -229,7 +279,7 @@ export function canonicalBasisInput(subject: BasisSubject, basis: BasisContent):
         .sort(codeUnitOrder),
     ),
 
-    // 8 — disagreements known and weighed
+    // 9 — disagreements known and weighed
     int(basis.materialDisagreements.length),
     list(
       [...basis.materialDisagreements]
@@ -237,7 +287,7 @@ export function canonicalBasisInput(subject: BasisSubject, basis: BasisContent):
         .sort(codeUnitOrder),
     ),
 
-    // 9 — what it rested on
+    // 10 — what it rested on
     int(basis.evidenceSetIds.length),
     list([...basis.evidenceSetIds].sort(codeUnitOrder).map(str)),
   ]

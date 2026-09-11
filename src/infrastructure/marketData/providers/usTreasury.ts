@@ -47,6 +47,20 @@ export const US_TREASURY_SOURCE: DataSourceMetadata = {
   trust: 'issuer',
 }
 
+/**
+ * The REAL curve is a different publication, so it carries its own note.
+ *
+ * Same issuer, same public-domain basis, same endpoint family — but a
+ * different series with a different methodology, and inheriting a note that
+ * names the *Par Yield* publication would attribute a TIPS observation to a
+ * document that does not contain it.
+ */
+export const US_TREASURY_REAL_SOURCE: DataSourceMetadata = {
+  ...US_TREASURY_SOURCE,
+  licenseNote:
+    'Daily Treasury Par Real Yield Curve Rates (TIPS); U.S. Government public domain',
+}
+
 const BASE_URL =
   'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml'
 
@@ -78,8 +92,35 @@ const SERIES: Array<{ symbol: string; tag: string; maturity: Maturity }> = [
   { symbol: 'rate:us30y', tag: 'BC_30YEAR', maturity: '30Y' },
 ]
 
+/**
+ * Canonical symbol -> the Treasury's REAL yield tag.
+ *
+ * A separate table because it is a separate publication with separate tags
+ * (`TC_*` rather than `BC_*`) fetched from a separate `data=` parameter. The
+ * shapes are identical, which is why one parser serves both.
+ *
+ * **Five tenors, and the shortest is 5Y.** Probed 2026-08-26: the real curve
+ * carries TC_5YEAR, TC_7YEAR, TC_10YEAR, TC_20YEAR and TC_30YEAR and nothing
+ * below, because TIPS are not issued at the short end. A 2Y real yield does
+ * not exist and no 2Y breakeven can be derived from this source.
+ */
+const REAL_SERIES: Array<{ symbol: string; tag: string; maturity: Maturity }> = [
+  { symbol: 'rate:us5y-real', tag: 'TC_5YEAR', maturity: '5Y' },
+  { symbol: 'rate:us7y-real', tag: 'TC_7YEAR', maturity: '7Y' },
+  { symbol: 'rate:us10y-real', tag: 'TC_10YEAR', maturity: '10Y' },
+  { symbol: 'rate:us20y-real', tag: 'TC_20YEAR', maturity: '20Y' },
+  { symbol: 'rate:us30y-real', tag: 'TC_30YEAR', maturity: '30Y' },
+]
+
+/** Whether a symbol belongs to the real curve rather than the nominal one. */
+export function isRealYieldSymbol(symbol: CanonicalSymbol): boolean {
+  return REAL_SERIES.some((candidate) => candidate.symbol === symbol)
+}
+
 function seriesFor(symbol: CanonicalSymbol) {
-  const entry = SERIES.find((candidate) => candidate.symbol === symbol)
+  const entry =
+    SERIES.find((candidate) => candidate.symbol === symbol) ??
+    REAL_SERIES.find((candidate) => candidate.symbol === symbol)
   if (!entry) {
     throw new HttpError('not-found', `US Treasury has no series for ${symbol}`)
   }
@@ -112,7 +153,13 @@ function parseTreasuryXml(xml: string): TreasuryObservation[] {
     const date = dateMatch[1].slice(0, 10)
 
     const rates: Record<string, number> = {}
-    for (const { tag } of SERIES) {
+    /*
+     * Both tables. One payload only ever carries one family — `BC_*` for the
+     * nominal curve, `TC_*` for the real one — so scanning for both costs a
+     * handful of failed regexes and keeps a single parser honest for both
+     * datasets. Iterating only `SERIES` silently returned an empty real curve.
+     */
+    for (const { tag } of [...SERIES, ...REAL_SERIES]) {
       const match = new RegExp(`<d:${tag}[^>]*>([^<]*)<`).exec(chunk)
       const raw = match?.[1]?.trim()
       if (!raw) continue
@@ -153,6 +200,7 @@ function toYield(
   ctx: FetchContext,
 ): GovernmentYield {
   const { tag, maturity } = seriesFor(symbol)
+  const real = isRealYieldSymbol(symbol)
   const published = observations.filter((entry) => entry.rates[tag] !== undefined)
   const latest = published.at(-1)
   if (!latest) {
@@ -166,12 +214,16 @@ function toYield(
     currency: USD,
     maturity,
     seriesId: tag,
-    methodology: 'par-yield',
+    methodology: real ? 'par-real-yield' : 'par-yield',
     observationDate: latest.date,
     yieldPercent: latest.rates[tag]!,
     // The prior PUBLICATION, which after a weekend is Friday — not "yesterday".
     previousYieldPercent: previous ? previous.rates[tag]! : null,
-    provenance: provenanceFor(latest.date, ctx),
+    provenance: {
+      ...provenanceFor(latest.date, ctx),
+      /* The real curve is its own publication; see US_TREASURY_REAL_SOURCE. */
+      ...(real ? { source: US_TREASURY_REAL_SOURCE } : {}),
+    },
   })
 }
 
@@ -183,9 +235,18 @@ function monthParam(date: Date): string {
 }
 
 export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
-  async function fetchObservations(ctx: FetchContext): Promise<TreasuryObservation[]> {
+  /**
+   * One month of one dataset.
+   *
+   * The nominal and real curves are two `data=` values on one endpoint with an
+   * identical payload shape, so one parser and one pagination rule serve both.
+   */
+  async function fetchObservations(
+    ctx: FetchContext,
+    dataset: 'daily_treasury_yield_curve' | 'daily_treasury_real_yield_curve',
+  ): Promise<TreasuryObservation[]> {
     const now = ctx.clock.now()
-    const url = `${BASE_URL}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${monthParam(now)}`
+    const url = `${BASE_URL}?data=${dataset}&field_tdr_date_value_month=${monthParam(now)}`
     const xml = await http.getText(url, ctx.signal)
     const observations = parseTreasuryXml(xml)
 
@@ -196,7 +257,7 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
     const previousMonth = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
     )
-    const priorUrl = `${BASE_URL}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${monthParam(previousMonth)}`
+    const priorUrl = `${BASE_URL}?data=${dataset}&field_tdr_date_value_month=${monthParam(previousMonth)}`
     const priorXml = await http.getText(priorUrl, ctx.signal)
     return [...parseTreasuryXml(priorXml), ...observations]
   }
@@ -208,9 +269,21 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
 
     async fetchYields(symbols, ctx): Promise<GovernmentYield[]> {
       if (symbols.length === 0) return []
-      // One request serves every maturity: the whole curve is in one payload.
-      const observations = await fetchObservations(ctx)
-      return symbols.map((symbol) => toYield(symbol, observations, ctx))
+      /*
+       * One request per CURVE, not per maturity: each payload carries every
+       * tenor of its own curve. A request touching only nominals costs one
+       * call exactly as before; only a request that also wants real yields
+       * pays for the second dataset.
+       */
+      const wantsReal = symbols.some(isRealYieldSymbol)
+      const wantsNominal = symbols.some((symbol) => !isRealYieldSymbol(symbol))
+      const [nominal, real] = await Promise.all([
+        wantsNominal ? fetchObservations(ctx, 'daily_treasury_yield_curve') : [],
+        wantsReal ? fetchObservations(ctx, 'daily_treasury_real_yield_curve') : [],
+      ])
+      return symbols.map((symbol) =>
+        toYield(symbol, isRealYieldSymbol(symbol) ? real : nominal, ctx),
+      )
     },
 
     /**
@@ -292,7 +365,12 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
           `US Treasury publishes no curve for ${countryCode}`,
         )
       }
-      const observations = await fetchObservations(ctx)
+      /*
+       * The NOMINAL curve. The real curve is deliberately not offered here:
+       * `methodologiesAreComparable` forbids the two in one curve, and a
+       * caller wanting real yields asks for the real symbols.
+       */
+      const observations = await fetchObservations(ctx, 'daily_treasury_yield_curve')
       const latest = observations.at(-1)
       if (!latest) throw new HttpError('schema', 'US Treasury returned no observations')
 

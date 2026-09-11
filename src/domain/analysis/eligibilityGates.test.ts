@@ -63,15 +63,25 @@ describe('the threshold comes from the policy, not from the code', () => {
 })
 
 describe('the report covers every gate, passed as well as failed', () => {
-  it('reports all five gates whatever the verdict', () => {
+  it('reports all six gates whatever the verdict', () => {
+    /*
+     * `PEER_SCRUTINY_ABSENT` appears even under policy 1, which places it
+     * outside scope. That is the point of `not-applicable`: a gate the policy
+     * did not ask about must still be visible as a question nobody put, rather
+     * than vanishing and leaving a reader to assume it passed.
+     */
     const report = evaluateEligibilityGates(basis(), V1)
     expect(report.gates.map((entry) => entry.code).sort()).toEqual([
       'CHALLENGE_UNRESOLVED',
       'DISAGREEMENT_BLOCKING',
+      'PEER_SCRUTINY_ABSENT',
       'REQUIRED_WORK_INCOMPLETE',
       'RISK_UNRESOLVED',
       'VERIFICATION_INCOMPLETE',
     ])
+    expect(
+      report.gates.find((entry) => entry.code === 'PEER_SCRUTINY_ABSENT')!.status,
+    ).toBe('not-applicable')
   })
 
   it('names the policy version it applied', () => {

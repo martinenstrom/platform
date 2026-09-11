@@ -36,9 +36,11 @@
  */
 
 import { buildObservation, type DurableObservation } from '~/domain/analysis'
-import { yieldRef } from './evidenceRefs'
+import { priceCloseRef, yieldRef } from './evidenceRefs'
 import type { AnalysisRepositories } from './repositories'
 import type { GovernmentYield } from '~/domain/market'
+import type { Provenance } from '~/domain/shared/provenance'
+import { requireSecurity } from './securities'
 import { canonicalDecimalOrNull } from '~/domain/shared/canonicalValue'
 
 /**
@@ -122,6 +124,81 @@ export async function ingestYields(input: IngestYieldsInput): Promise<IngestionR
 
   return {
     sourceId: yields[0]?.provenance.source.providerId ?? 'none',
+    correlationId,
+    offered: observations.length,
+    recorded,
+    alreadyHeld: observations.length - recorded.length,
+  }
+}
+
+/* ------------------------------------------------- governed price history */
+
+/** One session, already normalized by the adapter boundary. */
+export interface SessionClose {
+  /** The venue's session date, e.g. `2026-08-29`. */
+  sessionDate: string
+  close: number
+}
+
+export interface IngestPriceHistoryInput {
+  repositories: AnalysisRepositories
+  /** Must be a governed security. Never a symbol. */
+  securityId: string
+  /** What the source calls it, recorded so the record shows both names. */
+  providerSymbol: string
+  sessions: readonly SessionClose[]
+  provenance: Provenance
+  recordedAt: string
+  correlationId: string
+}
+
+/**
+ * Records the closes a price source published for one governed security.
+ *
+ * Same boundary as `ingestYields` and same reason: it takes normalized values
+ * rather than a provider, so the institutional act is testable without a
+ * network and the adapter stays at the infrastructure edge.
+ *
+ * **This is what makes a price institutional.** A close on the market screen is
+ * a number the product displays; a close that has passed through here is
+ * evidence the firm holds, with an identity, a content hash, a source and a
+ * known-at. A desk may cite the second and may never cite the first.
+ *
+ * Ingestion makes no claim. It records what a venue settled, and whether the
+ * firm already held it.
+ */
+export async function ingestPriceHistory(
+  input: IngestPriceHistoryInput,
+): Promise<IngestionReport> {
+  const { repositories, sessions, recordedAt, correlationId } = input
+
+  /* Loud if the security is not governed, before anything is recorded. */
+  const security = requireSecurity(input.securityId)
+
+  const observations = sessions.map((session) =>
+    buildObservation({
+      ref: priceCloseRef({
+        securityId: security.id,
+        sessionDate: session.sessionDate,
+        close: session.close,
+        providerSymbol: input.providerSymbol,
+        provenance: input.provenance,
+      }),
+      value: {
+        close: canonicalDecimalOrNull(session.close)!,
+        sessionDate: session.sessionDate,
+      },
+      provenance: input.provenance,
+      recordedAt,
+      correlationId,
+    }),
+  )
+
+  const provenance = await repositories.provenance()
+  const recorded = await repositories.observations.record(observations, provenance)
+
+  return {
+    sourceId: input.provenance.source.providerId,
     correlationId,
     offered: observations.length,
     recorded,

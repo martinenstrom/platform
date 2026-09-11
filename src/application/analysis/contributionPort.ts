@@ -20,6 +20,7 @@ import type {
   RunFailureCategory,
   RunState,
   RunUsage,
+  SynthesisArtifact,
 } from '~/domain/analysis'
 
 /** What a department is asked to do. */
@@ -27,7 +28,16 @@ export interface ContributionRequest {
   caseId: string
   assignmentId: string
   departmentId: string
-  employeeId: string
+  /**
+   * The principal accountable for the work — a human employee id or an
+   * institutional agent principal id.
+   *
+   * Renamed from `employeeId` when desks became able to act for themselves: a
+   * field defined as a person, carrying an agent, would misdescribe every
+   * autonomous run. No provider reads it; it travels with the request so the
+   * record of what was asked names who it was asked of.
+   */
+  accountablePrincipalId: string
   /** The exact thesis revision this concerns, where the work is thesis-scoped. */
   revisionId?: string
   brief: string
@@ -63,6 +73,19 @@ export interface ContributionResult {
    * actually happened rather than a synthetic start-and-finish pair.
    */
   observedStates: readonly RunState[]
+  /**
+   * A department synthesis, where the department's work IS a synthesis.
+   *
+   * Present only for the accountable synthesis step, and `RecordContribution`
+   * refuses it anywhere else — an optional field on a shared port is not a
+   * licence for every desk to state the firm's position.
+   *
+   * It travels here rather than being assembled by the caller for the reason
+   * the claims do: this is what the model produced, and the boundary exists so
+   * that what the model produced is what gets persisted, unedited, as a
+   * candidate nobody has yet adopted.
+   */
+  synthesis?: SynthesisArtifact
 }
 
 /**

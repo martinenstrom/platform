@@ -52,6 +52,8 @@ export async function getContainer(): Promise<Container> {
     { createBundesbankProvider },
     { createRiksbankProvider },
     { createAvanzaProvider },
+    { createYahooProvider },
+    { createDerivedProvider },
     { createAvanzaSearchProvider },
     { createNewYorkFedProvider },
     { createEcbProvider },
@@ -68,6 +70,8 @@ export async function getContainer(): Promise<Container> {
     import('./providers/bundesbank'),
     import('./providers/riksbank'),
     import('./providers/avanza'),
+    import('./providers/yahoo'),
+    import('./providers/derived'),
     import('./providers/avanza/search'),
     import('./providers/newYorkFed'),
     import('./providers/ecb'),
@@ -142,6 +146,50 @@ export async function getContainer(): Promise<Container> {
             supportsIntraday: false,
             supportsBatch: false,
             requiresAttribution: true,
+          },
+        },
+        {
+          /*
+           * Yahoo — S&P 500 and FTSE 100 only.
+           *
+           * Best-effort and free: no service commitment, no delay guarantee,
+           * and no relationship with the index owners. `aggregator` trust and
+           * a `delayed` ceiling are what that honestly supports, and the
+           * alternative for these two was a fixture constant.
+           */
+          provider: createYahooProvider(createHttpClient({ networkDisabled: false })),
+          capabilities: new Set(['quotes'] as const),
+          metadata: {
+            trust: 'aggregator' as const,
+            expectedLatencyMs: 400,
+            updateFrequency: 'minutely' as const,
+            /* Yahoo publishes no delay figure, so none is claimed. */
+            delayMinutes: null,
+            supportsHistory: false,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: true,
+          },
+        },
+        {
+          /*
+           * The only provider that computes rather than obtains. Registered
+           * for `sentiment` alone, and deliberately weaker than every route it
+           * consumes: a derived figure inherits its inputs' weakness and adds
+           * a methodology on top.
+           */
+          provider: createDerivedProvider(createHttpClient({ networkDisabled: false })),
+          capabilities: new Set(['sentiment'] as const),
+          metadata: {
+            trust: 'derived' as const,
+            /* Four daily-history requests, so slower than a single quote. */
+            expectedLatencyMs: 2500,
+            updateFrequency: 'daily' as const,
+            delayMinutes: null,
+            supportsHistory: true,
+            supportsIntraday: false,
+            supportsBatch: false,
+            requiresAttribution: false,
           },
         },
         {
@@ -239,7 +287,11 @@ export async function getContainer(): Promise<Container> {
         },
         {
           provider: createAvanzaProvider(callAvanzaTool),
-          capabilities: new Set(['quotes'] as const),
+          /*
+           * `commodities` since 2026-08-25: Gold and Brent spot, the same
+           * transport and the same identity verification as the indices.
+           */
+          capabilities: new Set(['quotes', 'commodities'] as const),
           metadata: {
             // A broker redistributing venue prices. Not the exchange, and no
             // originator is claimed — the payload never speaks for one.

@@ -15,6 +15,18 @@ interface DashboardCardProps {
    * reduced header gap — for information-dense dashboard widgets.
    */
   dense?: boolean
+  /**
+   * Which half of the product this card is about.
+   *
+   * `institution` — acts, standing, governance, accepted work, evidence,
+   * decisions: anything the firm is answerable for. `market` — quotes, curves,
+   * charts, observations the firm did not decide.
+   *
+   * A card picks its accent from its SUBJECT, never from its neighbours, so a
+   * confidence badge stays institutional on a page full of sparklines. Cards
+   * that are neither pass nothing and stay neutral.
+   */
+  accent?: 'institution' | 'market'
 }
 
 /**
@@ -31,6 +43,7 @@ export function DashboardCard({
   bodyClassName,
   as: Tag = 'section',
   dense = false,
+  accent,
 }: DashboardCardProps) {
   return (
     <Tag
@@ -54,6 +67,8 @@ export function DashboardCard({
                 // Dense keeps its exact 11px inline treatment (its line-height
                 // inherits, which the token would otherwise pin) — no geometry shift.
                 dense ? 'hud-label text-[11px] text-content-muted' : 'type-heading',
+                accent === 'institution' && 'text-institution',
+                accent === 'market' && 'text-accent',
               )}
             >
               {title}

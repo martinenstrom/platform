@@ -21,6 +21,7 @@ import {
   isPermissionDenied,
   type TestDatabase,
 } from './testDatabase'
+import { knownEligibilityPolicies } from '~/domain/analysis'
 
 let db: TestDatabase
 let sql: Client
@@ -115,7 +116,7 @@ async function submit(
              now(), 1, 'pending', $5, 'not-required', 'c1d1-prov', now(),
              -- Synthetic: this seed never hydrates through the mapper, so the
              -- witness is never verified. It satisfies the real CHECKs.
-             'sha256', '2', '0000000000000000000000000000000000000000000000000000000000000000')`,
+             'sha256', '3', '0000000000000000000000000000000000000000000000000000000000000000')`,
     [submissionId, caseId, thesisId, revisionId, policy],
   )
   return submissionId
@@ -632,6 +633,62 @@ describe('the eligibility policy is a registry, not a label', () => {
     })
   })
 
+  it('stores every policy the domain knows, field for field', async () => {
+    /*
+     * The registry exists in two places — `POLICIES` in the domain, and this
+     * table — and nothing compared them. `knownEligibilityPolicies` was
+     * exported and called by nobody, so a policy added to one and not the
+     * other would have been found by whichever ran first in production.
+     *
+     * It matters most for `challenge_mandates`: a version-1 row that said
+     * `{devils-advocate,peer}` while the code said `['devils-advocate']` would
+     * mean the database and the evaluator disagreed about what a version-1
+     * decision was tested against.
+     */
+    const stored = await sql.query(
+      `SELECT * FROM analysis.eligibility_policies ORDER BY version COLLATE "C"`,
+    )
+    const known = [...knownEligibilityPolicies()].sort((a, b) =>
+      a.version < b.version ? -1 : 1,
+    )
+
+    expect(stored.rows.map((row) => row.version)).toEqual(known.map((p) => p.version))
+
+    for (const [index, policy] of known.entries()) {
+      expect(stored.rows[index], policy.version).toMatchObject({
+        version: policy.version,
+        gate: policy.gate,
+        verification: policy.verification,
+        devils_advocate: policy.devilsAdvocate,
+        peer_scrutiny: policy.peerScrutiny,
+        risk: policy.risk,
+        compliance: policy.compliance,
+        challenge_mandates: [...policy.challengeMandates],
+        challenge_blocks_at_or_above: policy.challengeBlocksAtOrAbove,
+        disagreement_blocks_at_or_above: policy.disagreementBlocksAtOrAbove,
+        unresolved_conditional_blocks: policy.unresolvedConditionalBlocks,
+        domain_contract_version: policy.domainContractVersion,
+      })
+    }
+  })
+
+  it('keeps version 1 weighing the Devil’s Advocate alone', async () => {
+    /*
+     * Asserted against the stored row rather than the code, because this is the
+     * copy a replay of an old decision would be audited against. Peer scrutiny
+     * arrived after version 1 was in force; a version-1 decision must never be
+     * re-read as having failed a test that did not exist.
+     */
+    const policy = await sql.query(
+      `SELECT peer_scrutiny, challenge_mandates
+       FROM analysis.eligibility_policies WHERE version = '1'`,
+    )
+    expect(policy.rows[0]).toMatchObject({
+      peer_scrutiny: 'outside-policy-scope',
+      challenge_mandates: ['devils-advocate'],
+    })
+  })
+
   it('has no compliance verdict column on any decision table', async () => {
     const columns = await sql.query(
       `SELECT table_name, column_name FROM information_schema.columns
@@ -806,9 +863,15 @@ describe('the runtime cannot rewrite what it recorded', () => {
     // A policy the runtime could add is a gate the runtime could define for
     // itself.
     await refused(
-      `INSERT INTO analysis.eligibility_policies VALUES
+      `INSERT INTO analysis.eligibility_policies
+             (version, gate, verification, devils_advocate, peer_scrutiny, risk,
+              compliance, challenge_mandates, challenge_blocks_at_or_above,
+              disagreement_blocks_at_or_above, unresolved_conditional_blocks,
+              domain_contract_version)
+           VALUES
          ('99', 'invented', 'outside-policy-scope', 'outside-policy-scope',
-          'outside-policy-scope', 'outside-policy-scope', 'material',
+          'outside-policy-scope', 'outside-policy-scope', 'outside-policy-scope',
+              ARRAY['devils-advocate'], 'material',
           'decision-critical', false, '8')`,
     )
   })

@@ -209,7 +209,7 @@ describe('The First Defensible Decision', () => {
     expect(stored!.basis.devilsAdvocate!.openChallenges[0]!.materiality).toBe(
       'non-material',
     )
-    expect(stored!.basis.manifest.canonicalizationVersion).toBe(2)
+    expect(stored!.basis.manifest.canonicalizationVersion).toBe(3)
   })
 
   it('writes a case movement the timeline can be read from', async () => {

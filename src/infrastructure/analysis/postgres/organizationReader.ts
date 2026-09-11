@@ -9,6 +9,7 @@
 
 import {
   buildRole,
+  type AgentPrincipal,
   validateOrganization,
   type Department,
   type Employee,
@@ -34,7 +35,9 @@ export const ORGANIZATION_SQL = catalog({
   organization: `SELECT id, name, chief_employee_id FROM analysis.organizations
                  WHERE tenant_id = $1`,
 
-  roles: `SELECT id, title, function, can_block_publication FROM analysis.roles
+  roles: `SELECT id, title, function, can_block_publication, can_convene_committee,
+                 can_manage_department_analysis
+          FROM analysis.roles
           ORDER BY id COLLATE "C"`,
 
   responsibilities: `SELECT id, role_id, summary, interpretive
@@ -53,6 +56,14 @@ export const ORGANIZATION_SQL = catalog({
 
   teams: `SELECT id, name, department_id, lead_employee_id FROM analysis.teams
           ORDER BY id COLLATE "C"`,
+
+  /*
+   * Retired principals are loaded too. Their past acts must keep resolving, and
+   * `resolveActor` refuses an inactive one — which is a different answer from
+   * "no such principal" and has to stay distinguishable.
+   */
+  agentPrincipals: `SELECT id, department_id, role_id, display_name, active
+                    FROM analysis.agent_principals ORDER BY id COLLATE "C"`,
 })
 
 export function createOrganizationReader(
@@ -94,6 +105,8 @@ export function createOrganizationReader(
         title: string
         function: string
         can_block_publication: boolean
+        can_convene_committee: boolean
+        can_manage_department_analysis: boolean
       }>(client, context, 'organization.load', ORGANIZATION_SQL.roles),
       run<{ id: string; role_id: string; summary: string; interpretive: boolean }>(
         client,
@@ -130,6 +143,28 @@ export function createOrganizationReader(
       ),
     ])
 
+    /*
+     * Fetched AFTER the batch rather than inside it, deliberately.
+     *
+     * Every query in that `Promise.all` holds a pooled connection at the same
+     * instant, so the batch size is this reader's peak connection demand. A
+     * ninth member raised it from seven to eight per runtime — invisible in
+     * isolation and decisive in aggregate: the PostgreSQL suite accumulates 13
+     * runtimes in one file, and 13 x 8 = 104 exceeds the cluster's 100 slots
+     * where 13 x 7 = 91 did not. The suite failed with SQLSTATE 53300.
+     *
+     * The organisation is loaded once per process and cached, so one extra
+     * round trip here costs nothing measurable and keeps the concurrency
+     * profile exactly as it was.
+     */
+    const agentPrincipalRows = await run<{
+      id: string
+      department_id: string
+      role_id: string
+      display_name: string
+      active: boolean
+    }>(client, context, 'organization.load', ORGANIZATION_SQL.agentPrincipals)
+
     if (!organizationRow) throw new OrganizationNotSeededError()
 
     const responsibilitiesByRole = new Map<string, Responsibility[]>()
@@ -160,6 +195,8 @@ export function createOrganizationReader(
           function: row.function as RoleFunction,
           responsibilities: responsibilitiesByRole.get(row.id) ?? [],
           canBlockPublication: row.can_block_publication,
+          canConveneCommittee: row.can_convene_committee,
+          canManageDepartmentAnalysis: row.can_manage_department_analysis,
         })
       } catch (error) {
         throw new MalformedRowError(
@@ -195,6 +232,14 @@ export function createOrganizationReader(
       leadEmployeeId: row.lead_employee_id,
     }))
 
+    const agentPrincipals: AgentPrincipal[] = agentPrincipalRows.map((row) => ({
+      id: row.id,
+      departmentId: row.department_id,
+      roleId: row.role_id,
+      displayName: row.display_name,
+      active: row.active,
+    }))
+
     const organization: Organization = {
       id: organizationRow.id,
       name: organizationRow.name,
@@ -203,6 +248,7 @@ export function createOrganizationReader(
       departments,
       teams,
       employees,
+      agentPrincipals,
     }
 
     /*

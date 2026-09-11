@@ -26,6 +26,10 @@ import {
   claimIdFor,
   devilsAdvocateIdFor,
   evidenceSetsFor,
+  peerChallengeIdFor,
+  peerExaminationIdFor,
+  PEER_EXAMINED_DEPARTMENT,
+  PEER_EXAMINER_DEPARTMENT,
   runIdsFor,
   setSeededProvenanceId,
   riskIdFor,
@@ -42,6 +46,14 @@ export interface SeedFixtures {
   riskDepartmentId: string
   challengeEmployeeId: string
   challengeDepartmentId: string
+  /**
+   * The analytical desk that peer-examines, and the employee who acts for it.
+   *
+   * A separate seat from `challenge*`: a peer examination filed by the Devil's
+   * Advocate would be refused by `recordPeerExamination`, and the department
+   * ids are what the basis's foreign keys point at.
+   */
+  peerEmployeeId: string
 }
 
 const AT = '2026-07-28T08:00:00.000Z'
@@ -214,6 +226,14 @@ export async function seedDecisionGovernance(
       at: AT,
       challenges: challengeIdsFor(revisionId).map((id) => ({
         id,
+        /*
+         * Seeded fixtures file Devil's Advocate objections, like the command
+         * they stand in for. Written out because this call is `as never` —
+         * the cast means the compiler cannot tell anyone when the shape of a
+         * challenge changes, so the fields have to be maintained by hand.
+         */
+        challengerKind: 'devils-advocate',
+        byDepartmentId: f.challengeDepartmentId,
         contests: claimIdFor(revisionId),
         kind: 'fragile-assumption',
         argument: 'The assumption rests on one print.',
@@ -225,6 +245,41 @@ export async function seedDecisionGovernance(
       // How the organization answered each challenge. Open, so the submission
       // legitimately lists them as open.
       outcomes: Object.fromEntries(challengeIdsFor(revisionId).map((id) => [id, 'open'])),
+    } as never)
+
+    /*
+     * The peer examination the basis references.
+     *
+     * Seeded for the same reason the Devil's Advocate review above is: a
+     * submission's basis names a review id and a department, and PostgreSQL has
+     * foreign keys to both. Leaving this out did not make the fixture smaller —
+     * it made every Postgres submission save fail on a reference to a review
+     * nobody had written.
+     */
+    await repositories.reviews.savePeerExamination({
+      ...scope,
+      reviewId: peerExaminationIdFor(revisionId),
+      sequence: 1,
+      byEmployeeId: f.peerEmployeeId,
+      byDepartmentId: PEER_EXAMINER_DEPARTMENT,
+      examinedDepartmentId: PEER_EXAMINED_DEPARTMENT,
+      at: AT,
+      challenges: [
+        {
+          id: peerChallengeIdFor(revisionId),
+          /* A peer's objection, not the control function's. Written out for the
+           * reason the Devil's Advocate's are: this call is `as never`. */
+          challengerKind: 'peer',
+          byDepartmentId: PEER_EXAMINER_DEPARTMENT,
+          contests: claimIdFor(revisionId),
+          kind: 'fragile-assumption',
+          argument: 'The attribution assumes the real-rate component was unchanged.',
+          wouldBeResolvedBy: 'A nominal/real decomposition over the same window.',
+          materiality: 'material',
+          counterEvidence: [],
+        },
+      ],
+      outcomes: { [peerChallengeIdFor(revisionId)]: 'open' },
     } as never)
 
     await repositories.reviews.saveRisk({

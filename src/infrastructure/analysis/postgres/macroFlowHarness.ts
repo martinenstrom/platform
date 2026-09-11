@@ -1046,6 +1046,8 @@ export async function institutionalState(
         byDepartmentId: review.byDepartmentId,
         challenges: by(review.challenges, (c) => c.id).map((c) => ({
           id: c.id,
+          challengerKind: 'devils-advocate' as const,
+          byDepartmentId: 'devils-advocate',
           contests: c.contests,
           kind: c.kind,
           materiality: c.materiality,

@@ -31,6 +31,11 @@ import {
   seedAggregatableCase,
   type Seeded,
 } from './aggregationHarness'
+import { eligibilityPolicy } from '~/domain/analysis'
+
+/** Version 1's mandates, read from the registry rather than restated. */
+const DA_ONLY = eligibilityPolicy('1').challengeMandates
+
 
 const organization = TEST_ORGANIZATION
 
@@ -569,6 +574,7 @@ describe('unresolved disagreement', () => {
       'case-1',
       {},
       'material',
+      DA_ONLY,
     )
     expect(eligibility!.eligibleForDecision).toBe(false)
     expect(eligibility!.blockedBy.map((blocker) => blocker.kind)).toContain(

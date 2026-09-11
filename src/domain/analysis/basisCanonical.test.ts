@@ -43,6 +43,8 @@ const MINIMAL: BasisContent = {
   blockers: [],
   verification: null,
   devilsAdvocate: null,
+  /* Nobody examined. The empty list is the fact, and the digest binds it. */
+  peerScrutiny: [],
   risk: null,
   riskRequirement: 'not-required',
   riskRuleId: null,
@@ -57,6 +59,18 @@ const MINIMAL: BasisContent = {
 const POPULATED: BasisContent = {
   ...MINIMAL,
   aggregationId: 'agg-1',
+  /* One desk examined another, and one of its objections is still open. */
+  peerScrutiny: [
+    {
+      reviewId: 'review-p',
+      sequence: 1,
+      byDepartmentId: 'rates',
+      examinedDepartmentId: 'global-macro',
+      openChallenges: [
+        { challengeId: 'challenge-c', materiality: 'decision-critical' },
+      ],
+    },
+  ],
   verification: { reviewId: 'review-v', sequence: 1, status: 'verified' },
   devilsAdvocate: {
     reviewId: 'review-d',
@@ -81,12 +95,14 @@ const POPULATED: BasisContent = {
 describe('golden canonical bytes', () => {
   it('encodes the minimal basis exactly', () => {
     expect(canonicalBasisInput(SUBJECT, MINIMAL)).toBe(
-      'l21:' +
-        'i2' +
+      'l23:' +
+        'i3' +
         's5:sub-1s6:case-1s8:thesis-1s5:rev-1' +
         's1:1s24:2026-07-28T08:59:00.000Zns6:prov-1' +
         'n' +
         'n' +
+        /* peer scrutiny: nobody examined */
+        'i0l0:' +
         's12:not-requirednn' +
         'n' +
         'i0l0:' +
@@ -97,14 +113,22 @@ describe('golden canonical bytes', () => {
 
   it('encodes the populated basis exactly', () => {
     expect(canonicalBasisInput(SUBJECT, POPULATED)).toBe(
-      'l21:' +
-        'i2' +
+      'l23:' +
+        'i3' +
         's5:sub-1s6:case-1s8:thesis-1s5:rev-1' +
         's1:1s24:2026-07-28T08:59:00.000Zs5:agg-1s6:prov-1' +
         'l3:s8:review-vi1s8:verified' +
         'l4:s8:review-di2i2l2:' +
         'l2:s11:challenge-as12:non-material' +
         'l2:s11:challenge-bs8:material' +
+        /*
+         * Peer scrutiny: one examination, one objection still open. Both
+         * department ids are bound, which is what makes "Rates examined Global
+         * Macro" unforgeable rather than merely asserted.
+         */
+        'i1l1:' +
+        'l6:s8:review-pi1s5:ratess12:global-macro' +
+        'i1l1:l2:s11:challenge-cs17:decision-critical' +
         's8:requireds6:rule-1s1:1' +
         'l3:s8:review-ri3s8:accepted' +
         'i2l2:l2:s10:macro-scans5:run-1l2:s12:credit-checks5:run-2' +
@@ -114,8 +138,8 @@ describe('golden canonical bytes', () => {
   })
 
   it('pins the domain-separation prefix', () => {
-    expect(BASIS_DOMAIN_SEPARATION).toBe('financial-os:eligibility-basis:v2|')
-    expect(BASIS_CANONICALIZATION_VERSION).toBe(2)
+    expect(BASIS_DOMAIN_SEPARATION).toBe('financial-os:eligibility-basis:v3|')
+    expect(BASIS_CANONICALIZATION_VERSION).toBe(3)
   })
 
   it('carries no control character in the prefix', () => {
@@ -388,6 +412,6 @@ describe('order never changes the bytes', () => {
      * this leading element is what makes that possible — the capability is
      * preserved, the compatibility is not claimed.
      */
-    expect(canonicalBasisInput(SUBJECT, MINIMAL).startsWith('l21:i2')).toBe(true)
+    expect(canonicalBasisInput(SUBJECT, MINIMAL).startsWith('l23:i3')).toBe(true)
   })
 })

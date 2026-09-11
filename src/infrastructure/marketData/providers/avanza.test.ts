@@ -15,7 +15,14 @@ import {
   SYM_AZA,
   SYM_EVO,
   SYM_INVE_B,
+  SYM_BRENT,
+  SYM_DAX,
+  SYM_GOLD,
+  SYM_FTSE100,
+  SYM_NASDAQ100,
+  SYM_NIKKEI225,
   SYM_OMXS30,
+  SYM_SP500,
   SYM_SEB_A,
   SYM_VOLV_B,
   type CanonicalSymbol,
@@ -55,13 +62,28 @@ function toolCall(
 ): AvanzaToolCall {
   return (async (name: string, args: Record<string, unknown>) => {
     if (name === 'get_marketplace_info') return marketplace
-    if (name === 'get_stock_quote') {
+    /*
+     * Index levels are fetched with `get_stock_info`, which carries the ISIN
+     * and the type the binding verifies. Routed from the same table so a test
+     * only has to describe the instrument it cares about.
+     */
+    if (name === 'get_stock_quote' || name === 'get_stock_info') {
       const payload = quotes[String(args.instrument_id)]
       if (!payload) throw new Error(`no fixture for order book ${args.instrument_id}`)
       return payload
     }
     throw new Error(`unexpected tool ${name}`)
   }) as AvanzaToolCall
+}
+
+/** The recorded `get_stock_info` payload for each bound index. */
+/** Every binding fetched with `get_stock_info`, keyed by order book id. */
+const INDEX_INFO: Record<string, unknown> = {
+  [orderBookIdFor(SYM_DAX).orderBookId]: FIXTURES.daxInfo,
+  [orderBookIdFor(SYM_NASDAQ100).orderBookId]: FIXTURES.nasdaq100Info,
+  [orderBookIdFor(SYM_NIKKEI225).orderBookId]: FIXTURES.nikkeiInfo,
+  [orderBookIdFor(SYM_GOLD).orderBookId]: FIXTURES.goldInfo,
+  [orderBookIdFor(SYM_BRENT).orderBookId]: FIXTURES.brentInfo,
 }
 
 const VOLV_ID = orderBookIdFor(SYM_VOLV_B).orderBookId
@@ -82,7 +104,7 @@ async function quoteOne(
 /* ------------------------------------------------------------ identity map */
 
 describe('order book identity', () => {
-  it('covers exactly the seven approved instruments', () => {
+  it('covers exactly the approved instruments and nothing else', () => {
     expect(AVANZA_INSTRUMENTS.map((i) => i.symbol)).toEqual([
       SYM_OMXS30,
       SYM_INVE_B,
@@ -91,29 +113,93 @@ describe('order book identity', () => {
       SYM_AZA,
       SYM_ATCO_A,
       SYM_SEB_A,
+      SYM_DAX,
+      SYM_NASDAQ100,
+      SYM_NIKKEI225,
+      /* Commodity spot, added 2026-08-25. Avanza types both as INDEX. */
+      SYM_GOLD,
+      SYM_BRENT,
     ])
   })
 
-  it('binds every symbol to the id, ticker, name and ISIN recorded from Avanza', () => {
-    // The ISIN is the check that survives a rename. A reassigned order book id
-    // is the dangerous failure, and only an identity that Avanza did not choose
-    // for display can catch it.
+  it('binds no index Avanza does not publish as an index', () => {
+    /*
+     * S&P 500 and FTSE 100 are the load-bearing absences.
+     *
+     * Probed on 2026-08-24, `"S&P 500"` and `"SPX"` returned 110 and 297 hits
+     * between them with **not one of type INDEX** — only UCITS ETFs, BULL/BEAR
+     * certificates and unrelated tickers. `"FTSE 100"` returned eight results,
+     * all exchange-traded funds.
+     *
+     * Binding either would mean serving a fund that tracks the index as the
+     * index. They stay fixture-backed until a real source exists.
+     */
+    const bound = AVANZA_INSTRUMENTS.map((i) => i.symbol)
+    expect(bound).not.toContain(SYM_SP500)
+    expect(bound).not.toContain(SYM_FTSE100)
+  })
+
+  it('marks every quoted level as INDEX, so a certificate cannot stand in', () => {
+    /*
+     * Avanza lists 746 DAX certificates and 2249 DAX warrants beside the DAX
+     * itself, and 744 gold certificates and 1084 gold warrants beside the gold
+     * spot quote. `expectedType` is what stops a reassigned order book id
+     * serving a leveraged product's price as the underlying level.
+     *
+     * Note what `INDEX` means here: it is **Avanza's own discriminator**, not a
+     * claim that gold and Brent are indices. Avanza types its commodity spot
+     * quotes that way, so the binding records what the provider says and
+     * asserts it on every fetch. What the instrument actually IS lives in the
+     * Financial OS catalog, which models both as `per-physical` in USD.
+     */
+    const quotedLevels = [
+      SYM_OMXS30,
+      SYM_DAX,
+      SYM_NASDAQ100,
+      SYM_NIKKEI225,
+      SYM_GOLD,
+      SYM_BRENT,
+    ]
+    for (const symbol of quotedLevels) {
+      expect(orderBookIdFor(symbol).expectedType, symbol).toBe('INDEX')
+    }
+    for (const instrument of AVANZA_INSTRUMENTS) {
+      if (quotedLevels.includes(instrument.symbol)) continue
+      expect(instrument.expectedType, instrument.symbol).toBe('STOCK')
+    }
+  })
+
+  it('binds every symbol to the id, ticker, name and identity recorded from Avanza', () => {
+    /*
+     * A reassigned order book id is the dangerous failure, and what catches it
+     * is an identity Avanza did not choose for display. Most bindings have an
+     * ISIN for that. The two commodity spot quotes do not — their `isin` field
+     * holds a placeholder — so the last column is the identity ANCHOR rather
+     * than an ISIN, and the class beside it records which kind of evidence it
+     * actually is.
+     */
     expect(
       AVANZA_INSTRUMENTS.map((i) => [
         i.symbol,
         i.orderBookId,
         i.expectedTicker,
         i.expectedName,
-        i.expectedIsin,
+        i.identity.class === 'strong' ? i.identity.isin : i.identity.identifier,
+        i.identity.class,
       ]),
     ).toEqual([
-      [SYM_OMXS30, '19002', 'OMXS30', 'OMX Stockholm 30', 'SE0000337842'],
-      [SYM_INVE_B, '5247', 'INVE B', 'Investor B', 'SE0015811963'],
-      [SYM_VOLV_B, '5269', 'VOLV B', 'Volvo B', 'SE0000115446'],
-      [SYM_EVO, '549768', 'EVO', 'Evolution', 'SE0012673267'],
-      [SYM_AZA, '5361', 'AZA', 'Avanza Bank Holding', 'SE0012454072'],
-      [SYM_ATCO_A, '5234', 'ATCO A', 'Atlas Copco A', 'SE0017486889'],
-      [SYM_SEB_A, '5255', 'SEB A', 'SEB A', 'SE0000148884'],
+      [SYM_OMXS30, '19002', 'OMXS30', 'OMX Stockholm 30', 'SE0000337842', 'strong'],
+      [SYM_INVE_B, '5247', 'INVE B', 'Investor B', 'SE0015811963', 'strong'],
+      [SYM_VOLV_B, '5269', 'VOLV B', 'Volvo B', 'SE0000115446', 'strong'],
+      [SYM_EVO, '549768', 'EVO', 'Evolution', 'SE0012673267', 'strong'],
+      [SYM_AZA, '5361', 'AZA', 'Avanza Bank Holding', 'SE0012454072', 'strong'],
+      [SYM_ATCO_A, '5234', 'ATCO A', 'Atlas Copco A', 'SE0017486889', 'strong'],
+      [SYM_SEB_A, '5255', 'SEB A', 'SEB A', 'SE0000148884', 'strong'],
+      [SYM_DAX, '18981', 'DAX', 'DAX', 'DE0008469008', 'strong'],
+      [SYM_NASDAQ100, '155541', 'NDX', 'Nasdaq 100', 'US6311011026', 'strong'],
+      [SYM_NIKKEI225, '18997', 'NI225', 'Nikkei', 'JP9010C00002', 'strong'],
+      [SYM_GOLD, '18986', 'GOLDSP', 'Guld', 'GC', 'composite'],
+      [SYM_BRENT, '155722', 'Brent Spot', 'Olja', 'BRENT', 'composite'],
     ])
   })
 
@@ -438,7 +524,11 @@ describe('concurrency is bounded', () => {
     const quotes = Object.fromEntries(
       AVANZA_INSTRUMENTS.map((i) => [
         i.orderBookId,
-        i.symbol === SYM_OMXS30 ? FIXTURES.omxs30 : FIXTURES.volvB,
+        i.fetchWith === 'info'
+          ? INDEX_INFO[i.orderBookId]
+          : i.symbol === SYM_OMXS30
+            ? FIXTURES.omxs30
+            : FIXTURES.volvB,
       ]),
     )
     const provider = createAvanzaProvider(toolCall(quotes))

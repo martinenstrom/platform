@@ -29,13 +29,56 @@
 
 import type { EligibilityPolicy } from './eligibilityPolicy'
 import { disagreementBlocksEligibility } from './aggregation'
-import { challengeBlocks } from './review'
+import {
+  admittedChallenges,
+  blockingUnderMandates,
+  type MandatedChallenge,
+} from './review'
 import type { BasisContent } from './basisCanonical'
+
+/**
+ * The control function that files Devil's Advocate reviews.
+ *
+ * Named once. `recordDevilsAdvocateReview` refuses any other department, so a
+ * challenge in the basis's Devil's Advocate container came from this desk as a
+ * matter of enforcement rather than convention.
+ */
+const DEVILS_ADVOCATE_DEPARTMENT = 'devils-advocate'
+
+/**
+ * Which desks are blocking, named only when it is not already obvious.
+ *
+ * Silent when every blocking objection came from the Devil's Advocate, so a
+ * refusal under a Devil's-Advocate-only policy reads exactly as it did before
+ * peers existed. A reader of a version-1 record sees no trace of a distinction
+ * that did not apply to it.
+ */
+function mandateNote(blocking: readonly MandatedChallenge[]): string {
+  const peers = [
+    ...new Set(
+      blocking
+        .filter((challenge) => challenge.challengerKind === 'peer')
+        .map((challenge) => challenge.byDepartmentId),
+    ),
+  ].sort()
+  return peers.length === 0 ? '' : `; raised by peer desk(s): ${peers.join(', ')}`
+}
 
 /** The stable vocabulary. Codes, never user-facing strings. */
 export type EligibilityGateCode =
   | 'VERIFICATION_INCOMPLETE'
   | 'CHALLENGE_UNRESOLVED'
+  /**
+   * No qualified analytical desk examined this revision.
+   *
+   * A DISTINCT code from `CHALLENGE_UNRESOLVED`, not a variant of it. That one
+   * asks whether the objections scrutiny produced were settled; this one asks
+   * whether scrutiny happened. A revision with no objections passes the first
+   * trivially, and that is exactly the state this gate exists to refuse — an
+   * argument nobody competent has read has no objections for the same reason
+   * an unopened letter has no reply.
+   */
+  | 'PEER_SCRUTINY_ABSENT'
   | 'RISK_UNRESOLVED'
   | 'REQUIRED_WORK_INCOMPLETE'
   | 'DISAGREEMENT_BLOCKING'
@@ -43,6 +86,7 @@ export type EligibilityGateCode =
 export const ELIGIBILITY_GATE_CODES: readonly EligibilityGateCode[] = Object.freeze([
   'VERIFICATION_INCOMPLETE',
   'CHALLENGE_UNRESOLVED',
+  'PEER_SCRUTINY_ABSENT',
   'RISK_UNRESOLVED',
   'REQUIRED_WORK_INCOMPLETE',
   'DISAGREEMENT_BLOCKING',
@@ -142,52 +186,143 @@ export function evaluateEligibilityGates(
     })
   }
 
-  /* -------------------------------------------------------- devil's advocate */
-  if (policy.devilsAdvocate === 'outside-policy-scope') {
+  /* ------------------------------------------- challenges, whoever raised one */
+
+  /*
+   * Every unresolved objection the basis carries, from both mandates, gathered
+   * before any filtering. Which of them COUNT is `policy.challengeMandates`,
+   * and which of those BLOCK is `policy.challengeBlocksAtOrAbove`. Neither is
+   * decided here.
+   *
+   * `evaluateGate` builds the identical shape from stored reviews and calls the
+   * same two functions. That is what stops the pre-submission view and this
+   * gate from disagreeing — a revision that looks ready must not be refused the
+   * moment it is submitted.
+   */
+  const objections: MandatedChallenge[] = [
+    ...(basis.devilsAdvocate?.openChallenges ?? []).map((challenge) => ({
+      reviewId: basis.devilsAdvocate!.reviewId,
+      challengeId: challenge.challengeId,
+      materiality: challenge.materiality,
+      challengerKind: 'devils-advocate' as const,
+      /*
+       * The basis does not store a department for this container, and does not
+       * need to: `recordDevilsAdvocateReview` refuses every department but this
+       * one, so the value is enforced by the command rather than guessed here.
+       * A peer's department IS stored, because several desks may examine.
+       */
+      byDepartmentId: DEVILS_ADVOCATE_DEPARTMENT,
+    })),
+    ...basis.peerScrutiny.flatMap((examination) =>
+      examination.openChallenges.map((challenge) => ({
+        reviewId: examination.reviewId,
+        challengeId: challenge.challengeId,
+        materiality: challenge.materiality,
+        challengerKind: 'peer' as const,
+        byDepartmentId: examination.byDepartmentId,
+      })),
+    ),
+  ]
+
+  const admitted = admittedChallenges(objections, policy.challengeMandates)
+  const blockingObjections = blockingUnderMandates(
+    objections,
+    policy.challengeMandates,
+    policy.challengeBlocksAtOrAbove,
+  )
+
+  if (
+    policy.devilsAdvocate === 'outside-policy-scope' &&
+    policy.challengeMandates.length === 0
+  ) {
+    /*
+     * No review required and no mandate weighed. Both conditions, because a
+     * policy that excused the Devil's Advocate while still weighing a peer's
+     * objections would have this gate report "not applicable" over an open
+     * objection it was meant to be reading.
+     */
     gates.push({
       code: 'CHALLENGE_UNRESOLVED',
       status: 'not-applicable',
-      detail: `policy ${policy.version} places the devil's advocate outside its scope`,
+      detail: `policy ${policy.version} places challenge review outside its scope`,
     })
-  } else if (basis.devilsAdvocate === null) {
+  } else if (policy.devilsAdvocate !== 'outside-policy-scope' && basis.devilsAdvocate === null) {
+    /*
+     * A missing REQUIRED review, which is a different failure from an open
+     * objection and is reported through the same code deliberately: both are
+     * answers to "is the challenge process complete for this revision", and
+     * splitting them would ask the CIO to reconcile two verdicts on one
+     * question.
+     *
+     * A peer examination does not substitute. `policy.devilsAdvocate` governs
+     * whether the control function's review must exist, and no number of
+     * qualified desks reading the argument discharges an obligation the firm
+     * placed on a different mandate.
+     */
     gates.push({
       code: 'CHALLENGE_UNRESOLVED',
       status: 'failed',
       detail: "no devil's advocate review is recorded for this revision",
     })
+  } else if (blockingObjections.length > 0) {
+    gates.push({
+      code: 'CHALLENGE_UNRESOLVED',
+      status: 'failed',
+      detail:
+        `${blockingObjections.length} of ${admitted.length} open challenge(s) ` +
+        `block at or above "${policy.challengeBlocksAtOrAbove}"` +
+        mandateNote(blockingObjections),
+    })
+  } else {
+    gates.push({
+      code: 'CHALLENGE_UNRESOLVED',
+      status: 'passed',
+      detail:
+        admitted.length === 0
+          ? 'every challenge raised has been resolved'
+          : `${admitted.length} open challenge(s), none at or above ` +
+            `"${policy.challengeBlocksAtOrAbove}"`,
+    })
+  }
+
+  /* ---------------------------------------------------------- peer scrutiny */
+  if (policy.peerScrutiny === 'outside-policy-scope') {
+    gates.push({
+      code: 'PEER_SCRUTINY_ABSENT',
+      status: 'not-applicable',
+      detail: `policy ${policy.version} places peer scrutiny outside its scope`,
+    })
+  } else if (basis.peerScrutiny.length === 0) {
+    gates.push({
+      code: 'PEER_SCRUTINY_ABSENT',
+      status: 'failed',
+      detail: 'no analytical desk examined this revision',
+    })
   } else {
     /*
-     * The policy decides which open challenges block. `challengeBlocks` owns
-     * that rule and this applies it -- it does not restate it. Counting every
-     * open challenge, which is what this did until the threshold was made an
-     * input, silently raised the firm's bar above what the policy declares.
+     * Passing on the EXISTENCE of examinations, never on their content.
      *
-     * Non-material objections stay in the basis and stay unmentioned by this
-     * gate: recorded, visible to the CIO, and not blocking.
+     * A desk that examined and objected passes this gate exactly as a desk
+     * that examined and did not. Whether its objections block is
+     * `CHALLENGE_UNRESOLVED`'s question, asked under the same threshold and
+     * the same materiality rule — and answering it twice, here and there,
+     * would be two places the firm's bar is set.
+     *
+     * The counterpart failure is the one this gate is built against: reading
+     * "no open peer challenges" as scrutiny passed, when it is what an
+     * unexamined revision looks like.
      */
-    const blocking = basis.devilsAdvocate.openChallenges.filter((challenge) =>
-      challengeBlocks(challenge.materiality, policy.challengeBlocksAtOrAbove),
-    )
-    const open = basis.devilsAdvocate.openChallenges.length
-    if (blocking.length > 0) {
-      gates.push({
-        code: 'CHALLENGE_UNRESOLVED',
-        status: 'failed',
-        detail:
-          `${blocking.length} of ${open} open challenge(s) block at or above ` +
-          `"${policy.challengeBlocksAtOrAbove}"`,
-      })
-    } else {
-      gates.push({
-        code: 'CHALLENGE_UNRESOLVED',
-        status: 'passed',
-        detail:
-          open === 0
-            ? 'every challenge raised has been resolved'
-            : `${open} open challenge(s), none at or above ` +
-              `"${policy.challengeBlocksAtOrAbove}"`,
-      })
-    }
+    const desks = basis.peerScrutiny.map((e) => e.byDepartmentId).sort()
+    const objecting = basis.peerScrutiny.filter((e) => e.openChallenges.length > 0)
+    gates.push({
+      code: 'PEER_SCRUTINY_ABSENT',
+      status: 'passed',
+      detail:
+        `examined by ${desks.length} desk(s): ${desks.join(', ')}` +
+        (objecting.length > 0
+          ? `; ${objecting.length} with objections still open`
+          : ''),
+    })
   }
 
   /* -------------------------------------------------------------------- risk */

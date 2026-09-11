@@ -15,7 +15,7 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { name: 'color-scheme', content: 'dark' },
-      { title: 'Stack' },
+      { title: 'Financial OS' },
       {
         name: 'description',
         /*
@@ -34,10 +34,17 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
-  // The Overview is a full-bleed light-theme command center with its own
-  // navigation column; every other route keeps the dark app shell.
+  /*
+   * `/markets` is the full-bleed light market overview and brings its own
+   * navigation column; every other route, the Command Center included, keeps
+   * the dark institutional shell.
+   *
+   * It used to be `/`. The Command Center took that route, and the market
+   * screen kept its layout rather than being rebuilt into the shell — moving
+   * it was an information-architecture decision, not a visual one.
+   */
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const fullBleed = pathname === '/'
+  const fullBleed = pathname === '/markets'
 
   return (
     <RootDocument>

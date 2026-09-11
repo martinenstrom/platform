@@ -213,7 +213,12 @@ const riskReview = (
 
 /** Eligibility for the aggregated revision, through the approved path only. */
 const eligibilityOf = async () => {
-  const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER, eligibilityPolicy('1'))
+  const all = await revisionEligibility(
+    repositories,
+    'case-1',
+    EVEN_LATER,
+    eligibilityPolicy('1'),
+  )
   return all.find((entry) => entry.revisionId === aggregated)!
 }
 const blockerKinds = async () =>
@@ -450,6 +455,8 @@ describe('RecordDevilsAdvocateReview', () => {
     await challenge({
       challenges: [
         {
+          challengerKind: 'devils-advocate' as const,
+          byDepartmentId: 'devils-advocate',
           contests: seeded.macroClaimId,
           kind: 'fragile-assumption',
           argument: 'The wording overstates confidence slightly.',
@@ -469,6 +476,8 @@ describe('RecordDevilsAdvocateReview', () => {
     await challenge({
       challenges: [
         {
+          challengerKind: 'devils-advocate' as const,
+          byDepartmentId: 'devils-advocate',
           contests: seeded.macroClaimId,
           kind: 'contradicting-evidence',
           argument: 'The order book disagrees.',
@@ -486,6 +495,8 @@ describe('RecordDevilsAdvocateReview', () => {
     const result = await challenge({
       challenges: [
         {
+          challengerKind: 'devils-advocate' as const,
+          byDepartmentId: 'devils-advocate',
           contests: seeded.macroClaimId,
           kind: 'contradicting-evidence',
           argument: 'I disagree.',
@@ -502,6 +513,8 @@ describe('RecordDevilsAdvocateReview', () => {
     const result = await challenge({
       challenges: [
         {
+          challengerKind: 'devils-advocate' as const,
+          byDepartmentId: 'devils-advocate',
           contests: 'claim-nobody-aggregated',
           kind: 'fragile-assumption',
           argument: 'Unrelated.',
@@ -765,7 +778,12 @@ describe('eligibility is derived, never stored', () => {
     )
 
     const next = deriveRevisionId('cmd-aggregate-2', seeded.thesisId)
-    const all = await revisionEligibility(repositories, 'case-1', EVEN_LATER, eligibilityPolicy('1'))
+    const all = await revisionEligibility(
+      repositories,
+      'case-1',
+      EVEN_LATER,
+      eligibilityPolicy('1'),
+    )
     const fresh = all.find((entry) => entry.revisionId === next)!
 
     expect(fresh.eligibility.eligibleForDecision).toBe(false)

@@ -1010,6 +1010,86 @@ describe('citing an agent’s work, before and after a person judges it', () => 
 
   /* ------------------------------------------------------------ rejected */
 
+  it('records an agent decliner as an agent, not as an employee', async () => {
+    /*
+     * The regression P4 left behind, and the reason this test exists rather
+     * than a note in a backlog.
+     *
+     * P4 widened `RejectContribution` to the accountable institutional
+     * PRINCIPAL — a person or an authorised desk agent, on exactly the same
+     * terms as accepting. The application then wrote whichever it had into
+     * `rejected_by_employee_id`, a column that has referenced
+     * `analysis.employees` since migration 0027. An agent declining a
+     * contribution failed at the foreign key, and nothing caught it because
+     * P4's live proof exercised acceptance and never rejection.
+     *
+     * So the discriminating assertion is not "a rejection was recorded". It is
+     * that the agent's id landed in the AGENT field and the employee field
+     * stayed empty — the shape the database can actually store.
+     */
+    await record([claim()])
+
+    const declined = await runCommand(
+      rejectContribution(organization),
+      {
+        caseId: 'case-1',
+        runId,
+        departmentId: 'global-macro',
+        code: 'insufficient-analysis',
+        detail: 'The desk stopped one step short of the question it was asked.',
+      },
+      envelope({
+        commandId: 'cmd-reject-agent',
+        occurredAt: LATER,
+        actor: { kind: 'institutional-agent', agentPrincipalId: 'global-macro-agent' },
+      }),
+      deps,
+    )
+    expect(declined.outcome).toBe('committed')
+
+    const run = await repositories.runs.get(runId)
+    expect(run!.state).toBe('rejected')
+    expect(run!.rejection).toMatchObject({
+      code: 'insufficient-analysis',
+      rejectedByAgentPrincipalId: 'global-macro-agent',
+      rejectedAt: LATER,
+    })
+    expect(run!.rejection!.rejectedByEmployeeId).toBeUndefined()
+
+    /* Declining releases nothing, whoever declined. */
+    expect(await repositories.claims.listForCase('case-1')).toEqual([])
+    expect(await repositories.producedClaims.listForRun(runId)).toHaveLength(1)
+  })
+
+  it('still refuses a system actor, which stands behind nothing', async () => {
+    /*
+     * The near-miss for the test above. Widening the accountable principal did
+     * not widen it to the orchestrator: it schedules work and answers for none
+     * of it, and a rejection nobody is accountable for teaches the firm
+     * nothing.
+     */
+    await record([claim()])
+
+    const declined = await runCommand(
+      rejectContribution(organization),
+      {
+        caseId: 'case-1',
+        runId,
+        departmentId: 'global-macro',
+        code: 'insufficient-analysis',
+        detail: 'The desk stopped short.',
+      },
+      envelope({
+        commandId: 'cmd-reject-system',
+        occurredAt: LATER,
+        actor: { kind: 'system', systemId: 'runner', reason: 'orchestration' },
+      }),
+      deps,
+    )
+    expect(declined.outcome).toBe('rejected')
+    expect((await repositories.runs.get(runId))!.state).toBe('awaiting-acceptance')
+  })
+
   it('stays readable and stays uncitable once a person declines it', async () => {
     await record([claim()])
     expect((await decline()).outcome).toBe('committed')

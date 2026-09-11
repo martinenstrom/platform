@@ -3,6 +3,7 @@ import { FakeClock } from '~/domain/shared/clock'
 import { MemoryCacheStore } from './cache/store'
 import {
   checkCacheSharing,
+  checkChainIntegrity,
   checkLiveReadiness,
   loadMarketDataConfig,
   type EnvSource,
@@ -132,9 +133,21 @@ describe('checkLiveReadiness', () => {
     // would return errors in production — so they surface at startup instead.
     const issues = checkLiveReadiness(loadMarketDataConfig({ MARKETDATA_MODE: 'live' }))
     const categories = issues.map((issue) => issue.category)
-    expect(categories).toContain('commodities')
-    expect(categories).toContain('equity-index-intl')
+    expect(categories).toContain('crypto')
     expect(categories).not.toContain('fx')
+    /*
+     * `commodities` left this list on 2026-08-25, when Gold and Brent were
+     * bound to Avanza's spot quotes. Nothing on the Overview is fixture-only
+     * in live mode any more.
+     */
+    expect(categories).not.toContain('commodities')
+    /*
+     * `equity-index-intl` left this list on 2026-08-25, when Yahoo gave the
+     * S&P 500 and the FTSE 100 a live route. `commodities` stays: Gold and
+     * Brent still have no free spot source, and Yahoo offers only dated
+     * futures contracts, which are a different instrument.
+     */
+    expect(categories).not.toContain('equity-index-intl')
   })
 })
 
@@ -245,5 +258,58 @@ describe('createContainer', () => {
     expect(cached?.value).toEqual({ n: 1 })
     expect(cached?.provenance.source.providerId).toBe('p')
     expect(cached?.expiresAtMs).toBe(clock.epochMs() + 60_000)
+  })
+})
+
+describe('checkChainIntegrity', () => {
+  /*
+   * The check that would have caught both defects of 2026-08-25: `yahoo`
+   * implemented but filtered out of every chain by a missing credential entry,
+   * and `derived` sitting first in the sentiment chain with no adapter behind
+   * it. Each degraded a category to fixture and reported it as though nobody
+   * had configured a provider.
+   */
+  const config = loadMarketDataConfig(HYBRID)
+  const everything = () => true
+
+  it('is silent when every configured id is registered', () => {
+    expect(checkChainIntegrity(config, everything)).toEqual([])
+  })
+
+  it('names a phantom provider and the category it degrades', () => {
+    const issues = checkChainIntegrity(config, (id) => id !== 'derived')
+    const sentiment = issues.find((issue) => issue.category === 'sentiment')
+    expect(sentiment?.message).toContain('"derived"')
+    expect(sentiment?.message).toContain('no adapter has registered')
+  })
+
+  it('says what the category falls back to, so it is not read as a choice', () => {
+    const issues = checkChainIntegrity(config, (id) => id !== 'derived')
+    expect(issues.find((i) => i.category === 'sentiment')?.message).toContain('"fixture"')
+  })
+
+  it('reports a category left with nothing differently', () => {
+    const issues = checkChainIntegrity(config, () => false)
+    expect(issues.find((i) => i.category === 'sentiment')?.message).toContain(
+      'cannot resolve at all',
+    )
+  })
+
+  it('is generic rather than knowing about any particular provider', () => {
+    /*
+     * Planted against a different id entirely: the rule must be about the
+     * relation between config and registry, not a list of known-bad names.
+     */
+    const issues = checkChainIntegrity(config, (id) => id !== 'avanza')
+    expect(issues.map((i) => i.category)).toContain('equity-index-se')
+    expect(issues.map((i) => i.category)).toContain('commodities')
+  })
+
+  it('runs outside live mode, where both real defects were found', () => {
+    /* `checkLiveReadiness` returns [] unless production; this must not. */
+    expect(checkLiveReadiness(loadMarketDataConfig(HYBRID))).toEqual([])
+    expect(
+      checkChainIntegrity(loadMarketDataConfig(HYBRID), (id) => id !== 'yahoo'),
+    ).not.toEqual([])
   })
 })

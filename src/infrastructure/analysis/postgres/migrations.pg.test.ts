@@ -86,6 +86,34 @@ describe('a clean database reaches the expected schema', () => {
       '0031',
       '0032',
       '0033',
+      /* Challenge provenance: challenger_kind, by_department_id. */
+      '0034',
+      /* The Rates desk: a second analytical voice, so two desks can disagree. */
+      '0035',
+      /* Peer examination: a fifth review kind, and who examined whom. */
+      '0036',
+      /* Peer scrutiny in the eligibility basis; canonicalization v3. */
+      '0037',
+      /* The Chairman may convene a committee: an explicit named authority. */
+      '0038',
+      /* The department a mandate is about, which is not always the actor's. */
+      '0039',
+      /* Financial OS specialists as accountable institutional principals. */
+      '0040',
+      /* The grants 0040 omitted, corrected forward rather than by editing it. */
+      '0041',
+      /* Truthful actor provenance when an institutional agent performs an act. */
+      '0042',
+      /* The column-level UPDATE grant 0040 omitted for the agent assignee. */
+      '0043',
+      /* Who declined an agent's work, when that "who" is not a person. */
+      '0044',
+      /* The Research Office synthesis, before the institution adopts it. */
+      '0045',
+      /* Which role may back an autonomous department-analysis principal. */
+      '0046',
+      /* An agent's synthesis names the candidate it adopted. */
+      '0047',
     ])
   })
 
@@ -100,6 +128,8 @@ describe('a clean database reaches the expected schema', () => {
     // Every approved institutional concept, named explicitly so a dropped
     // table is a failing test rather than a silently missing capability.
     expect(tables).toEqual([
+      /* Named specialists that may act for their own desk. Not employees. */
+      'agent_principals',
       'agent_results',
       'aggregation_claim_dispositions',
       'aggregation_inputs',
@@ -139,6 +169,7 @@ describe('a clean database reaches the expected schema', () => {
       'playbook_versions',
       'playbooks',
       'produced_claims',
+      'produced_syntheses',
       'requirement_resolutions',
       'responsibilities',
       'reviews',
@@ -152,6 +183,8 @@ describe('a clean database reaches the expected schema', () => {
       'submission_disagreements',
       'submission_evidence',
       'submission_open_challenges',
+      'submission_peer_challenges',
+      'submission_peer_examinations',
       'submission_required_work',
       'teams',
       'tenants',
@@ -229,7 +262,8 @@ describe('migrations are idempotent', () => {
     ).toEqual(before.rows)
     expect(
       (await db.owner.query('SELECT count(*)::int n FROM analysis.employees')).rows[0].n,
-    ).toBe(15)
+      /* 16 since migration 0035 seated the Rates desk. */
+    ).toBe(16)
   })
 })
 

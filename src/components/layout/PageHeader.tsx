@@ -14,15 +14,18 @@ export function PageHeader({ title, description, actions, className }: PageHeade
   return (
     <div
       className={cn(
-        'flex flex-col gap-4 pt-6 lg:flex-row lg:items-center lg:justify-between',
+        'flex flex-col gap-3 lg:flex-row lg:items-baseline lg:justify-between',
         className,
       )}
     >
-      <div className="min-w-0">
-        <h1 className="type-page-title">{title}</h1>
-        {description && (
-          <p className="type-page-subtitle mt-1 max-w-2xl">{description}</p>
-        )}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1">
+        {/*
+         * Title and summary on one baseline. A stacked heading block pushes the
+         * work down the screen; on a workstation the heading is a label on the
+         * environment, not a cover page for it.
+         */}
+        <h1 className="type-heading text-institution">{title}</h1>
+        {description && <p className="type-metadata">{description}</p>}
       </div>
       {actions && (
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">{actions}</div>
@@ -40,7 +43,12 @@ export function PageShell({
   className?: string
 }) {
   return (
-    <div className={cn('mx-auto flex max-w-[1400px] flex-col gap-10', className)}>
+    /*
+     * Wide and tight. The Command Center is a workstation: it fills the screen
+     * it is given, and the rhythm between sections is a hairline's worth of
+     * space rather than a document's.
+     */
+    <div className={cn('mx-auto flex w-full max-w-[1920px] flex-col gap-4', className)}>
       {children}
     </div>
   )

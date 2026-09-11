@@ -336,9 +336,15 @@ describe('the runtime holds the same rights on both paths', () => {
 
       const refusal = await app
         .query(
-          `INSERT INTO analysis.eligibility_policies VALUES
+          `INSERT INTO analysis.eligibility_policies
+             (version, gate, verification, devils_advocate, peer_scrutiny, risk,
+              compliance, challenge_mandates, challenge_blocks_at_or_above,
+              disagreement_blocks_at_or_above, unresolved_conditional_blocks,
+              domain_contract_version)
+           VALUES
              ('99', 'invented', 'outside-policy-scope', 'outside-policy-scope',
-              'outside-policy-scope', 'outside-policy-scope', 'material',
+              'outside-policy-scope', 'outside-policy-scope', 'outside-policy-scope',
+              ARRAY['devils-advocate'], 'material',
               'decision-critical', false, '8')`,
         )
         .then(
@@ -444,7 +450,7 @@ function behaviouralChecks(name: string, get: () => { db: TestDatabase; app: Cli
               manifest_algorithm, manifest_canon_version, manifest_digest)
            VALUES ($1, $2, 'system', $3, $4, 'research-office',
                    'research-director', now(), 1, 'pending', '1', 'not-required',
-                   'parity-prov', now(), 'sha256', '2', '0000000000000000000000000000000000000000000000000000000000000000')`,
+                   'parity-prov', now(), 'sha256', '3', '0000000000000000000000000000000000000000000000000000000000000000')`,
           [submissionId, caseId, id('thesis'), revisionId],
         )
         submissions.push(submissionId)

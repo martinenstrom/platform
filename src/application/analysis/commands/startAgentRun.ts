@@ -34,7 +34,7 @@ import {
   type Organization,
   type ProviderKind,
 } from '~/domain/analysis'
-import { buildTransitionEvent } from '~/domain/analysis'
+import { actorFieldsOf, buildTransitionEvent } from '~/domain/analysis'
 import { requirePlaybook } from '../playbookRegistry'
 import { deriveEventId, deriveRunId } from './eventIdentity'
 import { reject } from './envelope'
@@ -244,9 +244,36 @@ export function startAgentRun(
         }
       }
 
-      const employeeId = context.actor.employeeId!
-      if (!organization.employees.some((e) => e.id === employeeId)) {
-        reject('not-found', `"${employeeId}" is not an employee of the firm`)
+      /*
+       * An accountable principal, of whichever kind the firm recognises.
+       *
+       * **This used to look up `context.actor.employeeId!` in
+       * `organization.employees`.** That was a duplicate of work `resolveActor`
+       * had already done — and once a desk could act for itself it became
+       * wrong rather than merely redundant: an institutional agent has no
+       * employee id, so the lookup refused every autonomous run with
+       * `not-found`, naming an employee that was never asserted.
+       *
+       * `resolveActor` has already proven the principal exists, is active, and
+       * carries the department and role the mandate was checked against. What
+       * remains here is a consistency check: an act must name somebody who can
+       * answer for it, and a system actor cannot.
+       */
+      if (!context.actor.employeeId && !context.actor.agentPrincipalId) {
+        reject(
+          'unknown-actor',
+          'Starting a run must name an accountable institutional principal. ' +
+            'The orchestrator schedules work; it does not perform it.',
+        )
+      }
+      if (
+        context.actor.employeeId &&
+        !organization.employees.some((e) => e.id === context.actor.employeeId)
+      ) {
+        reject(
+          'not-found',
+          `"${context.actor.employeeId}" is not an employee of the firm`,
+        )
       }
 
       /*
@@ -279,7 +306,9 @@ export function startAgentRun(
         caseId: input.caseId,
         assignmentId: input.assignmentId,
         departmentId: assignment.departmentId,
-        employeeId,
+        ...(context.actor.employeeId
+          ? { employeeId: context.actor.employeeId }
+          : { agentPrincipalId: context.actor.agentPrincipalId! }),
         agentContractVersion: input.agentContractVersion,
         outputSchemaVersion: input.outputSchemaVersion,
         evidenceSetId: input.evidenceSetId,
@@ -324,7 +353,9 @@ export function startAgentRun(
         buildAssignment({
           ...assignment,
           status: 'active',
-          assigneeEmployeeId: employeeId,
+          ...(context.actor.employeeId
+            ? { assigneeEmployeeId: context.actor.employeeId }
+            : { assigneeAgentPrincipalId: context.actor.agentPrincipalId! }),
           startedAt: context.occurredAt,
         }),
       )
@@ -345,7 +376,7 @@ export function startAgentRun(
           ...(input.revisionId ? { revisionId: input.revisionId } : {}),
           fromState: null,
           toState: 'running',
-          actorEmployeeId: employeeId,
+          ...actorFieldsOf(context.actor),
           actorDepartmentId: assignment.departmentId,
           occurredAt: context.occurredAt,
           correlationId: context.correlationId,
@@ -365,7 +396,7 @@ export function startAgentRun(
           assignmentId: input.assignmentId,
           fromState: assignment.status,
           toState: 'active',
-          actorEmployeeId: employeeId,
+          ...actorFieldsOf(context.actor),
           actorDepartmentId: assignment.departmentId,
           occurredAt: context.occurredAt,
           correlationId: context.correlationId,

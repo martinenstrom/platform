@@ -81,9 +81,17 @@ export function instantiatePlaybook(
      * The manager who owns the case's department. Choosing how the firm works
      * a question is a managerial act, not something any contributor may do.
      */
+    /*
+     * Either the owning department's manager, as it always was, or an actor
+     * holding the explicit convening capability — the Chairman asking the firm
+     * a question and calling the committee that answers it.
+     *
+     * The department named here is still checked against the case owner inside
+     * `execute`, so convening never becomes a way to acquire a case.
+     */
     mandate: (input) => ({
-      kind: 'department-manager',
-      departmentId: input.onBehalfOfDepartmentId,
+      kind: 'investment-committee-convenor',
+      owningDepartmentId: input.onBehalfOfDepartmentId,
     }),
     scope: (input) => ({ caseId: input.caseId }),
     payload: (input) => ({

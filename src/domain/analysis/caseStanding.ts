@@ -46,6 +46,14 @@ import type { RiskRequirementState } from './review'
 export type CaseStep =
   | 'thesis-proposed'
   | 'work-aggregated'
+  /**
+   * A qualified analytical desk reading the synthesised revision.
+   *
+   * Between synthesis and the control functions, because that is where the
+   * workflow puts it: a peer examines finished work, and the desks that check
+   * the argument come after the desk that disputes it.
+   */
+  | 'peer-examination'
   | 'verification'
   | 'devils-advocate'
   | 'risk'
@@ -55,6 +63,7 @@ export type CaseStep =
 export const CASE_STEPS: readonly CaseStep[] = Object.freeze([
   'thesis-proposed',
   'work-aggregated',
+  'peer-examination',
   'verification',
   'devils-advocate',
   'risk',
@@ -91,6 +100,7 @@ export type InstitutionalAct =
   | 'aggregate-conclusion'
   | 'submit-for-verification'
   | 'record-verification-review'
+  | 'record-peer-examination'
   | 'record-devils-advocate-review'
   | 'resolve-risk-requirement'
   | 'record-risk-review'
@@ -133,6 +143,34 @@ export interface CaseStanding {
 }
 
 /** Facts in, standing out. Nothing here reads a repository or a policy. */
+/**
+ * Whether this case owes a peer examination, and whether it has had one.
+ *
+ * A three-state answer rather than a boolean, because absence and
+ * inapplicability are different institutional facts. A case whose instantiated
+ * workflow never assigned a peer examination does not owe one; a case that does
+ * owe one and has not had it is waiting.
+ *
+ * ## Resolved by the caller, never decided here
+ *
+ * Applicability comes from the workflow the case actually instantiated — a
+ * persisted assignment — and completeness from the existing
+ * `applicablePeerExaminations` reading of the current revision. Neither is
+ * derived in this module, and no eligibility policy is consulted: standing
+ * answers *what work does this case owe*, which is a different question from
+ * *does this revision satisfy the policy a submission names*.
+ *
+ * ## `complete` is not "the objections were settled"
+ *
+ * A desk that examined the revision has completed the examination whatever it
+ * found. Whether its objections still block is `CHALLENGE_UNRESOLVED`'s answer,
+ * under the policy in force, and folding the two together would let an
+ * unresolved objection read as work nobody has done.
+ */
+export type PeerScrutinyStanding =
+  | { applicability: 'not-applicable' }
+  | { applicability: 'required'; complete: boolean }
+
 export interface CaseStandingInput {
   investmentCase: InvestmentCase
   organization: Organization
@@ -141,6 +179,18 @@ export interface CaseStandingInput {
   hasVerification: boolean
   hasDevilsAdvocate: boolean
   hasRisk: boolean
+  /** As the instantiated workflow and the current revision report it. */
+  peerScrutiny: PeerScrutinyStanding
+  /**
+   * The desk that produced the current revision, and therefore the desk that
+   * submits it.
+   *
+   * Read from the aggregation that made the revision — the same institutional
+   * actor `submitForCioDecision` is called with. It used to be
+   * `participatingDepartmentIds[0]`, which is an array order rather than an
+   * owner, and which reported the Devil's Advocate as owing the submission.
+   */
+  submittingDepartmentId: DepartmentId | null
   /** As the firm resolved it for the current revision. */
   riskRequirement: RiskRequirementState
   hasSubmission: boolean
@@ -182,6 +232,18 @@ function standingSteps(input: CaseStandingInput): StepStanding[] {
   return [
     { step: 'thesis-proposed', status: done(input.hasThesis) },
     { step: 'work-aggregated', status: done(input.hasAggregation) },
+    {
+      step: 'peer-examination',
+      /*
+       * `not-applicable` when the instantiated workflow assigned none — which
+       * is not the same as outstanding. A case running a workflow that never
+       * asked for peer scrutiny is not behind on it.
+       */
+      status:
+        input.peerScrutiny.applicability === 'not-applicable'
+          ? 'not-applicable'
+          : done(input.peerScrutiny.complete),
+    },
     { step: 'verification', status: done(input.hasVerification) },
     { step: 'devils-advocate', status: done(input.hasDevilsAdvocate) },
     {
@@ -305,6 +367,14 @@ function nextActFor(
       owningDepartmentId: input.investmentCase.participatingDepartmentIds[0] ?? null,
     }
   }
+  /*
+   * Before the control functions. A peer reads the synthesis, and asking
+   * Verification to check an argument the firm has not yet had a second
+   * qualified opinion on inverts the workflow v5 describes.
+   */
+  if (pending.has('peer-examination')) {
+    return { act: 'record-peer-examination', owningDepartmentId: null }
+  }
   if (pending.has('verification')) {
     return {
       act: 'record-verification-review',
@@ -326,7 +396,11 @@ function nextActFor(
   if (pending.has('cio-submission')) {
     return {
       act: 'submit-for-cio-decision',
-      owningDepartmentId: input.investmentCase.participatingDepartmentIds[0] ?? null,
+      /*
+       * The desk that produced the revision, never an array position. See
+       * `submittingDepartmentId`.
+       */
+      owningDepartmentId: input.submittingDepartmentId,
     }
   }
   return { act: 'decide-or-return', owningDepartmentId: null }

@@ -140,7 +140,16 @@ export interface InvestmentThesis {
   statement: string
   position: ThesisPosition
   proposedByDepartmentId: DepartmentId
-  proposedByEmployeeId: EmployeeId
+  /**
+   * The accountable principal that proposed it.
+   *
+   * Exactly one of these two, enforced by the database since migration 0040. A
+   * revision an autonomous desk proposed is that desk's act, and naming a human
+   * here would attribute a position to somebody who never read it.
+   */
+  proposedByEmployeeId?: EmployeeId
+  /** The institutional agent that proposed it, where one did. */
+  proposedByAgentPrincipalId?: string
   proposedAt: string
 
   supportingClaimIds: readonly ClaimId[]
@@ -196,6 +205,21 @@ export function buildThesis(thesis: InvestmentThesis): InvestmentThesis {
   }
   if (thesis.revisionNumber < 1) {
     throw new Error(`Revision numbers start at 1, got ${thesis.revisionNumber}`)
+  }
+  /*
+   * Exactly one accountable principal, mirroring
+   * `thesis_revisions_one_accountable_principal` from migration 0040 so a
+   * revision the database would refuse does not reach it.
+   */
+  const proposers = [
+    thesis.proposedByEmployeeId,
+    thesis.proposedByAgentPrincipalId,
+  ].filter((principal) => principal !== undefined).length
+  if (proposers !== 1) {
+    throw new Error(
+      `Revision "${thesis.revisionId}" names ${proposers} accountable ` +
+        `principals. A position the firm holds is proposed by exactly one.`,
+    )
   }
   if (thesis.revisionNumber > 1 && !thesis.supersedesRevisionId) {
     throw new Error(

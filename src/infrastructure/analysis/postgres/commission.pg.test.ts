@@ -35,10 +35,12 @@ import { AT, startRuntime, type Runtime } from './macroFlowHarness'
 import { runCommand } from '~/application/analysis/commands/runCommand'
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
+import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import {
   MACRO_REGIME_CASE_KIND,
   MACRO_REGIME_PLAYBOOK,
   MACRO_REGIME_PLAYBOOK_V2,
+  MACRO_REGIME_PLAYBOOK_V6,
 } from '~/application/analysis/macroPlaybook'
 import { registeredPlaybooks } from '~/application/analysis/playbookRegistry'
 import {
@@ -48,7 +50,12 @@ import {
 import { agentDirectory } from '~/application/analysis/agentDirectory'
 import { runReview } from '~/application/analysis/runReview'
 import { createOfflineLiveProvider } from '~/test/offlineLiveProvider'
-import { buildEvidenceSet, observationRef, type EvidenceSet } from '~/domain/analysis'
+import {
+  buildEvidenceSet,
+  observationRef,
+  type AgentClaim,
+  type EvidenceSet,
+} from '~/domain/analysis'
 import { buildProvenance } from '~/domain/shared/provenance'
 
 const FIXTURES = resolve(process.cwd(), 'src/test/fixtures')
@@ -227,7 +234,10 @@ async function commission(
     departmentId: DEPARTMENT,
     entryKey: ENTRY,
     evidenceSetId,
-    actingEmployeeId: over.actingEmployeeId ?? MACRO_OPERATOR,
+    actingPrincipal: {
+      kind: 'employee' as const,
+      employeeId: over.actingEmployeeId ?? MACRO_OPERATOR,
+    },
     now: () => new Date(AT),
   })
 }
@@ -438,6 +448,171 @@ describe('commissioning a desk from the product', () => {
   })
 })
 
+describe('commissioning an entry that waits for other desks', () => {
+  /**
+   * Readiness is a question about the RECORD, not about this call.
+   *
+   * Measured when the first autonomous synthesis was attempted and declined.
+   * A commission runs a single entry, so every blocker it has necessarily
+   * completed in an EARLIER invocation — and the orchestrator judged readiness
+   * from an in-memory `completed` set that starts empty. The two desks were
+   * finished and accepted in the database, and `aggregation` was still never
+   * ready, so no entry with a blocker could be commissioned at all. It surfaced
+   * as `illegal-prior-state`, which is the fallback code for "no run appeared",
+   * not a rule anybody had actually broken.
+   *
+   * Both halves are here on purpose. Satisfying the blockers from the record
+   * must make the entry runnable, and NOT satisfying them must still refuse it
+   * — a fix that simply stopped consulting the graph would pass the first
+   * assertion and fail the second.
+   */
+  it('runs once the record shows its blockers done, and refuses while one is not', async () => {
+    const repositories = runtime.container.repositories
+    const evidence = institutionalEvidence()
+    await repositories.evidence.save(evidence)
+
+    /*
+     * The MIGRATED organization's employees, not the in-memory fixture's. This
+     * suite runs against the real seed, and each of these is the head of the
+     * department whose work they commission — which is what the
+     * `department-contribution` mandate authorizes.
+     */
+    const HEAD_OF: Readonly<Record<string, string>> = {
+      'global-macro': 'macro-head',
+      rates: 'rates-head',
+      'research-office': 'research-director',
+    }
+
+    const BOTH = 'commission-both-desks'
+    const ONE = 'commission-one-desk'
+    await openCaseAt(BOTH, MACRO_REGIME_PLAYBOOK_V6, 'What is the regime?')
+    await openCaseAt(ONE, MACRO_REGIME_PLAYBOOK_V6, 'What is the regime?')
+
+    /**
+     * What each entry's provider was actually handed as upstream work.
+     *
+     * Recorded at the port rather than inferred from the outcome: the question
+     * is whether the synthesis received the desks' claims, and a run that
+     * succeeded on an empty argument would look identical from the outside.
+     */
+    const inputsSeen = new Map<string, Record<string, readonly AgentClaim[]>>()
+    const watchfulProvider = (entryKey: string) => {
+      const inner = offlineProvider()
+      return {
+        ...inner,
+        contribute: (request: Parameters<typeof inner.contribute>[0]) => {
+          inputsSeen.set(entryKey, request.inputs)
+          return inner.contribute(request)
+        },
+      }
+    }
+
+    /** Commission any desk's entry, as an employee that desk authorizes. */
+    const commissionEntry = async (
+      caseId: string,
+      departmentId: string,
+      entryKey: string,
+    ) => {
+      const deps = await runtime.container.commandDeps()
+      return commissionAnalysis({
+        repositories,
+        deps,
+        provider: watchfulProvider(entryKey),
+        caseId,
+        departmentId,
+        entryKey,
+        evidenceSetId: evidence.id,
+        actingPrincipal: {
+          kind: 'employee' as const,
+          employeeId: HEAD_OF[departmentId]!,
+        },
+        now: () => new Date(AT),
+      })
+    }
+
+    /** The second act, so the run reaches `completed` and satisfies a blocker. */
+    const adopt = async (caseId: string, departmentId: string, runId: string) => {
+      const deps = await runtime.container.commandDeps()
+      const accepted = await runCommand(
+        acceptContribution(deps.organization),
+        { caseId, runId, departmentId },
+        {
+          commandId: `${runId}-accept`,
+          correlationId: caseId,
+          actor: {
+            kind: 'employee' as const,
+            employeeId: HEAD_OF[departmentId]!,
+          },
+          initiator: {
+            kind: 'employee' as const,
+            employeeId: HEAD_OF[departmentId]!,
+          },
+          occurredAt: AT,
+        },
+        deps,
+      )
+      expect(accepted.outcome, JSON.stringify(accepted)).toBe('committed')
+    }
+
+    /** One desk, commissioned and adopted, in its own invocation. */
+    const finish = async (caseId: string, departmentId: string, entryKey: string) => {
+      const result = await commissionEntry(caseId, departmentId, entryKey)
+      expect(result.outcome, JSON.stringify(result)).toBe('ran')
+      if (result.outcome !== 'ran') throw new Error('unreachable')
+      await adopt(caseId, departmentId, result.runId)
+      return result.runId
+    }
+
+    /* ------------------------------------------- one blocker is not enough */
+
+    /*
+     * `aggregation` blocks on BOTH desks in v5 and v6. With only Macro done,
+     * the graph still refuses it — and that refusal must survive this fix,
+     * because it is the dependency rule doing its job.
+     */
+    await finish(ONE, 'global-macro', 'macro-analysis')
+    const premature = await commissionEntry(ONE, 'research-office', 'aggregation')
+    expect(premature.outcome).not.toBe('ran')
+    expect(await repositories.runs.listForCase(ONE)).toHaveLength(1)
+
+    /* ------------------------------------------------- both blockers done */
+
+    await finish(BOTH, 'global-macro', 'macro-analysis')
+    await finish(BOTH, 'rates', 'rates-analysis')
+
+    /*
+     * Three separate invocations, exactly as the product performs them. The
+     * entry is ready because the case's runs say so.
+     */
+    const synthesis = await commissionEntry(BOTH, 'research-office', 'aggregation')
+    expect(synthesis.outcome, JSON.stringify(synthesis)).toBe('ran')
+    if (synthesis.outcome !== 'ran') throw new Error('unreachable')
+    expect(synthesis.state).toBe('awaiting-acceptance')
+
+    const run = (await repositories.runs.get(synthesis.runId))!
+    expect(run.departmentId).toBe('research-office')
+    expect(run.execution.playbookEntryKey).toBe('aggregation')
+    /* The budget v6 approved for a synthesis, not the desk figure. */
+    expect(run.budget.tokens).toEqual({ kind: 'limit', tokens: 12_000 })
+
+    /*
+     * And the upstream argument reached it. Seeding the keys without the claims
+     * would have handed the synthesis an empty case to reconcile while
+     * reporting success — the silent version of this same defect.
+     */
+    const produced = await repositories.producedClaims.listForRun(run.id)
+    expect(produced.length).toBeGreaterThan(0)
+
+    const synthesisInputs = inputsSeen.get('aggregation')!
+    expect(Object.keys(synthesisInputs).sort()).toEqual([
+      'macro-analysis',
+      'rates-analysis',
+    ])
+    expect(synthesisInputs['macro-analysis']!.length).toBeGreaterThan(0)
+    expect(synthesisInputs['rates-analysis']!.length).toBeGreaterThan(0)
+  })
+})
+
 describe('a live run that overruns what the firm authorized', () => {
   it('fails honestly, stores no claim, and offers nothing to accept', async () => {
     const repositories = runtime.container.repositories
@@ -463,7 +638,7 @@ describe('a live run that overruns what the firm authorized', () => {
       departmentId: DEPARTMENT,
       entryKey: ENTRY,
       evidenceSetId: evidence.id,
-      actingEmployeeId: MACRO_OPERATOR,
+      actingPrincipal: { kind: 'employee' as const, employeeId: MACRO_OPERATOR },
       now: () => new Date(AT),
     })
 

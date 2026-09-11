@@ -26,6 +26,8 @@ import {
   budgetOverruns,
   NON_CONSUMING_BUDGET,
   buildThesis,
+  buildProducedSynthesis,
+  synthesisHashMatches,
   buildTransitionEvent,
   modelOf,
   observationRef,
@@ -33,6 +35,7 @@ import {
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
+  type SynthesisArtifact,
   type TransitionEvent,
   type VerificationReview,
 } from '~/domain/analysis'
@@ -917,6 +920,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
         actor: {
           kind: 'employee',
           employeeId: f.ownerEmployeeId,
+          agentPrincipalId: null,
           roleId: 'research-director',
           roleFunction: 'manager',
           departmentId: 'research-office',
@@ -1633,6 +1637,114 @@ export function describeRepositoryContract(name: string, options: ContractOption
          * be the same row.
          */
         await expect(repos.producedClaims.record('run-1', 'case-1', [])).rejects.toThrow()
+      })
+    })
+
+    /* ------------------------------------------------ produced synthesis */
+
+    /**
+     * The Research Office's synthesis before anybody adopted it.
+     *
+     * The other half of the produced-work boundary, and held to the same rule:
+     * nothing in the institution can reach it except the aggregation that
+     * adopted it. Both adapters are checked against the same expectations,
+     * because the contract is the authority and a store that agreed with itself
+     * in memory and disagreed in PostgreSQL would be discovered by a live run.
+     */
+    describe('a produced synthesis is stored apart from the record', () => {
+      const artifact = (over: Partial<SynthesisArtifact> = {}): SynthesisArtifact => ({
+        statement: 'The policy path is mispriced',
+        position: 'buy',
+        rationale: 'The desks agree on direction.',
+        invalidationCriteria: 'The curve reprices above 4%',
+        implications: ['portfolio-risk'],
+        inputRunIds: ['run-1'],
+        dispositions: [{ claimId: 'c-1', disposition: 'adopted-supporting' }],
+        optionalInputs: [
+          {
+            playbookEntryKey: 'optional-step',
+            availability: 'unavailable-at-aggregation',
+            materiallyRelevant: false,
+            explanation: 'Nobody contributed it.',
+          },
+        ],
+        ...over,
+      })
+
+      const candidate = (over: Partial<SynthesisArtifact> = {}) =>
+        buildProducedSynthesis({
+          runId: 'run-1',
+          artifact: artifact(over),
+          basis: {
+            caseId: 'case-1',
+            sourceRevisionId: 'rev-1',
+            playbookId: 'contract-playbook',
+            playbookVersion: '1',
+            observedCompletedRunIds: ['run-earlier'],
+          },
+          producedAt: AT,
+        })
+
+      it('reads back exactly what was produced', async () => {
+        await seedCase()
+        const written = candidate()
+        await repos.producedSyntheses.record(written)
+
+        const stored = await repos.producedSyntheses.get('run-1')
+        expect(stored).not.toBeNull()
+        expect(stored!.artifact).toEqual(written.artifact)
+        expect(stored!.basis).toEqual(written.basis)
+        expect(stored!.contentHash).toBe(written.contentHash)
+        /* And it still attests itself after the round trip. */
+        expect(synthesisHashMatches(stored!)).toBe(true)
+      })
+
+      it('keeps an absent horizon absent rather than null', async () => {
+        await seedCase()
+        await repos.producedSyntheses.record(candidate())
+        const stored = await repos.producedSyntheses.get('run-1')
+        expect('horizon' in stored!.artifact).toBe(false)
+      })
+
+      it('round-trips a stated horizon', async () => {
+        await seedCase()
+        const written = candidate({ horizon: 'two quarters' })
+        await repos.producedSyntheses.record(written)
+        expect((await repos.producedSyntheses.get('run-1'))!.artifact.horizon).toBe(
+          'two quarters',
+        )
+      })
+
+      it('is null for a run that produced no synthesis', async () => {
+        await seedCase()
+        expect(await repos.producedSyntheses.get('run-1')).toBeNull()
+      })
+
+      it('accepts the identical candidate again as the replay it is', async () => {
+        await seedCase()
+        await repos.producedSyntheses.record(candidate())
+        await repos.producedSyntheses.record(candidate())
+        expect(await repos.producedSyntheses.get('run-1')).not.toBeNull()
+      })
+
+      it('refuses a second, different synthesis for the same run', async () => {
+        await seedCase()
+        await repos.producedSyntheses.record(candidate())
+
+        /*
+         * One run, one synthesis. A second one is not a retry — it is two
+         * accounts of what the model concluded, and answering either silently
+         * would settle that by luck.
+         */
+        await expect(
+          repos.producedSyntheses.record(
+            candidate({ statement: 'Something else entirely' }),
+          ),
+        ).rejects.toThrow(ConflictingRecordError)
+
+        expect((await repos.producedSyntheses.get('run-1'))!.artifact.statement).toBe(
+          'The policy path is mispriced',
+        )
       })
     })
 
@@ -2399,6 +2511,7 @@ export function describeRepositoryContract(name: string, options: ContractOption
       const evaluator = (): ActorSnapshot => ({
         kind: 'employee',
         employeeId: f.governanceEmployeeId,
+        agentPrincipalId: null,
         roleId: 'governance-role',
         roleFunction: 'governance',
         departmentId: f.governanceDepartmentId,

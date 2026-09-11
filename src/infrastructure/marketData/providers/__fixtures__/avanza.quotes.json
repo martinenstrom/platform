@@ -36,8 +36,16 @@
     "normalClosingTime": "17:30:00",
     "currentStatus": "CLOSED",
     "marketStateSchedule": [
-      { "status": "OPEN", "start": "09:00:00", "end": "17:30:00" },
-      { "status": "CLOSED", "start": "17:30:00", "end": "09:00:00" }
+      {
+        "status": "OPEN",
+        "start": "09:00:00",
+        "end": "17:30:00"
+      },
+      {
+        "status": "CLOSED",
+        "start": "17:30:00",
+        "end": "09:00:00"
+      }
     ]
   },
   "marketplaceOpen": {
@@ -48,8 +56,122 @@
     "normalClosingTime": "17:30:00",
     "currentStatus": "OPEN",
     "marketStateSchedule": [
-      { "status": "OPEN", "start": "09:00:00", "end": "17:30:00" },
-      { "status": "CLOSED", "start": "17:30:00", "end": "09:00:00" }
+      {
+        "status": "OPEN",
+        "start": "09:00:00",
+        "end": "17:30:00"
+      },
+      {
+        "status": "CLOSED",
+        "start": "17:30:00",
+        "end": "09:00:00"
+      }
     ]
+  },
+  "daxInfo": {
+    "orderbookId": "18981",
+    "name": "DAX",
+    "isin": "DE0008469008",
+    "type": "INDEX",
+    "marketPlace": {
+      "currentStatus": "CLOSED"
+    },
+    "quote": {
+      "last": 26106.6,
+      "highest": 26171.7,
+      "lowest": 26038.07,
+      "change": -29.96,
+      "changePercent": -0.11,
+      "timeOfLast": 1787585730000,
+      "isRealTime": true
+    }
+  },
+  "nasdaq100Info": {
+    "orderbookId": "155541",
+    "name": "Nasdaq 100",
+    "isin": "US6311011026",
+    "type": "INDEX",
+    "marketPlace": {
+      "currentStatus": "POST_MARKET_QUOTES"
+    },
+    "quote": {
+      "last": 29023.18,
+      "highest": 29151.97,
+      "lowest": 28875.96,
+      "change": -285.68,
+      "changePercent": -0.97,
+      "timeOfLast": 1787601601000,
+      "isRealTime": true
+    }
+  },
+  "nikkeiInfo": {
+    "orderbookId": "18997",
+    "name": "Nikkei",
+    "isin": "JP9010C00002",
+    "type": "INDEX",
+    "marketPlace": {
+      "currentStatus": "CLOSED"
+    },
+    "quote": {
+      "last": 65528.09,
+      "highest": 65968.71,
+      "lowest": 65528.09,
+      "change": -488.27,
+      "changePercent": -0.74,
+      "timeOfLast": 1787553002000,
+      "isRealTime": false
+    }
+  },
+  "goldInfo": {
+    "_recorded": "get_stock_info 18986, 2026-08-25",
+    "orderbookId": "18986",
+    "name": "Guld",
+    "isin": "GC",
+    "type": "INDEX",
+    "listing": {
+      "shortName": "Guld",
+      "tickerSymbol": "GOLDSP",
+      "currency": "SEK",
+      "marketPlaceCode": "XXXX",
+      "marketPlaceName": "Inofficiella (beQuoted)"
+    },
+    "marketPlace": {
+      "currentStatus": "CLOSED"
+    },
+    "quote": {
+      "last": 4664.97,
+      "highest": 4696.95,
+      "lowest": 4605.29,
+      "change": 13.59,
+      "changePercent": 0.29,
+      "timeOfLast": 1787688289000,
+      "isRealTime": false
+    }
+  },
+  "brentInfo": {
+    "_recorded": "get_stock_info 155722, 2026-08-25",
+    "orderbookId": "155722",
+    "name": "Olja",
+    "isin": "BRENT",
+    "type": "INDEX",
+    "listing": {
+      "shortName": "Olja",
+      "tickerSymbol": "Brent Spot",
+      "currency": "SEK",
+      "marketPlaceCode": "XXXX",
+      "marketPlaceName": "Inofficiella (beQuoted)"
+    },
+    "marketPlace": {
+      "currentStatus": "CLOSED"
+    },
+    "quote": {
+      "last": 85.69,
+      "highest": 91.02,
+      "lowest": 85.68,
+      "change": -4.5,
+      "changePercent": -4.99,
+      "timeOfLast": 1787688313000,
+      "isRealTime": false
+    }
   }
 }

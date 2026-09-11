@@ -19,4 +19,6 @@ export const IN_MEMORY_SEED_FIXTURES: SeedFixtures = {
   riskDepartmentId: 'risk',
   challengeEmployeeId: 'devils-advocate-head',
   challengeDepartmentId: 'devils-advocate',
+  /* The Rates desk, seated by migration 0035. */
+  peerEmployeeId: 'rates-head',
 }

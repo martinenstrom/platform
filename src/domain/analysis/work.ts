@@ -78,6 +78,8 @@ export interface Assignment {
   departmentId: DepartmentId
   /** Set once someone picks it up. */
   assigneeEmployeeId?: EmployeeId
+  /** The institutional agent that picked the work up, where one did. */
+  assigneeAgentPrincipalId?: string
   /** What this department is being asked for, in its own discipline's terms. */
   brief: string
   status: AssignmentStatus

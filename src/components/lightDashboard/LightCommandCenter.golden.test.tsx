@@ -237,7 +237,7 @@ describe('Overview — golden baseline (Phase 0 gate G1)', () => {
       'Räntemarknaden',
       'Aktuella marknader',
       'Marknadsöversikt',
-      'Sentiment',
+      'Cross-Asset Risk Appetite',
     ]) {
       expect(text).toContain(label)
     }

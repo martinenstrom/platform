@@ -50,6 +50,7 @@
 import {
   budgetPermitsStart,
   unmeasuredBudgetDimensions,
+  type AgentClaim,
   type AgentRunRecord,
   type Assignment,
   type AssignmentStatus,
@@ -62,6 +63,7 @@ import {
   type ProviderKind,
   type RunFailureCategory,
   type RunState,
+  type AssertedActor,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 import type { CommandDeps } from './commands/runCommand'
@@ -573,7 +575,27 @@ export interface CommissionAnalysisInput {
    * somebody who works elsewhere is declined by the institution rather than
    * filtered out by a dropdown.
    */
-  actingEmployeeId: string
+  /**
+   * Who is accountable for the work.
+   *
+   * An employee when a person commissions a desk from the product, or the
+   * desk's own institutional agent when it acts for itself. The orchestrator
+   * is the initiator in both cases and never the actor.
+   */
+  actingPrincipal: AssertedActor
+  /**
+   * The thesis revision this work is scoped to, where it is scoped to one.
+   *
+   * Absent for an ordinary specialist contribution: the desk reads the evidence
+   * and reports, and its claims stand whatever the argument on the table says.
+   *
+   * Required for a SYNTHESIS, because a synthesis reconciles one argument.
+   * Recorded on the run, and the synthesis candidate is bound to it — which is
+   * what stops a position produced from one revision being adopted onto
+   * another. The run is refused outright if the revision was superseded while
+   * the work was in flight.
+   */
+  revisionId?: string
   now: () => Date
 }
 
@@ -585,6 +607,13 @@ export interface CommissionAnalysisInput {
  * invented progress — what a person sees afterwards is read back from the
  * record.
  */
+/** The principal's id, for a deterministic commission identity. */
+function principalId(actor: AssertedActor): string {
+  if (actor.kind === 'employee') return actor.employeeId
+  if (actor.kind === 'institutional-agent') return actor.agentPrincipalId
+  return actor.systemId
+}
+
 export async function commissionAnalysis(
   input: CommissionAnalysisInput,
 ): Promise<CommissionResult> {
@@ -596,7 +625,7 @@ export async function commissionAnalysis(
     departmentId,
     entryKey,
     evidenceSetId,
-    actingEmployeeId,
+    actingPrincipal,
   } = input
 
   const investmentCase = await repositories.cases.get(caseId)
@@ -677,7 +706,27 @@ export async function commissionAnalysis(
   const attempt = priorRuns.filter(
     (run) => run.assignmentId === readyAssignment.id,
   ).length
-  const commissionId = `commission-${caseId}-${entryKey}-${attempt}-${actingEmployeeId}`
+
+  /*
+   * What the record shows finished, read the way `StartAgentRun` reads it:
+   * `completed` is the state a run reaches once its contribution was ACCEPTED,
+   * so produced-but-unadopted work does not satisfy a dependency here either.
+   *
+   * Obsolete runs are excluded for the reason they are excluded in flight — the
+   * work reasoned over a revision the firm has replaced, and a synthesis fed
+   * those claims would reconcile an argument nobody is having any more.
+   */
+  const satisfiedClaims = new Map<string, AgentClaim[]>()
+  for (const run of priorRuns) {
+    if (run.state !== 'completed' || run.obsolete) continue
+    const key = run.execution.playbookEntryKey
+    satisfiedClaims.set(key, [...(satisfiedClaims.get(key) ?? []), ...run.claims])
+  }
+  const satisfiedEntries = [...satisfiedClaims].map(([entryKey, claims]) => ({
+    entryKey,
+    claims,
+  }))
+  const commissionId = `commission-${caseId}-${entryKey}-${attempt}-${principalId(actingPrincipal)}`
 
   const outcome = await runPlaybook(
     requirePlaybook(investmentCase.playbookId!, investmentCase.playbookVersion!),
@@ -697,7 +746,7 @@ export async function commissionAnalysis(
        * press the button would put a name the firm can audit on an act they
        * never performed.
        */
-      employeeIdFor: () => actingEmployeeId,
+      actorFor: () => actingPrincipal,
       commandIdFor: (key, act) => `${commissionId}-${key}-${act}`,
       correlationId: caseId,
       /*
@@ -706,7 +755,13 @@ export async function commissionAnalysis(
        */
       orchestratorId: 'agent-headquarters',
       now: input.now,
-      /* No revision is targeted, so there is nothing that could be superseded. */
+      ...(input.revisionId ? { revisionId: input.revisionId } : {}),
+      /*
+       * Where a revision IS targeted, currency is decided by the record rather
+       * than asserted: `StartAgentRun` refuses a superseded one, and a revision
+       * that was replaced between the check and the command is refused there
+       * too. Where none is targeted there is nothing that could be superseded.
+       */
       revisionIsCurrent: () => true,
     },
     {
@@ -714,6 +769,20 @@ export async function commissionAnalysis(
       maxConcurrency: 1,
       /* Intent. The institution still decides — see this module's header. */
       requestedEntryKeys: [readyEntry.key],
+      /*
+       * What the case has already finished, so the orchestrator judges
+       * readiness against the record rather than against this one call.
+       *
+       * A commission runs a SINGLE entry, so every dependency it has
+       * necessarily completed in an earlier invocation. Without this the
+       * orchestrator's `completed` set is empty, nothing with a blocker is ever
+       * ready, and `aggregation` — the whole point of a workflow that waits for
+       * two desks — could not be commissioned at all.
+       *
+       * This grants nothing. `StartAgentRun` asks the same question of the same
+       * rows and refuses an entry whose blockers have not completed.
+       */
+      satisfiedEntries,
       /*
        * No `firmBudgetCeiling`. There is no durable firm-wide ceiling to read
        * (TD-76), and a caller-side constant would be exactly the override the

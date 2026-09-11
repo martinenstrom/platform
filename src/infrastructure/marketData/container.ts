@@ -44,6 +44,7 @@ import { createLogger } from './logging'
 import { createMetricsRegistry, type MetricsRegistry } from './metrics/registry'
 import {
   checkCacheSharing,
+  checkChainIntegrity,
   checkLiveReadiness,
   checkProviderCredentials,
   checkQuotaSafety,
@@ -61,6 +62,11 @@ export interface Container {
    */
   metricsRegistry?: MetricsRegistry
   registry: ProviderRegistry
+  /**
+   * Chain gaps already reported, shared by every data source so a permanent
+   * configuration fault is logged once per process rather than per request.
+   */
+  chainGapsSeen: Set<string>
   cache: ResolutionCache
   store: CacheStore
   clock: Clock
@@ -125,6 +131,7 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   const store = overrides.store ?? new MemoryCacheStore(clock)
   const cache = new TieredCache(store, overrides.persistentStore)
   const registry = createProviderRegistry(overrides.providers ?? [])
+  const chainGapsSeen = new Set<string>()
   // Join events are the useful reading: "requests this saved".
   const singleFlight = new SingleFlight(() =>
     metrics.increment(METRIC.singleFlightShared),
@@ -166,6 +173,18 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
   }
 
   for (const warning of config.warnings) logger.warn(warning)
+  /*
+   * Chain integrity first, and in EVERY mode rather than only in live.
+   *
+   * A phantom provider id is a wiring error wherever it appears, and the two
+   * that reached production were both found while running in hybrid — the mode
+   * a readiness check gated on `production` never inspects.
+   */
+  for (const issue of checkChainIntegrity(config, (providerId) =>
+    Boolean(registry.get(providerId)),
+  )) {
+    logger.warn(issue.message, { category: issue.category })
+  }
   for (const issue of checkLiveReadiness(config)) {
     logger.warn(issue.message, { category: issue.category })
   }
@@ -258,6 +277,7 @@ export function createContainer(overrides: ContainerOverrides = {}): Container {
     config,
     ...(metricsRegistry ? { metricsRegistry } : {}),
     registry,
+    chainGapsSeen,
     cache,
     store,
     clock,

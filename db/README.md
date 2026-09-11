@@ -67,6 +67,31 @@ it stops the next run with an error naming both checksums. Every database that
 already ran it has the old version's effects, so an edit makes the history a
 description of something that never happened.
 
+### Schema existence does not prove runtime writability
+
+Learned the hard way, twice, in one stage: migration `0040` added the agent
+columns and `0041` had to add the table grants it omitted; then `0043` had to
+add the **column-level** `UPDATE` grant it omitted as well. Both times the
+column existed, the constraint allowed the value, every suite was green, and
+the first real command failed with `StoragePermissionError`.
+
+`finos_app` holds column-level `UPDATE` on several tables (`runs` since `0009`,
+`assignments`, `thesis_revisions`). A new column on one of those is **not**
+writable because the table is — the grant lists columns by name.
+
+For any migration that introduces a writable table or column, check three
+things, in this order:
+
+1. **DDL** — schema, column, foreign key and `CHECK` shape are what the domain
+   means.
+2. **Privileges** — `SELECT`, `INSERT`, `UPDATE` as the write path needs them,
+   **and** an explicit column-level `GRANT UPDATE (col)` wherever the table's
+   `UPDATE` is column-restricted. An insert-only table needs no `UPDATE` and
+   should not be given one.
+3. **Runtime** — one real production command writes the new surface. Not a
+   schema assertion and not a fixture: a green suite measures reachable code,
+   and an ungranted column is reached only by the path that writes it.
+
 ## Roles
 
 Migration `0009` creates two **NOLOGIN group roles**. They carry privileges;

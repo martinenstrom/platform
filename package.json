@@ -14,6 +14,10 @@
     "test:db": "vitest run --config vitest.pg.config.ts",
     "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
     "dev:open-case": "npx vite-node scripts/open-case.ts --",
+    "dev:propose-thesis": "npx vite-node scripts/propose-thesis.ts --",
+    "dev:prove-agent": "npx vite-node scripts/prove-agent-desk.ts --",
+    "dev:prove-synthesis": "npx vite-node scripts/prove-office-synthesis.ts --",
+    "dev:ingest-prices": "npx vite-node scripts/ingest-prices.ts --",
     "dev:ingest-yields": "npx vite-node scripts/ingest-yields.ts --"
   },
   "dependencies": {

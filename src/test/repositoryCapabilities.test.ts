@@ -30,6 +30,10 @@ const PORT_INTERFACES: Readonly<Record<string, { file: string; name: string }>> 
   runs: { file: 'repositories.ts', name: 'RunRepository' },
   claims: { file: 'repositories.ts', name: 'ClaimRepository' },
   producedClaims: { file: 'repositories.ts', name: 'ProducedClaimRepository' },
+  producedSyntheses: {
+    file: 'repositories.ts',
+    name: 'ProducedSynthesisRepository',
+  },
   reviews: { file: 'repositories.ts', name: 'ReviewRepository' },
   events: { file: 'repositories.ts', name: 'EventRepository' },
   evidence: { file: 'repositories.ts', name: 'EvidenceRepository' },

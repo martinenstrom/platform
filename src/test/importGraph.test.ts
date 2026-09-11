@@ -279,14 +279,19 @@ describe('P11 — only approved providers are connected', () => {
     // A new adapter appearing here means a live integration landed without
     // its phase gate. Phase 0 approved the fixture; Phase 2 approved
     // Frankfurter; Phase 5 approved Avanza; Phase 6A approved the New York
-    // Fed, the ECB and the Riksbank policy series. httpClient is shared plumbing,
-    // not a data source, and `avanza/map.ts` is a reviewed identity table.
+    // Fed, the ECB and the Riksbank policy series. The Market Data Capability
+    // Gate approved Yahoo for S&P 500 and FTSE 100 only — the two indices with
+    // no free official route and no index instrument on Avanza.
+    //
+    // httpClient is shared plumbing, not a data source, and `avanza/map.ts`
+    // and `yahoo/map.ts` are reviewed identity tables rather than adapters.
     const adapters = FILES.filter(
       (f) =>
         f.path.startsWith('infrastructure/marketData/providers/') &&
         !isTest(f) &&
         !f.path.includes('/fixture/') &&
-        !f.path.includes('/avanza/'),
+        !f.path.includes('/avanza/') &&
+        !f.path.includes('/yahoo/'),
     )
       .map((f) => f.path)
       .sort()
@@ -294,6 +299,8 @@ describe('P11 — only approved providers are connected', () => {
       'infrastructure/marketData/providers/avanza.ts',
       'infrastructure/marketData/providers/bundesbank.ts',
       'infrastructure/marketData/providers/coinGecko.ts',
+      /* The only computed provider: Cross-Asset Risk Appetite. */
+      'infrastructure/marketData/providers/derived.ts',
       'infrastructure/marketData/providers/ecb.ts',
       'infrastructure/marketData/providers/fixture.ts',
       'infrastructure/marketData/providers/frankfurter.ts',
@@ -302,6 +309,7 @@ describe('P11 — only approved providers are connected', () => {
       'infrastructure/marketData/providers/riksbank.ts',
       'infrastructure/marketData/providers/riksbankPolicy.ts',
       'infrastructure/marketData/providers/usTreasury.ts',
+      'infrastructure/marketData/providers/yahoo.ts',
     ])
   })
 
@@ -358,6 +366,7 @@ describe('P11 — only approved providers are connected', () => {
       'avanza',
       'bundesbank',
       'coinGecko',
+      'derived',
       'ecb',
       'fixture',
       'frankfurter',
@@ -366,6 +375,7 @@ describe('P11 — only approved providers are connected', () => {
       'riksbank',
       'riksbankPolicy',
       'usTreasury',
+      'yahoo',
     ])
   })
 })
@@ -624,15 +634,22 @@ describe('AI Phase A guards — an organization, and no runtime', () => {
     expect(offenders.map((f) => f.path)).toEqual([])
   })
 
-  it('keeps Agenter a first-class navigation destination', () => {
+  it('keeps the headquarters a first-class navigation destination', () => {
     /*
-     * A permanent product requirement, not a styling detail: the Agents
-     * section is the digital headquarters of Financial OS, and it must not be
-     * demoted to a settings page, a modal or a subsection of Reports.
+     * A permanent product requirement, not a styling detail: the firm's
+     * investment floor is the digital headquarters of Financial OS, and it
+     * must not be demoted to a settings page, a modal or a subsection of
+     * Reports.
+     *
+     * **The destination was renamed, not demoted.** Command Center v1 merged
+     * `/agents` and `/cases` — two screens both claiming to be the
+     * headquarters, one of them literally titled *Huvudkontor* while holding
+     * no desks — into `/headquarters`, and moved it up the navigation.
+     * `/agents` still resolves and redirects there.
      */
     const navigation = readFileSync(join(SRC, 'lib/navigation.ts'), 'utf8')
-    expect(navigation).toMatch(/to:\s*'\/agents'/)
-    expect(navigation).toMatch(/label:\s*'Agenter'/)
+    expect(navigation).toMatch(/to:\s*'\/headquarters'/)
+    expect(navigation).toMatch(/label:\s*'Huvudkontor'/)
   })
 })
 
@@ -688,10 +705,10 @@ describe('AI Phase B guards — the runtime respects its layers', () => {
     expect(offenders).toEqual([])
   })
 
-  it('keeps Agenter a first-class navigation destination', () => {
+  it('keeps the headquarters a first-class navigation destination', () => {
     const navigation = readFileSync(join(SRC, 'lib/navigation.ts'), 'utf8')
-    expect(navigation).toMatch(/to:\s*'\/agents'/)
-    expect(navigation).toMatch(/label:\s*'Agenter'/)
+    expect(navigation).toMatch(/to:\s*'\/headquarters'/)
+    expect(navigation).toMatch(/label:\s*'Huvudkontor'/)
   })
 })
 
@@ -925,6 +942,7 @@ describe('Phase C1A — the command foundation', () => {
       'recordCaseDecision.ts',
       'recordContribution.ts',
       'recordDevilsAdvocateReview.ts',
+      'recordPeerExamination.ts',
       'recordRiskReview.ts',
       'recordVerificationReview.ts',
       'registry.ts',
@@ -1026,6 +1044,18 @@ describe('Phase C1C-1 — the external-work boundary', () => {
     expect(offenders).toEqual([
       'infrastructure/analysis/providers/live.ts',
       /*
+       * The synthesis provider, added at P4.5b. A separate module rather than a
+       * mode on the claim provider, because it produces a different artifact
+       * answering a different question — and the two would otherwise have
+       * shared a prompt id, a contract version and an output schema version
+       * while meaning different things by all three.
+       *
+       * It declares its own kind for exactly the reason this rule exists: a
+       * provider states what it is, so nothing can enter the record as live
+       * work because a caller passed the wrong string.
+       */
+      'infrastructure/analysis/providers/liveSynthesis.ts',
+      /*
        * Test support, not production. The shared repository contract drives
        * live runs through both adapters, which is the only way the parity
        * cases can prove a live run round-trips at all. It is named without
@@ -1056,10 +1086,12 @@ describe('Phase C1C-2 — contribution', () => {
 
   it('ships exactly the approved contribution providers', () => {
     /*
-     * Four now, and one of them is a model. C2 lifted the gate that kept this
-     * list at two; the list itself stays, so a FIFTH file appearing here is
+     * Five now, and two of them are models. C2 lifted the gate that kept this
+     * list at two; the list itself stays, so a SIXTH file appearing here is
      * still a provider landing without a decision — the same control the
      * market-data adapters are under, for the same reason.
+     *
+     * The fifth is the Research Office synthesis provider, approved at P4.5b.
      */
     const adapters = FILES.filter((f) => inLayer(f, providers) && !isTest(f))
       .map((f) => f.path)
@@ -1067,6 +1099,7 @@ describe('Phase C1C-2 — contribution', () => {
     expect(adapters).toEqual([
       'infrastructure/analysis/providers/index.ts',
       'infrastructure/analysis/providers/live.ts',
+      'infrastructure/analysis/providers/liveSynthesis.ts',
       'infrastructure/analysis/providers/modelClient.ts',
       'infrastructure/analysis/providers/recorded.ts',
       'infrastructure/analysis/providers/stub.ts',

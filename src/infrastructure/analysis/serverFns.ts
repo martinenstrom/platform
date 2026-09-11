@@ -50,7 +50,19 @@
 
 import { createServerFn } from '@tanstack/react-start'
 import { caseOverview, type CaseOverview } from '~/application/analysis/caseOverview'
+import { boardroomTimeline } from '~/application/analysis/boardroomTimeline'
+import {
+  boardroomSeating,
+  type BoardroomProjection,
+} from '~/application/analysis/boardroomSeating'
 import { caseListing, type CaseListing } from '~/application/analysis/caseListing'
+import {
+  commandCenterView,
+  floorDeskOf,
+  type CommandCenterView,
+  type FloorDesk,
+} from '~/application/analysis/commandCenter'
+import { projectActivity } from '~/domain/analysis'
 import {
   agentDesk,
   agentDirectory,
@@ -79,6 +91,17 @@ import { assembleEvidenceSet } from '~/application/analysis/commands/assembleEvi
 import { evidenceDesk, type EvidenceDeskView } from '~/application/analysis/evidenceDesk'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { rejectContribution } from '~/application/analysis/commands/rejectContribution'
+import {
+  OPERATOR_ENV,
+  resolveCurrentOperator,
+  type CurrentOperator,
+  type OperatorRefusal,
+} from '~/application/analysis/currentOperator'
+import {
+  resumeConvening,
+  startInvestmentCase,
+  type StartInvestmentCaseResult,
+} from '~/application/analysis/startInvestmentCase'
 import type { RejectionCode } from '~/application/analysis/commandLog'
 import {
   CONTRIBUTION_REJECTION_CODES,
@@ -100,14 +123,40 @@ export type AnalysisReadFailure = 'NOT_CONFIGURED' | 'SERVICE_UNAVAILABLE' | 'NO
  */
 export type CaseOverviewFailure = AnalysisReadFailure
 
+/**
+ * The case, and the room that renders it.
+ *
+ * `boardroom` is assembled HERE rather than in the component, because a read
+ * model is institutional state and the presentation layer consumes it as data.
+ * A surface that called the projection itself would be a second place the room
+ * could be computed, and two answers to "who acted" is one too many.
+ */
 export type CaseOverviewResponse =
-  { ok: true; overview: CaseOverview } | { ok: false; code: AnalysisReadFailure }
+  | { ok: true; overview: CaseOverview; boardroom: BoardroomProjection }
+  | { ok: false; code: AnalysisReadFailure }
 
 export type CaseListResponse =
   { ok: true; cases: readonly CaseListing[] } | { ok: false; code: AnalysisReadFailure }
 
 export type AgentDirectoryResponse =
-  { ok: true; desks: readonly AgentDesk[] } | { ok: false; code: AnalysisReadFailure }
+  | {
+      ok: true
+      desks: readonly AgentDesk[]
+      /**
+       * The same desks, counted.
+       *
+       * Projected here rather than in the route: counting run states is
+       * application work, and importing it into a component would put an
+       * application module on a bundle edge — which is what the presentation
+       * fitness rule refuses, and for a good reason. Headquarters and the
+       * Command Center then count the floor exactly once, the same way.
+       */
+      floor: readonly FloorDesk[]
+    }
+  | { ok: false; code: AnalysisReadFailure }
+
+export type CommandCenterResponse =
+  { ok: true; view: CommandCenterView } | { ok: false; code: AnalysisReadFailure }
 
 export type AgentDeskResponse =
   { ok: true; desk: AgentDesk } | { ok: false; code: AnalysisReadFailure }
@@ -130,7 +179,13 @@ export type EvidenceDeskResponse =
  * is an operational fault, and only a commit names a set.
  */
 export type AssembleResponse =
-  | { ok: true; assemblyId: string; evidenceSetId: string; observationCount: number; derivedCount: number }
+  | {
+      ok: true
+      assemblyId: string
+      evidenceSetId: string
+      observationCount: number
+      derivedCount: number
+    }
   | { ok: false; outcome: 'refused'; code: RejectionCode }
   | { ok: false; outcome: 'failed'; code: AnalysisReadFailure }
 
@@ -231,7 +286,13 @@ export const getCaseOverviewFn = createServerFn({ method: 'POST' })
       })
 
       if (!overview) return { ok: false, code: 'NOT_FOUND' }
-      return { ok: true, overview }
+
+      const timeline = boardroomTimeline(overview)
+      return {
+        ok: true,
+        overview,
+        boardroom: { timeline, seats: boardroomSeating(overview, timeline) },
+      }
     } catch (error) {
       if (error instanceof NotConfiguredError) {
         return { ok: false, code: 'NOT_CONFIGURED' }
@@ -277,6 +338,104 @@ export const getCaseListFn = createServerFn({ method: 'POST' }).handler(
   },
 )
 
+/* ------------------------------------------------------------ Command Center */
+
+/**
+ * The firm's operating picture, assembled from read models that already exist.
+ *
+ * **Nothing new is derived.** Standing comes from `caseListing`, which calls the
+ * domain; the floor comes from `agentDirectory`; activity comes from the
+ * domain's own `projectActivity` over persisted run events and case
+ * transitions; evidence is counted, not characterised. `commandCenterView`
+ * arranges and counts, and that is the whole of its authority.
+ *
+ * **The activity source is deliberately the recorded one.** `events.recent()`
+ * has existed on both adapters, contract-tested, with no production caller
+ * since it was written — and `projectActivity`'s signature is the guarantee
+ * that matters: run events and case transitions in, activity out, with no
+ * parameter through which invented activity could enter.
+ *
+ * **The cost is stated rather than hidden.** `caseListing` computes one
+ * standing per case, sequentially, and TD-71 records why it must not be fanned
+ * out. This page therefore costs what the case list costs, and it is the
+ * reason no second standing pass happens here.
+ */
+export const getCommandCenterFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<CommandCenterResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+      const repositories = analysis.repositories
+
+      const cases = await caseListing({
+        repositories,
+        organization: deps.organization,
+        now: systemClock.isoNow(),
+      })
+
+      const desks = await agentDirectory({
+        repositories,
+        organization: deps.organization,
+        playbooks: registeredPlaybooks(),
+      })
+
+      /*
+       * Case transitions only. Run activity is projected from the runs the
+       * directory already carries, so a run's history is read once rather than
+       * assembled twice from two sources that could disagree.
+       */
+      const events = await repositories.events.recent(ACTIVITY_EVENT_LIMIT)
+      const caseTransitions = events
+        .filter((event) => event.subject === 'case')
+        .map((event) => ({
+          at: event.occurredAt,
+          byDepartmentId: event.actorDepartmentId ?? 'unknown',
+          caseId: event.caseId,
+          from: event.fromState ?? '',
+          to: event.toState,
+        }))
+
+      const sets = await repositories.evidence.list(EVIDENCE_SAMPLE_LIMIT)
+      const assemblies = await repositories.assemblies.list(1)
+
+      return {
+        ok: true,
+        view: commandCenterView({
+          cases,
+          desks,
+          activity: projectActivity(
+            desks.flatMap((desk) => desk.runs),
+            caseTransitions,
+            ACTIVITY_LINE_LIMIT,
+          ),
+          evidenceSetCount: sets.length,
+          latestAssemblyAt: assemblies[0]?.assembledAt ?? null,
+        }),
+      }
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] command center failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)
+
+/**
+ * How far back the feed reads, and how much of it is shown.
+ *
+ * Two numbers because they answer different questions: the first bounds the
+ * query, the second bounds the page. Reading more than is rendered is
+ * deliberate — case transitions are filtered out of a mixed stream, so
+ * fetching exactly the render count would silently shorten the feed whenever
+ * run events dominated the tail.
+ */
+const ACTIVITY_EVENT_LIMIT = 120
+const ACTIVITY_LINE_LIMIT = 24
+/** Enough to count what the firm holds without reading every set's payload. */
+const EVIDENCE_SAMPLE_LIMIT = 100
+
 /* --------------------------------------------------------- Agent Headquarters */
 
 /**
@@ -297,14 +456,13 @@ export const getAgentDirectoryFn = createServerFn({ method: 'POST' }).handler(
       const analysis = await runtime()
       const deps = await analysis.commandDeps()
 
-      return {
-        ok: true,
-        desks: await agentDirectory({
-          repositories: analysis.repositories,
-          organization: deps.organization,
-          playbooks: registeredPlaybooks(),
-        }),
-      }
+      const desks = await agentDirectory({
+        repositories: analysis.repositories,
+        organization: deps.organization,
+        playbooks: registeredPlaybooks(),
+      })
+
+      return { ok: true, desks, floor: desks.map((desk) => floorDeskOf(desk)) }
     } catch (error) {
       if (error instanceof NotConfiguredError) {
         return { ok: false, code: 'NOT_CONFIGURED' }
@@ -503,7 +661,12 @@ export const commissionAnalysisFn = createServerFn({ method: 'POST' })
         departmentId: data.departmentId,
         entryKey: data.entryKey,
         evidenceSetId: data.evidenceSetId,
-        actingEmployeeId: data.actingEmployeeId,
+        /*
+         * A person commissioned this from the product, so a person is
+         * accountable. The autonomous path supplies the desk's own principal
+         * instead; the surface never chooses between them silently.
+         */
+        actingPrincipal: { kind: 'employee', employeeId: data.actingEmployeeId },
         now: () => new Date(systemClock.isoNow()),
       })
 
@@ -845,3 +1008,104 @@ export const assembleEvidenceSetFn = createServerFn({ method: 'POST' })
  * The fitness rule `evidence-assembled-only-by-the-governed-act` is what keeps
  * a second door from being opened by accident.
  */
+
+/* ------------------------------------------------------ convening a committee */
+
+/**
+ * The Chairman's act, at the published boundary.
+ *
+ * The orchestration itself lives in `application/analysis/startInvestmentCase`,
+ * where it is reachable by tests. Both server functions below are transport:
+ * they build the runtime, hand over, and translate a thrown configuration
+ * fault into the same bounded vocabulary every other read and write here uses.
+ *
+ * The three-state result is passed through UNCHANGED. Collapsing
+ * `convening-incomplete` into success or failure at this edge would throw away
+ * the one distinction the Chairman Console exists to act on.
+ */
+export type StartInvestmentCaseResponse = StartInvestmentCaseResult
+
+export const startInvestmentCaseFn = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      question: string
+      subjectDisplayName: string
+      /** Minted once per submission so a retry does not open a second case. */
+      requestId: string
+      actingEmployeeId: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<StartInvestmentCaseResponse> => {
+    try {
+      const analysis = await runtime()
+      return await startInvestmentCase({
+        repositories: analysis.repositories,
+        deps: await analysis.commandDeps(),
+        question: data.question,
+        subjectDisplayName: data.subjectDisplayName,
+        requestId: data.requestId,
+        actingEmployeeId: data.actingEmployeeId,
+      })
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { state: 'refused', code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] start investment case failed', error)
+      return { state: 'refused', code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/** *Återuppta sammankallning*. Never opens a case; only convenes an open one. */
+export const resumeConveningFn = createServerFn({ method: 'POST' })
+  .validator((input: { caseId: string; actingEmployeeId: string }) => input)
+  .handler(async ({ data }): Promise<StartInvestmentCaseResponse> => {
+    try {
+      const analysis = await runtime()
+      return await resumeConvening({
+        repositories: analysis.repositories,
+        deps: await analysis.commandDeps(),
+        caseId: data.caseId,
+        actingEmployeeId: data.actingEmployeeId,
+      })
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { state: 'refused', code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] resume convening failed', error)
+      return { state: 'refused', code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/* -------------------------------------------------- who is asking the firm */
+
+export type CurrentOperatorResponse =
+  | { ok: true; operator: CurrentOperator }
+  | { ok: false; code: OperatorRefusal | AnalysisReadFailure }
+
+/**
+ * The operator the server is configured to act for.
+ *
+ * Read from the server's own configuration and resolved against the seeded
+ * organisation. The client is TOLD who the operator is; it does not choose,
+ * which is the difference between this and the acting-as dropdown it replaces
+ * on the product path.
+ *
+ * It is not authentication and the response says so: `authentication` is
+ * `system-asserted`, the same value the ledger records, because nobody logged
+ * in. TD-8 stays open.
+ */
+export const getCurrentOperatorFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<CurrentOperatorResponse> => {
+    try {
+      const analysis = await runtime()
+      const deps = await analysis.commandDeps()
+      return resolveCurrentOperator(process.env[OPERATOR_ENV], deps.organization)
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { ok: false, code: 'NOT_CONFIGURED' }
+      }
+      console.error('[analysis] current operator failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)

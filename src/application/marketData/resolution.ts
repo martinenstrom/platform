@@ -78,6 +78,15 @@ export interface ResolveDeps {
   /** Shares one execution per key across concurrent callers. */
   singleFlight: <T>(key: string, execute: () => Promise<T>) => Promise<T>
   correlationId: CorrelationId
+  /**
+   * Remembers which chain gaps have already been reported, so a permanent
+   * configuration fault is logged once rather than on every request.
+   *
+   * Owned by the container, so the memory lasts as long as the process and not
+   * as long as one data source. Omitting it is safe and makes every gap report
+   * every time — which is what a test wants.
+   */
+  chainGapsSeen?: Set<string>
 }
 
 /**
@@ -140,6 +149,69 @@ function staleReasonFor(code: ErrorCode | null): StaleReason {
       return 'offline'
     default:
       return 'provider-error'
+  }
+}
+
+/**
+ * Reports configured providers that could not serve this request.
+ *
+ * ## Why this lives in the resolver and not in a table
+ *
+ * `chainFor` drops an id for two different reasons and says nothing about
+ * either: the provider is not registered at all, or it is registered without
+ * the capability this category needs. Both are silent by design, because a
+ * dropped API key legitimately shortens a chain — and both hid a real defect.
+ *
+ * Catching the second reason needs to know which capability a category asks
+ * for, and **that relation is not a function**: `equity-se` resolves through
+ * `quotes` for its watchlist quotes and `series` for its sparklines. A
+ * hand-written category-to-capability map would therefore be both redundant
+ * and wrong the first time a call site changed.
+ *
+ * The resolver does not need the map. It is handed the category, the
+ * capability and the configured chain together, at the one moment all three
+ * are known and true, so the gap can be observed from the actual request
+ * rather than declared in advance.
+ *
+ * ## What it does not cover
+ *
+ * This is lazy: a category nothing requests is never checked. That is why the
+ * eager `checkChainIntegrity` startup check stays — it sees every configured
+ * id before any traffic, but only whether the provider exists at all. The two
+ * are complementary:
+ *
+ *   startup   — is this provider registered?
+ *   resolver  — can this provider serve what this category actually asks for?
+ */
+function reportChainGaps(
+  deps: ResolveDeps,
+  category: DataCategory,
+  capability: Capability,
+  configured: readonly string[],
+  resolved: readonly { provider: { id: string } }[],
+): void {
+  const usable = new Set(resolved.map((registration) => registration.provider.id))
+  for (const providerId of configured) {
+    if (usable.has(providerId)) continue
+    const key = `${category}|${capability}|${providerId}`
+    if (deps.chainGapsSeen?.has(key)) continue
+    deps.chainGapsSeen?.add(key)
+    /*
+     * The two causes are distinguished, because they need different fixes: a
+     * missing registration is a composition-root omission, while a missing
+     * capability is an adapter that was registered for the wrong job.
+     */
+    const registered = deps.registry.get(providerId) !== undefined
+    deps.logger.warn(
+      registered
+        ? `Provider "${providerId}" is configured for category "${category}" but is ` +
+            `not registered for the "${capability}" capability it requires. It is ` +
+            `silently skipped on every such request.`
+        : `Provider "${providerId}" is configured for category "${category}" but no ` +
+            `adapter is registered under that id. It is silently skipped on every ` +
+            `such request.`,
+      { category, capability, providerId },
+    )
   }
 }
 
@@ -233,6 +305,7 @@ async function resolveUncoordinated<T, C extends Capability>(
 
   /* 2 — live providers ----------------------------------------------------- */
   const chain = deps.registry.chainFor(request.capability, request.chain)
+  reportChainGaps(deps, request.category, request.capability, request.chain, chain)
   const live = chain.filter((r) => r.provider.id !== FIXTURE_PROVIDER_ID)
   const fixture = chain.find((r) => r.provider.id === FIXTURE_PROVIDER_ID)
 

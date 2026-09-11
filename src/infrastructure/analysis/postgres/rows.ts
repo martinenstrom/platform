@@ -47,7 +47,9 @@ export interface ThesisRevisionRow {
   horizon: string | null
   implications: string[]
   proposed_by_department_id: string
-  proposed_by_employee_id: string
+  /** Exactly one of these two is set; see migration 0040. */
+  proposed_by_employee_id: string | null
+  proposed_by_agent_principal_id: string | null
   proposed_at: string
   revised_at: string | null
   revision_reason: string | null
@@ -69,6 +71,7 @@ export interface AssignmentRow {
   tenant_id: string
   department_id: string
   assignee_employee_id: string | null
+  assignee_agent_principal_id: string | null
   playbook_entry_key: string | null
   brief: string
   status: string
@@ -82,13 +85,44 @@ export interface AssignmentRow {
   returned_reason: string | null
 }
 
+/**
+ * `analysis.produced_syntheses` — one Research Office synthesis, unadopted.
+ *
+ * The jsonb columns come back as parsed values, so each is `unknown` until the
+ * mapper has checked its shape. A malformed row is a `MalformedRowError` rather
+ * than a cast: a candidate whose dispositions are not an array is not a
+ * candidate with unusual dispositions.
+ */
+export interface ProducedSynthesisRow {
+  run_id: string
+  case_id: string
+  tenant_id: string
+  statement: string
+  position: string
+  rationale: string
+  invalidation_criteria: string
+  horizon: string | null
+  implications: unknown
+  dispositions: unknown
+  optional_inputs: unknown
+  input_run_ids: unknown
+  source_revision_id: string
+  playbook_id: string
+  playbook_version: string
+  observed_completed_run_ids: unknown
+  content_hash: string
+  canonicalization_version: string
+  produced_at: string
+}
+
 export interface RunRow {
   id: string
   case_id: string
   tenant_id: string
   assignment_id: string
   department_id: string
-  employee_id: string
+  employee_id: string | null
+  agent_principal_id: string | null
   revision_id: string | null
   state: string
   obsolete: boolean
@@ -117,10 +151,14 @@ export interface RunRow {
   failure_retryable: boolean | null
   failure_attempt: number | null
   failed_at: string | null
-  /** Present only for `state = 'rejected'`, and then all four are. */
+  /**
+   * Present only for `state = 'rejected'` — code, detail and time together,
+   * plus exactly one of the two accountable principals.
+   */
   rejection_code: string | null
   rejection_detail: string | null
   rejected_by_employee_id: string | null
+  rejected_by_agent_principal_id: string | null
   rejected_at: string | null
   playbook_id: string
   playbook_version: string
@@ -267,6 +305,12 @@ export interface ReviewRow {
   sequence: number
   supersedes_review_id: string | null
   reason: string | null
+  /**
+   * The desk whose claims were examined. Non-null exactly for
+   * `peer-examination`, enforced by `reviews_examined_department_matches_kind`
+   * in migration 0036 — a control function reviews an argument, not a peer.
+   */
+  examined_department_id: string | null
 }
 
 export interface VerificationFindingRow {
@@ -323,6 +367,15 @@ export interface ChallengeRow {
   outcome: string
   materiality: string
   resolved_by: string | null
+  /*
+   * NOT NULL since migration 0034, which backfilled both from the parent
+   * review rather than from a constant. There is therefore no application-level
+   * default: a row that reaches the mapper without them is a row the database
+   * should not have produced, and the mapper says so rather than supplying a
+   * plausible value.
+   */
+  challenger_kind: string
+  by_department_id: string
 }
 
 export interface ChallengeEvidenceRow {
@@ -397,6 +450,35 @@ export interface SubmissionDisagreementRow {
 export interface SubmissionEvidenceRow {
   submission_id: string
   evidence_set_id: string
+}
+
+/**
+ * One desk's examination of the revision a submission attests.
+ *
+ * A row per examiner, never a column pair on the submission: several desks may
+ * read one argument, and two columns would hold the last of them and discard
+ * the rest.
+ */
+export interface SubmissionPeerExaminationRow {
+  submission_id: string
+  review_id: string
+  sequence: number
+  by_department_id: string
+  examined_department_id: string
+}
+
+/**
+ * A peer's objection still open when the submission was made.
+ *
+ * `review_id` is carried so the objection stays attached to the examination
+ * that raised it — enforced by a composite foreign key, not by convention.
+ */
+export interface SubmissionPeerChallengeRow {
+  submission_id: string
+  review_id: string
+  challenge_id: string
+  /** Stored as a fact, filtered by nothing. See the Devil's Advocate row. */
+  materiality: string
 }
 
 export interface SubmissionOpenChallengeRow {
@@ -572,6 +654,8 @@ export interface SubmissionRowSet {
   disagreements: readonly SubmissionDisagreementRow[]
   evidence: readonly SubmissionEvidenceRow[]
   openChallenges: readonly SubmissionOpenChallengeRow[]
+  peerExaminations: readonly SubmissionPeerExaminationRow[]
+  peerChallenges: readonly SubmissionPeerChallengeRow[]
 }
 
 export interface ReturnRowSet {
@@ -627,7 +711,11 @@ export interface AggregationRow {
   thesis_id: string
   source_revision_id: string
   produced_revision_id: string
-  manager_employee_id: string
+  /** Exactly one of these two is set; see migration 0040. */
+  manager_employee_id: string | null
+  manager_agent_principal_id: string | null
+  /** The adopted synthesis candidate, where the synthesis was adopted. */
+  synthesis_run_id: string | null
   department_id: string
   rationale: string
   aggregated_at: string

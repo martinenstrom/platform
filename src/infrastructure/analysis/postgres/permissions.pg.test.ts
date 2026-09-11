@@ -165,7 +165,8 @@ describe('the migration history is read-only to the runtime', () => {
 describe('the runtime reads the organization and never edits it', () => {
   it('can read departments and employees', async () => {
     const { rows } = await app.query('SELECT count(*)::int n FROM analysis.departments')
-    expect(rows[0].n).toBe(15)
+    /* 16 since migration 0035 seated the Rates desk. */
+    expect(rows[0].n).toBe(16)
   })
 
   it('cannot add a department', async () => {
@@ -236,6 +237,27 @@ describe('append-only tables', () => {
      */
     await expectDenied(app, `UPDATE analysis.produced_claims SET claims = '[]'::jsonb`)
     await expectDenied(app, 'DELETE FROM analysis.produced_claims')
+  })
+
+  it('refuses to update or delete an unadopted synthesis', async () => {
+    /*
+     * The reason the whole candidate boundary exists. A store the runtime could
+     * edit would let a candidate be rewritten into agreement with whatever the
+     * institution actually adopted, and `aggregations.synthesis_run_id` would
+     * then prove nothing at all.
+     */
+    await expectDenied(
+      app,
+      `UPDATE analysis.produced_syntheses SET statement = 'revised'`,
+    )
+    await expectDenied(app, 'DELETE FROM analysis.produced_syntheses')
+  })
+
+  it('refuses to rewrite which candidate an aggregation adopted', async () => {
+    await expectDenied(
+      app,
+      `UPDATE analysis.aggregations SET synthesis_run_id = NULL`,
+    )
   })
 
   it('refuses to update or delete an evidence set or item', async () => {
@@ -386,7 +408,8 @@ describe('the read-only operator role', () => {
     const { rows } = await readonly.query(
       'SELECT count(*)::int n FROM analysis.departments',
     )
-    expect(rows[0].n).toBe(15)
+    /* 16 since migration 0035 seated the Rates desk. */
+    expect(rows[0].n).toBe(16)
   })
 
   it('cannot write anything', async () => {

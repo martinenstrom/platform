@@ -72,6 +72,8 @@ import type {
   SubmissionDisagreementRow,
   SubmissionEvidenceRow,
   SubmissionOpenChallengeRow,
+  SubmissionPeerChallengeRow,
+  SubmissionPeerExaminationRow,
   SubmissionRequiredWorkRow,
 } from './rows'
 import { catalog, run, ts, type Queryable, type SqlContext } from './sql'
@@ -191,6 +193,22 @@ export const SUBMISSION_READ_SQL = catalog({
                       WHERE submission_id = ANY($1)
                       ORDER BY challenge_id COLLATE "C"`,
 
+  /*
+   * Ordered by the examining desk, which is the order the basis and its digest
+   * use. Sorting by review id here would read back a list the manifest was not
+   * taken over.
+   */
+  peerExaminationsFor: `SELECT submission_id, review_id, sequence,
+                               by_department_id, examined_department_id
+                        FROM analysis.submission_peer_examinations
+                        WHERE submission_id = ANY($1)
+                        ORDER BY by_department_id COLLATE "C"`,
+
+  peerChallengesFor: `SELECT submission_id, review_id, challenge_id, materiality
+                      FROM analysis.submission_peer_challenges
+                      WHERE submission_id = ANY($1)
+                      ORDER BY challenge_id COLLATE "C"`,
+
   /**
    * Ownership of everything a submission is about to cite, in one statement.
    *
@@ -258,6 +276,22 @@ export const SUBMISSION_WRITE_SQL = catalog({
     INSERT INTO analysis.submission_open_challenges
       (submission_id, challenge_id, materiality)
     SELECT $1, * FROM unnest($2::text[], $3::text[])`,
+
+  insertPeerExaminations: `
+    INSERT INTO analysis.submission_peer_examinations
+      (submission_id, review_id, sequence, by_department_id, examined_department_id)
+    SELECT $1, * FROM unnest($2::text[], $3::int[], $4::text[], $5::text[])`,
+
+  /*
+   * Written AFTER the examinations, because the composite foreign key requires
+   * the examination row to exist. That ordering is the constraint doing its
+   * job: an objection cannot be recorded against an examination the submission
+   * did not claim to have read.
+   */
+  insertPeerChallenges: `
+    INSERT INTO analysis.submission_peer_challenges
+      (submission_id, review_id, challenge_id, materiality)
+    SELECT $1, * FROM unnest($2::text[], $3::text[], $4::text[])`,
 
   insertReconsideration: `
     INSERT INTO analysis.case_reconsiderations
@@ -470,7 +504,7 @@ export function createSubmissionRepository(
     if (roots.length === 0) return []
     const ids = roots.map((root) => root.id)
 
-    const [work, disagreements, evidence, challenges] = [
+    const [work, disagreements, evidence, challenges, peerExaminations, peerChallenges] = [
       await run<WorkRow>(
         client,
         context,
@@ -497,6 +531,20 @@ export function createSubmissionRepository(
         context,
         operation,
         SUBMISSION_READ_SQL.openChallengesFor,
+        [ids],
+      ),
+      await run<SubmissionPeerExaminationRow>(
+        client,
+        context,
+        operation,
+        SUBMISSION_READ_SQL.peerExaminationsFor,
+        [ids],
+      ),
+      await run<SubmissionPeerChallengeRow>(
+        client,
+        context,
+        operation,
+        SUBMISSION_READ_SQL.peerChallengesFor,
         [ids],
       ),
     ]
@@ -530,6 +578,8 @@ export function createSubmissionRepository(
     const disagreementsById = group(disagreements)
     const evidenceById = group(evidence)
     const challengesById = group(challenges)
+    const peerExaminationsById = group(peerExaminations)
+    const peerChallengesById = group(peerChallenges)
 
     return roots.map((root) => {
       const submission = submissionFromRows(
@@ -539,6 +589,8 @@ export function createSubmissionRepository(
           disagreements: disagreementsById.get(root.id) ?? [],
           evidence: evidenceById.get(root.id) ?? [],
           openChallenges: challengesById.get(root.id) ?? [],
+          peerExaminations: peerExaminationsById.get(root.id) ?? [],
+          peerChallenges: peerChallengesById.get(root.id) ?? [],
         },
         operation,
       )
@@ -907,6 +959,31 @@ export function createSubmissionRepository(
             root.id,
             rows.openChallenges.map((entry) => entry.challenge_id),
             rows.openChallenges.map((entry) => entry.materiality),
+          ],
+        )
+        await run(
+          client,
+          context,
+          'submissions.save',
+          SUBMISSION_WRITE_SQL.insertPeerExaminations,
+          [
+            root.id,
+            rows.peerExaminations.map((entry) => entry.review_id),
+            rows.peerExaminations.map((entry) => entry.sequence),
+            rows.peerExaminations.map((entry) => entry.by_department_id),
+            rows.peerExaminations.map((entry) => entry.examined_department_id),
+          ],
+        )
+        await run(
+          client,
+          context,
+          'submissions.save',
+          SUBMISSION_WRITE_SQL.insertPeerChallenges,
+          [
+            root.id,
+            rows.peerChallenges.map((entry) => entry.review_id),
+            rows.peerChallenges.map((entry) => entry.challenge_id),
+            rows.peerChallenges.map((entry) => entry.materiality),
           ],
         )
 

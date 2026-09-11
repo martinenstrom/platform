@@ -111,18 +111,30 @@ describe('statement counts do not grow with the data', () => {
       counts.clear()
       await repositories.submissions.save(wide(`sub-${size}`, size))
       /*
-       * Existence probe, ownership, the root, four child tables. Seven, and
-       * seven whether the submission cites one required run or twenty-five.
+       * Existence probe, ownership, the root, six child tables. Nine, and nine
+       * whether the submission cites one required run or twenty-five.
+       *
+       * Seven until peer scrutiny entered the basis. The two added statements
+       * are the two new child tables — `submission_peer_examinations` and
+       * `submission_peer_challenges` — and they are child tables rather than
+       * columns because several desks may examine one revision. The count is
+       * still FIXED, which is what this test exists to protect: it does not
+       * grow with the number of examinations, objections or required runs.
        */
-      expect(statementsFor('submissions.save')).toBe(7)
+      expect(statementsFor('submissions.save')).toBe(9)
     })
 
-    it(`get issues five statements at ${size} child rows`, async () => {
+    it(`get issues a fixed number of statements at ${size} child rows`, async () => {
       await repositories.submissions.save(wide(`sub-get-${size}`, size))
       counts.clear()
       await repositories.submissions.get(`sub-get-${size}`)
-      // root + four child tables + the challenges of the cited review.
-      expect(statementsFor('submissions.get')).toBe(6)
+      /*
+       * Root + six child tables + the challenges of the cited review. Six
+       * until peer scrutiny entered the basis; the two extra reads are the
+       * peer examinations and their objections, and neither grows with the
+       * data.
+       */
+      expect(statementsFor('submissions.get')).toBe(8)
     })
   }
 
@@ -133,7 +145,7 @@ describe('statement counts do not grow with the data', () => {
     )
     counts.clear()
     await repositories.submissions.listForCase('case-1')
-    expect(statementsFor('submissions.listForCase')).toBe(6)
+    expect(statementsFor('submissions.listForCase')).toBe(8)
   })
 
   it('settles a list in two statements, whatever its length', async () => {
@@ -235,9 +247,15 @@ describe('the runtime role can do exactly what it needs', () => {
     expect(
       isPermissionDenied(
         await refusal(
-          `INSERT INTO analysis.eligibility_policies VALUES
+          `INSERT INTO analysis.eligibility_policies
+             (version, gate, verification, devils_advocate, peer_scrutiny, risk,
+              compliance, challenge_mandates, challenge_blocks_at_or_above,
+              disagreement_blocks_at_or_above, unresolved_conditional_blocks,
+              domain_contract_version)
+           VALUES
              ('99','invented','outside-policy-scope','outside-policy-scope',
-              'outside-policy-scope','outside-policy-scope','material',
+              'outside-policy-scope','outside-policy-scope','outside-policy-scope',
+              ARRAY['devils-advocate'],'material',
               'decision-critical', false, '8')`,
         ),
       ),
@@ -424,18 +442,18 @@ describe('every remaining public method has a fixed statement count', () => {
     })
 
   for (const size of [1, 25]) {
-    it(`applicableForRevision issues six at ${size} child rows`, async () => {
+    it(`applicableForRevision issues eight at ${size} child rows`, async () => {
       await repositories.submissions.save(wideSubmission(`sub-a-${size}`, size))
       counts.clear()
       await repositories.submissions.applicableForRevision('rev-1')
-      expect(statementsFor('submissions.applicableForRevision')).toBe(6)
+      expect(statementsFor('submissions.applicableForRevision')).toBe(8)
     })
 
-    it(`pending issues six at ${size} child rows`, async () => {
+    it(`pending issues eight at ${size} child rows`, async () => {
       await repositories.submissions.save(wideSubmission(`sub-p-${size}`, size))
       counts.clear()
       await repositories.submissions.pending()
-      expect(statementsFor('submissions.pending')).toBe(6)
+      expect(statementsFor('submissions.pending')).toBe(8)
     })
 
     it(`recordReturn issues six at ${size} concerns`, async () => {

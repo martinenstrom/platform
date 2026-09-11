@@ -128,6 +128,7 @@ const organization: Organization = {
     },
   ],
   teams: [],
+  agentPrincipals: [],
   employees: [
     {
       id: 'cio',
@@ -283,6 +284,7 @@ describe('command declarations', () => {
       'RecordCaseDecision',
       'RecordContribution',
       'RecordDevilsAdvocateReview',
+      'RecordPeerExamination',
       'RecordRiskReview',
       'RecordVerificationReview',
       'RejectContribution',

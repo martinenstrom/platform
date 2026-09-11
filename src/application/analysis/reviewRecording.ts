@@ -14,6 +14,8 @@
 
 import {
   isRevisionScoped,
+  type Challenge,
+  type ChallengeStatus,
   type InvestmentThesis,
   type ReviewAttribution,
   type ReviewOrder,
@@ -25,7 +27,16 @@ import type { CommandContext } from './commands/definition'
 import { reject } from './commands/envelope'
 import { deriveReviewId } from './commands/eventIdentity'
 
-export type ReviewKind = 'verification' | 'devils-advocate' | 'compliance' | 'risk'
+/**
+ * The five kinds of review the firm records.
+ *
+ * Four are control functions. `peer-examination` is not: it is an analytical
+ * desk reading another desk's persisted claims and saying on the record whether
+ * it agrees, under a mandate that overlaps the subject rather than a standing
+ * obligation to object.
+ */
+export type ReviewKind =
+  'verification' | 'devils-advocate' | 'compliance' | 'risk' | 'peer-examination'
 
 /**
  * The playbook entries governance works under.
@@ -35,6 +46,30 @@ export type ReviewKind = 'verification' | 'devils-advocate' | 'compliance' | 'ri
  */
 export const GOVERNANCE_ENTRY_KEYS = ['verification', 'challenge'] as const
 export const RISK_ENTRY_KEY = 'risk-review'
+
+/**
+ * What a caller supplies when filing an objection. Not the whole challenge.
+ *
+ * `challengerKind` and `byDepartmentId` are **omitted deliberately**: each
+ * command already establishes which mandate it discharges — the Devil's
+ * Advocate refuses any department but its own, and a peer examination refuses
+ * every control function — so the mandate is a property of the act being
+ * performed rather than something the caller announces. Letting a submission
+ * state its own mandate would let it contradict the check that authorised it,
+ * and the two would then have to be kept in agreement forever.
+ *
+ * It lives here rather than in either command because both need it and no
+ * command handler may import another. That rule exists so two ledger entries
+ * cannot hide inside what the caller believes is one transaction, and a shared
+ * TYPE is not a reason to weaken it.
+ */
+export type ChallengeSubmission = Omit<
+  Challenge,
+  'id' | 'challengerKind' | 'byDepartmentId'
+> & {
+  /** How the organization answered it, where it has. */
+  outcome?: ChallengeStatus
+}
 
 /** A stored verdict, as much of it as the shared rules need to see. */
 type StoredReview = ReviewScope & ReviewAttribution & ReviewRecordId & ReviewOrder

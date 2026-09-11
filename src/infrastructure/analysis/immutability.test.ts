@@ -225,6 +225,8 @@ const challenge = (): DevilsAdvocateReview => ({
   at: NOW,
   challenges: [
     buildChallenge({
+      challengerKind: 'devils-advocate',
+      byDepartmentId: 'devils-advocate',
       id: 'ch-1',
       contests: 'claim-1',
       kind: 'fragile-assumption',
@@ -318,6 +320,7 @@ async function writeEverything(repos: AnalysisRepositories): Promise<void> {
       actor: {
         kind: 'employee',
         employeeId: 'research-director',
+        agentPrincipalId: null,
         roleId: 'research-director',
         roleFunction: 'manager',
         departmentId: 'research-office',

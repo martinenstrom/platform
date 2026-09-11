@@ -1206,7 +1206,7 @@ TD58-3. **Was:** HIGH.
 `submission_evidence` or `submission_open_challenges` row produced **another
 apparently valid submission**. Hydration could not tell the difference, and the
 failure ran in the dangerous direction: fewer required-work rows means less work
-appears to have been required, so the submission looks *more* eligible than it
+appears to have been required, so the submission looks _more_ eligible than it
 was.
 
 **The resolution.** An eligibility-basis manifest — a SHA-256 digest over a
@@ -1215,15 +1215,15 @@ canonical rendering of the exact basis — written once with the submission
 deleted child, an added one, a substituted identity or an edited root field all
 change the rendering, and the digests disagree.
 
-| Detected | |
-| --- | --- |
-| a required-work row deleted | yes |
-| a row added | yes |
-| a stored basis field edited | yes |
+| Detected                                             |                              |
+| ---------------------------------------------------- | ---------------------------- |
+| a required-work row deleted                          | yes                          |
+| a row added                                          | yes                          |
+| a stored basis field edited                          | yes                          |
 | a witness that does not describe its basis, at write | yes — refused before storage |
 
 **The proof it closed is a test that changed category.** The case recorded here
-lived under *"N: not detectable, and no test pretends otherwise"*, and its
+lived under _"N: not detectable, and no test pretends otherwise"_, and its
 comment stated the exit condition: it FAILS if the representation ever gains the
 witness that would close TD-58, at which point it moves to category H and is
 replaced by a real refusal. It failed. It is now four refusals and a control
@@ -1259,7 +1259,6 @@ Documents may now describe a CIO eligibility submission as **self-validating
 against uninformed row deletion**. They may not describe it as tamper-proof,
 cryptographically immutable, or proof against a privileged administrator.
 
-
 ---
 
 ## TD-59 · The test harness cannot reserve a port atomically
@@ -1267,7 +1266,7 @@ cryptographically immutable, or proof against a privileged administrator.
 **Incurred:** C1D-1B B2C-3, deliberately. **Severity:** low — test
 infrastructure only. **Blocks:** nothing.
 
-`embedded-postgres` takes a port *number*, not a bound socket, and has no
+`embedded-postgres` takes a port _number_, not a bound socket, and has no
 port-0 path. So the harness binds an ephemeral socket to discover a free port,
 **releases it**, and then starts PostgreSQL on that number. Between the release
 and PostgreSQL's bind, another process can claim it.
@@ -1293,7 +1292,6 @@ deliberate trade — an occasional manual cleanup against never killing an
 unrelated database — and it is a property of the ownership policy rather than
 debt to be repaid.
 
-
 ---
 
 ## TD-61 · `canonicalJson` orders keys with a host-configured collation
@@ -1314,10 +1312,10 @@ ordering is therefore a property of the machine, not of the value.
 **Locales genuinely disagree**, measured rather than assumed — comparing `Id`
 against `id` under Node's ICU:
 
-| Locale | `Id` vs `id` |
-| --- | --- |
-| `en`, `sv`, `lt`, `cs`, `et` | `Id` after |
-| `tr`, `da` | `Id` before |
+| Locale                       | `Id` vs `id` |
+| ---------------------------- | ------------ |
+| `en`, `sv`, `lt`, `cs`, `et` | `Id` after   |
+| `tr`, `da`                   | `Id` before  |
 
 So two hosts can canonicalize the same value into different bytes.
 
@@ -1354,7 +1352,6 @@ not re-derive them, so it does not detect a change to a set's membership that
 leaves its id unchanged. Extending the witness through evidence-set contents
 requires this debt to be repaid first.
 
-
 ---
 
 ## TD-62 · The LightCommandCenter semantic test fails intermittently
@@ -1364,17 +1361,17 @@ requires this debt to be repaid first.
 reliable verification.
 
 `src/components/lightDashboard/LightCommandCenter.semantic.test.tsx` →
-*"live mode > renders the Swedish quotes Avanza supplied"*.
+_"live mode > renders the Swedish quotes Avanza supplied"_.
 
 **What was observed, and nothing more:**
 
-| | |
-| --- | --- |
-| failed in a full-suite run | twice |
-| passed when run in isolation | yes |
-| passed on a repeat full-suite run | yes |
-| TD-61 files touching that path | none |
-| root cause established | **no** |
+|                                   |        |
+| --------------------------------- | ------ |
+| failed in a full-suite run        | twice  |
+| passed when run in isolation      | yes    |
+| passed on a repeat full-suite run | yes    |
+| TD-61 files touching that path    | none   |
+| root cause established            | **no** |
 
 **It is not fixed.** No change was made to it, and none should be made that
 merely hides it: **do not add retries, do not rerun on failure, and do not mark
@@ -1388,7 +1385,6 @@ the date the suite runs; global environment leakage between workers.
 
 **Close it only when** the cause is identified and removed — not when the test
 stops failing on its own, which is the same evidence that produced this entry.
-
 
 ---
 
@@ -1437,7 +1433,6 @@ turns the locale dimension from asserted into measured.
 
 **Does not block TD61-3** while no CI exists and the limitation is stated.
 
-
 ---
 
 ## TD-64 · RETRACTED — based on a false premise
@@ -1463,7 +1458,7 @@ than on a measurement. No schema change was ever required.
 
 **Replacement defect.** The real gap was that **verification was absent**, and
 that fixtures paired declared observation kinds with payloads belonging to other
-kinds — `kind: 'yield'` beside `{ value }`, which is the *quote* projection's
+kinds — `kind: 'yield'` beside `{ value }`, which is the _quote_ projection's
 field. Nothing verified the relationship, so nothing noticed. 71 fixtures were
 inconsistent.
 
@@ -1474,37 +1469,35 @@ values, fixture migration, and the corruption matrix.
 > The mistaken analysis is left in the TD61-3B commit message, which is history.
 > The correction lives here and in `docs/identity-architecture.md`.
 
-
 ---
 
 ## C1D-1B / B2C · complete
 
 Recorded so a later phase does not have to reconstruct what was proven.
 
-| Property | State |
-| --- | --- |
-| PostgreSQL repository implementation | complete — submissions, returns, decisions, supersession |
-| shared contract parity | 69 cases, both adapters, **zero skips** |
-| restart durability | proven, including that hydration is deterministic and write-free |
-| malformed-state classification | four categories, never collapsed: schema-prevented, permission-prevented, refused on hydration, not detectable |
-| query budgets | fixed and pinned; independent of child volume |
-| transaction and connection cleanup | measured against `pg_stat_activity`, not inferred |
-| SQL catalogue provenance | every production statement registered exactly once and covered by `queryCatalogHash` |
-| repository completeness | compile-time, parser-level and runtime |
-| harness lifecycle | dynamic ports, ownership-proven cleanup, named diagnostics |
+| Property                             | State                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL repository implementation | complete — submissions, returns, decisions, supersession                                                       |
+| shared contract parity               | 69 cases, both adapters, **zero skips**                                                                        |
+| restart durability                   | proven, including that hydration is deterministic and write-free                                               |
+| malformed-state classification       | four categories, never collapsed: schema-prevented, permission-prevented, refused on hydration, not detectable |
+| query budgets                        | fixed and pinned; independent of child volume                                                                  |
+| transaction and connection cleanup   | measured against `pg_stat_activity`, not inferred                                                              |
+| SQL catalogue provenance             | every production statement registered exactly once and covered by `queryCatalogHash`                           |
+| repository completeness              | compile-time, parser-level and runtime                                                                         |
+| harness lifecycle                    | dynamic ports, ownership-proven cleanup, named diagnostics                                                     |
 
 **Open against it:** TD-58 (**high** — a hard gate before real CIO submissions)
 and TD-59 (low, test infrastructure).
 
 **Not to be reopened** unless a later phase finds a concrete defect.
 
-
 ---
 
 ## TD-70 · the disagreement threshold is restated in the validator · open
 
 **Found by** `challenge-threshold-only-in-the-gate`, on the day that rule was
-written — while it was being verified for the *challenge* threshold.
+written — while it was being verified for the _challenge_ threshold.
 
 `domain/analysis/aggregateValidation.ts` hardcodes:
 
@@ -1536,7 +1529,6 @@ that one file deliberately.
 
 > The exclusion is written into the rule with this reference beside it, so the
 > debt is visible where someone would otherwise wonder why the file is exempt.
-
 
 ---
 
@@ -1584,7 +1576,6 @@ Batching, caching, parallelisation and indexing all change how the facts are
 fetched, and are permitted. A second derivation for a particular caller is not,
 at any speed. The queue and the case page must always answer the same question
 in exactly the same way.
-
 
 ---
 
@@ -1655,7 +1646,7 @@ hash, and the ceiling is firm policy supplied by the caller.
 **The middle one does not.** A case constraint reaches the resolver through
 `OrchestrationOptions.caseBudgetConstraint`, from whoever invoked the
 orchestrator, rather than from a column on `analysis.cases`. So a case cannot
-today *record* that this particular question does not warrant the standard
+today _record_ that this particular question does not warrant the standard
 allowance; it can only be told so at the moment work is run.
 
 **What building it needs:** a column group on `analysis.cases` with the same
@@ -1669,7 +1660,7 @@ worse than an honest absence: one that is always NULL reads as a policy the
 firm declined to set rather than one it cannot yet record, and that is a
 distinction this phase spent its whole budget design defending.
 
-**What must not be weakened when it is built.** The run stores the *resolved*
+**What must not be weakened when it is built.** The run stores the _resolved_
 number and never a pointer to the sources, so persisting the case constraint
 changes what resolution consumes and nothing about what a historical run reads
 back. `runCommands.test.ts` asserts exactly that, by moving all three sources
@@ -1717,15 +1708,15 @@ able only to LOWER. The live provider must apply every cap the firm can
 **objectively derive**, and take the lower of that and the model's proposal.
 Measured, only two of the seven have the inputs to be derived at all:
 
-| signal | state | what is missing |
-|---|---|---|
-| `evidenceCount === 0` | **derivable** | — |
-| `anyFixtureBacked` | **derivable** | — |
-| `anyMissingProvenance` | not reachable | `EvidenceItem.provenance` is required, so a stored item always has it |
-| `weakestEvidence` | **missing** | no production mapping from source trust to a `ConfidenceLevel` |
-| `anyStale` | **derived, for sovereign yields only** | closed for that one family by C3 Stage C; see below |
-| `conflictingEvidence` | **missing** | no definition of when two sources conflict about one subject |
-| `methodologyMismatch` | **missing** | no definition of when two measures are comparable |
+| signal                 | state                                  | what is missing                                                       |
+| ---------------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| `evidenceCount === 0`  | **derivable**                          | —                                                                     |
+| `anyFixtureBacked`     | **derivable**                          | —                                                                     |
+| `anyMissingProvenance` | not reachable                          | `EvidenceItem.provenance` is required, so a stored item always has it |
+| `weakestEvidence`      | **missing**                            | no production mapping from source trust to a `ConfidenceLevel`        |
+| `anyStale`             | **derived, for sovereign yields only** | closed for that one family by C3 Stage C; see below                   |
+| `conflictingEvidence`  | **missing**                            | no definition of when two sources conflict about one subject          |
+| `methodologyMismatch`  | **missing**                            | no definition of when two measures are comparable                     |
 
 `composeConfidence` itself is called **nowhere else in production**, and
 `EvidenceSignals` is constructed only in a test. So the mechanical composer the
@@ -1790,18 +1781,18 @@ its own institutional policy decision.
 ## TD-76 · the firm-wide execution ceiling has no durable home · open
 
 **Opened by the C2-2 planning gate**, by measurement rather than by suspicion,
-and kept **separate from TD-73 by ruling**. TD-73 is the *case* constraint —
-the middle of the three budget sources. This is the *firm ceiling*, the last
+and kept **separate from TD-73 by ruling**. TD-73 is the _case_ constraint —
+the middle of the three budget sources. This is the _firm ceiling_, the last
 word in the chain, and collapsing the two would hide that the outer bound is
 the one nothing holds.
 
 **What was measured.** For a live run commissioned from the product path, all
 three sources of `resolveExecutionBudget` are empty:
 
-| source | state |
-|---|---|
-| playbook proposal — `PlaybookEntry.budget` | the field exists and is inside `playbookContentHash`; **no entry of `MACRO_REGIME_PLAYBOOK` defines one** |
-| case constraint | no durable home — TD-73 |
+| source                                                  | state                                                                                                                                                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| playbook proposal — `PlaybookEntry.budget`              | the field exists and is inside `playbookContentHash`; **no entry of `MACRO_REGIME_PLAYBOOK` defines one**                                                                                                                                        |
+| case constraint                                         | no durable home — TD-73                                                                                                                                                                                                                          |
 | firm ceiling — `OrchestrationOptions.firmBudgetCeiling` | **the only production caller that has ever supplied one is `smokeFns.SMOKE_BUDGET`**; every other occurrence is the type, the orchestrator's pass-through, or a test constant. No environment variable, no configuration module, no policy table |
 
 So `resolveExecutionBudget('live', { firmCeiling: {} })` yields `not-measured`
@@ -1830,7 +1821,7 @@ the resolver reading it rather than taking it from the caller.
 machinery, and folding it into the stage that makes an agent usable would put
 two decisions of different kinds inside one boundary.
 
-**What must not be weakened when it is built.** The run stores the *resolved*
+**What must not be weakened when it is built.** The run stores the _resolved_
 number and never a pointer to the sources, so persisting the ceiling changes
 what resolution consumes and nothing about what a historical run reads back.
 `runCommands.test.ts` asserts exactly that by moving all three sources after the
@@ -1875,7 +1866,7 @@ the budget still bounds the call that produces the work, and the run still
 refuses to start without one. It is expanded only if implementation exposes a
 correctness dependency that genuinely prevents commissioning.
 
-**What must not be weakened when it is built.** The run records the *effective*
+**What must not be weakened when it is built.** The run records the _effective_
 limit and never its sources, and `budgetOverruns` reads measured usage only —
 a provider that reported nothing must not be treated as having overrun, which
 would fail runs for a provider's reticence rather than for their spend.
@@ -1910,8 +1901,8 @@ harmless today, and both are load-bearing rather than lucky:
   registered with a different budget would still be refused as a conflicting
   record.
 
-**What it costs.** The store cannot answer *"what did the firm authorize for
-this workflow version"* without the build that registered it. Audit is not
+**What it costs.** The store cannot answer _"what did the firm authorize for
+this workflow version"_ without the build that registered it. Audit is not
 impaired — the run records the **resolved** budget, which TD-76 already
 establishes as the durable authority for what any particular run was permitted —
 but the version-level authorization exists only in code.
@@ -1922,7 +1913,7 @@ whether `playbooks.get` must round-trip the budget, and the two adapters answer
 differently because nobody decided. **The decision comes first.** If the answer
 is that it must, the work is a migration, four columns, the mapping both ways,
 and a case in `repositoryContract.ts` so both stores are held to it. If the
-answer is that a stored playbook is a *record of registration* rather than a
+answer is that a stored playbook is a _record of registration_ rather than a
 definition, the port should say so and the in-memory adapter should stop
 returning something PostgreSQL cannot.
 
@@ -1947,13 +1938,13 @@ accepted C2-2 run, whose 2,341-character prompt was measured by the provider at
 475 input tokens; the C3 prompt is denser in hex ids and JSON, which tokenise
 worse, so the estimate errs low.
 
-| | evidence items | prompt chars | input tokens |
-|---|---|---|---|
-| C2-2, accepted | 1 | 2,341 | 475, **measured** |
-| C3, timed out | 264 | 139,734 | ≈ 28,350, estimated |
+|                | evidence items | prompt chars | input tokens        |
+| -------------- | -------------- | ------------ | ------------------- |
+| C2-2, accepted | 1              | 2,341        | 475, **measured**   |
+| C3, timed out  | 264            | 139,734      | ≈ 28,350, estimated |
 
 **The gap.** `budgetPermitsStart` checks only that every budget dimension is
-*decided* — "not measured is not unlimited". Nothing anywhere estimates the size
+_decided_ — "not measured is not unlimited". Nothing anywhere estimates the size
 of the request about to be sent and compares it against the tokens the firm
 authorised. `budgetOverruns` is the only token enforcement and it runs
 **afterwards**, on measured usage, settling the run as `budget-exhausted` and
@@ -1977,7 +1968,7 @@ route.
 exposed a distinct defect on the refusal side: a run refused for overspending
 recorded no usage, so the firm could not say by how much. That is fixed —
 `FailAgentRun` now accepts measured usage and the overrun path passes it — and
-it is what will make this debt *answerable* when it is taken up: the next
+it is what will make this debt _answerable_ when it is taken up: the next
 budget-refused run states exactly what it consumed. **It does not close this
 item.** Measuring after the money is spent is not the same as declining to spend
 it.
@@ -2025,8 +2016,8 @@ site that does not.
 **Why it matters more than it looks.** It is the same class of blindness TD-77
 records for retry spend and TD-79 for pre-dispatch size: a number in the
 institutional record that reads as measured and is not. A reader cannot tell
-`attempt: 1` meaning *one call was made* from `attempt: 1` meaning *nobody
-passed a value*, and the two are different facts. The related loss on the same
+`attempt: 1` meaning _one call was made_ from `attempt: 1` meaning _nobody
+passed a value_, and the two are different facts. The related loss on the same
 path — measured usage discarded on a budget refusal — was fixed in C3; this one
 was left, deliberately.
 
@@ -2075,8 +2066,8 @@ cannot confirm or exclude. **The difference between the run that succeeded at
 unexplained**, which is not a statement about the provider so much as about the
 firm's own instrumentation.
 
-**Distinct from TD-80**, which is about the attempt *count* being a default on
-the budget-overrun path. This is about per-attempt *facts* not existing on any
+**Distinct from TD-80**, which is about the attempt _count_ being a default on
+the budget-overrun path. This is about per-attempt _facts_ not existing on any
 path.
 
 **Why it was not built in C3, by ruling (2026-08-20).** It improves diagnosis;
@@ -2123,7 +2114,7 @@ was predictable in advance, because nothing measures the distribution.
 
 **What building it needs:** a durable record of per-run and per-attempt
 execution timing (**TD-81** is the prerequisite), then a stated institutional
-policy on what an envelope is calibrated *against* — a median, a tail
+policy on what an envelope is calibrated _against_ — a median, a tail
 percentile, a worst observed case — because those are different institutional
 promises and the firm has never chosen between them. Sizing against a tail is a
 different act from sizing against a mean, and a circuit breaker that is really a
@@ -2133,3 +2124,338 @@ budget is the confusion TD-79 already records from the other side.
 firm calibrates execution envelopes is execution-envelope architecture, and it
 belongs with TD-79 and TD-81 rather than inside the stage that happened to
 expose it.
+
+## TD-83 · the organisation seed checksum does not cover `department_handles` · open
+
+**Opened by Half B, 2026-08-28**, when a migration moved a handle and the
+checksum did not move with it.
+
+`analysis.organization_seed_versions` holds a SHA-256 over the organisation as
+it stands. Its payload, fixed by the algorithm installed in migration 0011, is
+**departments, employees and roles** — `id|name|is_governance`,
+`id|role_id|department_id|reports_to`, `id|function|can_block_publication`.
+`department_handles` is not in it.
+
+Migration 0035 does two things: it creates the Rates department with its role
+and employee, and it **moves** the `rates` discipline handle from `global-macro`
+to `rates`. Only the first is checksummed. The version-2 bump is carried
+entirely by the new department, role and employee rows, and the handle move —
+half of what version 2 _means_ — is invisible to the hash.
+
+**The consequence is not confined to drift detection.**
+`organizationReader` caches the whole seeded organisation and invalidates on
+checksum equality alone (`organizationReader.ts:74`), while the organisation it
+caches **does** carry handles (`ORGANIZATION_SQL.handles`, materialised at
+`:177`). A future migration that moved a handle and changed nothing else would
+therefore write a new version row under an unchanged checksum, and every reader
+process would keep serving the pre-move organisation — the wrong desk answering
+for a discipline — until it restarted.
+
+**Why Half B did not fix it, by ruling.** Widening the payload changes the
+canonical representation of _every version ever computed_, including the
+historical v1 that `reviewScope.pg.test.ts` pins by literal. That is a
+canonicalisation-version change, and it does not belong inside a stage whose
+subject is peer scrutiny.
+
+**What it costs today: nothing measurable**, stated as a measurement rather than
+as reassurance. One handle move has ever happened, and it was accompanied by
+department, role and employee rows that did move the checksum.
+`reviewScope.pg.test.ts` guards the semantic fact directly — the `rates` handle
+is held by exactly one desk and that desk is Rates; Global Macro keeps `fx`,
+`macro`, `policy` and loses only `rates`. Those tests cover what the checksum
+provably does not. They do not repair it, and they would not catch a handle move
+in a migration nobody thought to extend them for.
+
+**What fixing it needs:** a new canonicalisation version for the seed payload
+that takes handles in explicitly, applied forward only, with historical
+checksums preserved under their original versions so a reader holding a
+historical snapshot can still resolve exactly what it acted under. The cache
+key is a separate question and the cheaper one: invalidating on
+`(version, checksum)` rather than `checksum` alone closes the stale-read path
+without touching any canonical representation.
+
+## TD-84 · no way to re-establish peer scrutiny on a successor revision · open
+
+**Opened by Half B, 2026-08-28**, deliberately, alongside the peer-examination
+capability it belongs to.
+
+A peer examination is scoped to the revision it actually read, and it stays
+there. `PEER_SCRUTINY_ABSENT` asks whether a qualified peer examined **this**
+revision — which is the whole point of revision-scoped review.
+
+When a challenge is answered by settling in place, the examination still
+applies. When it is answered by minting a **successor revision**, it does not,
+and there is no act that requests or re-establishes scrutiny on the successor.
+A case can therefore arrive in front of the CIO carrying an argument no peer has
+examined, with nothing in the system asking for one.
+
+**The fix must never be inheritance.** A successor may carry materially
+different claims, so carrying the old verdict forward would record that a desk
+examined an argument it never saw — precisely the failure revision-scoped review
+exists to prevent. The same principle already governs reconsideration: history
+is inherited, judgement is not.
+
+**What fixing it needs:** an explicit new examination act against the successor
+— a capability, not a default. The open institutional question is what the
+_absence_ of one on a successor should be: a blocking gate, or an outstanding
+obligation surfaced through `CaseStanding.nextAct`. Those are different promises
+about what the firm refuses to do versus what it admits it still owes, and the
+firm has not chosen between them. `CaseStanding` is the semantic authority for
+obligation and is where the answer belongs once it is ruled — not in a second
+derivation inside the gate.
+
+## TD-85 · the newest organisation version is selected by lexical ordering · open
+
+**Opened 2026-08-30**, found while writing TD-83 and confirmed by reading the
+catalogue and the schema rather than by inference.
+
+`analysis.organization_seed_versions.version` is **`text`**
+(`0001_organization.sql:192`, `version text PRIMARY KEY`). The reader resolves
+which organisation is current with
+
+```sql
+SELECT version, checksum FROM analysis.organization_seed_versions
+ORDER BY version DESC LIMIT 1
+```
+
+(`ORGANIZATION_SQL.seed`). **The ordering is therefore lexical, not numeric.**
+
+Versions `'1'` and `'2'` are the only ones that have ever existed, and both are
+safe: lexical and numeric ordering agree across a single digit. They stop
+agreeing at two digits. With versions `'9'` and `'10'` present, `'9'` sorts
+last descending, so the query returns version 9 as current and the firm serves
+a **superseded organisational structure** — the roster, the reporting lines and
+the governance flags as they stood before the most recent change.
+
+**The failure mode is the dangerous kind: it is silent.** There is no error, no
+missing row and no constraint to violate. A superseded organisation is a
+perfectly well-formed organisation, and every downstream answer built on it —
+who is a control function, who manages which desk, who may block publication —
+would be internally consistent and institutionally wrong. It fires on the ninth
+organisational change, with nothing before that to hint at it.
+
+**Distinct from TD-83, and the distinction matters for the fix.** TD-83 is about
+the seed _canonicalisation_: what the checksum covers, and the cache-key problem
+that follows for a handle-only change. TD-85 is about _which persisted version
+is newest_. They can interact operationally — both are reached through the same
+seed row, and TD-83's proposed `(version, checksum)` cache key reads the very
+value TD-85 shows can be the wrong one — but they are separate defects with
+separate fixes, and neither resolves the other.
+
+**Deferred by ruling, 2026-08-30.** It is real, it is not a blocker, and it is
+not Boardroom v1's subject. Recorded rather than fixed.
+
+**What fixing it needs:** an authoritative ordering mechanism for organisation
+versions. The remediation must establish that ordering properly rather than
+special-casing the comparison at the query, because the same textual version is
+read in more than one place and a fix that lives in one `ORDER BY` leaves the
+others free to disagree. The design is deliberately not attempted here.
+
+## TD-86 · the approved playbook for a case kind is chosen by lexical version ordering · open
+
+**Opened 2026-09-01**, found while measuring whether the playbook architecture
+could carry a second institutional family.
+
+`resolveForCaseKind` picks the approved workflow for a case kind by sorting the
+candidates and taking the last:
+
+```ts
+const latest = [...candidates]
+  .sort((a, b) => (a.version < b.version ? -1 : a.version > b.version ? 1 : 0))
+  .at(-1)!
+```
+
+`CasePlaybook.version` is a **string**, so the comparison is lexical. Versions
+`'1'` through `'9'` sort correctly because they are one digit. `'10'` does not:
+it sorts before `'9'`, so a playbook that had reached ten versions would resolve
+its **ninth** as the approved default.
+
+**The consequence is silent and institutional.** Nothing errors. Every new case
+of that kind would be opened, pinned and run against a superseded workflow —
+possibly one with a desk missing, a governance step removed or a different
+aggregation dependency — and the case would look entirely well-formed. Existing
+cases are unaffected, because a case carries its own pin; the damage is confined
+to cases opened after the tenth version and is invisible in all of them.
+
+**Harmless today.** `macro-regime` is at v6, and `equity-assessment` starts at
+v1, so no case kind is within three versions of the boundary.
+
+**Equity v1 does not make it reachable.** It adds a new playbook _id_ at version
+1, not a tenth version of an existing playbook, so the failure remains
+unreachable through this work.
+
+**Distinct from TD-85.** That defect is about which **organisation seed version**
+is newest; this one is about which **playbook version** is approved. Same failure
+mode, two different registries, two separate fixes — and neither resolves the
+other.
+
+**What fixing it needs:** an ordering that is not lexical. The version is a
+string in the domain type, in the database and inside every case's pin, so the
+fix is a comparison rule rather than a type change — and it belongs next to the
+registry rather than at the one `sort` call, because the same textual version is
+read elsewhere and a repair confined to this line leaves those free to disagree.
+
+## TD-87 · a decision cannot faithfully reference a multidisciplinary evidence basis · open
+
+**Opened 2026-09-01**, measured while establishing whether one case can carry
+evidence from several domains.
+
+It can, everywhere except the last step. Traced through the persisted
+relationships:
+
+| layer              | multi-set                                                        |
+| ------------------ | ---------------------------------------------------------------- |
+| evidence sets      | not case-scoped at all                                           |
+| run                | one set per run — each desk carries its own                      |
+| claim citation     | `EvidenceRef {setId, observationId, contentHash}` — set-explicit |
+| verification       | claim-level, by content hash — set-agnostic                      |
+| aggregation        | operates on claims; evidence refs stay on the claims             |
+| `EligibilityBasis` | **`evidenceSetIds`, plural**                                     |
+| `CaseDecision`     | **`evidenceSetId`, singular**                                    |
+
+So an Equity case may legitimately reach CIO eligibility citing an equity price
+set, a Treasury curve set and a macro set — and the decision that follows has
+room to name one of them.
+
+**Naming one would misdescribe the record.** There is no defensible way to
+choose: the rates evidence is not "the" evidence for a valuation dispute the
+rates desk challenged, and neither is the equity evidence. A decision that named
+either would report a narrower basis than the firm actually decided on, in the
+one record whose purpose is to say what the decision rested on.
+
+**Not reachable today, and deliberately so.** No decision has ever been
+persisted — `case_decisions` holds zero rows — and `recordCaseDecision` is not
+exposed through any server function. The narrowing cannot currently be hit.
+
+**Do not fix it in the Equity slice.** The decision contract already has two
+other open questions against it — what `authorizationBasis` may legitimately be,
+and how `unresolvedDissent` is accountably populated rather than auto-copied
+from open challenges. Opening the contract three times for three reasons would
+be three migrations and three chances to disagree with itself.
+
+**Remediation belongs to `CIO Decision Authority & Decision Recording`**, where
+`evidenceSetId → evidenceSetIds` is folded in with the other two, and the
+contract is opened once, coherently.
+
+## TD-88 · a newly opened case has no production path to its first thesis · open
+
+**Opened 2026-09-07**, measured while assembling the starting state the P4.5b
+live proof requires.
+
+The product can open a case and instantiate the approved workflow on it. It
+cannot get that case to aggregation, because `AggregateManagerConclusion` mints
+onto an existing lineage and every path to a _first_ revision runs through
+`ProposeThesis` — which is exposed by no server function and no interface. The
+only caller in the repository is `scripts/propose-thesis.ts`, a bootstrap
+script a person types.
+
+| act                      | production path                             |
+| ------------------------ | ------------------------------------------- |
+| open a case              | `caseIntake` server function                |
+| instantiate the playbook | `InstantiatePlaybook`, through intake       |
+| **propose revision 1**   | **none — `scripts/propose-thesis.ts` only** |
+| aggregate onto it        | `AggregateManagerConclusion`, live          |
+
+So `Fråga → Financial OS arbetar → svar` currently has a human-shaped hole in
+its first step: a question can be asked, and the firm cannot begin arguing
+about it without someone at a terminal stating an opening position.
+
+**The seam is authority, not plumbing.** Adding a server function that proposes
+a thesis would settle by default the question nobody has ruled: _who or what is
+authorised to establish a committee's initial analytical thesis, and if a model
+produces it, what candidate/adoption semantics apply?_ The synthesis path
+already answers the analogous question one way — a model produces a
+**candidate**, and an accountable actor **adopts** it — and an initial thesis
+minted directly by a runner would be the same act with the adoption boundary
+removed.
+
+**What must not happen while this is open:** a future Playbook Runner
+manufacturing an opening thesis so that a case can proceed. That would book an
+institutional act to nobody, and it is the precise failure the candidate
+boundary exists to prevent.
+
+**Deliberately not solved inside P4.5b**, by ruling. P4.5b proves autonomous
+synthesis against a valid starting state; establishing that state was performed
+as declared manual human setup, and the manual setup is not part of what the
+stage claims to have automated.
+
+## TD-89 · `scripts/` is not typechecked, and the bootstrap tooling has rotted · open
+
+**Opened 2026-09-11**, by `scripts/prove-agent-desk.ts` throwing
+`Cannot read properties of undefined (reading 'id')` in the middle of the P4.5b
+live proof — after the provider had been called and paid, and after
+`RecordContribution` had committed, but before `AcceptContribution` ran.
+
+The script read `result.run.id`. `commissionAnalysis` returns `runId`; it has
+since the synthesis work reshaped `CommissionResult`. Nothing caught the
+change, because `tsconfig.json` says:
+
+```json
+"include": ["src", "vite.config.ts"]
+```
+
+`npm run typecheck` therefore does not see `scripts/` **at all**. Every
+bootstrap script is unchecked TypeScript that is only ever exercised by a person
+typing it, which is the worst combination available: it fails at the moment it
+is used, and it is used at the moments that cost money.
+
+**Measured blast radius**, by compiling `scripts/` against the project config:
+
+| script             | failure                                                                          |
+| ------------------ | -------------------------------------------------------------------------------- |
+| all of them        | `TS5097` — `.ts` import extensions, needs `allowImportingTsExtensions`           |
+| `ingest-prices.ts` | `string` is not `CorrelationId`; `DataSourceMetadata.kind` does not exist        |
+| `ingest-yields.ts` | `provider.fetchYieldHistory` possibly undefined; `string` is not `CorrelationId` |
+
+So this is **not** a one-line config fix. The extension errors are a compiler
+setting, and behind them sit real type errors in the ingestion scripts against
+interfaces that have moved. Including `scripts/` without fixing those would
+make `npm run typecheck` red, and a red gate that everyone learns to ignore is
+worse than an absent one.
+
+**Not fixed inside P4.5b**, deliberately. The stage's own script was repaired
+where it broke and is now resumable (`--adopt`), which stops this defect
+costing a _paid run_ again. Correcting the ingestion scripts is a change to
+code the stage did not otherwise touch, and it would be verified by running
+market-data ingestion rather than by anything P4.5b proves.
+
+**What must not happen while this is open:** trusting a bootstrap script
+because it is written in TypeScript. It is checked by nothing.
+
+## TD-90 · a commission that never started reports a rule nobody broke · open
+
+**Opened 2026-09-11**, measured while the first autonomous synthesis was being
+diagnosed.
+
+`commissionAnalysis` ends with:
+
+```ts
+if (!created) {
+  return { outcome: 'declined', code: stage.rejection ?? 'illegal-prior-state' }
+}
+```
+
+When the orchestration produced no run and rejected nothing — the entry was
+reported `waiting-for-dependencies`, or was never attempted — the caller is told
+`illegal-prior-state`, which the product renders as _"Uppdraget är inte i ett
+läge där det kan påbörjas."_ That is a statement about a rule the institution
+enforces, and no rule was consulted.
+
+It cost real time. The synthesis decline read as a mandate or lifecycle refusal
+and sent the investigation to `StartAgentRun`'s guards, every one of which was
+satisfied; the actual cause was the orchestrator's readiness set, two layers
+away. The underlying readiness defect is fixed — see `satisfiedEntries` — but
+**the dishonest fallback is still there** for every other way an entry can fail
+to appear.
+
+**The fix is a distinguishable outcome**, not a better default code. `declined`
+means the institution answered; "nothing ran and nobody refused" is a third
+thing and should say so, so that a caller can tell a refusal from a
+no-op.
+
+**Why it is not fixed here:** `CommissionResult` is consumed by the Agent
+Headquarters surface and by `commissionText.ts`, which maps every code to
+Swedish operator prose. Adding a variant is a change to the surface's exhaustive
+handling and its text, and P4.5b closed without needing it once the readiness
+defect was corrected. It belongs with the next piece of work that opens that
+surface.

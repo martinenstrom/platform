@@ -26,13 +26,31 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { AgentFloorPage } from './agents.index'
+import { HeadquartersPage } from './headquarters'
+import { commandCenterView } from '~/application/analysis/commandCenter'
 import floor from '~/test/fixtures/agentFloor.mixed.json'
 import type { AgentDesk } from '~/application/analysis/agentDirectory'
 import type { AgentDirectoryResponse } from '~/infrastructure/analysis/serverFns'
 import { RUN_STATE_LABEL } from '~/presentation/analysis/runText'
 
 const desks = floor as unknown as readonly AgentDesk[]
+
+/**
+ * The Command Center view over a set of desks.
+ *
+ * The floor is projected by the application read model rather than assembled
+ * here, so these suites are held to the same counting the product does — a
+ * hand-built view would let the page pass against numbers the firm never
+ * produced.
+ */
+const viewOf = (entries: readonly AgentDesk[]) =>
+  commandCenterView({
+    cases: [],
+    desks: entries,
+    activity: [],
+    evidenceSetCount: 0,
+    latestAssemblyAt: null,
+  })
 
 /** A memory router over the two routes the floor links to, and nothing else. */
 async function withRouter(ui: ReactNode) {
@@ -58,22 +76,52 @@ async function withRouter(ui: ReactNode) {
   return render(<RouterProvider router={router as any} />)
 }
 
+/*
+ * The floor moved into `/headquarters` when the Command Center v1 gate merged
+ * the desk directory and the case list into one investment floor. These
+ * assertions did not move with it by accident — they are the rules that keep
+ * the page from drawing a firm that does not exist, and they are retargeted
+ * rather than rewritten.
+ *
+ * The case half is supplied empty here: this file is about the desks.
+ */
 const renderFloor = (entries: readonly AgentDesk[] = desks) =>
-  withRouter(<AgentFloorPage response={{ ok: true, desks: entries }} />)
+  withRouter(
+    <HeadquartersPage
+      center={{ ok: true, view: viewOf(entries) }}
+      cases={{ ok: true, cases: [] }}
+    />,
+  )
 
 describe('the floor shows the firm that exists', () => {
   it('lists every desk a registered workflow assigns work to', async () => {
     await renderFloor()
 
     for (const desk of desks) {
-      expect(screen.getByRole('link', { name: desk.name })).toBeInTheDocument()
+      /*
+       * Asserted on the href: a desk tile's accessible name is its whole
+       * content — name, manager and workload — because the tile IS the link
+       * into the workspace, and the desk's name also appears on the run rows
+       * beneath. What must hold is that the floor offers a way in.
+       */
+      const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'))
+      expect(hrefs).toContain(`/agents/${desk.departmentId}`)
     }
     /*
-     * Five runs, not four: the three on Global Macro, the Quant desk's failure,
-     * and the Research Office aggregation. The count is read off the records,
-     * so it moves when the firm does.
+     * The counts are asserted where they live, not on a page-title strip.
+     *
+     * That strip repeated them above the workstation and was removed: the floor
+     * states its own composition, and the run ledger states its own count. Five
+     * runs, not four — the three on Global Macro, the Quant desk's failure, and
+     * the Research Office aggregation. The count is read off the records, so it
+     * moves when the firm does.
      */
-    expect(screen.getByText('6 avdelningar, 5 registrerade körningar.')).toBeInTheDocument()
+    expect(screen.getByText(/deskar · .* kontrollfunktioner/)).toBeInTheDocument()
+
+    const ledger = screen
+      .getAllByRole('heading', { name: /^Senaste körningar/ })[0]!
+      .closest('section')!
+    expect(within(ledger).getByText('5')).toBeInTheDocument()
   })
 
   it('links each desk to its own page', async () => {
@@ -91,21 +139,49 @@ describe('the floor shows the firm that exists', () => {
 
   it('marks the control functions without ranking them', async () => {
     await renderFloor()
-    /* Three governance desks in the seeded firm's workflow. */
-    expect(screen.getAllByText('Kontrollfunktion')).toHaveLength(3)
+    /*
+     * One band, labelled and counted, rather than a badge repeated on each
+     * tile. The separation is what must hold; three governance desks in the
+     * seeded firm's workflow sit inside it, and none of them is rendered
+     * smaller or beneath the desks it reviews.
+     */
+    const band = screen.getByText('Oberoende kontrollfunktioner').parentElement!
+    expect(band).toHaveTextContent('3')
+    expect(screen.getByText('Specialistdeskar')).toBeInTheDocument()
   })
 
-  it('says a desk with no runs has none, rather than implying activity', async () => {
+  it('implies no activity about any desk, in either direction', async () => {
     await renderFloor()
-    /* The three control functions have not run in this fixture. */
-    expect(screen.getAllByText('Har inte kört något ännu')).toHaveLength(3)
+    /*
+     * The floor used to print `har aldrig kort` on every desk that had not run.
+     * The plates no longer carry run history at all: it moved to the desk's own
+     * workspace, which states the fact in full and adds what it does not mean.
+     *
+     * **The rule that statement existed to protect still holds here**, and it is
+     * what this asserts: nothing on the floor may suggest a desk is working. No
+     * status light, no AKTIV, no LIVE. The reference's row of green pills is the
+     * fabrication this surface refuses, and a plate that says nothing about
+     * execution cannot be misread as saying something about it.
+     *
+     * Scoped to the floor, because `Institutionell aktivitet` is a real region
+     * reporting persisted events and is entitled to the word.
+     */
+    const floor = screen
+      .getByRole('heading', { name: /^Investment Floor/ })
+      .closest('section')!
+    for (const forbidden of [/aktiv/i, /live/i, /arbetar/i]) {
+      expect(within(floor).queryAllByText(forbidden)).toEqual([])
+    }
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 })
 
 describe('run states never render as one another', () => {
   it('shows a rejection and a failure as different things', async () => {
     await renderFloor()
-    const history = screen.getByRole('heading', { name: /^Senaste körningar/ }).closest('section')!
+    const history = screen
+      .getByRole('heading', { name: /^Senaste körningar/ })
+      .closest('section')!
 
     /*
      * The distinction C2-1 built a run state, a command and a vocabulary to
@@ -120,17 +196,23 @@ describe('run states never render as one another', () => {
 
   it('distinguishes work awaiting a person from work already accepted', async () => {
     await renderFloor()
-    const history = screen.getByRole('heading', { name: /^Senaste körningar/ }).closest('section')!
+    const history = screen
+      .getByRole('heading', { name: /^Senaste körningar/ })
+      .closest('section')!
 
     expect(
       within(history).getByText(RUN_STATE_LABEL['awaiting-acceptance']),
     ).toBeInTheDocument()
-    expect(within(history).getAllByText(RUN_STATE_LABEL.completed).length).toBeGreaterThan(0)
+    expect(
+      within(history).getAllByText(RUN_STATE_LABEL.completed).length,
+    ).toBeGreaterThan(0)
   })
 
   it('says what produced every run, so a stub cannot read as live analysis', async () => {
     await renderFloor()
-    const history = screen.getByRole('heading', { name: /^Senaste körningar/ }).closest('section')!
+    const history = screen
+      .getByRole('heading', { name: /^Senaste körningar/ })
+      .closest('section')!
 
     /* Every run in this fixture is stub work, and every row says so. */
     const rows = within(history).getAllByRole('listitem')
@@ -175,19 +257,27 @@ describe('the empty and failed states', () => {
   it('says a firm with no commissionable desks has none', async () => {
     await renderFloor([])
     expect(screen.getByText('Inga avdelningar att tilldela arbete')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /Senaste körningar/ })).not.toBeInTheDocument()
+    /* No desks means no desk cards — and nothing standing in for them. */
+    expect(screen.queryByRole('link', { name: /Global Macro/ })).not.toBeInTheDocument()
   })
 
   it('renders a failure as a sentence, never as its code', async () => {
     const failed: AgentDirectoryResponse = { ok: false, code: 'SERVICE_UNAVAILABLE' }
-    await withRouter(<AgentFloorPage response={failed} />)
+    await withRouter(<HeadquartersPage center={failed} cases={{ ok: true, cases: [] }} />)
 
     expect(screen.getByText('Analysmiljön svarar inte just nu.')).toBeInTheDocument()
     expect(screen.queryByText(/SERVICE_UNAVAILABLE|postgres/)).not.toBeInTheDocument()
   })
 
   it('distinguishes a missing configuration from an unreachable database', async () => {
-    await withRouter(<AgentFloorPage response={{ ok: false, code: 'NOT_CONFIGURED' }} />)
-    expect(screen.getByText('Analysmiljön saknar databaskonfiguration.')).toBeInTheDocument()
+    await withRouter(
+      <HeadquartersPage
+        center={{ ok: false, code: 'NOT_CONFIGURED' }}
+        cases={{ ok: true, cases: [] }}
+      />,
+    )
+    expect(
+      screen.getByText('Analysmiljön saknar databaskonfiguration.'),
+    ).toBeInTheDocument()
   })
 })

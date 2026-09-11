@@ -260,6 +260,7 @@ export function failAgentRun(
             fromState: assignment.status,
             toState: nextStatus,
             actorEmployeeId: context.actor.employeeId ?? undefined,
+          actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
             actorDepartmentId: run.departmentId,
             // A stalling state needs a reason, and the category is one.
             reason: input.category,
@@ -285,6 +286,7 @@ export function failAgentRun(
           fromState: run.state,
           toState: targetState,
           actorEmployeeId: context.actor.employeeId ?? undefined,
+          actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
           actorDepartmentId: run.departmentId,
           reason: input.category,
           occurredAt: context.occurredAt,

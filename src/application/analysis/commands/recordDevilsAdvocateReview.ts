@@ -29,16 +29,14 @@ import {
   type DevilsAdvocateReview,
   type Organization,
 } from '~/domain/analysis'
-import { claimsInScopeOf, placeVerdict } from '../reviewRecording'
+import {
+  claimsInScopeOf,
+  placeVerdict,
+  type ChallengeSubmission,
+} from '../reviewRecording'
 import { deriveChallengeId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
-
-/** A challenge as the caller states it: no id, because the command mints it. */
-export type ChallengeSubmission = Omit<Challenge, 'id'> & {
-  /** How the organization answered it, where it has. */
-  outcome?: ChallengeStatus
-}
 
 export interface RecordDevilsAdvocateReviewInput {
   caseId: string
@@ -141,7 +139,16 @@ export function recordDevilsAdvocateReview(
 
         const id = deriveChallengeId(context.commandId, ordinal)
         try {
-          challenges.push(buildChallenge({ ...submission, id }))
+          challenges.push(
+            buildChallenge({
+              ...submission,
+              id,
+              /* The mandate this command exists to discharge, and the desk it
+               * already verified is the Devil's Advocate. */
+              challengerKind: 'devils-advocate',
+              byDepartmentId: input.byDepartmentId,
+            }),
+          )
         } catch (error) {
           reject(
             'invariant-violated',

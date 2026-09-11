@@ -405,7 +405,7 @@ function buildContract(name: string, options: DecisionContractOptions): void {
 
           expect(read).not.toBeNull()
           expect(read!.basis.manifest.algorithm).toBe('sha256')
-          expect(read!.basis.manifest.canonicalizationVersion).toBe(2)
+          expect(read!.basis.manifest.canonicalizationVersion).toBe(3)
           expect(read!.basis.manifest.digest).toMatch(/^[0-9a-f]{64}$/)
 
           const { manifest, ...content } = read!.basis

@@ -9,23 +9,49 @@
  * Semantics: cyan = primary/HUD accent, green = positive, red = negative, amber = warning.
  */
 @theme {
-  --color-canvas: #080a0f;
-  --color-surface: #101419;
-  --color-surface-2: #161a21;
-  --color-surface-3: #1d222b;
-  --color-line: #1c222b;
-  --color-line-strong: #29313d;
+  /*
+   * Navy, not neutral. The foundation reads as a trading floor at night rather
+   * than as a developer tool: every step keeps a blue cast, and the steps sit
+   * close together so depth comes from light rather than from contrast.
+   */
+  --color-canvas: #060910;
+  --color-surface: #0b111c;
+  --color-surface-2: #101826;
+  --color-surface-3: #172132;
+  --color-line: #1a2434;
+  --color-line-strong: #26344a;
 
   --color-content: #e8edf7;
   --color-content-muted: #98a3b8;
   --color-content-subtle: #818da1;
 
-  /* `accent` is the light step used for text and icons (AA on every surface);
-     `accent-solid` is the fill behind white text. */
+  /*
+   * Two accents, and the rule that keeps them from reading as inconsistency.
+   *
+   *   bronze  the INSTITUTION — acts, standing, governance, accepted work,
+   *           decisions, and anything the firm is answerable for
+   *   cyan    the MARKET — charts, curves, quotes, observations, and analysis
+   *           of data the firm did not decide
+   *
+   * Approved with the Command Center v1 gate. A surface picks its accent from
+   * what it is about, never from where it happens to sit: a claim's confidence
+   * is bronze on a page full of cyan sparklines, because confidence is a
+   * judgement the firm made.
+   *
+   * `accent` is the light step used for text and icons (AA on every surface);
+   * `accent-solid` is the fill behind white text.
+   */
   --color-accent: #4de8f5;
   --color-accent-solid: #0e7490;
   --color-accent-hover: #0891b2;
   --color-accent-soft: #0c2a30;
+
+  /* The institutional accent. Same three steps, same contrast contract. */
+  --color-institution: #d9a441;
+  --color-institution-solid: #8a5f1c;
+  --color-institution-hover: #a3731f;
+  --color-institution-soft: #2a1f0d;
+  --color-institution-line: rgb(217 164 65 / 0.32);
 
   /* HUD-only tokens: corner-frame lines and glow shadows read the accent at
      reduced opacity, kept separate so plain `accent` stays a solid, AA colour. */
@@ -45,6 +71,12 @@
   --radius-md: 8px;
   --radius-lg: 10px;
   --radius-xl: 12px;
+
+  /*
+   * A workstation reads as one environment, so panels sit on a hairline and a
+   * whisper of light rather than floating as separate cards.
+   */
+  --shadow-panel: inset 0 1px 0 0 rgb(255 255 255 / 0.04), 0 1px 0 0 rgb(0 0 0 / 0.5);
 
   /* Elevation replaces borders: a hairline top highlight plus a soft drop. */
   --shadow-card:
@@ -159,6 +191,826 @@
     font-weight: 400;
     color: var(--color-content-subtle);
   }
+
+  /*
+   * The workstation panel.
+   *
+   * A dense bordered surface rather than a floating card: the Command Center is
+   * one integrated environment, and large drop-shadowed cards read as separate
+   * applications sharing a page. The border is a hairline, the highlight is a
+   * single pixel of light along the top edge, and the radius is small enough
+   * that panels tile against one another.
+   */
+  .inst-panel {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-panel);
+  }
+
+  /* The same surface one step up, for tiles nested inside a panel. */
+  .inst-tile {
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-sm);
+  }
+
+  /*
+   * A panel header: uppercase mono label on a hairline. Used instead of a card
+   * title so a section reads as part of the environment rather than as a
+   * heading floating above a box.
+   */
+  .inst-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  /* The bronze hairline that marks an institutional edge. */
+  .inst-edge {
+    box-shadow: inset 2px 0 0 0 var(--color-institution-line);
+  }
+
+  /* ------------------------------------------------- reference typography */
+
+  /*
+   * The primary institutional voice: desk names, case questions, figures a
+   * person reads rather than scans. Sans, not mono — mono is for machine
+   * metadata, and using it for content is what makes a product read as a
+   * terminal instead of a private-banking workstation.
+   */
+  .type-inst {
+    font-size: 13px;
+    line-height: 1.15rem;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--color-content);
+  }
+  .type-inst-lg {
+    font-size: 15px;
+    line-height: 1.3rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--color-content);
+  }
+  /* Secondary content: muted blue-grey, never a shade of the primary. */
+  .type-inst-sub {
+    font-size: 12px;
+    line-height: 1.05rem;
+    font-weight: 400;
+    color: var(--color-content-muted);
+  }
+  /* The compact uppercase section label the reference uses throughout. */
+  .type-section {
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-content-muted);
+  }
+  /* Machine metadata only: timestamps, ids, states, counts. */
+  .type-machine {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-content-subtle);
+  }
+  /* A figure meant to be read across the room. */
+  .type-figure {
+    font-size: 22px;
+    line-height: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-content);
+  }
+
+  /* ------------------------------------------------------ panel geometry */
+
+  /*
+   * The reference's panels sit on a thin border with a whisper of interior
+   * light and a very small radius, layered over a navy ground. They read as
+   * regions cut into one surface rather than as cards floating above a page.
+   */
+  .ref-panel {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.022) 0%, rgb(255 255 255 / 0) 42%),
+      var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 5px;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.045),
+      0 1px 2px 0 rgb(0 0 0 / 0.55);
+  }
+
+  /* The head band: compact, hairline-separated, uppercase label. */
+  .ref-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.55rem;
+    border-bottom: 1px solid var(--color-line);
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.025), rgb(255 255 255 / 0));
+  }
+
+  /* A module inside a panel — one step up, tighter radius. */
+  .ref-module {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+  }
+  .ref-module:hover {
+    border-color: var(--color-line-strong);
+    background: var(--color-surface-3);
+  }
+
+  /*
+   * The floor's ground.
+   *
+   * Environmental depth without imagery: a wide, low pool of light behind the
+   * organisation, the way a room is lit from its far wall. It carries no
+   * meaning and states nothing — which is exactly why it is allowed to exist
+   * where the reference puts a photograph of people we do not have.
+   */
+  .ref-floor-ground {
+    background:
+      radial-gradient(
+        120% 90% at 50% 118%,
+        rgb(77 232 245 / 0.07) 0%,
+        rgb(77 232 245 / 0.02) 38%,
+        transparent 70%
+      ),
+      radial-gradient(90% 70% at 50% -18%, rgb(217 164 65 / 0.07) 0%, transparent 65%),
+      linear-gradient(180deg, #0a1120 0%, #070c16 100%);
+  }
+
+  /* ------------------------------------------------ the immersive floor */
+
+  /*
+   * The investment-floor environment.
+   *
+   * A real photograph of a financial district, pushed far back under a navy
+   * atmosphere so it reads as a lit room rather than as a picture. It is
+   * environmental only: it carries no institutional meaning, names nobody, and
+   * states nothing. That is precisely why it is allowed to occupy the region
+   * where the reference photographs a trading floor.
+   */
+  .ref-environment {
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(6 10 18 / 0.86) 0%,
+        rgb(6 10 18 / 0.93) 45%,
+        rgb(5 8 14 / 0.99) 100%
+      ),
+      radial-gradient(130% 100% at 50% 0%, rgb(217 164 65 / 0.16) 0%, transparent 58%),
+      radial-gradient(110% 80% at 50% 108%, rgb(77 232 245 / 0.13) 0%, transparent 62%),
+      var(--environment-photo, none);
+    background-size: cover, cover, cover, cover;
+    background-position:
+      center,
+      center,
+      center,
+      center 38%;
+    background-repeat: no-repeat;
+  }
+
+  /*
+   * A glass institutional surface.
+   *
+   * Translucent over the environment rather than opaque on top of it, so the
+   * room stays visible behind the organisation — which is what gives the
+   * reference its depth and what a flat card cannot reproduce.
+   */
+  .ref-glass {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.055) 0%, rgb(255 255 255 / 0.012) 100%),
+      rgb(9 15 26 / 0.62);
+    border: 1px solid rgb(255 255 255 / 0.09);
+    border-radius: 6px;
+    backdrop-filter: blur(9px) saturate(115%);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.09),
+      0 6px 20px -10px rgb(0 0 0 / 0.85);
+  }
+  .ref-glass:hover {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.085) 0%, rgb(255 255 255 / 0.02) 100%),
+      rgb(12 20 34 / 0.7);
+    border-color: rgb(217 164 65 / 0.34);
+  }
+
+  /* The same surface for an independent control function: bronze-edged. */
+  .ref-glass-governance {
+    border-color: rgb(217 164 65 / 0.32);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.09),
+      inset 2px 0 0 0 rgb(217 164 65 / 0.55),
+      0 6px 20px -10px rgb(0 0 0 / 0.85);
+  }
+
+  /* The CIO seat: warmer, heavier, unmistakably the head of the house. */
+  .ref-glass-chief {
+    background:
+      linear-gradient(180deg, rgb(217 164 65 / 0.14) 0%, rgb(217 164 65 / 0.035) 100%),
+      rgb(14 17 24 / 0.72);
+    border: 1px solid rgb(217 164 65 / 0.42);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.12),
+      0 0 32px -12px rgb(217 164 65 / 0.5),
+      0 8px 26px -12px rgb(0 0 0 / 0.9);
+  }
+
+  /*
+   * The portrait plate.
+   *
+   * Holds the exact geometry a photograph will occupy — square, framed, lit
+   * from the upper left — so the composition is complete before the photography
+   * exists and unchanged after it arrives.
+   */
+  .ref-portrait {
+    /*
+     * Blockified here rather than by whoever places it. The plate is a `span`,
+     * and a span only honours a width and a height once something else has
+     * blockified it — which a flex parent does and a plain wrapper does not.
+     * Leaving that to the caller meant the same plate rendered at 72px in one
+     * layout and at the photograph's natural size in another.
+     */
+    display: block;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+    background:
+      linear-gradient(150deg, rgb(217 164 65 / 0.2) 0%, rgb(12 20 34 / 0.9) 55%),
+      var(--color-surface-3);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.1),
+      inset 0 8px 14px -10px rgb(255 255 255 / 0.22);
+  }
+
+  /*
+   * The hero variant of the environment.
+   *
+   * The same photograph under a lighter scrim. Huvudkontoret's floor has to
+   * read as a room the organisation is standing in, and the panel-weight
+   * treatment — which is right where the environment is a background — pushed
+   * it so far back that the modules read as cards on a dark rectangle.
+   */
+  .ref-environment-hero {
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(6 10 18 / 0.16) 0%,
+        rgb(6 10 18 / 0.3) 42%,
+        rgb(5 8 14 / 0.86) 100%
+      ),
+      radial-gradient(120% 90% at 50% 0%, rgb(217 164 65 / 0.22) 0%, transparent 62%),
+      radial-gradient(100% 75% at 50% 104%, rgb(77 232 245 / 0.18) 0%, transparent 66%),
+      var(--environment-photo, none);
+    background-size: cover, cover, cover, cover;
+    background-position:
+      center,
+      center,
+      center,
+      center 46%;
+  }
+
+  /*
+   * The seam between the room and the organisation standing on it.
+   *
+   * A gradient rather than a rule. The photograph has to end somewhere, and a
+   * hard edge would turn the floor into a picture hung above a widget instead
+   * of the room the firm is in.
+   */
+  .ref-environment-seam {
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(7 11 19 / 0.86) 78%,
+      rgb(7 11 19) 100%
+    );
+  }
+
+  /* The ground the organisation stands on, below the seam. */
+  .ref-organisation-ground {
+    background: rgb(7 11 19);
+  }
+
+  /*
+   * A desk plate on the floor.
+   *
+   * Shallower and quieter than the glass module it replaces: a hairline, a
+   * barely-there ground, and no shadow lifting it off the room. Six cards with
+   * borders and drop shadows read as an administration screen; the person has
+   * to be the loudest thing in the plate, and everything around them has to get
+   * out of the way for the connector geometry to be legible.
+   */
+  .ref-plate {
+    background: rgb(255 255 255 / 0.028);
+    border: 1px solid rgb(255 255 255 / 0.06);
+    border-radius: 5px;
+  }
+  .ref-plate:hover {
+    background: rgb(255 255 255 / 0.055);
+    border-color: rgb(217 164 65 / 0.3);
+  }
+
+  /* An independent control function: bronze along its leading edge. */
+  .ref-plate-governance {
+    border-color: rgb(217 164 65 / 0.22);
+    box-shadow: inset 2px 0 0 0 rgb(217 164 65 / 0.5);
+  }
+
+  /*
+   * ------------------------------------------------------------------------
+   * The network's motion language.
+   *
+   * Every travelling layer animates one property — `stroke-dashoffset` — over a
+   * path normalised to 100 units by `pathLength`. One keyframe therefore drives
+   * drift, trails and packets alike, and speed is expressed purely as duration.
+   * That keeps the choreography in the component, where the timings can be
+   * reasoned about, instead of scattered across a dozen keyframe blocks here.
+   *
+   * The register is institutional, not HUD. No rotating dashed rings, no scan
+   * lines, nothing that flickers: the paths stay quiet and a few slow packets
+   * carry the life. All of it is ambient — nothing here is triggered by an
+   * event, and no timing corresponds to anything the firm recorded.
+   * ------------------------------------------------------------------------
+   */
+  @keyframes ref-net-travel {
+    from {
+      stroke-dashoffset: 100;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* The path itself: continuous, dim, and never bright. */
+  .ref-net-base {
+    stroke-linecap: round;
+  }
+  /* Control's paths sit heavier on the page than analysis's. */
+  .ref-net-heavy {
+    stroke-linejoin: round;
+  }
+  /* A slow swell in the spine's own intensity, so no line is quite inert. */
+  .ref-net-breathe {
+    animation: ref-net-breathe-opacity 11s ease-in-out infinite alternate;
+  }
+  @keyframes ref-net-breathe-opacity {
+    from {
+      stroke-opacity: 0.14;
+    }
+    to {
+      stroke-opacity: 0.34;
+    }
+  }
+
+  /* Slow ambient energy: a long soft swell drifting the length of the path. */
+  .ref-net-wave {
+    stroke-dasharray: 30 70;
+    stroke-opacity: 0.1;
+    stroke-linecap: round;
+    animation: ref-net-travel linear infinite;
+  }
+
+  /*
+   * One faint mote per spine — not a field of particles.
+   *
+   * A permanent particle field reads as decoration and flattens the packets it
+   * competes with. A single dim mote per path says the fabric is carrying
+   * something without asking for any attention.
+   */
+  .ref-net-drift {
+    stroke-dasharray: 0.7 99.3;
+    stroke-opacity: 0.5;
+    stroke-linecap: round;
+    animation: ref-net-travel linear infinite;
+  }
+
+  /* The streak a packet leaves behind it. */
+  .ref-net-trail {
+    stroke-dasharray: 11 189;
+    stroke-opacity: 0.14;
+    stroke-linecap: round;
+    filter: blur(1.6px);
+    animation: ref-net-travel linear infinite;
+  }
+  .ref-net-trail-heavy {
+    stroke-dasharray: 15 185;
+    stroke-opacity: 0.18;
+    filter: blur(2.2px);
+  }
+
+  /* The packet: short, bright, controlled. The only fast thing on the screen. */
+  .ref-net-packet {
+    stroke-dasharray: 2.2 197.8;
+    stroke-opacity: 0.92;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 3px var(--signal, var(--color-accent)))
+      drop-shadow(0 0 8px var(--signal, var(--color-accent)));
+    animation: ref-net-travel linear infinite;
+  }
+  /* Authority's packet is broader, dimmer and slower: weight, not speed. */
+  .ref-net-packet-heavy {
+    stroke-dasharray: 3.4 196.6;
+    stroke-opacity: 0.8;
+    filter: drop-shadow(0 0 4px var(--signal, var(--color-institution)))
+      drop-shadow(0 0 12px rgb(217 164 65 / 0.45));
+  }
+
+  /*
+   * ------------------------------------------------------------------------
+   * The nodes.
+   *
+   * Concentric rings, a core, and one arrival bloom whose duration is set by
+   * the component from the packet cadence — so a node answers its traffic
+   * rather than running on a decorative timer of its own.
+   *
+   * Solid hairlines rather than rotating dashed rings: the rotation is what
+   * made the earlier version read as a game HUD, and an institution's
+   * convergence point should look machined, not animated.
+   * ------------------------------------------------------------------------
+   */
+  .ref-node {
+    display: block;
+    width: 2rem;
+    height: 2rem;
+  }
+  .ref-node > span {
+    position: absolute;
+    border-radius: 9999px;
+  }
+
+  .ref-node-ring {
+    inset: 0.55rem;
+    border: 1px solid rgb(255 255 255 / 0.16);
+  }
+  .ref-node-ring-outer {
+    inset: 0.25rem;
+    border-color: rgb(255 255 255 / 0.09);
+  }
+  .ref-node-ring-far {
+    inset: 0;
+    border-color: rgb(255 255 255 / 0.05);
+  }
+
+  /* The bloom that answers an arriving packet, then returns to baseline. */
+  .ref-node-arrival {
+    inset: 0.5rem;
+    animation: ref-node-arrive var(--cadence, 3s) cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+  }
+  @keyframes ref-node-arrive {
+    0% {
+      transform: scale(0.7);
+      opacity: 0;
+    }
+    12% {
+      opacity: 0.6;
+    }
+    100% {
+      transform: scale(2.3);
+      opacity: 0;
+    }
+  }
+
+  .ref-node-core {
+    inset: 0.72rem;
+  }
+
+  /* Analysis converging: cool, small, precise. */
+  .ref-node-analysis .ref-node-ring {
+    border-color: rgb(77 232 245 / 0.28);
+  }
+  .ref-node-analysis .ref-node-ring-outer {
+    border-color: rgb(77 232 245 / 0.14);
+  }
+  .ref-node-analysis .ref-node-arrival {
+    border: 1px solid rgb(77 232 245 / 0.55);
+  }
+  .ref-node-analysis .ref-node-core {
+    background: rgb(202 248 253);
+    box-shadow:
+      0 0 8px 1px rgb(77 232 245 / 0.6),
+      0 0 18px 4px rgb(77 232 245 / 0.25);
+  }
+
+  /*
+   * Synthesis: the end of every path the firm draws, and the heaviest point on
+   * the screen. Warmer, wider and slower than the analytical junction, because
+   * what arrives here is authority rather than information.
+   */
+  .ref-node-synthesis {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .ref-node-synthesis .ref-node-ring {
+    inset: 0.8rem;
+    border-color: rgb(217 164 65 / 0.42);
+  }
+  .ref-node-synthesis .ref-node-ring-outer {
+    inset: 0.45rem;
+    border-color: rgb(217 164 65 / 0.2);
+  }
+  .ref-node-synthesis .ref-node-ring-far {
+    inset: 0.1rem;
+    border-color: rgb(217 164 65 / 0.1);
+  }
+  .ref-node-synthesis .ref-node-arrival {
+    inset: 0.75rem;
+    border: 1px solid rgb(217 164 65 / 0.6);
+  }
+  .ref-node-synthesis .ref-node-core {
+    inset: 1.05rem;
+    background: rgb(255 238 206);
+    box-shadow:
+      0 0 0 1px rgb(217 164 65 / 0.5),
+      0 0 12px 2px rgb(217 164 65 / 0.65),
+      0 0 30px 8px rgb(217 164 65 / 0.22);
+    animation: ref-node-core-settle var(--cadence, 3s) ease-in-out infinite;
+  }
+  @keyframes ref-node-core-settle {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.88;
+    }
+    14% {
+      transform: scale(1.16);
+      opacity: 1;
+    }
+  }
+
+  /*
+   * Where the reader has asked for less motion, the fabric stops being a system
+   * and becomes a diagram: every travelling layer is removed, the paths, rings
+   * and cores stay lit, and the architecture still reads end to end.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    .ref-net-wave,
+    .ref-net-drift,
+    .ref-net-trail,
+    .ref-net-packet {
+      animation: none;
+      display: none;
+    }
+    .ref-net-breathe,
+    .ref-node-core {
+      animation: none;
+    }
+    .ref-node-arrival {
+      animation: none;
+      opacity: 0.35;
+      transform: scale(1.35);
+    }
+  }
+
+  /*
+   * ------------------------------------------------------------------------
+   * The executive rail.
+   *
+   * One continuous surface with bands cut into it, rather than a stack of
+   * panels. The luxury is meant to come from proportion, depth and restraint —
+   * so there is one border on the whole column, one radius, no gradients that
+   * announce themselves, and no glow anywhere on it.
+   * ------------------------------------------------------------------------
+   */
+  .ref-rail {
+    background: linear-gradient(
+      180deg,
+      rgb(14 20 32 / 0.97) 0%,
+      rgb(9 13 21 / 0.97) 100%
+    );
+    border: 1px solid rgb(255 255 255 / 0.055);
+    border-radius: 7px;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 20px 55px -34px rgb(0 0 0 / 0.95);
+    overflow: hidden;
+  }
+
+  /* Bands are separated by a hairline, never by a gap and a second border. */
+  .ref-rail-band + .ref-rail-band {
+    border-top: 1px solid rgb(255 255 255 / 0.05);
+  }
+
+  /* A rule inside a band, for a caption under its subject. */
+  .ref-rail-hairline {
+    border-top: 1px solid rgb(255 255 255 / 0.055);
+  }
+
+  /*
+   * The CIO band: raised out of the surface, with a bronze leading edge.
+   * The only band that is lit at all, because it is the only one that is the
+   * head of the house.
+   */
+  .ref-rail-cio {
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.05) 0%,
+      rgb(255 255 255 / 0.012) 62%,
+      transparent 100%
+    );
+    box-shadow: inset 2px 0 0 0 rgb(217 164 65 / 0.45);
+  }
+
+  /*
+   * Three planes below the CIO, not one.
+   *
+   * Attention, the tape and the firm's figures sat on the same dark ground at
+   * the same rhythm, and the column went flat under the hero. The differences
+   * here are deliberately at the edge of perception — a whisper of interior
+   * light, a slightly deeper recess, no ground at all — because the hierarchy
+   * has to be felt rather than seen. Anything stronger rebuilds the cards.
+   */
+
+  /* Obligation: the one band below the CIO that sits proud of the surface. */
+  .ref-rail-primary {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.022) 0%, transparent 70%);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.035);
+  }
+
+  /* The tape sits *in* the surface: the deepest plane on the rail. */
+  .ref-rail-recessed {
+    background: rgb(0 0 0 / 0.26);
+    box-shadow:
+      inset 0 2px 3px -1px rgb(0 0 0 / 0.45),
+      inset 0 -1px 0 0 rgb(255 255 255 / 0.02);
+  }
+
+  /*
+   * A reference strip: no ground of its own, tighter rhythm, borrowing the
+   * plane it sits on. It follows the tape and must not read as a second one.
+   */
+  .ref-rail-quiet {
+    background: transparent;
+  }
+
+  /*
+   * The floor's name, over the photograph.
+   *
+   * Deliberately not the bronze section label the rest of the product uses: an
+   * accent-coloured tag on top of a room reads as chrome laid over it, and
+   * this one has to read as signage.
+   */
+  .ref-floor-label {
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgb(255 255 255 / 0.62);
+  }
+
+  /* The micro label a band is titled with. Quieter than a panel head band. */
+  .ref-rail-label {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 9.5px;
+    line-height: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.145em;
+    text-transform: uppercase;
+    color: var(--color-content-subtle);
+  }
+
+  /*
+   * Restrained sign colour.
+   *
+   * The tape's greens and reds are pulled well back from the alert palette:
+   * a private bank's tape reports a move, it does not raise an alarm, and
+   * saturated signs at this size are what make a rail read as a trading toy.
+   */
+  .ref-tape-up {
+    color: #79bd9a;
+    font-variant-numeric: tabular-nums;
+  }
+  .ref-tape-down {
+    color: #cf8489;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * A disclosure marker on a market row.
+   *
+   * Institutional disclosure, not an alarm: a hairline-bordered word in the
+   * muted palette, sized below the figure it qualifies. It has to be
+   * impossible to miss when you read the row and impossible to mistake for a
+   * warning state in the product.
+   */
+  .ref-disclosure {
+    align-self: flex-start;
+    margin-top: 3px;
+    padding: 1px 5px;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    border-radius: 3px;
+    font-family: var(--font-sans);
+    font-size: 9px;
+    line-height: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-content-subtle);
+  }
+
+  /*
+   * Fixture is the one state that is not market evidence at all, so it is the
+   * one marker that carries colour — bronze, the institution's own, because
+   * this is the product speaking about itself rather than about the market.
+   */
+  .ref-disclosure-fixture {
+    border-color: rgb(217 164 65 / 0.35);
+    color: rgb(217 164 65 / 0.9);
+  }
+
+  /* A row inside a band: no ground, just a warmer title on hover. */
+  .ref-rail-row {
+    transition: opacity 180ms ease;
+  }
+  .ref-rail-row:hover {
+    opacity: 0.78;
+  }
+
+  /*
+   * A door into the firm. It lights along its leading edge rather than filling
+   * with a colour, which is the difference between a navigation row and a
+   * button.
+   */
+  .ref-rail-door {
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 0 transparent;
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+  .ref-rail-door:hover {
+    background-color: rgb(255 255 255 / 0.035);
+    box-shadow: inset 2px 0 0 0 rgb(217 164 65 / 0.6);
+  }
+
+  /* The quiet inline affordance at the foot of a band. */
+  .ref-rail-more {
+    font-family: var(--font-sans);
+    font-size: 11.5px;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: rgb(217 164 65 / 0.9);
+    transition: opacity 180ms ease;
+  }
+  .ref-rail-more:hover {
+    opacity: 0.72;
+  }
+
+  /*
+   * The atmospheric band the column ends on. Framed and scrimmed here so the
+   * slot is complete before the photograph exists and unchanged after it lands.
+   */
+  .ref-rail-atmosphere {
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      inset 0 24px 40px -24px rgb(9 13 21),
+      inset 0 -1px 0 0 rgb(0 0 0 / 0.4);
+  }
+
+  /* An independent control function's portrait: bronze-edged, same size. */
+  .ref-portrait-governance {
+    box-shadow:
+      inset 0 0 0 1px rgb(217 164 65 / 0.5),
+      inset 0 8px 14px -10px rgb(255 255 255 / 0.22),
+      0 0 14px -6px rgb(217 164 65 / 0.5);
+  }
+
+  /* The head of the house: the same plate, unmistakably lit. */
+  .ref-portrait-chief {
+    box-shadow:
+      inset 0 0 0 1px rgb(217 164 65 / 0.75),
+      inset 0 8px 14px -10px rgb(255 255 255 / 0.28),
+      0 0 22px -6px rgb(217 164 65 / 0.65);
+  }
+
+  /* The bronze rule that carries the eye across an institutional band. */
+  .ref-rule-institution {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-institution-line) 12%,
+      var(--color-institution-line) 88%,
+      transparent
+    );
+  }
 }
 
 @layer utilities {
@@ -225,8 +1077,16 @@
      Two scales: main 32px cells plus a very faint 8px technical sub-grid. */
   .command-center-grid {
     background-image:
-      repeating-linear-gradient(0deg, rgb(76 198 232 / 0.026) 0 1px, transparent 1px 32px),
-      repeating-linear-gradient(90deg, rgb(76 198 232 / 0.026) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(
+        0deg,
+        rgb(76 198 232 / 0.026) 0 1px,
+        transparent 1px 32px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgb(76 198 232 / 0.026) 0 1px,
+        transparent 1px 32px
+      ),
       repeating-linear-gradient(0deg, rgb(76 198 232 / 0.008) 0 1px, transparent 1px 8px),
       repeating-linear-gradient(90deg, rgb(76 198 232 / 0.008) 0 1px, transparent 1px 8px);
     animation: command-center-grid-pan 40s linear infinite;
@@ -398,5 +1258,1227 @@
   }
   50% {
     transform: translate3d(0, -6px, 0);
+  }
+}
+
+/* ==================================================== the boardroom ====== */
+
+/*
+ * The room, not a page.
+ *
+ * One architectural ground carries the whole case: a near-black navy with a
+ * warm institutional wash falling from above — the direction bronze always
+ * comes from in this product — and a cold analytical light rising from the
+ * desks below. Everything else sits ON this rather than in boxes drawn over it,
+ * which is what stops the surface reading as a grid of cards.
+ */
+@layer components {
+  .brd-room {
+    background:
+      radial-gradient(120% 60% at 50% -12%, rgb(217 164 65 / 0.09) 0%, transparent 62%),
+      radial-gradient(100% 55% at 50% 108%, rgb(77 232 245 / 0.05) 0%, transparent 60%),
+      linear-gradient(180deg, #070c15 0%, #05080f 55%, #04070c 100%);
+  }
+
+  /*
+   * The question, with the authority of the reason the room is sitting.
+   *
+   * Light weight at a large size is the private-banking register: a heavy face
+   * at this scale shouts, and this is a document a committee reads. Tight
+   * tracking keeps a long sentence from sprawling.
+   */
+  .type-question {
+    font-size: clamp(28px, 3.6vw, 44px);
+    line-height: 1.1;
+    font-weight: 300;
+    letter-spacing: -0.032em;
+    color: var(--color-content);
+    text-wrap: balance;
+  }
+
+  /*
+   * The status rail: hairline-separated facts on one line.
+   *
+   * Deliberately not cards. Three boxes here would make the administrative
+   * layer compete with the question directly above it.
+   */
+  .brd-rail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 1.75rem;
+    border-top: 1px solid rgb(255 255 255 / 0.06);
+    padding-top: 0.875rem;
+  }
+  .brd-rail > * + * {
+    position: relative;
+  }
+  .brd-rail > * + *::before {
+    content: '';
+    position: absolute;
+    left: -0.875rem;
+    top: 0.15rem;
+    bottom: 0.15rem;
+    width: 1px;
+    background: rgb(255 255 255 / 0.08);
+  }
+
+  /*
+   * A seat at the table.
+   *
+   * Almost no border: depth comes from a lifted ground and a single pixel of
+   * light along the top edge, the way a surface catches illumination from
+   * above. The cyan hairline on the left is the analytical lane, and it is the
+   * only chromatic edge a desk gets.
+   */
+  .brd-seat {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.045) 0%, rgb(255 255 255 / 0.008) 62%),
+      rgb(10 16 27 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.055);
+    border-radius: 4px;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.07),
+      0 18px 40px -28px rgb(0 0 0 / 0.9);
+  }
+  .brd-seat::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    border-radius: 4px 0 0 4px;
+    background: linear-gradient(
+      180deg,
+      rgb(77 232 245 / 0.5) 0%,
+      rgb(77 232 245 / 0.08) 70%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * A control function's seat: bronze edge, cooler ground.
+   *
+   * Below the threshold the surface belongs to the firm rather than to the
+   * market, so the chromatic edge changes hand. Same geometry as a desk, which
+   * is deliberate: they are peers in the composition and different in mandate.
+   */
+  .brd-seat-governance {
+    background:
+      linear-gradient(180deg, rgb(217 164 65 / 0.04) 0%, rgb(255 255 255 / 0.006) 60%),
+      rgb(9 13 21 / 0.5);
+    border-color: rgb(217 164 65 / 0.16);
+  }
+  .brd-seat-governance::before {
+    background: linear-gradient(
+      180deg,
+      rgb(217 164 65 / 0.55) 0%,
+      rgb(217 164 65 / 0.08) 70%,
+      transparent 100%
+    );
+  }
+
+  /* The synthesis seat: senior, wider-lit, bronze-edged rather than cyan. */
+  .brd-seat-synthesis {
+    background:
+      linear-gradient(180deg, rgb(217 164 65 / 0.055) 0%, rgb(255 255 255 / 0.008) 58%),
+      rgb(12 16 24 / 0.66);
+    border-color: rgb(217 164 65 / 0.2);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.09),
+      0 0 60px -34px rgb(217 164 65 / 0.5),
+      0 22px 48px -30px rgb(0 0 0 / 0.92);
+  }
+  .brd-seat-synthesis::before {
+    background: linear-gradient(
+      180deg,
+      rgb(217 164 65 / 0.62) 0%,
+      rgb(217 164 65 / 0.1) 72%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * The proposition itself: the largest thing inside a seat.
+   *
+   * What a desk concluded is the reason the seat exists, and it must outrank
+   * the desk's own name, its confidence badge and every identifier beside it.
+   */
+  .type-position {
+    font-size: 17px;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: -0.011em;
+    color: var(--color-content);
+    text-wrap: pretty;
+  }
+
+  /*
+   * The join from the two desks down into the synthesis.
+   *
+   * Communicates the persisted aggregation relationship and nothing else: the
+   * manager reconciled these two readings. It is not a flowchart, carries no
+   * arrowhead, and fades out rather than pointing.
+   */
+  .brd-join {
+    height: 2.25rem;
+    background:
+      linear-gradient(180deg, transparent 0%, rgb(255 255 255 / 0.14) 55%, transparent 100%);
+    width: 1px;
+  }
+  .brd-join-rail {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.12) 18%,
+      rgb(255 255 255 / 0.12) 82%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * The threshold between the desks and the institution checking them.
+   *
+   * A single bronze hairline across the room with the label sitting in it. From
+   * here down the surface belongs to the firm rather than to the market, and
+   * bronze takes over from cyan.
+   */
+  .brd-threshold {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .brd-threshold::before,
+  .brd-threshold::after {
+    content: '';
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(217 164 65 / 0.32) 35%,
+      rgb(217 164 65 / 0.32) 65%,
+      transparent
+    );
+  }
+
+  /*
+   * The consequence of an objection.
+   *
+   * A left bar and a wash, not a filled alert. The record is stating what
+   * happened to the case, and a banner would turn an institutional fact into a
+   * notification.
+   */
+  .brd-consequence {
+    border-left: 2px solid currentColor;
+  }
+  /*
+   * A whisper of the tone, not the tone itself.
+   *
+   * This first used `currentColor` for the wash, which painted a full-strength
+   * red or green bar across the card and turned an institutional fact into a
+   * notification banner. The consequence is stated in words on a hairline; the
+   * colour only says which kind of consequence it was.
+   */
+  .brd-consequence-blocked {
+    background: linear-gradient(90deg, rgb(214 69 80 / 0.11) 0%, transparent 62%);
+  }
+  .brd-consequence-settled {
+    background: linear-gradient(90deg, rgb(46 204 132 / 0.09) 0%, transparent 62%);
+  }
+
+  /*
+   * Provenance, folded away.
+   *
+   * Durable ids stay reachable and stop being body text. Closed it is a hairline
+   * affordance; open it is machine metadata. Nothing is removed — it recedes.
+   */
+  .brd-inspect > summary {
+    cursor: pointer;
+    list-style: none;
+    color: var(--color-content-subtle);
+    opacity: 0.55;
+    transition: opacity 120ms ease;
+  }
+  .brd-inspect > summary::-webkit-details-marker {
+    display: none;
+  }
+  .brd-inspect > summary:hover {
+    opacity: 1;
+  }
+  .brd-inspect[open] > summary {
+    opacity: 0.85;
+  }
+}
+
+/* ============================================ the committee room ========= */
+
+/*
+ * The room is a photograph; the institution is not.
+ *
+ * Everything in this block exists to make those two layers read as one place.
+ * The plate supplies the architecture — ceiling, glass, marble, the table, the
+ * people, the light — and CSS supplies only what the photograph cannot know:
+ * which desks worked on this case. So there is no second table here, no second
+ * ceiling and no second chair. Building those over the photograph would put an
+ * artificial room on top of a real one, which is the failure this replaced.
+ *
+ * What remains is integration: contrast control, state illumination, and
+ * nameplates made to sit ON the stone rather than float above it.
+ */
+@layer components {
+  .brd-hall {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    /*
+     * The room is its own measuring stick. Nameplates are sized in `cqw`, so a
+     * plate keeps the same fraction of the table at every width and the ten
+     * positions never collide as the room narrows.
+     */
+    container-type: inline-size;
+    /* Only ever seen through the edges of the plate, and by the fallback. */
+    background: linear-gradient(180deg, #0a0806 0%, #070607 42%, #040406 100%);
+  }
+
+  /*
+   * Controlled contrast, beneath the institution.
+   *
+   * The left is weighted down so the investment question can be read off the
+   * marble, the top and bottom are drawn in so the frame closes, and the
+   * corners fall away. It is deliberately not a panel — the room stays visible
+   * through every part of it, and the people are dimmed, never removed.
+   */
+  .brd-hall-scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        97deg,
+        rgb(3 4 7 / 0.72) 0%,
+        rgb(3 4 7 / 0.44) 17%,
+        rgb(3 4 7 / 0.13) 33%,
+        transparent 47%
+      ),
+      linear-gradient(180deg, rgb(3 4 7 / 0.42) 0%, transparent 15%),
+      linear-gradient(0deg, rgb(3 4 7 / 0.68) 0%, rgb(3 4 7 / 0.15) 22%, transparent 34%),
+      radial-gradient(125% 92% at 50% 46%, transparent 42%, rgb(2 3 6 / 0.6) 100%);
+  }
+
+  /* -------------------------------------------------------- the nameplates */
+
+  /*
+   * A Financial OS desk plate, standing on the table.
+   *
+   * Three things stop it reading as a label over a photograph: it is held in a
+   * BASE slightly wider than its face, it casts a hard contact shadow where
+   * that base meets the stone, and it throws a reflection down the polish. The
+   * top edge catches the ceiling cove; `--plate-light` is what the case
+   * changes, and it tints the bevel, the edges and the reflection together the
+   * way one light source would.
+   */
+  .brd-plate {
+    --plate-light: 255 226 170;
+    --plate-glow: 0;
+    position: relative;
+    width: clamp(5.5rem, 8.1cqw, 8.5rem);
+    /*
+     * One height for every plate. Desk names run from four characters to
+     * twenty-six, and letting each plate size to its own text would make the
+     * ring of them read as a chart rather than as objects milled for the same
+     * table.
+     */
+    min-height: clamp(2rem, 2.65cqw, 2.85rem);
+    justify-content: center;
+    /* Rounded at the top, square where it sits in the base. */
+    border-radius: 3px 3px 1px 1px;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(54 45 33 / 0.95) 0%,
+        rgb(26 22 18 / 0.96) 38%,
+        rgb(13 12 11 / 0.97) 100%
+      );
+    border: 1px solid rgb(0 0 0 / 0.55);
+    border-top-color: rgb(var(--plate-light) / 0.4);
+    box-shadow:
+      /* the cove on the top bevel */
+      inset 0 1px 0 0 rgb(var(--plate-light) / 0.28),
+      inset 0 -1px 0 0 rgb(0 0 0 / 0.6),
+      /* state light bleeding off the edges */
+      0 0 16px -2px rgb(var(--plate-light) / var(--plate-glow)),
+      /* where the object meets the stone */
+      0 7px 12px -6px rgb(0 0 0 / 0.95),
+      0 2px 3px -1px rgb(0 0 0 / 0.8);
+    backdrop-filter: blur(1px);
+  }
+
+  /* The base it stands in: wider than the face, and darker. */
+  .brd-plate::before {
+    content: '';
+    position: absolute;
+    inset: auto -5% -3px -5%;
+    height: 4px;
+    border-radius: 0 0 2px 2px;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--plate-light) / 0.16) 0%,
+      rgb(24 20 16) 34%,
+      rgb(7 6 6) 100%
+    );
+    box-shadow: 0 5px 11px -4px rgb(0 0 0 / 0.95);
+  }
+
+  /* Its own light, pooled on the polish under the base. */
+  .brd-plate::after {
+    content: '';
+    position: absolute;
+    inset: calc(100% + 2px) 6% auto 6%;
+    height: 0.8rem;
+    border-radius: 50%;
+    background: radial-gradient(
+      70% 100% at 50% 0%,
+      rgb(var(--plate-light) / calc(var(--plate-glow) + 0.07)),
+      transparent 72%
+    );
+    filter: blur(2.5px);
+    pointer-events: none;
+  }
+
+  /*
+   * The plate reflected in the stone.
+   *
+   * A real mirrored copy rather than a smear, because polished marble under a
+   * lit object is the single strongest cue that the object is IN the room. It
+   * fades out with distance and never becomes legible enough to be mistaken
+   * for a second label.
+   */
+  .brd-plate-mirror {
+    position: absolute;
+    inset: calc(100% + 3px) 0 auto 0;
+    transform: scaleY(-1);
+    font-size: clamp(7px, 0.58cqw, 9.5px);
+    line-height: 1.18;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+    font-weight: 500;
+    text-align: center;
+    color: rgb(var(--plate-light) / calc(0.1 + var(--plate-glow) * 0.32));
+    mask-image: linear-gradient(to top, transparent 8%, rgb(0 0 0) 92%);
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .brd-plate-name {
+    font-size: clamp(7px, 0.58cqw, 9.5px);
+    line-height: 1.18;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+    font-weight: 500;
+    text-align: center;
+    text-wrap: balance;
+    color: rgb(243 233 216 / 0.94);
+  }
+  .brd-plate-state {
+    font-size: clamp(6px, 0.5cqw, 8px);
+    line-height: 1.18;
+    letter-spacing: 0.02em;
+    text-align: center;
+    text-wrap: balance;
+    color: rgb(214 205 192 / 0.55);
+  }
+
+  /*
+   * A desk that acted: the case, in one glance.
+   *
+   * The strongest presence in the room, because the first question a reader
+   * arrives with is who worked on this — and the answer should not have to be
+   * hunted for among the desks that did not.
+   */
+  .brd-plate-acted {
+    --plate-light: 122 236 247;
+    --plate-glow: 0.44;
+  }
+  .brd-plate-acted .brd-plate-name {
+    color: rgb(206 248 253 / 0.99);
+  }
+  /* A control function that acted: the institution checking itself, in bronze. */
+  .brd-plate-governance.brd-plate-acted {
+    --plate-light: 226 175 82;
+    --plate-glow: 0.4;
+  }
+  .brd-plate-governance.brd-plate-acted .brd-plate-name {
+    color: rgb(252 230 182 / 0.99);
+  }
+  /*
+   * Asked, and silent. Present and legible, but carrying no light: the case
+   * allocated work and the desk has recorded nothing, and a lit plate would
+   * read as a contribution that does not exist.
+   */
+  .brd-plate-waiting {
+    border-style: dashed;
+    border-top-style: solid;
+    opacity: 0.68;
+  }
+  /*
+   * The plate of the chief, at the head of the table. Heaviest material in the
+   * room, and dark until a decision is recorded — a case merely submitted must
+   * never light it, because submission is a request and not an outcome.
+   */
+  .brd-plate-chief {
+    --plate-light: 232 186 100;
+    border-top-color: rgb(var(--plate-light) / 0.55);
+    background: linear-gradient(
+      180deg,
+      rgb(64 50 29 / 0.96) 0%,
+      rgb(30 24 17 / 0.96) 42%,
+      rgb(14 12 10 / 0.97) 100%
+    );
+  }
+
+  /*
+   * A desk the case never involved: lettering cut into the stone.
+   *
+   * Not a dimmer plate — no plate. The firm holds the chair and this case did
+   * not use it, and a reader arriving at the room should not have to work out
+   * whether Equity Research took part. The name stays, so the room is still the
+   * whole organisation; the object goes, so it stops competing.
+   *
+   * The state is still written. Quietly, and never removed.
+   */
+  .brd-engraved {
+    /*
+     * Recessive, and never illegible. The desk must stop competing without
+     * becoming a thing a reader has to squint at to rule out — quiet is not
+     * the same as hidden, and an absence nobody can read is not a truthful
+     * absence.
+     */
+    opacity: 0.62;
+    pointer-events: none;
+  }
+  .brd-engraved .brd-plate-name {
+    font-size: clamp(6.5px, 0.54cqw, 8.5px);
+    line-height: 1.15;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-align: center;
+    text-wrap: balance;
+    color: rgb(216 203 182 / 0.5);
+    /* Cut in rather than laid on: a dark bed above, a faint highlight below. */
+    text-shadow:
+      0 -1px 0 rgb(0 0 0 / 0.85),
+      0 1px 0 rgb(255 232 190 / 0.07);
+  }
+  .brd-engraved .brd-plate-state {
+    font-size: clamp(5.5px, 0.45cqw, 7px);
+    letter-spacing: 0.04em;
+    color: rgb(208 199 186 / 0.34);
+    text-shadow: 0 -1px 0 rgb(0 0 0 / 0.8);
+  }
+
+  /*
+   * The position of the reader, engraved on the foreground chair.
+   *
+   * No portrait and no name: inventing a face for the reader would be the same
+   * fabrication as inventing one for a desk.
+   */
+  .brd-chairman-mark {
+    transform: translate(-50%, -50%);
+    font-size: clamp(7.5px, 0.6cqw, 10px);
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: rgb(236 222 200 / 0.36);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ------------------------------------------- the Chairman, as a control */
+
+  /*
+   * The mark itself is inert decoration; the button is the room's primary
+   * interaction. It stays a quiet brass legend until approached, because a
+   * loud control at the foot of the table would read as a form and not a chair.
+   */
+  .brd-chairman-button {
+    pointer-events: auto;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    padding: 0.5em 1.1em;
+    border-radius: 999px;
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .brd-chairman-button:hover,
+  .brd-chairman-button:focus-visible {
+    color: rgb(236 222 200 / 0.94);
+    background: rgb(217 164 65 / 0.07);
+    box-shadow:
+      inset 0 0 0 1px rgb(217 164 65 / 0.3),
+      0 0 30px -12px rgb(217 164 65 / 0.55);
+    outline: none;
+  }
+
+  /*
+   * The affordance is a whispered instruction from your own chair, revealed on
+   * approach. It is not a label the room wears permanently, and it is not a
+   * bright call to action: the Chairman's seat is furniture until you reach for
+   * it.
+   */
+  .brd-chairman-button::after {
+    content: 'Öppna kommittépanel';
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 0.45em);
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: clamp(6.5px, 0.5cqw, 8.5px);
+    letter-spacing: 0.22em;
+    color: rgb(217 164 65 / 0.72);
+    opacity: 0;
+    transition: opacity 220ms ease;
+    pointer-events: none;
+  }
+
+  .brd-chairman-button:hover::after,
+  .brd-chairman-button:focus-visible::after {
+    opacity: 1;
+  }
+
+  /* A seat that took part is openable. The affordance is light, never a frame. */
+  .brd-seat-button {
+    display: block;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: filter 180ms ease;
+  }
+
+  .brd-seat-button:hover,
+  .brd-seat-button:focus-visible {
+    filter: brightness(1.22);
+    outline: none;
+  }
+
+  /* ------------------------------------------- what a desk actually said */
+
+  /*
+   * A persisted act, on the table in front of the desk that made it. Sized to
+   * be read at a glance and capped in width so the photograph stays the room:
+   * these are statements on stone, not chat bubbles.
+   */
+  /* ------------------------------- what a desk put on the record, on stone */
+
+  /*
+   * A statement plate, in the same physical language as the nameplates below it.
+   *
+   * Cut stone rather than a web card: a dark translucent slab, a hairline top
+   * edge where light catches, an accent inlay on the leading edge, and a contact
+   * shadow that sits it ON the table rather than floating it over the room. It
+   * is deliberately NOT a speech bubble — nobody in the photograph is speaking,
+   * and a bubble would attach institutional words to an anonymous figure.
+   */
+  .brd-statement {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    width: clamp(148px, 17.5cqw, 236px);
+    padding: 0.62em 0.78em 0.66em;
+    border-radius: 2px;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.055) 0%,
+        rgb(255 255 255 / 0.012) 42%,
+        rgb(0 0 0 / 0.06) 100%
+      ),
+      rgb(8 11 16 / 0.9);
+    border: 1px solid rgb(255 255 255 / 0.085);
+    border-top-color: rgb(255 255 255 / 0.17);
+    box-shadow:
+      inset 2px 0 0 0 rgb(94 197 217 / 0.42),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+      0 14px 30px -16px rgb(0 0 0 / 0.95),
+      0 2px 6px -2px rgb(0 0 0 / 0.7);
+    cursor: pointer;
+    /*
+     * The plate OPENS from its anchor rather than centring on it: a left-half
+     * desk's statement extends rightward, a right-half desk's leftward. Centred
+     * plates reached back across the room and collided with the question
+     * lettered into the upper-left architecture.
+     */
+    transition:
+      border-color 200ms ease,
+      box-shadow 200ms ease;
+  }
+
+  .brd-statement:hover,
+  .brd-statement:focus-visible {
+    border-color: rgb(255 255 255 / 0.16);
+    box-shadow:
+      inset 2px 0 0 0 rgb(94 197 217 / 0.72),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.09),
+      0 16px 34px -16px rgb(0 0 0 / 0.95),
+      0 2px 6px -2px rgb(0 0 0 / 0.7);
+    outline: none;
+  }
+
+  /* Research Office synthesises: bronze, the institution's own colour. */
+  .brd-statement-synthesis {
+    box-shadow:
+      inset 2px 0 0 0 rgb(217 164 65 / 0.55),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+      0 14px 30px -16px rgb(0 0 0 / 0.95),
+      0 2px 6px -2px rgb(0 0 0 / 0.7);
+  }
+
+  /* An objection is amber tension, restrained: a disagreement, not an alarm. */
+  .brd-statement-objection {
+    box-shadow:
+      inset 2px 0 0 0 rgb(214 139 74 / 0.68),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+      0 14px 30px -16px rgb(0 0 0 / 0.95),
+      0 2px 6px -2px rgb(0 0 0 / 0.7);
+  }
+
+  .brd-statement-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4em;
+  }
+
+  .brd-statement-desk {
+    font-size: clamp(7.5px, 0.6cqw, 9.5px);
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+    color: rgb(94 197 217 / 0.95);
+  }
+
+  .brd-statement-objection .brd-statement-desk {
+    color: rgb(224 158 96 / 0.97);
+  }
+
+  .brd-statement-synthesis .brd-statement-desk {
+    color: rgb(217 164 65 / 0.97);
+  }
+
+  /* The kind of act, subordinate to the desk that performed it. */
+  .brd-statement-kind {
+    font-size: clamp(6.8px, 0.53cqw, 8.6px);
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: rgb(236 222 200 / 0.42);
+  }
+
+  .brd-statement-text {
+    font-size: clamp(10px, 0.83cqw, 13px);
+    line-height: 1.38;
+    color: rgb(236 222 200 / 0.95);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.75);
+  }
+
+  /* ------------------------------------- who contested whose work, in space */
+
+  /*
+   * An arc between two institutional anchors. Thin enough to read as a
+   * relationship over the stone rather than as a diagram drawn on the room.
+   */
+  .brd-objection-arc {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+
+  /* The disagreement still stands: amber, and continuous. */
+  .brd-objection-open {
+    stroke: rgb(214 139 74 / 0.42);
+    stroke-width: 1.1;
+  }
+
+  /*
+   * Settled. Recessive rather than absent — the objection was raised and it was
+   * answered, and the record keeps both. The desk's transcript and Underlag
+   * carry it in full either way.
+   */
+  .brd-objection-settled {
+    stroke: rgb(236 222 200 / 0.13);
+    stroke-width: 0.8;
+    stroke-dasharray: 2 3;
+  }
+
+  /* ----------------------------------------- the permanent standing, on floor */
+
+  /*
+   * Two facts on the near floor. Not a panel, not a rail of gates: the room
+   * states where the committee stands, and the audit lives in Underlag.
+   */
+  .brd-standing {
+    display: flex;
+    gap: 2.2rem;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+  }
+
+  .brd-standing-fact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .brd-standing-fact dt {
+    font-size: 0.62rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgb(236 222 200 / 0.45);
+  }
+
+  .brd-standing-fact dd {
+    font-size: 0.92rem;
+    color: rgb(236 222 200 / 0.93);
+  }
+
+  /* --------------------------------------------------- the room's overlays */
+
+  /*
+   * Console, transcript and decision all open OVER the room. Fixed to the right
+   * edge so the photograph stays visible beside them — you are still in the
+   * room while you read.
+   */
+  /*
+   * The Chairman's console rises from the Chairman's own chair: low, centred on
+   * the foreground plane, close to the seat it was opened from. It is not a
+   * centred application modal — it never covers the table, and the committee
+   * stays visible above it, which is the point of opening it from the room.
+   */
+  /* One surface, three placements. The skin is shared so they read as one
+   * material; only where each sits differs. */
+  .brd-console,
+  .brd-transcript,
+  .brd-decision {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    overflow-y: auto;
+    padding: 1.15rem 1.25rem 1.35rem;
+    border-radius: 4px;
+    background:
+      linear-gradient(180deg, rgb(217 164 65 / 0.085) 0%, rgb(217 164 65 / 0.015) 100%),
+      rgb(10 13 19 / 0.97);
+    border: 1px solid rgb(217 164 65 / 0.3);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.09),
+      0 26px 64px -26px rgb(0 0 0 / 0.96);
+  }
+
+  /* The Chairman's, rising from the Chairman's chair. */
+  .brd-console {
+    left: 50%;
+    bottom: 2.25rem;
+    transform: translateX(-50%);
+    width: min(27rem, calc(100vw - 2.5rem));
+    max-height: min(26rem, calc(100vh - 12rem));
+  }
+
+  /*
+   * A desk's transcript and the CIO's decision belong to the party they are
+   * about, not to the reader, so they keep the right edge.
+   */
+  .brd-transcript,
+  .brd-decision {
+    top: 5.5rem;
+    right: 1.25rem;
+    width: min(23rem, calc(100vw - 2.5rem));
+    max-height: calc(100vh - 8rem);
+  }
+
+  .brd-console-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .brd-console-close {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: rgb(236 222 200 / 0.55);
+  }
+
+  .brd-console-close:hover {
+    color: rgb(236 222 200 / 0.9);
+  }
+
+  .brd-console-question {
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: rgb(236 222 200 / 0.96);
+  }
+
+  /* The committee was never convened. Stated, not styled as an error. */
+  .brd-console-warning {
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: rgb(224 122 95 / 0.95);
+  }
+
+  .brd-console-progress {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.3rem 0.9rem;
+    font-size: 0.8rem;
+  }
+
+  .brd-console-progress dt {
+    color: rgb(236 222 200 / 0.5);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    align-self: center;
+  }
+
+  .brd-console-progress dd {
+    color: rgb(236 222 200 / 0.92);
+  }
+
+  .brd-console-action {
+    align-self: flex-start;
+    background: rgb(217 164 65 / 0.12);
+    border: 1px solid rgb(217 164 65 / 0.4);
+    border-radius: 3px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: rgb(236 222 200 / 0.95);
+  }
+
+  .brd-console-action:hover {
+    background: rgb(217 164 65 / 0.2);
+  }
+
+  .brd-console-decided {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .brd-console-decision {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .brd-console-link {
+    font-size: 0.8rem;
+    color: rgb(94 197 217 / 0.9);
+  }
+
+  /* ------------------------------------------------------ desk transcript */
+
+  .brd-transcript-empty {
+    font-size: 0.85rem;
+    color: rgb(236 222 200 / 0.55);
+  }
+
+  .brd-transcript-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .brd-transcript-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  }
+
+  .brd-transcript-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .brd-transcript-text {
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: rgb(236 222 200 / 0.93);
+  }
+
+  .brd-transcript-objection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-left: 0.7rem;
+    border-left: 2px solid rgb(224 122 95 / 0.5);
+  }
+
+  /* ------------------------------------------------------- the decision */
+
+  .brd-decision-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .brd-decision-text {
+    font-size: 0.88rem;
+    line-height: 1.42;
+    color: rgb(236 222 200 / 0.93);
+  }
+
+  .brd-decision-dissent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-left: 0.7rem;
+    border-left: 2px solid rgb(224 122 95 / 0.5);
+  }
+
+  /* --------------------------------------- the question, lettered on stone */
+
+  .brd-question {
+    /*
+     * Smaller than a page headline, and deliberately.
+     *
+     * This is the question currently before the committee, lettered into the
+     * upper architecture — not a masthead the room happens to sit under. The
+     * hierarchy still reads, because nothing else up there competes; the room
+     * stays the hero.
+     */
+    font-size: clamp(22px, 2.1vw, 31px);
+    line-height: 1.18;
+    text-shadow:
+      0 1px 2px rgb(0 0 0 / 0.85),
+      0 8px 40px rgb(0 0 0 / 0.7);
+  }
+  /* The rail sits on the near floor: hairline above, and no panel behind it. */
+  .brd-rail-room {
+    border-top-color: rgb(255 255 255 / 0.1);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+  }
+
+  /* The room becoming the record. A gradient, never a rule. */
+  .brd-room-seam {
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, rgb(4 4 6 / 0.9) 62%, #040406 100%);
+  }
+
+  /* ==================================================== the fallback room ==
+   *
+   * The room as it was built before the plate existed, kept whole and kept
+   * working. It renders ONLY when the photograph cannot load — never behind
+   * it — so the surface degrades to a constructed boardroom instead of to a
+   * bare rectangle with nameplates floating in it.
+   */
+  .brd-built {
+    perspective: 1500px;
+    perspective-origin: 50% 22%;
+    background:
+      radial-gradient(135% 105% at 50% 34%, transparent 30%, rgb(2 3 6 / 0.86) 100%),
+      radial-gradient(80% 46% at 50% -6%, rgb(217 164 65 / 0.22) 0%, transparent 62%),
+      linear-gradient(180deg, #0a0806 0%, #070607 42%, #040406 100%);
+  }
+  .brd-ceiling {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 26%;
+    background:
+      radial-gradient(60% 140% at 50% 100%, rgb(217 164 65 / 0.3) 0%, transparent 70%),
+      linear-gradient(180deg, #0d0a07 0%, rgb(10 8 6 / 0.4) 100%);
+  }
+  .brd-ceiling::after {
+    content: '';
+    position: absolute;
+    inset: auto 12% 0 12%;
+    height: 2px;
+    border-radius: 50%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(240 205 140 / 0.55) 22%,
+      rgb(255 226 170 / 0.75) 50%,
+      rgb(240 205 140 / 0.55) 78%,
+      transparent
+    );
+    filter: blur(1px);
+    box-shadow: 0 0 40px 6px rgb(217 164 65 / 0.35);
+  }
+  .brd-window-wall {
+    position: absolute;
+    inset: 14% 0 46% 0;
+    background-image: url("/data/wall-street.jpg");
+    background-size: cover;
+    background-position: center 42%;
+    opacity: 0.5;
+    filter: saturate(0.62) brightness(0.62) contrast(1.05);
+    mask-image: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(0 0 0) 22%,
+      rgb(0 0 0 / 0.5) 88%,
+      transparent 100%
+    );
+  }
+  .brd-mullions {
+    position: absolute;
+    inset: 14% 0 46% 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgb(0 0 0 / 0.55) 0px,
+      rgb(0 0 0 / 0.55) 3px,
+      transparent 3px,
+      transparent 11.5%
+    );
+    mask-image: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(0 0 0) 24%,
+      rgb(0 0 0 / 0.6) 86%,
+      transparent 100%
+    );
+  }
+  .brd-columns {
+    position: absolute;
+    inset: 6% 0 30% 0;
+    background:
+      linear-gradient(90deg, rgb(6 5 5) 0%, rgb(6 5 5 / 0.85) 5%, transparent 13%),
+      linear-gradient(270deg, rgb(6 5 5) 0%, rgb(6 5 5 / 0.85) 5%, transparent 13%);
+  }
+  .brd-table-plane {
+    transform: rotateX(66deg);
+    border-radius: 50%;
+    background:
+      radial-gradient(38% 38% at 50% 46%, rgb(77 232 245 / 0.16) 0%, transparent 72%),
+      radial-gradient(70% 46% at 50% 8%, rgb(255 214 150 / 0.16) 0%, transparent 60%),
+      radial-gradient(100% 100% at 50% 40%, #241c12 0%, #120e0b 58%, #0a0808 100%);
+    box-shadow:
+      inset 0 0 0 1px rgb(217 164 65 / 0.34),
+      inset 0 0 70px 10px rgb(217 164 65 / 0.1),
+      0 0 120px 20px rgb(0 0 0 / 0.85);
+  }
+  .brd-table-plane::before {
+    content: '';
+    position: absolute;
+    inset: 2.5%;
+    border-radius: 50%;
+    border: 1px solid rgb(217 164 65 / 0.28);
+  }
+  .brd-table-plane::after {
+    content: '';
+    position: absolute;
+    inset: 26%;
+    border-radius: 50%;
+    border: 1px solid rgb(240 205 140 / 0.3);
+    box-shadow:
+      0 0 30px 4px rgb(217 164 65 / 0.22),
+      inset 0 0 40px 8px rgb(77 232 245 / 0.07);
+  }
+  .brd-table-edge {
+    border-radius: 50%;
+    background: linear-gradient(180deg, #1a1410 0%, #0a0807 60%, #050505 100%);
+    box-shadow: 0 26px 60px -18px rgb(0 0 0 / 0.95);
+  }
+  .brd-chairman-3d {
+    background:
+      radial-gradient(80% 60% at 50% 0%, rgb(240 205 140 / 0.12) 0%, transparent 60%),
+      linear-gradient(180deg, rgb(30 24 19) 0%, rgb(12 10 9) 55%, rgb(6 5 5) 100%);
+    border-radius: 44% 44% 6% 6% / 40% 40% 4% 4%;
+    box-shadow:
+      inset 0 3px 0 0 rgb(240 205 140 / 0.22),
+      0 -30px 70px -30px rgb(217 164 65 / 0.35);
+  }
+}
+
+@layer components {
+  /*
+   * The record, emerging from the floor of the room.
+   *
+   * Without this the photograph stops at a hard line and the debate begins on
+   * flat black, which reads as a dashboard that happens to sit under a picture.
+   * The warm tail carries the light of the room a little way down the page, so
+   * the first panels feel like they are standing in the same building.
+   */
+  .brd-record {
+    background: linear-gradient(
+      180deg,
+      rgb(26 19 12 / 0.5) 0%,
+      rgb(12 11 14 / 0.28) 26%,
+      transparent 58%
+    );
+  }
+}
+
+@layer components {
+  /*
+   * The decision destination, in its three unlit states.
+   *
+   * None of these carries analytical light, because light on this plate means a
+   * decision was recorded and nothing else. What separates them is presence:
+   * a case the CIO has never seen recedes, a case the office is holding stands
+   * at full strength, and a case the office answered by sending back is marked
+   * as answered without being marked as decided.
+   */
+  .brd-plate-awaiting {
+    opacity: 1;
+    border-top-color: rgb(var(--plate-light) / 0.55);
+    box-shadow:
+      inset 0 1px 0 0 rgb(var(--plate-light) / 0.3),
+      inset 0 -1px 0 0 rgb(0 0 0 / 0.55),
+      0 5px 10px -5px rgb(0 0 0 / 0.9);
+  }
+  /* Answered, and sent back. Marked, and deliberately not lit. */
+  .brd-plate-returned {
+    opacity: 1;
+    --plate-light: 226 154 74;
+    border-color: rgb(var(--plate-light) / 0.34);
+    border-top-color: rgb(var(--plate-light) / 0.6);
+    border-style: dashed;
+    border-top-style: solid;
+  }
+  /* A decision stands. The one state at this seat that carries light. */
+  .brd-plate-chief.brd-plate-acted {
+    --plate-light: 232 186 100;
+    --plate-glow: 0.4;
+  }
+  .brd-plate-chief.brd-plate-acted .brd-plate-name {
+    color: rgb(252 230 186 / 0.98);
+  }
+}
+
+@layer components {
+  /* A field on an institutional form: quiet, legible, no chrome. */
+  .hq-field {
+    background: rgb(255 255 255 / 0.04);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 3px;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.9rem;
+    color: rgb(236 222 200 / 0.95);
+  }
+
+  .hq-field:focus {
+    outline: none;
+    border-color: rgb(217 164 65 / 0.55);
+  }
+
+  .hq-field::placeholder {
+    color: rgb(236 222 200 / 0.32);
   }
 }

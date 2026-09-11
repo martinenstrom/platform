@@ -32,6 +32,7 @@
  */
 
 import {
+  actorFieldsOf,
   buildAssignment,
   buildRunRecord,
   buildTransitionEvent,
@@ -84,12 +85,31 @@ export function acceptContribution(
         reject('not-found', `Case "${input.caseId}" no longer exists.`)
       }
 
-      const accountable = context.actor.employeeId
+      /*
+       * The accountability boundary, restated — not relaxed.
+       *
+       * It used to require an EMPLOYEE. It now requires an accountable
+       * institutional PRINCIPAL, which is either a person or a named desk agent
+       * the firm has authorised for this department. The invariant is
+       * unchanged: work cannot enter `analysis.claims` unless somebody the firm
+       * can hold to account explicitly stands behind it.
+       *
+       * What an agent's acceptance means, precisely: **the desk adopts this
+       * candidate as its recorded institutional position.** It is not human
+       * review, not verification, not peer examination and not a Devil's
+       * Advocate pass — those are separate controls performed by other
+       * principals, and adopting work is not evidence that the work is right.
+       *
+       * A system actor is still refused. The orchestrator schedules; it does
+       * not stand behind anything.
+       */
+      const accountable = context.actor.employeeId ?? context.actor.agentPrincipalId
       if (accountable === null) {
         reject(
           'unknown-actor',
-          'Accepting work must name the employee who accepted it. Work entering ' +
-            'the institution with no acceptor is work nobody stands behind.',
+          'Accepting work must name the accountable institutional principal ' +
+            'adopting it. Work entering the institution with no principal ' +
+            'behind it is work nobody stands behind.',
         )
       }
 
@@ -205,7 +225,7 @@ export function acceptContribution(
             assignmentId: assignment.id,
             fromState: assignment.status,
             toState: 'completed',
-            actorEmployeeId: accountable,
+            ...actorFieldsOf(context.actor),
             actorDepartmentId: run.departmentId,
             occurredAt: context.occurredAt,
             correlationId: context.correlationId,
@@ -228,7 +248,7 @@ export function acceptContribution(
           ...(run.revisionId ? { revisionId: run.revisionId } : {}),
           fromState: run.state,
           toState: 'completed',
-          actorEmployeeId: accountable,
+          ...actorFieldsOf(context.actor),
           actorDepartmentId: run.departmentId,
           occurredAt: context.occurredAt,
           correlationId: context.correlationId,

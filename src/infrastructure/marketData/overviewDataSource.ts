@@ -21,6 +21,7 @@ import { avanzaCovers } from './providers/avanza/map'
 import {
   hasData,
   SERIES_RANGES,
+  SYM_OMXS30,
   type CanonicalSymbol,
   type Envelope,
   type GovernmentYield,
@@ -142,6 +143,7 @@ export function createOverviewDataSource(
     runAttempt: container.runAttempt,
     singleFlight: (key, execute) => container.singleFlight.run(key, execute),
     correlationId,
+    chainGapsSeen: container.chainGapsSeen,
   }
 
   const chain = (category: DataCategory) => container.config.chains[category]
@@ -200,15 +202,27 @@ export function createOverviewDataSource(
     correlationId: () => correlationId,
 
     /**
-     * Index tiles split by market, because only OMXS30 has a real provider.
-     * Avanza covers Stockholm; the five international indices have no approved
-     * source until D1 is resolved, and routing them through one chain would
-     * make a Swedish outage look like a global one — or worse, let an
-     * international fixture ride in on a successful Swedish fetch.
+     * Index tiles split three ways, by what actually backs them.
+     *
+     * Stockholm has always had a route. DAX, Nasdaq 100 and Nikkei 225 now do
+     * too — Avanza exposes them as verified INDEX instruments. S&P 500 and
+     * FTSE 100 still have none: neither exists as an index in Avanza's corpus,
+     * only as funds written on it, so they stay in a fixture-only category.
+     *
+     * The three groups are kept apart for the reason the original two were: a
+     * Swedish outage must not look like a global one, an international fixture
+     * must not ride in on a successful Swedish fetch, and — the new case — an
+     * *absent source* must stay distinguishable from a *failed* one.
      */
     quotes: async (symbols) => {
+      const swedish = (symbol: CanonicalSymbol) =>
+        avanzaCovers(symbol) && symbol === SYM_OMXS30
       const groups: Array<[DataCategory, CanonicalSymbol[]]> = [
-        ['equity-index-se', symbols.filter((symbol) => avanzaCovers(symbol))],
+        ['equity-index-se', symbols.filter(swedish)],
+        [
+          'equity-index-intl-broker',
+          symbols.filter((symbol) => avanzaCovers(symbol) && !swedish(symbol)),
+        ],
         ['equity-index-intl', symbols.filter((symbol) => !avanzaCovers(symbol))],
       ]
 

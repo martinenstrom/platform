@@ -76,6 +76,7 @@ const organization: Organization = {
     },
   ],
   teams: [],
+  agentPrincipals: [],
   employees: [
     {
       id: 'cio',

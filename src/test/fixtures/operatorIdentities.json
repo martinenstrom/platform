@@ -120,6 +120,16 @@
     "isGovernance": false
   },
   {
+    "employeeId": "rates-head",
+    "displayName": "Head of Rates",
+    "roleTitle": "Head of Rates",
+    "roleFunction": "manager",
+    "seniority": "head",
+    "departmentId": "rates",
+    "departmentName": "Rates",
+    "isGovernance": false
+  },
+  {
     "employeeId": "research-director",
     "displayName": "Research Director",
     "roleTitle": "Research Director",

@@ -474,25 +474,58 @@ async function schemaFingerprint(client: Client): Promise<string> {
   )
 }
 
+/**
+ * The last migration a Stage 1 database ever applied.
+ *
+ * 0011 was the first migration after it, so "an existing Stage 1 database" is a
+ * database at 0010 — not one that skipped 0011 and ran everything after it.
+ */
+const STAGE_ONE_HEAD = '0010'
+
 describe('0011 upgrades an existing database to the same schema as a clean one', () => {
   let upgraded: TestDatabase
   let clean: TestDatabase
   let stageOneDir: string
 
   beforeAll(async () => {
-    // A copy of the migration directory with 0011 removed, so an existing
-    // Stage 1 database can be reproduced exactly — same files, same checksums.
+    /*
+     * A Stage 1 database is a database that stopped at 0010 — that is what
+     * "existed before 0011" means.
+     *
+     * This used to copy the whole directory and delete 0011 from the MIDDLE,
+     * which applied 0012-and-later before 0011 ever ran. That was never a
+     * state any database was in, and it stayed harmless only while no later
+     * migration touched the organisation. Migration 0035 seats the Rates desk,
+     * so under the old construction 0011 recomputed organisation seed version
+     * 1 over a firm that already contained Rates — and "v1" came to mean
+     * something v1 never meant.
+     *
+     * Same files, same checksums; only the cut-off moved.
+     */
     stageOneDir = await mkdtemp(join(tmpdir(), 'finos-stage1-'))
     await cp(DEFAULT_MIGRATIONS_DIR, stageOneDir, { recursive: true })
-    await rm(join(stageOneDir, '0011_revision_scoped_reviews.sql'))
+    for (const migration of await loadMigrations()) {
+      if (migration.version > STAGE_ONE_HEAD) {
+        await rm(join(stageOneDir, `${migration.version}_${migration.name}.sql`))
+      }
+    }
 
     upgraded = await createTestDatabase()
     clean = await createTestDatabase()
 
     const stageOne = await migrate(upgraded.owner, { directory: stageOneDir })
+    expect(stageOne.applied.map((m) => m.version).at(-1)).toBe(STAGE_ONE_HEAD)
     expect(stageOne.applied.map((m) => m.version)).not.toContain('0011')
+
+    /* The upgrade runs 0011 onward, IN ORDER, which is the only way a real
+     * Stage 1 database ever reaches head. */
     const upgrade = await migrate(upgraded.owner)
-    expect(upgrade.applied.map((m) => m.version)).toEqual(['0011'])
+    expect(upgrade.applied.map((m) => m.version)[0]).toBe('0011')
+    expect(upgrade.applied.map((m) => m.version)).toEqual(
+      (await loadMigrations())
+        .map((m) => m.version)
+        .filter((version) => version > STAGE_ONE_HEAD),
+    )
 
     await migrate(clean.owner)
   }, 180_000)
@@ -532,19 +565,130 @@ describe('0011 upgrades an existing database to the same schema as a clean one',
     expect(await organization(upgraded.owner)).toEqual(await organization(clean.owner))
   })
 
+  /*
+   * The organisation seed, version by version.
+   *
+   * `organization_seed_versions` is a versioned HISTORICAL record: the version
+   * is the primary key, rows accumulate, `organizationReader` takes the
+   * highest, and every actor snapshot stamps the version it acted under. So the
+   * invariant is not "the checksum is stable" — the firm may change — but "the
+   * same seed version, reached by two legitimate routes, hashes the same".
+   */
+  const seedVersions = async (client: Client) =>
+    (
+      await client.query(
+        `SELECT version, checksum FROM analysis.organization_seed_versions
+         ORDER BY version COLLATE "C"`,
+      )
+    ).rows as { version: string; checksum: string }[]
+
+  /** The firm as 0010 seeded it: no Rates desk. Pinned, because it is history. */
+  const V1_CHECKSUM = '80eaa6fbf0c6c8090c368617d977624fc81a3323b5c080a8e4a95b1da5d55105'
+  /** The firm after 0035 seated Rates. */
+  const V2_CHECKSUM = '04556d5e9fb7a1bb09da361ffc6b6ee08d2dacb97492e13f593606ce09bf7c0f'
+
   it('computes the same SHA-256 seed checksum by either route', async () => {
-    const checksum = async (client: Client) =>
+    const byUpgrade = await seedVersions(upgraded.owner)
+    expect(byUpgrade).toEqual(await seedVersions(clean.owner))
+    // 64 hex characters: SHA-256, not the MD5 that 0010 originally wrote.
+    for (const seed of byUpgrade) expect(seed.checksum).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('records version 1 as the firm that existed before Rates', async () => {
+    /*
+     * Pinned to a literal, deliberately. A historical checksum computed from
+     * whatever the database currently holds would agree with itself no matter
+     * how far the organisation drifted — which is the one thing it exists to
+     * detect.
+     */
+    const clean1 = (await seedVersions(clean.owner)).find((s) => s.version === '1')!
+    const upgraded1 = (await seedVersions(upgraded.owner)).find((s) => s.version === '1')!
+    expect(clean1.checksum).toBe(V1_CHECKSUM)
+    expect(upgraded1.checksum).toBe(V1_CHECKSUM)
+  })
+
+  it('appends version 2 without mutating version 1', async () => {
+    /*
+     * The firm gained a department, so it is a different firm and says so. What
+     * it must NOT do is rewrite the record of the firm that authorised every
+     * act taken before — a historical actor snapshot has to keep resolving to
+     * the organisation that actually authorised it.
+     */
+    const seeds = await seedVersions(clean.owner)
+    expect(seeds.map((s) => s.version)).toEqual(['1', '2'])
+    expect(seeds[1]!.checksum).toBe(V2_CHECKSUM)
+    expect(seeds[1]!.checksum).not.toBe(seeds[0]!.checksum)
+  })
+
+  it('serves version 2 to the reader and keeps version 1 resolvable', async () => {
+    /* The statement `organizationReader` issues: the CURRENT organisation. */
+    const current = await clean.owner.query(
+      `SELECT version, checksum FROM analysis.organization_seed_versions
+       ORDER BY version DESC LIMIT 1`,
+    )
+    expect(current.rows[0]).toMatchObject({ version: '2', checksum: V2_CHECKSUM })
+
+    /* And a reader holding a historical snapshot can still resolve what it
+     * acted under, exactly. */
+    const historical = await clean.owner.query(
+      `SELECT checksum FROM analysis.organization_seed_versions WHERE version = '1'`,
+    )
+    expect(historical.rows[0]!.checksum).toBe(V1_CHECKSUM)
+  })
+
+  /*
+   * TD-83: the organisation seed checksum does not cover `department_handles`.
+   *
+   * Its payload is departments, employees and roles. Migration 0035 moved the
+   * `rates` handle from `global-macro` to `rates` — half of what version 2
+   * MEANS — and the checksum cannot see it: the version bump is carried by the
+   * new department, role and employee rows alone.
+   *
+   * Widening the payload is deliberately NOT done here. It would change the
+   * canonical representation of every version ever computed, including the
+   * historical v1 this file pins. A future canonicalisation-version migration
+   * may take handles in explicitly.
+   *
+   * Until then this test guards the semantic fact directly. It does not replace
+   * the checksum; it covers what the checksum provably does not.
+   */
+  it('gives the rates handle to exactly one desk, and that desk is Rates', async () => {
+    const holders = await clean.owner.query(
+      `SELECT department_id FROM analysis.department_handles
+       WHERE discipline = 'rates' ORDER BY department_id COLLATE "C"`,
+    )
+    expect(holders.rows.map((row) => row.department_id)).toEqual(['rates'])
+  })
+
+  it('takes the rates handle from global-macro and leaves the rest intact', async () => {
+    /*
+     * The handle MOVED; it was not copied. Held jointly, a case tagged `rates`
+     * would reach two desks with no rule saying which owns the work, and "who
+     * is responsible for the rates read" would stop having an answer.
+     *
+     * The full remaining set is pinned rather than just the absence of `rates`,
+     * because 0035 removes a handle with a DELETE: a predicate that matched too
+     * much would strip Global Macro of disciplines nobody decided to take away,
+     * and an assertion that only checked `rates` had gone would not notice.
+     */
+    const macro = await clean.owner.query(
+      `SELECT discipline FROM analysis.department_handles
+       WHERE department_id = 'global-macro' ORDER BY discipline COLLATE "C"`,
+    )
+    const disciplines = macro.rows.map((row) => row.discipline)
+    expect(disciplines).not.toContain('rates')
+    expect(disciplines).toEqual(['fx', 'macro', 'policy'])
+  })
+
+  it('reaches the same handles by either route', async () => {
+    const handles = async (client: Client) =>
       (
         await client.query(
-          `SELECT version, checksum FROM analysis.organization_seed_versions
-           ORDER BY version`,
+          `SELECT department_id, discipline FROM analysis.department_handles
+           ORDER BY department_id COLLATE "C", discipline COLLATE "C"`,
         )
       ).rows
-
-    const upgradedChecksum = await checksum(upgraded.owner)
-    expect(upgradedChecksum).toEqual(await checksum(clean.owner))
-    // 64 hex characters: SHA-256, not the MD5 that 0010 originally wrote.
-    expect(upgradedChecksum[0]!.checksum).toMatch(/^[0-9a-f]{64}$/)
+    expect(await handles(upgraded.owner)).toEqual(await handles(clean.owner))
   })
 
   it('enforces the new constraints on the upgraded database too', async () => {

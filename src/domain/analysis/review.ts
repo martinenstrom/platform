@@ -129,7 +129,13 @@ export function reviewApplies(
  * and PostgreSQL dedupe identically rather than approximately.
  */
 export function reviewIdentity(
-  kind: 'verification' | 'devils-advocate' | 'compliance' | 'risk',
+  kind:
+    | 'verification'
+    | 'devils-advocate'
+    | 'compliance'
+    | 'risk'
+    /* An analytical desk's examination of a peer. See `ChallengerKind`. */
+    | 'peer-examination',
   review: ReviewScope & ReviewAttribution,
 ): string {
   const revisionId = isRevisionScoped(review) ? review.revisionId : ''
@@ -313,8 +319,43 @@ export function verificationBlocks(review: VerificationReview): boolean {
  * `buildChallenge` refuses it — which is what keeps the role from degrading
  * into reflexive disagreement.
  */
+/**
+ * Under whose mandate an objection was filed.
+ *
+ * **One `Challenge` model, two institutional acts.** Collapsing them would let
+ * a firm report that a conclusion "survived scrutiny" when only the desk whose
+ * job is to object had objected — which is the control function working, not
+ * the institution disagreeing with itself.
+ *
+ *  - `devils-advocate` — a STANDING mandate to falsify. It must object; a
+ *    verdict with no challenges is rejected outright. It objects to the
+ *    argument, and its authority does not depend on knowing the subject.
+ *  - `peer` — domain-informed cross-examination by an analytical desk whose
+ *    mandate OVERLAPS the claim. Rates contesting Macro's attribution of a
+ *    Treasury move is meaningful; Rates contesting a margin analysis is a
+ *    counter filed to satisfy a counter.
+ *
+ * The two gates differ accordingly: Devil's Advocate review is required work,
+ * while peer scrutiny asks whether anyone competent to disagree actually did.
+ */
+export type ChallengerKind = 'peer' | 'devils-advocate'
+
 export interface Challenge {
   id: string
+  /**
+   * Which mandate produced it. Required, because "was this challenged?" and
+   * "was this challenged by someone who knows the subject?" are different
+   * questions the CIO is entitled to have answered separately.
+   */
+  challengerKind: ChallengerKind
+  /**
+   * The department that filed it.
+   *
+   * Recorded on every challenge, not only peer ones, so a later relevance
+   * rule — which desks may meaningfully contest which claims — can be written
+   * without changing this model again.
+   */
+  byDepartmentId: string
   /** The claim being contested. */
   contests: ClaimId
   /**
@@ -408,6 +449,33 @@ export interface DevilsAdvocateVerdict {
   outcomes: Readonly<Record<string, ChallengeStatus>>
 }
 
+/**
+ * One analytical desk's cross-examination of another's persisted claims.
+ *
+ * Structurally the Devil's Advocate verdict, minus its standing obligation: a
+ * peer desk that read the argument and found nothing to contest files nothing,
+ * and the absence is itself the fact the peer-scrutiny gate reads.
+ */
+export interface PeerExaminationVerdict {
+  /** The desk that examined. */
+  byDepartmentId: string
+  /** The desk whose claims were examined. */
+  examinedDepartmentId: string
+  challenges: readonly Challenge[]
+  outcomes: Readonly<Record<string, ChallengeStatus>>
+}
+
+export type PeerExaminationReview = ReviewScope &
+  ReviewAttribution &
+  ReviewRecordId &
+  ReviewOrder &
+  PeerExaminationVerdict
+
+/** Peer objections still open. Same rule as `unresolvedChallenges`. */
+export function unresolvedPeerChallenges(review: PeerExaminationReview): Challenge[] {
+  return review.challenges.filter((c) => (review.outcomes[c.id] ?? 'open') === 'open')
+}
+
 export type DevilsAdvocateReview = ReviewScope &
   ReviewAttribution &
   ReviewRecordId &
@@ -453,6 +521,56 @@ export function blockingChallenges(
 ): Challenge[] {
   return unresolvedChallenges(review).filter((c) =>
     challengeBlocks(c.materiality, blocksAtOrAbove),
+  )
+}
+
+/**
+ * One unresolved objection, reduced to what a gate has to weigh.
+ *
+ * The two evaluators start from different material — one from stored reviews,
+ * the other from a persisted basis — and must reach the same verdict. This is
+ * the shape they meet in.
+ */
+export interface MandatedChallenge {
+  /** The review that carries it, so a blocker can name where it came from. */
+  reviewId: string
+  challengeId: string
+  materiality: DisagreementMateriality
+  /** Under which mandate it was raised. The filter below reads this. */
+  challengerKind: ChallengerKind
+  /** The desk that raised it. Carried through, never inferred by a gate. */
+  byDepartmentId: string
+}
+
+/**
+ * The unresolved objections the policy's mandates admit.
+ *
+ * **The single definition of which challenges a gate considers.**
+ * `evaluateGate` shows the pre-submission view and `evaluateEligibilityGates`
+ * decides the submission; if they disagreed, a revision would look ready right
+ * up to the moment it was refused. Both call this, so there is nothing for them
+ * to disagree about.
+ *
+ * Neither evaluator branches on a policy version. The mandates ARE the
+ * versioned part, declared on the policy the caller selected — which is what
+ * keeps a version-1 replay Devil's-Advocate-only without the code knowing that
+ * version 1 exists.
+ */
+export function admittedChallenges(
+  challenges: readonly MandatedChallenge[],
+  mandates: readonly ChallengerKind[],
+): MandatedChallenge[] {
+  return challenges.filter((challenge) => mandates.includes(challenge.challengerKind))
+}
+
+/** Those of the admitted ones that block, under the policy's threshold. */
+export function blockingUnderMandates(
+  challenges: readonly MandatedChallenge[],
+  mandates: readonly ChallengerKind[],
+  blocksAtOrAbove: DisagreementMateriality,
+): MandatedChallenge[] {
+  return admittedChallenges(challenges, mandates).filter((challenge) =>
+    challengeBlocks(challenge.materiality, blocksAtOrAbove),
   )
 }
 
@@ -596,6 +714,15 @@ export type RiskRequirementState = 'unresolved' | 'not-required' | 'required'
 export interface GovernanceGate {
   verification?: VerificationReview
   devilsAdvocate?: DevilsAdvocateReview
+  /**
+   * Every peer examination that stands for this revision — the latest PER DESK,
+   * from `applicablePeerExaminations`, not the single latest overall.
+   *
+   * Plural because two desks examining one argument are two opinions. A single
+   * slot here would discard every examiner but the last, and the objection it
+   * discarded would silently stop blocking.
+   */
+  peerExaminations?: readonly PeerExaminationReview[]
   compliance?: ComplianceReview
   risk?: RiskReview
   /**
@@ -614,6 +741,14 @@ export interface GovernanceGate {
    * inherit it without noticing.
    */
   challengeBlocksAtOrAbove: DisagreementMateriality
+  /**
+   * Whose objections count, from the policy the caller selected.
+   *
+   * Required and undefaulted, exactly like the threshold above. A default would
+   * decide the firm's rule in the one place that must only apply it — and this
+   * gate and the submission gate would then be free to default differently.
+   */
+  challengeMandates: readonly ChallengerKind[]
 }
 
 export interface GateResult {
@@ -671,23 +806,70 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
     }
   }
 
-  /* ---------------------------------------------------- devil's advocate */
+  /* ------------------------------------------------- objections, by mandate */
 
-  if (gate.devilsAdvocate) {
-    for (const challenge of blockingChallenges(
-      gate.devilsAdvocate,
-      gate.challengeBlocksAtOrAbove,
-    )) {
-      blockers.push({
-        kind: 'unresolved-material-challenge',
-        reviewId: gate.devilsAdvocate.reviewId,
+  /*
+   * The Devil's Advocate and the peers, gathered into one list and filtered
+   * once. `blockingUnderMandates` is the only definition of which objections a
+   * gate weighs, and `evaluateEligibilityGates` calls the same function from
+   * the persisted basis — so the view a manager sees before submitting and the
+   * verdict the submission receives cannot say different things.
+   *
+   * `contests` is kept beside the shared shape rather than folded into it: a
+   * blocker names the claim it is about, and that is this gate's concern rather
+   * than the mandate filter's.
+   */
+  const contested = new Map<string, ClaimId>()
+  const objections: MandatedChallenge[] = []
+
+  const collect = (
+    reviewId: string,
+    byDepartmentId: string,
+    challenges: readonly Challenge[],
+  ) => {
+    for (const challenge of challenges) {
+      contested.set(challenge.id, challenge.contests)
+      objections.push({
+        reviewId,
         challengeId: challenge.id,
-        contests: challenge.contests,
         materiality: challenge.materiality,
-        owningDepartmentId: gate.devilsAdvocate.byDepartmentId,
-        severity: 'blocks-decision',
+        challengerKind: challenge.challengerKind,
+        byDepartmentId,
       })
     }
+  }
+
+  if (gate.devilsAdvocate) {
+    collect(
+      gate.devilsAdvocate.reviewId,
+      gate.devilsAdvocate.byDepartmentId,
+      unresolvedChallenges(gate.devilsAdvocate),
+    )
+  }
+  for (const examination of gate.peerExaminations ?? []) {
+    collect(
+      examination.reviewId,
+      examination.byDepartmentId,
+      unresolvedPeerChallenges(examination),
+    )
+  }
+
+  for (const challenge of blockingUnderMandates(
+    objections,
+    gate.challengeMandates,
+    gate.challengeBlocksAtOrAbove,
+  )) {
+    blockers.push({
+      kind: 'unresolved-material-challenge',
+      reviewId: challenge.reviewId,
+      challengeId: challenge.challengeId,
+      contests: contested.get(challenge.challengeId)!,
+      materiality: challenge.materiality,
+      /* The desk that raised it, whichever mandate it holds. Not assumed to be
+       * the Devil's Advocate, which is what this read before peers existed. */
+      owningDepartmentId: challenge.byDepartmentId,
+      severity: 'blocks-decision',
+    })
   }
 
   /* -------------------------------------------------------------- risk */
@@ -761,6 +943,7 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
 export interface CaseReviews {
   verification?: readonly VerificationReview[]
   devilsAdvocate?: readonly DevilsAdvocateReview[]
+  peerExaminations?: readonly PeerExaminationReview[]
   compliance?: readonly ComplianceReview[]
   risk?: readonly RiskReview[]
 }
@@ -795,6 +978,7 @@ export function evaluateRevisionGates(
   caseId: CaseId,
   reviews: CaseReviews,
   challengeBlocksAtOrAbove: DisagreementMateriality,
+  challengeMandates: readonly ChallengerKind[],
 ): RevisionGateResult[] {
   return revisions.map((revision) => {
     const result = evaluateGate({
@@ -804,14 +988,58 @@ export function evaluateRevisionGates(
         caseId,
         revision.revisionId,
       ),
+      /* Latest PER DESK, not latest overall. See `applicablePeerExaminations`. */
+      peerExaminations: applicablePeerExaminations(
+        reviews.peerExaminations,
+        caseId,
+        revision.revisionId,
+      ),
       compliance: latestApplicable(reviews.compliance, caseId, revision.revisionId),
       risk: latestApplicable(reviews.risk, caseId, revision.revisionId),
       riskRequirement: revision.riskRequirement,
       riskEntryKey: revision.riskEntryKey,
       challengeBlocksAtOrAbove,
+      challengeMandates,
     })
     return { thesisId: revision.thesisId, revisionId: revision.revisionId, ...result }
   })
+}
+
+/**
+ * The peer examinations that stand for one revision: the latest PER DESK.
+ *
+ * `latestApplicable` takes the single most recent review of a kind, because a
+ * control function that re-reviews has changed its mind and the firm has one
+ * verification, one challenge verdict, one risk view. Peer examination is the
+ * one kind where that is wrong: two desks examining one argument are two
+ * opinions, not a re-review, and collapsing them would silently discard every
+ * examiner but the last — reporting one desk's scrutiny as the firm's whole
+ * second opinion.
+ *
+ * So the supersession rule applies WITHIN a department and not across
+ * departments. Ordered by department id, so the basis digest does not move
+ * when two examinations are written in a different order.
+ */
+export function applicablePeerExaminations(
+  all: readonly PeerExaminationReview[] | undefined,
+  caseId: CaseId,
+  revisionId: RevisionId,
+): PeerExaminationReview[] {
+  const byDepartment = new Map<string, PeerExaminationReview[]>()
+  for (const review of all ?? []) {
+    const existing = byDepartment.get(review.byDepartmentId)
+    if (existing) existing.push(review)
+    else byDepartment.set(review.byDepartmentId, [review])
+  }
+
+  const standing: PeerExaminationReview[] = []
+  for (const [, reviews] of byDepartment) {
+    const latest = latestApplicable(reviews, caseId, revisionId)
+    if (latest) standing.push(latest)
+  }
+  return standing.sort((a, b) =>
+    a.byDepartmentId < b.byDepartmentId ? -1 : a.byDepartmentId > b.byDepartmentId ? 1 : 0,
+  )
 }
 
 /**
@@ -878,12 +1106,15 @@ export function evaluateRevisionEligibility(
   reviews: CaseReviews,
   /** From the policy the application layer selected. Never defaulted here. */
   challengeBlocksAtOrAbove: DisagreementMateriality,
+  /** Likewise from the policy: whose objections this view weighs. */
+  challengeMandates: readonly ChallengerKind[],
 ): ThesisEligibility[] {
   const gates = evaluateRevisionGates(
     revisions,
     caseId,
     reviews,
     challengeBlocksAtOrAbove,
+    challengeMandates,
   )
 
   return revisions.map((revision, index) => {

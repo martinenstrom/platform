@@ -44,6 +44,7 @@ export interface Rendered {
 
 export const STEP_LABEL: Record<CaseStep, string> = {
   'thesis-proposed': 'Tes formulerad',
+  'peer-examination': 'Kollegial granskning',
   'work-aggregated': 'Arbetet sammanvägt',
   verification: 'Faktagranskning',
   'devils-advocate': "Devil's Advocate",
@@ -120,6 +121,7 @@ export const ACT_LABEL: Record<InstitutionalAct, string> = {
   'aggregate-conclusion': 'Sammanväg desken arbete',
   'submit-for-verification': 'Lämna in för granskning',
   'record-verification-review': 'Registrera faktagranskning',
+  'record-peer-examination': 'Låt ett analysdesk granska slutsatsen',
   'record-devils-advocate-review': "Registrera Devil's Advocate-utlåtande",
   'resolve-risk-requirement': 'Avgör om Risk ska granska',
   'record-risk-review': 'Registrera riskgranskning',
@@ -180,6 +182,21 @@ export function eligibilityText(eligibility: RecordedEligibility): Rendered {
  * is not a pass, and the wording says so rather than leaving a reader to infer
  * that everything was checked.
  */
+/**
+ * What the CIO decided, in the words the firm shows for it.
+ *
+ * One mapping, because two would drift: the decision history and the committee
+ * table must never name the same stored outcome differently. The keys are the
+ * persisted `outcome.kind` and nothing is worded for a kind the domain cannot
+ * produce.
+ */
+export const DECISION_OUTCOME_LABEL: Record<string, string> = {
+  selected: 'Position tagen',
+  declined: 'Avböjt',
+  /* The CIO looked and chose to wait — an answer, not a commitment. */
+  deferred: 'Bordlagt',
+}
+
 export const GATE_STATUS: Record<'passed' | 'failed' | 'not-applicable', Rendered> = {
   passed: { label: 'Godkänd', tone: 'positive' },
   failed: { label: 'Ej uppfylld', tone: 'warning' },

@@ -45,8 +45,18 @@ describe.skipIf(!ENABLED)(
           instrument_id: instrument.orderBookId,
         })
 
-        // The identity that survives a rename.
-        expect(info?.isin).toBe(instrument.expectedIsin)
+        /*
+         * The identity anchor, whichever class this binding has. For a
+         * `strong` binding that is an ISIN and it survives a rename; for a
+         * `composite` one it is Avanza's own placeholder in the same field,
+         * which survives nothing on its own and is checked alongside the name
+         * and ticker below rather than instead of them.
+         */
+        const anchor =
+          instrument.identity.class === 'strong'
+            ? instrument.identity.isin
+            : instrument.identity.identifier
+        expect(info?.isin).toBe(anchor)
         expect(info?.listing?.tickerSymbol).toBe(instrument.expectedTicker)
         expect(info?.name).toBe(instrument.expectedName)
 

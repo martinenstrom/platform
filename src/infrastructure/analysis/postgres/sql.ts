@@ -219,6 +219,22 @@ function schemaRaised(
   return new ImmutableRecordError(message || 'a sealed record', operation, correlationId)
 }
 
+/**
+ * Socket errnos that mean the firm never reached its storage.
+ *
+ * Not SQLSTATEs and never rendered as such: the server did not answer, so it
+ * had nothing to say. All five are one institutional event — storage was
+ * unreachable — and the distinction between them is an operator's, not the
+ * institution's.
+ */
+const CONNECTION_ERRNOS: ReadonlySet<string> = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+])
+
 export function mapDatabaseError(
   error: unknown,
   operation: string,
@@ -275,7 +291,15 @@ export function mapDatabaseError(
       break
   }
 
-  if (failure.code?.startsWith('08') || failure.code === 'ECONNRESET') {
+  /*
+   * Reachability, from either side of the socket.
+   *
+   * `08` is the server's own connection-exception class. The errnos are the
+   * client socket's, and they arrive with no SQLSTATE at all — reporting one
+   * as `(SQLSTATE ECONNREFUSED)` named a thing that does not exist and sent an
+   * operator to the schema when nothing was listening on the port.
+   */
+  if (failure.code?.startsWith('08') || CONNECTION_ERRNOS.has(failure.code!)) {
     return new StorageUnavailableError(operation, correlationId)
   }
   /*

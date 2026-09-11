@@ -4,7 +4,11 @@ import { DashboardCard } from '~/components/ui/DashboardCard'
 import { Button } from '~/components/ui/Button'
 import { StatusBadge } from '~/components/ui/StatusBadge'
 import { ActingAsPanel, useActingAs } from './ActingAs'
-import { REJECTION_CODE_LABEL, runStateText } from '~/presentation/analysis/runText'
+import {
+  REJECTION_CODE_LABEL,
+  rejectedByText,
+  runStateText,
+} from '~/presentation/analysis/runText'
 import {
   acceptContributionFn,
   rejectContributionFn,
@@ -272,7 +276,7 @@ function SettledPanel({ review }: { review: RunReview }) {
             <span className="text-sm">{REJECTION_CODE_LABEL[rejection.code]}</span>
             <span className="type-metadata">{rejection.detail}</span>
             <span className="type-metadata">
-              Avvisat av {rejection.rejectedByEmployeeId}
+              Avvisat av {rejectedByText(rejection)}
             </span>
             <p className="mt-2 text-sm text-content-muted">
               Arbetet finns kvar som historik och kan aldrig åberopas som underlag.

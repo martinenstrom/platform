@@ -134,6 +134,7 @@ export async function runCommand<Input, Result>(
     thesisRevisionId: scope.thesisRevisionId,
     expectedVersion: envelope.expectedVersion,
     accountableEmployeeId: actor.employeeId,
+    accountableAgentPrincipalId: actor.agentPrincipalId,
     ...(reason ? { reason } : {}),
     payload: definition.payload(input),
   })
@@ -394,6 +395,7 @@ async function recordRejection<I, R>(
       thesisRevisionId: scope.thesisRevisionId,
       expectedVersion: envelope.expectedVersion,
       accountableEmployeeId: actor.employeeId,
+      accountableAgentPrincipalId: actor.agentPrincipalId,
       ...(reason ? { reason } : {}),
       payload: definition.payload(input),
     }),

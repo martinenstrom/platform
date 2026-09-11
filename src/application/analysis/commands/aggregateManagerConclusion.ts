@@ -49,7 +49,11 @@ import { unmetRequiredWork } from '../requiredWork'
 import { deriveAggregationId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
-import { asCanonicalValue, utf8ByteOrder } from '~/domain/shared/canonicalValue'
+import {
+  asCanonicalValue,
+  utf8ByteOrder,
+  type CanonicalValue,
+} from '~/domain/shared/canonicalValue'
 
 export interface ClaimDispositionInput {
   claimId: string
@@ -68,12 +72,25 @@ export interface OptionalInputRecordInput {
   explanation?: string
 }
 
-export interface AggregateManagerConclusionInput {
+interface AggregationScope {
   caseId: string
   /** The revision synthesised from. Must be the lineage's current one. */
   sourceRevisionId: string
   /** Declared for the mandate; verified against the playbook's aggregation entry. */
   departmentId: string
+}
+
+/**
+ * A synthesis a human manager authors in this act.
+ *
+ * Unchanged, deliberately. A person can read the contributions and state a
+ * position they stand behind in one act; requiring them to produce a candidate
+ * first and adopt it second would be ceremony, and would mean manufacturing
+ * candidate records for work no model produced.
+ */
+export interface DirectSynthesisInput extends AggregationScope {
+  /** Absent: nothing is being adopted, because this synthesis is being written. */
+  synthesisFromRunId?: undefined
   /** The exact contributions considered, as completed run ids. */
   inputRunIds: readonly string[]
   dispositions: readonly ClaimDispositionInput[]
@@ -88,6 +105,34 @@ export interface AggregateManagerConclusionInput {
   invalidationCriteria: string
   horizon?: string
 }
+
+/**
+ * A synthesis an institutional agent adopts, having produced it as a candidate.
+ *
+ * The reference is the whole input, and every other field is `never`. That is
+ * the point: a caller cannot name candidate A and supply prose B, so a
+ * candidate cannot survive as decorative provenance beside a synthesis it does
+ * not match. The command loads the immutable candidate and institutionalises
+ * exactly what it holds.
+ */
+export interface AdoptedSynthesisInput extends AggregationScope {
+  /** The run whose produced synthesis this act adopts. */
+  synthesisFromRunId: string
+
+  inputRunIds?: undefined
+  dispositions?: undefined
+  optionalInputs?: undefined
+  rationale?: undefined
+  statement?: undefined
+  position?: undefined
+  implications?: undefined
+  invalidationCriteria?: undefined
+  horizon?: undefined
+}
+
+export type AggregateManagerConclusionInput =
+  | DirectSynthesisInput
+  | AdoptedSynthesisInput
 
 export function aggregateManagerConclusion(
   organization: Organization,
@@ -112,25 +157,46 @@ export function aggregateManagerConclusion(
       caseId: input.caseId,
       thesisRevisionId: input.sourceRevisionId,
     }),
-    payload: (input) => ({
-      sourceRevisionId: input.sourceRevisionId,
-      departmentId: input.departmentId,
-      inputRunIds: [...input.inputRunIds].sort(utf8ByteOrder),
-      dispositions: asCanonicalValue(
-        [...input.dispositions].sort((a, b) => utf8ByteOrder(a.claimId, b.claimId)),
-      ),
-      optionalInputs: asCanonicalValue(
-        [...input.optionalInputs].sort((a, b) =>
-          utf8ByteOrder(a.playbookEntryKey, b.playbookEntryKey),
+    /*
+     * Two payload shapes, because there are two acts.
+     *
+     * The direct one is byte-for-byte what it always was, so every historical
+     * aggregation keeps the identity it was recorded under. The adopted one is
+     * the candidate reference and nothing else — and it is STRONGER, not
+     * weaker: the candidate is immutable and its hash covers the artifact and
+     * the institutional basis together, so the payload is content-bound rather
+     * than a hash of prose the caller could have retyped.
+     */
+    payload: (input): CanonicalValue => {
+      if (input.synthesisFromRunId !== undefined) {
+        return {
+          sourceRevisionId: input.sourceRevisionId,
+          departmentId: input.departmentId,
+          synthesisFromRunId: input.synthesisFromRunId,
+        }
+      }
+      return {
+        sourceRevisionId: input.sourceRevisionId,
+        departmentId: input.departmentId,
+        inputRunIds: [...input.inputRunIds].sort(utf8ByteOrder),
+        dispositions: asCanonicalValue(
+          [...input.dispositions].sort((a, b) =>
+            utf8ByteOrder(a.claimId, b.claimId),
+          ),
         ),
-      ),
-      rationale: input.rationale,
-      statement: input.statement,
-      position: input.position,
-      implications: [...input.implications].sort(utf8ByteOrder),
-      invalidationCriteria: input.invalidationCriteria,
-      horizon: input.horizon ?? null,
-    }),
+        optionalInputs: asCanonicalValue(
+          [...input.optionalInputs].sort((a, b) =>
+            utf8ByteOrder(a.playbookEntryKey, b.playbookEntryKey),
+          ),
+        ),
+        rationale: input.rationale,
+        statement: input.statement,
+        position: input.position,
+        implications: [...input.implications].sort(utf8ByteOrder),
+        invalidationCriteria: input.invalidationCriteria,
+        horizon: input.horizon ?? null,
+      }
+    },
 
     async execute(repositories, context, input) {
       /* --------------------------------------------------------- the case */
@@ -174,17 +240,53 @@ export function aggregateManagerConclusion(
         reject('not-found', `Department "${input.departmentId}" does not exist`)
       }
       /*
-       * `authorize` has already checked that the actor manages this department.
-       * What it cannot check is that a person, rather than the orchestrator, is
-       * accountable — an orchestrator may INITIATE this command and may not
-       * author the conclusion.
+       * `authorize` has already checked that the actor holds this department's
+       * management authority. What it cannot check is that somebody the firm
+       * can hold to account — rather than the orchestrator — is standing behind
+       * the conclusion. An orchestrator may INITIATE this command and may never
+       * author what it concludes.
+       *
+       * A person or an authorised institutional agent. Which one decides which
+       * shape of input is legal, below: a person may author a synthesis in this
+       * act, and an agent may only adopt one it already produced and persisted.
        */
       const managerEmployeeId = context.actor.employeeId
-      if (!managerEmployeeId) {
+      const managerAgentPrincipalId = context.actor.agentPrincipalId
+      if (!managerEmployeeId && !managerAgentPrincipalId) {
         reject(
           'not-authorised',
-          `A managerial synthesis needs an accountable employee. A system actor ` +
-            `cannot take responsibility for the firm's position.`,
+          `A managerial synthesis needs an accountable principal. A system ` +
+            `actor cannot take responsibility for the firm's position.`,
+        )
+      }
+
+      /*
+       * The two paths, and why they are not interchangeable.
+       *
+       * A human manager reads the contributions and states a position they
+       * stand behind — one act, and the text is theirs. A model did not do
+       * that: its output is work the firm paid for and has not yet adopted, and
+       * letting it reach `thesis_revisions` straight from a command input would
+       * lose for the manager exactly the boundary the specialist desks keep.
+       *
+       * So the actor kind decides the shape, and the wrong combination fails
+       * closed rather than picking a reading.
+       */
+      const adopting = input.synthesisFromRunId !== undefined
+      if (managerAgentPrincipalId && !adopting) {
+        reject(
+          'not-authorised',
+          `An institutional agent may not state a synthesis directly. Produce ` +
+            `it as a candidate and adopt it by reference, so the firm can prove ` +
+            `which model artifact became its position.`,
+        )
+      }
+      if (managerEmployeeId && adopting) {
+        reject(
+          'invariant-violated',
+          `A synthesis candidate is adopted by the principal that produced it. ` +
+            `An employee stating the firm's position states it here, in their ` +
+            `own act.`,
         )
       }
 
@@ -232,9 +334,147 @@ export function aggregateManagerConclusion(
         )
       }
 
+      /* ----------------------------------------- the synthesis being adopted */
+
+      /*
+       * From here on the command works from ONE synthesis, whichever path
+       * produced it. A human's is the input; an agent's is loaded from the
+       * candidate store and the input is only the reference.
+       */
+      let synthesis: {
+        inputRunIds: readonly string[]
+        dispositions: readonly ClaimDispositionInput[]
+        optionalInputs: readonly OptionalInputRecordInput[]
+        rationale: string
+        statement: string
+        position: string
+        implications: readonly InvestmentImplication[]
+        invalidationCriteria: string
+        horizon?: string
+      }
+      let synthesisRunId: string | undefined
+
+      if (input.synthesisFromRunId !== undefined) {
+        const candidate = await repositories.producedSyntheses.get(
+          input.synthesisFromRunId,
+        )
+        if (!candidate) {
+          reject(
+            'not-found',
+            `Run "${input.synthesisFromRunId}" produced no synthesis. There is ` +
+              `nothing to adopt, and an agent may not supply one here.`,
+          )
+        }
+        if (candidate.caseId !== input.caseId) {
+          reject(
+            'invariant-violated',
+            `The candidate belongs to case "${candidate.caseId}", not to ` +
+              `"${input.caseId}".`,
+          )
+        }
+        if (candidate.basis.sourceRevisionId !== input.sourceRevisionId) {
+          reject(
+            'invariant-violated',
+            `The candidate was produced from revision ` +
+              `"${candidate.basis.sourceRevisionId}" and is being adopted onto ` +
+              `"${input.sourceRevisionId}". A synthesis answers the argument it ` +
+              `reconciled, not a different one.`,
+          )
+        }
+        if (
+          candidate.basis.playbookId !== playbook.id ||
+          candidate.basis.playbookVersion !== playbook.version
+        ) {
+          reject(
+            'invariant-violated',
+            `The candidate was produced under playbook ` +
+              `"${candidate.basis.playbookId}@${candidate.basis.playbookVersion}" ` +
+              `and the case runs "${playbook.id}@${playbook.version}".`,
+          )
+        }
+
+        /*
+         * The stale-candidate refusal.
+         *
+         * The candidate captured the completed-run universe it was produced
+         * against; this recomputes it. The comparison is deliberately over the
+         * SAME set the checks below reason about — every completed run on the
+         * case — so a candidate is stale exactly when the state those checks
+         * read has moved.
+         *
+         * The rules below already catch a new REQUIRED contribution and a new
+         * OPPOSING one. This catches the case they cannot: a newly accepted
+         * optional contribution that argues for nothing in particular. The
+         * candidate recorded "unavailable at aggregation" and that has since
+         * become false, and a synthesis whose account of what it saw is wrong
+         * is not a weaker synthesis — it is a different one.
+         *
+         * Not a timestamp. A clock reading says nothing about whether the
+         * inputs moved.
+         */
+        const observedNow = runs
+          .filter((candidateRun) => candidateRun.state === 'completed')
+          /*
+           * The producing run is outside its own basis, on both sides of the
+           * comparison. It was still `running` when the candidate was written
+           * and is `completed` by the time anyone adopts, so counting it would
+           * make every candidate stale against itself.
+           */
+          .filter((candidateRun) => candidateRun.id !== candidate.runId)
+          .map((candidateRun) => candidateRun.id)
+          .sort(utf8ByteOrder)
+        const observedThen = [...candidate.basis.observedCompletedRunIds].sort(
+          utf8ByteOrder,
+        )
+        if (
+          observedNow.length !== observedThen.length ||
+          observedNow.some((runId, index) => runId !== observedThen[index])
+        ) {
+          const appeared = observedNow.filter((runId) => !observedThen.includes(runId))
+          const gone = observedThen.filter((runId) => !observedNow.includes(runId))
+          reject(
+            'illegal-prior-state',
+            `The synthesis candidate was produced against a different set of ` +
+              `accepted contributions` +
+              (appeared.length > 0 ? ` (since accepted: ${appeared.join(', ')})` : '') +
+              (gone.length > 0 ? ` (no longer accepted: ${gone.join(', ')})` : '') +
+              `. Synthesise again against what the firm now holds — an old ` +
+              `reading of the evidence is not the institution's conclusion ` +
+              `about the new one.`,
+          )
+        }
+
+        synthesis = {
+          inputRunIds: candidate.artifact.inputRunIds,
+          dispositions: candidate.artifact.dispositions,
+          optionalInputs: candidate.artifact.optionalInputs,
+          rationale: candidate.artifact.rationale,
+          statement: candidate.artifact.statement,
+          position: candidate.artifact.position,
+          implications: candidate.artifact.implications,
+          invalidationCriteria: candidate.artifact.invalidationCriteria,
+          ...(candidate.artifact.horizon !== undefined
+            ? { horizon: candidate.artifact.horizon }
+            : {}),
+        }
+        synthesisRunId = candidate.runId
+      } else {
+        synthesis = {
+          inputRunIds: input.inputRunIds,
+          dispositions: input.dispositions,
+          optionalInputs: input.optionalInputs,
+          rationale: input.rationale,
+          statement: input.statement,
+          position: input.position,
+          implications: input.implications,
+          invalidationCriteria: input.invalidationCriteria,
+          ...(input.horizon !== undefined ? { horizon: input.horizon } : {}),
+        }
+      }
+
       /* --------------------------------------------------- declared scope */
 
-      const declared = new Set(input.inputRunIds)
+      const declared = new Set(synthesis.inputRunIds)
       const byRunId = new Map(runs.map((run) => [run.id, run]))
 
       for (const runId of declared) {
@@ -299,7 +539,7 @@ export function aggregateManagerConclusion(
             entry.blockedBy.includes(candidate.key)),
       )
       const accountedFor = new Set(
-        input.optionalInputs.map((record) => record.playbookEntryKey),
+        synthesis.optionalInputs.map((record) => record.playbookEntryKey),
       )
       const unaccounted = optionalEntries
         .map((candidate) => candidate.key)
@@ -334,7 +574,7 @@ export function aggregateManagerConclusion(
 
       const aggregationId = deriveAggregationId(context.commandId, input.sourceRevisionId)
 
-      const dispositions: ClaimDispositionRecord[] = input.dispositions.map((given) => {
+      const dispositions: ClaimDispositionRecord[] = synthesis.dispositions.map((given) => {
         const found = claimsInScope.find(
           (entryInScope) => entryInScope.claim.id === given.claimId,
         )
@@ -391,13 +631,21 @@ export function aggregateManagerConclusion(
             thesisId: source.thesisId,
             sourceRevisionId: input.sourceRevisionId,
             producedRevisionId: '',
-            managerEmployeeId,
+            /*
+             * Exactly one principal, in its own field. An agent's synthesis is
+             * the agent's act; writing the human Research Director's id here
+             * would put a person's name on a position they never read.
+             */
+            ...(managerEmployeeId ? { managerEmployeeId } : {}),
+            ...(managerAgentPrincipalId ? { managerAgentPrincipalId } : {}),
+            /* The candidate that became this position, where one did. */
+            ...(synthesisRunId ? { synthesisRunId } : {}),
             departmentId: input.departmentId,
             aggregatedAt: context.occurredAt,
-            rationale: input.rationale,
+            rationale: synthesis.rationale,
             inputs,
             dispositions,
-            optionalInputs: input.optionalInputs.map((record) => ({
+            optionalInputs: synthesis.optionalInputs.map((record) => ({
               playbookEntryKey: record.playbookEntryKey,
               availability: record.availability,
               ...(runIdForEntry(record.playbookEntryKey, assignments, runs)
@@ -433,16 +681,16 @@ export function aggregateManagerConclusion(
         thesisId: source.thesisId,
         prior: source,
         changes: {
-          statement: input.statement,
-          position: input.position,
-          invalidationCriteria: input.invalidationCriteria,
-          ...(input.horizon ? { horizon: input.horizon } : {}),
-          implications: input.implications,
+          statement: synthesis.statement,
+          position: synthesis.position,
+          invalidationCriteria: synthesis.invalidationCriteria,
+          ...(synthesis.horizon ? { horizon: synthesis.horizon } : {}),
+          implications: synthesis.implications,
           supportingClaimIds: supporting,
           opposingClaimIds: opposingIds,
         },
         cause: 'manager-aggregation',
-        reason: input.rationale,
+        reason: synthesis.rationale,
         proposedByDepartmentId: input.departmentId,
         lifecycle: 'under-analysis',
         aggregationId,

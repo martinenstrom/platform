@@ -20,6 +20,8 @@
 
 import {
   reviewIdentity,
+  type DevilsAdvocateVerdict,
+  type PeerExaminationVerdict,
   type ReviewAttribution,
   type ReviewOrder,
   type ReviewRecordId,
@@ -37,6 +39,7 @@ import { groupBy } from './caseRepositories'
 import {
   toCompliance,
   toDevilsAdvocate,
+  toPeerExamination,
   toRisk,
   toTransitionEvent,
   toVerification,
@@ -68,7 +71,7 @@ export function reviewRowId(
 const REVIEW_COLUMNS = `
   id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
   by_employee_id, by_department_id, ${ts('at')}, status, detail,
-  sequence, supersedes_review_id, reason
+  sequence, supersedes_review_id, reason, examined_department_id
 `
 
 /**
@@ -126,8 +129,16 @@ export const REVIEW_SQL = catalog({
                WHERE review_id = ANY($1::text[])
                ORDER BY review_id COLLATE "C", ordinal`,
 
+  /*
+   * Explicit columns, so a new one must be added here to be read. The
+   * provenance pair was written by `saveChallenge` and persisted correctly for
+   * a full bisect before anyone noticed this SELECT never asked for it — the
+   * mapper saw `undefined` and refused to reconstruct the act, which is
+   * exactly what it should do with a column it was not given.
+   */
   challenges: `SELECT id, review_id, contests_claim_id, contests_thesis_id, kind,
-                      argument, would_be_resolved_by, outcome, materiality, resolved_by
+                      argument, would_be_resolved_by, outcome, materiality, resolved_by,
+                      challenger_kind, by_department_id
                FROM analysis.challenges WHERE review_id = ANY($1::text[])
                ORDER BY review_id COLLATE "C", id COLLATE "C"`,
 
@@ -155,8 +166,8 @@ export const REVIEW_SQL = catalog({
   save: `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
             by_employee_id, by_department_id, at, status, detail,
-            sequence, supersedes_review_id, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            sequence, supersedes_review_id, reason, examined_department_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING id`,
 
   /*
@@ -200,10 +211,19 @@ export const REVIEW_SQL = catalog({
                    FROM unnest($2::int[], $3::text[]) AS batch(o, t)
                    ON CONFLICT DO NOTHING`,
 
+  /*
+   * `challenger_kind` and `by_department_id` are written but deliberately NOT
+   * in the DO UPDATE set. Re-filing a verdict may settle an objection —
+   * `outcome` and `resolved_by` — but it may never change who raised it or
+   * under whose mandate. Those are the identity of the act, and letting an
+   * upsert rewrite them would let a peer challenge become a Devil's Advocate
+   * one on a retry.
+   */
   saveChallenge: `INSERT INTO analysis.challenges
                     (id, review_id, contests_claim_id, contests_thesis_id, kind,
-                     argument, would_be_resolved_by, outcome, materiality, resolved_by)
-                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                     argument, would_be_resolved_by, outcome, materiality, resolved_by,
+                     challenger_kind, by_department_id)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                   ON CONFLICT (id) DO UPDATE
                     SET outcome = EXCLUDED.outcome,
                         resolved_by = EXCLUDED.resolved_by`,
@@ -253,6 +273,90 @@ export function createReviewRepository(
    * aborts the whole transaction otherwise, and the command has already written
    * events and assignment state by this point.
    */
+  /**
+   * The challenges of one review, with their counter-evidence.
+   *
+   * `challenger_kind` and `by_department_id` come off the CHALLENGE, never off
+   * the review that carries it: a peer examination and a Devil's Advocate
+   * review write through the same statement, and inferring the mandate from
+   * the parent here would undo migration 0034 at the last step.
+   */
+  async function saveChallenges(
+    client: Queryable,
+    reviewId: string,
+    review: DevilsAdvocateVerdict | PeerExaminationVerdict,
+    operation: string,
+  ): Promise<void> {
+    for (const challenge of review.challenges) {
+      await run(client, context, operation, REVIEW_SQL.saveChallenge, [
+        challenge.id,
+        reviewId,
+        challenge.contests,
+        challenge.contestsThesis ?? null,
+        challenge.kind,
+        challenge.argument,
+        challenge.wouldBeResolvedBy ?? null,
+        review.outcomes[challenge.id] ?? 'open',
+        challenge.materiality,
+        challenge.resolvedBy ?? null,
+        challenge.challengerKind,
+        challenge.byDepartmentId,
+      ])
+      for (const ref of challenge.counterEvidence) {
+        await run(client, context, operation, REVIEW_SQL.saveChallengeEvidence, [
+          challenge.id,
+          ref.setId,
+          ref.observationId,
+          ref.contentHash,
+        ])
+      }
+    }
+  }
+
+  /**
+   * Reviews of one kind with their challenges attached.
+   *
+   * Shared by the Devil's Advocate and the peers because the child tables are
+   * the same. Half A put the mandate on the challenge row, so the two kinds are
+   * separated by `kind` in the query and by the mapper that rebuilds them, not
+   * by two divergent copies of this join.
+   */
+  async function withChallenges<T>(
+    client: Queryable,
+    kind: ReviewKind,
+    caseId: string,
+    operation: string,
+    rebuild: (
+      row: ReviewRow,
+      own: readonly ChallengeRow[],
+      evidence: readonly ChallengeEvidenceRow[],
+    ) => T,
+  ): Promise<T[]> {
+    const rows = await rowsFor(client, kind, caseId, operation)
+    if (rows.length === 0) return []
+
+    const challenges = await run<ChallengeRow>(
+      client,
+      context,
+      operation,
+      REVIEW_SQL.challenges,
+      [rows.map((row) => row.id)],
+    )
+    const evidence =
+      challenges.length === 0
+        ? []
+        : await run<ChallengeEvidenceRow>(
+            client,
+            context,
+            operation,
+            REVIEW_SQL.challengeEvidence,
+            [challenges.map((challenge) => challenge.id)],
+          )
+
+    const byReview = groupBy(challenges, (challenge) => challenge.review_id)
+    return rows.map((row) => rebuild(row, byReview.get(row.id) ?? [], evidence))
+  }
+
   async function insertReview(
     client: Queryable,
     kind: ReviewKind,
@@ -260,6 +364,12 @@ export function createReviewRepository(
     status: string | null,
     detail: unknown,
     operation: string,
+    /*
+     * Only a peer examination has one, and the CHECK constraint refuses it on
+     * every other kind — so this stays an explicit argument rather than being
+     * read off the review, and the four control-function callers pass nothing.
+     */
+    examinedDepartmentId: string | null = null,
   ): Promise<string | null> {
     const id = review.reviewId
     const revisionId = review.scope === 'thesis-revision' ? review.revisionId : null
@@ -289,6 +399,7 @@ export function createReviewRepository(
             sequence,
             review.supersedesReviewId ?? null,
             review.reason ?? null,
+            examinedDepartmentId,
           ],
         )
         await client.query(`RELEASE SAVEPOINT review_insert`)
@@ -445,31 +556,13 @@ export function createReviewRepository(
     challengesForCase: (caseId) =>
       unitOfWork(scope, 'reviews.challengesForCase', async (client) => {
         const operation = 'reviews.challengesForCase'
-        const rows = await rowsFor(client, 'devils-advocate', caseId, operation)
-        if (rows.length === 0) return []
+        return withChallenges(client, 'devils-advocate', caseId, operation, toDevilsAdvocate)
+      }),
 
-        const challenges = await run<ChallengeRow>(
-          client,
-          context,
-          operation,
-          REVIEW_SQL.challenges,
-          [rows.map((row) => row.id)],
-        )
-        const evidence =
-          challenges.length === 0
-            ? []
-            : await run<ChallengeEvidenceRow>(
-                client,
-                context,
-                operation,
-                REVIEW_SQL.challengeEvidence,
-                [challenges.map((challenge) => challenge.id)],
-              )
-
-        const byReview = groupBy(challenges, (challenge) => challenge.review_id)
-        return rows.map((row) =>
-          toDevilsAdvocate(row, byReview.get(row.id) ?? [], evidence),
-        )
+    peerExaminationsForCase: (caseId) =>
+      unitOfWork(scope, 'reviews.peerExaminationsForCase', async (client) => {
+        const operation = 'reviews.peerExaminationsForCase'
+        return withChallenges(client, 'peer-examination', caseId, operation, toPeerExamination)
       }),
 
     /** One statement: compliance carries no typed children. */
@@ -574,28 +667,31 @@ export function createReviewRepository(
         )
         if (!id) return
 
-        for (const challenge of review.challenges) {
-          await run(client, context, operation, REVIEW_SQL.saveChallenge, [
-            challenge.id,
-            id,
-            challenge.contests,
-            challenge.contestsThesis ?? null,
-            challenge.kind,
-            challenge.argument,
-            challenge.wouldBeResolvedBy ?? null,
-            review.outcomes[challenge.id] ?? 'open',
-            challenge.materiality,
-            challenge.resolvedBy ?? null,
-          ])
-          for (const ref of challenge.counterEvidence) {
-            await run(client, context, operation, REVIEW_SQL.saveChallengeEvidence, [
-              challenge.id,
-              ref.setId,
-              ref.observationId,
-              ref.contentHash,
-            ])
-          }
-        }
+        await saveChallenges(client, id, review, operation)
+      }),
+
+    savePeerExamination: (review) =>
+      unitOfWork(scope, 'reviews.savePeerExamination', async (client) => {
+        const operation = 'reviews.savePeerExamination'
+        const id = await insertReview(
+          client,
+          'peer-examination',
+          review,
+          null,
+          {},
+          operation,
+          review.examinedDepartmentId,
+        )
+        /*
+         * The row is written even when `review.challenges` is empty, and that
+         * is the point of the kind: the review IS the record that a qualified
+         * desk read the argument. Returning early on an empty challenge set
+         * would leave "examined and found nothing to contest" and "never
+         * examined" indistinguishable in the store.
+         */
+        if (!id) return
+
+        await saveChallenges(client, id, review, operation)
       }),
 
     saveCompliance: (review) =>
@@ -672,9 +768,10 @@ export const EVENT_SQL = catalog({
   append: `INSERT INTO analysis.transition_events
              (event_id, subject, case_id, tenant_id, thesis_id, revision_id,
               assignment_id, run_id, review_id, challenge_id, from_state, to_state, actor_employee_id,
+              actor_agent_principal_id,
               actor_department_id, reason, occurred_at, correlation_id,
               causation_id, aggregate_version, corrects)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
            ON CONFLICT (event_id) DO NOTHING`,
 })
 
@@ -722,6 +819,7 @@ export function createEventRepository(
           event.fromState,
           event.toState,
           event.actorEmployeeId ?? null,
+          event.actorAgentPrincipalId ?? null,
           event.actorDepartmentId ?? null,
           event.reason ?? null,
           event.occurredAt,

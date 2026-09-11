@@ -156,11 +156,23 @@ describe('the seven approved instruments resolve through Avanza', () => {
     await getOverviewSnapshot(createOverviewDataSource(container))
 
     const quoteCalls = calls.filter((c) => c === 'get_stock_quote')
-    const infoCalls = calls.filter((c) => c === 'get_marketplace_info')
-    // Six watchlist symbols plus OMXS30.
+    const stockInfoCalls = calls.filter((c) => c === 'get_stock_info')
+    const marketplaceCalls = calls.filter((c) => c === 'get_marketplace_info')
+    // Six watchlist symbols plus OMXS30, all on the quote path.
     expect(quoteCalls).toHaveLength(7)
-    // One per resolved category — the watchlist and the Swedish index.
-    expect(infoCalls).toHaveLength(2)
+    /*
+     * DAX, Nasdaq 100 and Nikkei 225 take `get_stock_info` instead: it returns
+     * the ISIN and the type the binding verifies, so identity is checked in
+     * the same call that fetches the level.
+     */
+    expect(stockInfoCalls).toHaveLength(3)
+    /*
+     * One session lookup per resolved category that needs one — the watchlist,
+     * the Swedish index, and the broker-routed international indices. The
+     * index path reads each instrument's own market state from its payload and
+     * does not depend on this call.
+     */
+    expect(marketplaceCalls).toHaveLength(3)
     expect(calls).not.toContain('search_instruments')
   })
 })

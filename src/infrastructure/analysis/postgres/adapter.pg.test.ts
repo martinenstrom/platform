@@ -38,6 +38,8 @@ import {
 } from './postgresRepositories'
 import { poolScope, unitOfWork } from './transaction'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
+import { toDevilsAdvocate } from './mapping'
+import { buildChallenge, type Challenge, type ChallengeStatus } from '~/domain/analysis'
 import { APP_ROLE, createTestDatabase, type TestDatabase } from './testDatabase'
 
 let db: TestDatabase
@@ -88,6 +90,7 @@ const probeIntent = (): CommandIntent => ({
   actor: {
     kind: 'employee' as const,
     employeeId: 'research-director',
+    agentPrincipalId: null,
     roleId: 'research-director',
     roleFunction: 'manager' as const,
     departmentId: 'research-office',
@@ -837,7 +840,7 @@ describe('storage provenance', () => {
   it('reports the schema version it is actually running against', async () => {
     const provenance = await repos.provenance()
     expect(provenance.adapterId).toBe('postgres')
-    expect(provenance.schemaVersion).toBe('0033')
+    expect(provenance.schemaVersion).toBe('0047')
     expect(provenance.schemaChecksum).toMatch(/^[0-9a-f]{64}$/)
   })
 
@@ -871,5 +874,180 @@ describe('storage provenance', () => {
     expect(fromPostgres.queryCatalogHash).not.toBeNull()
     // The one coordinate they must agree on.
     expect(fromMemory.domainContractVersion).toBe(fromPostgres.domainContractVersion)
+  })
+})
+
+/* ======================================= challenge provenance, end to end = */
+
+/**
+ * The PRODUCTION read path, which a raw-SQL test cannot exercise.
+ *
+ * `schema.pg.test.ts` proves the mapper and the constraints, but it reloads
+ * with `SELECT *` — so it saw columns the repository's own query never asked
+ * for, and it passed while every command flow was failing.
+ *
+ * That was Defect 2: `REVIEW_SQL.challenges` lists its columns explicitly and
+ * had not been widened, so `challenger_kind` arrived as `undefined` and the
+ * fail-closed mapper refused to reconstruct the act. The data was written
+ * correctly and persisted correctly the whole time; it was simply never read.
+ *
+ * These go through `saveDevilsAdvocate` -> repository SELECT -> mapping, which
+ * is the path the product uses.
+ */
+describe('challenge provenance survives the production read path', () => {
+  /** A case, a run and one claim for challenges to contest. */
+  async function seedClaim(): Promise<string> {
+    await seedRun()
+    await repos.claims.save(
+      {
+        id: 'claim-1',
+        type: 'causal',
+        statement: 'Long yields reflect stronger growth expectations',
+        /* A causal claim must say on what basis. Ours is our own reading. */
+        attribution: {
+          kind: 'hedged-inference',
+          reasoning: 'Read from the curve and activity data together.',
+        },
+        /*
+         * `insufficient-evidence`: the domain refuses a `supported` claim with
+         * nothing behind it, and this fixture exists to be CONTESTED, not to be
+         * well-evidenced. Its status is irrelevant to challenge provenance.
+         */
+        status: 'insufficient-evidence',
+        evidenceRefs: [],
+        contradictingEvidenceRefs: [],
+        confidence: { level: 'moderate', basis: [] },
+        temporalScope: { asOf: AT },
+      },
+      'case-1',
+      'run-1',
+    )
+    return 'claim-1'
+  }
+
+  const challengeOf = (over: Partial<Challenge> = {}): Challenge =>
+    buildChallenge({
+      id: 'chl-1',
+      challengerKind: 'devils-advocate',
+      byDepartmentId: 'devils-advocate',
+      contests: 'claim-1',
+      kind: 'fragile-assumption',
+      argument: 'The attribution assumes growth rather than real-rate repricing',
+      counterEvidence: [],
+      wouldBeResolvedBy: 'A decomposition of the move',
+      materiality: 'material',
+      ...over,
+    })
+
+  const reviewOf = (challenge: Challenge, outcome: ChallengeStatus = 'open') => ({
+    reviewId: 'rvw-1',
+    scope: 'case' as const,
+    caseId: 'case-1',
+    byEmployeeId: 'devils-advocate-head',
+    byDepartmentId: 'devils-advocate',
+    at: AT,
+    sequence: 1,
+    challenges: [challenge],
+    outcomes: { [challenge.id]: outcome },
+  })
+
+  async function reload(): Promise<Challenge> {
+    const reviews = await repos.reviews.challengesForCase('case-1')
+    return reviews[0]!.challenges[0]!
+  }
+
+  it('round-trips a Devil’s Advocate mandate through the repository', async () => {
+    await seedClaim()
+    await repos.reviews.saveDevilsAdvocate(reviewOf(challengeOf()))
+
+    const challenge = await reload()
+    expect(challenge.challengerKind).toBe('devils-advocate')
+    expect(challenge.byDepartmentId).toBe('devils-advocate')
+  })
+
+  it('round-trips a peer mandate through the repository', async () => {
+    /*
+     * The case the fail-closed mapper protects. Under a default this would have
+     * reloaded as `devils-advocate` and reported that a conclusion had been
+     * challenged by the control function rather than by a desk that knows the
+     * subject.
+     */
+    await seedClaim()
+    await repos.reviews.saveDevilsAdvocate(
+      reviewOf(
+        challengeOf({ challengerKind: 'peer', byDepartmentId: 'quant-technical' }),
+      ),
+    )
+
+    const challenge = await reload()
+    expect(challenge.challengerKind).toBe('peer')
+    expect(challenge.byDepartmentId).toBe('quant-technical')
+  })
+
+  it('leaves every pre-existing field exactly as it was', async () => {
+    /*
+     * The Half A invariant: a challenge gaining explicit provenance must
+     * otherwise be observationally identical to the same challenge before it.
+     */
+    await seedClaim()
+    const original = challengeOf()
+    await repos.reviews.saveDevilsAdvocate(reviewOf(original, 'open'))
+
+    const challenge = await reload()
+    expect(challenge.id).toBe(original.id)
+    expect(challenge.contests).toBe(original.contests)
+    expect(challenge.kind).toBe(original.kind)
+    expect(challenge.argument).toBe(original.argument)
+    expect(challenge.materiality).toBe(original.materiality)
+    expect(challenge.wouldBeResolvedBy).toBe(original.wouldBeResolvedBy)
+    expect(challenge.counterEvidence).toEqual(original.counterEvidence)
+  })
+
+  it('carries the outcome and its resolver through unchanged', async () => {
+    await seedClaim()
+    const resolved = challengeOf({ resolvedBy: 'research-director' })
+    await repos.reviews.saveDevilsAdvocate(reviewOf(resolved, 'resolved'))
+
+    const reviews = await repos.reviews.challengesForCase('case-1')
+    const review = reviews[0]!
+    expect(review.outcomes[resolved.id]).toBe('resolved')
+    expect(review.challenges[0]!.resolvedBy).toBe('research-director')
+  })
+
+  it('refuses to reconstruct a challenge whose mandate did not come back', async () => {
+    /*
+     * Defect 2 reproduced at the boundary where it happened.
+     *
+     * NULL is not the failure mode and cannot be: the column is NOT NULL since
+     * 0034, so the database will not hold one. What actually happened was a
+     * SELECT that never asked for the column, which reaches the mapper as
+     * `undefined` — a row projection missing a field, not a row with a null in
+     * it.
+     *
+     * So this feeds the mapper exactly that: the row as the old query returned
+     * it. If it ever reconstructs a challenge instead of throwing, the mapper
+     * has acquired a default and every peer challenge read through an
+     * incomplete projection would silently become a Devil's Advocate one.
+     */
+    await seedClaim()
+    await repos.reviews.saveDevilsAdvocate(reviewOf(challengeOf()))
+
+    const { rows } = await db.owner.query(
+      `SELECT id, review_id, contests_claim_id, contests_thesis_id, kind,
+              argument, would_be_resolved_by, outcome, materiality, resolved_by
+       FROM analysis.challenges WHERE id = 'chl-1'`,
+    )
+    const reviewRows = await db.owner.query(
+      `SELECT * FROM analysis.reviews WHERE id = 'rvw-1'`,
+    )
+    const reviewRow = reviewRows.rows[0]
+    const rawAt = reviewRow.at as unknown
+    expect(() =>
+      toDevilsAdvocate(
+        { ...reviewRow, at: rawAt instanceof Date ? rawAt.toISOString() : reviewRow.at },
+        rows,
+        [],
+      ),
+    ).toThrow(/not a known mandate/)
   })
 })

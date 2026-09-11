@@ -10,7 +10,13 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Client } from 'pg'
+import { mkdtempSync, copyFileSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { createTestDatabase, type TestDatabase } from './testDatabase'
+import { migrate } from './migrations'
+import { toDevilsAdvocate } from './mapping'
+import type { ChallengeRow, ReviewRow } from './rows'
 
 let db: TestDatabase
 let sql: Client
@@ -58,9 +64,9 @@ async function insertCase(
   return caseId
 }
 
-async function insertEvidenceSet() {
+async function insertEvidenceSet(client: Client = sql) {
   const setId = id('set')
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.evidence_sets (id, assembled_at, correlation_id, co_temporality)
      VALUES ($1, now(), 'corr', '{"kind":"empty"}'::jsonb)`,
     [setId],
@@ -111,25 +117,26 @@ async function insertRevision(
  * every raw-SQL run fixture gets the same honest provenance.
  */
 let executionSeeded = false
-async function seedExecutionRefs() {
-  if (executionSeeded) return
-  await sql.query(
+/** `client` defaults to the suite's database; the migration test passes its own. */
+async function seedExecutionRefs(client: Client = sql) {
+  if (client === sql && executionSeeded) return
+  await client.query(
     `INSERT INTO analysis.playbooks (id, case_kind, name)
      VALUES ('schema-test', 'macro', 'Schema test playbook')
      ON CONFLICT (id) DO NOTHING`,
   )
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.playbook_versions (playbook_id, version, content_hash)
      VALUES ('schema-test', '1', 'hash')
      ON CONFLICT DO NOTHING`,
   )
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.playbook_entries
        (playbook_id, version, entry_key, department_id, brief, requirement, priority)
      VALUES ('schema-test', '1', 'entry', 'global-macro', 'Regime read', 'required', 5)
      ON CONFLICT DO NOTHING`,
   )
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.storage_provenance
        (id, adapter_id, adapter_version, build_id, query_catalog_hash,
         schema_version, domain_contract_version, command_contract_version,
@@ -141,17 +148,17 @@ async function seedExecutionRefs() {
   executionSeeded = true
 }
 
-async function insertRun(caseId: string) {
+async function insertRun(caseId: string, client: Client = sql) {
   const assignmentId = id('assignment')
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.assignments
        (id, case_id, tenant_id, department_id, brief, status, priority, created_at)
      VALUES ($1, $2, 'system', 'global-macro', 'Regime read', 'queued', 5, now())`,
     [assignmentId, caseId],
   )
   const runId = id('run')
-  await seedExecutionRefs()
-  await sql.query(
+  await seedExecutionRefs(client)
+  await client.query(
     `INSERT INTO analysis.runs
        (id, case_id, tenant_id, assignment_id, department_id, employee_id, state,
         agent_contract_version, output_schema_version,
@@ -169,14 +176,14 @@ async function insertRun(caseId: string) {
              'recorded-provider', '1', 'recorded', '{}', 'schema-test-prov',
              -- Recorded work cannot spend tokens or money; no deadline was set.
              'not-applicable', 'not-applicable', 'not-measured')`,
-    [runId, caseId, assignmentId, await insertEvidenceSet()],
+    [runId, caseId, assignmentId, await insertEvidenceSet(client)],
   )
   return { assignmentId, runId }
 }
 
-async function insertClaim(caseId: string, runId: string) {
+async function insertClaim(caseId: string, runId: string, client: Client = sql) {
   const claimId = id('claim')
-  await sql.query(
+  await client.query(
     `INSERT INTO analysis.claims
        (id, case_id, tenant_id, run_id, type, statement, status,
         confidence_level, temporal_as_of)
@@ -680,8 +687,11 @@ describe('governance records', () => {
 
     await sql.query('BEGIN')
     await sql.query(
-      `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality)
-       VALUES ($1, $2, $3, 'contradicting-evidence', 'The number is wrong', 'material')`,
+      /* Provenance is NOT NULL since 0034; the columns are incidental here. */
+      `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality,
+                                        challenger_kind, by_department_id)
+       VALUES ($1, $2, $3, 'contradicting-evidence', 'The number is wrong', 'material',
+               'devils-advocate', 'devils-advocate')`,
       [id('challenge'), reviewId, claimId],
     )
     await expect(sql.query('COMMIT')).rejects.toThrow(/cites no counter-evidence/)
@@ -704,8 +714,10 @@ describe('governance records', () => {
     )
     await expect(
       sql.query(
-        `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality, would_be_resolved_by)
-         VALUES ($1, $2, $3, 'fragile-assumption', 'This assumes no fiscal shock', 'material', 'A fiscal impulse estimate')`,
+        `INSERT INTO analysis.challenges (id, review_id, contests_claim_id, kind, argument, materiality,
+                                          would_be_resolved_by, challenger_kind, by_department_id)
+         VALUES ($1, $2, $3, 'fragile-assumption', 'This assumes no fiscal shock', 'material',
+                 'A fiscal impulse estimate', 'devils-advocate', 'devils-advocate')`,
         [id('challenge'), reviewId, claimId],
       ),
     ).resolves.toBeDefined()
@@ -801,4 +813,307 @@ describe('append-only and write-once records', () => {
     await insert()
     await expect(insert()).rejects.toThrow(/duplicate key/)
   })
+})
+
+/* =================================================== challenge provenance = */
+
+/**
+ * Migration 0034 gave a challenge two new facts: under whose mandate it was
+ * filed, and by which desk.
+ *
+ * Everything the Boardroom will read — was this conclusion challenged, and was
+ * it challenged by someone who knows the subject — rests on those two columns,
+ * so they have to survive a round trip exactly rather than approximately.
+ *
+ * These sit beside the other schema tests because they reuse the same
+ * case -> assignment -> run -> claim seed chain. A second file would have meant
+ * a second copy of a fixture that already exists.
+ */
+
+/**
+ * The peer challenger, chosen from departments the firm actually has.
+ *
+ * `quant-technical` rather than `rates`: Half A proves that a GENERIC peer
+ * challenge is durable, and it must not depend on an organisation change that
+ * has not been ruled. The foreign key rejecting `rates` is the barrier working
+ * — a department is a seat the firm holds, not a label that satisfies a
+ * constraint.
+ */
+const PEER_DEPARTMENT = 'quant-technical'
+
+async function seedReviewBy(caseId: string, departmentId: string) {
+  const reviewId = id('review')
+  await sql.query(
+    `INSERT INTO analysis.reviews
+       (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, sequence)
+     VALUES ($1, 'devils-advocate', 'case', $2, 'system', 'devils-advocate-head', $3, now(), 1)`,
+    [reviewId, caseId, departmentId],
+  )
+  return reviewId
+}
+
+async function insertProvenancedChallenge(args: {
+  reviewId: string
+  claimId: string
+  challengerKind: string
+  byDepartmentId: string
+}) {
+  const challengeId = id('challenge')
+  await sql.query(
+    `INSERT INTO analysis.challenges
+       (id, review_id, contests_claim_id, kind, argument, materiality,
+        would_be_resolved_by, outcome, challenger_kind, by_department_id)
+     VALUES ($1, $2, $3, 'fragile-assumption',
+             'The attribution assumes growth rather than real-rate repricing',
+             'material', 'A decomposition of the move', 'open', $4, $5)`,
+    [challengeId, args.reviewId, args.claimId, args.challengerKind, args.byDepartmentId],
+  )
+  return challengeId
+}
+
+/** Reads a challenge back the way the adapter does: row -> domain. */
+async function reloadChallenge(reviewId: string, challengeId: string) {
+  const reviews = await sql.query<ReviewRow>(
+    `SELECT * FROM analysis.reviews WHERE id = $1`,
+    [reviewId],
+  )
+  const rows = await sql.query<ChallengeRow>(
+    `SELECT * FROM analysis.challenges WHERE id = $1`,
+    [challengeId],
+  )
+  /*
+   * `at` normalised to the ISO text the domain stores.
+   *
+   * The production pool registers per-pool type parsers that leave timestamps
+   * as text; this suite's raw client does not, so `pg` hands back a `Date`.
+   * `seal` then refuses it — correctly, because a mutable Date cannot be frozen
+   * against in-place change. The mapper is right and the test client was wrong.
+   */
+  const row = reviews.rows[0]!
+  /* Typed `string`; this client hands back a Date at runtime. */
+  const rawAt = row.at as unknown
+  const at = rawAt instanceof Date ? rawAt.toISOString() : row.at
+  const review = toDevilsAdvocate({ ...row, at }, rows.rows, [])
+  return review.challenges.find((c) => c.id === challengeId)!
+}
+
+describe('challenge provenance survives persistence', () => {
+  it('round-trips a peer challenge filed by Rates', async () => {
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const reviewId = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    const challengeId = await insertProvenancedChallenge({
+      reviewId,
+      claimId,
+      challengerKind: 'peer',
+      byDepartmentId: PEER_DEPARTMENT,
+    })
+
+    const challenge = await reloadChallenge(reviewId, challengeId)
+    expect(challenge.id).toBe(challengeId)
+    expect(challenge.contests).toBe(claimId)
+    expect(challenge.challengerKind).toBe('peer')
+    expect(challenge.byDepartmentId).toBe(PEER_DEPARTMENT)
+    expect(challenge.kind).toBe('fragile-assumption')
+    expect(challenge.materiality).toBe('material')
+    expect(challenge.wouldBeResolvedBy).toBe('A decomposition of the move')
+  })
+
+  it('keeps the two mandates distinguishable after reload', async () => {
+    /*
+     * The whole point of the distinction. If these reloaded identically the
+     * firm could report that a conclusion "survived scrutiny" when only the
+     * desk whose job is to object had objected.
+     */
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const peerReview = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    const daReview = await seedReviewBy(caseId, 'devils-advocate')
+    const peerId = await insertProvenancedChallenge({
+      reviewId: peerReview,
+      claimId,
+      challengerKind: 'peer',
+      byDepartmentId: PEER_DEPARTMENT,
+    })
+    const daId = await insertProvenancedChallenge({
+      reviewId: daReview,
+      claimId,
+      challengerKind: 'devils-advocate',
+      byDepartmentId: 'devils-advocate',
+    })
+
+    const peer = await reloadChallenge(peerReview, peerId)
+    const devilsAdvocate = await reloadChallenge(daReview, daId)
+    expect(peer.challengerKind).toBe('peer')
+    expect(devilsAdvocate.challengerKind).toBe('devils-advocate')
+    expect(peer.byDepartmentId).not.toBe(devilsAdvocate.byDepartmentId)
+  })
+
+  it('refuses an unknown challenger mandate', async () => {
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const reviewId = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    await expect(
+      insertProvenancedChallenge({
+        reviewId,
+        claimId,
+        challengerKind: 'referee',
+        byDepartmentId: PEER_DEPARTMENT,
+      }),
+    ).rejects.toThrow(/challenges_challenger_kind_known/)
+  })
+
+  it('refuses a department the firm does not have', async () => {
+    /*
+     * Without the foreign key a misspelled desk would persist as a
+     * valid-looking act, and the mapper would faithfully reconstruct an
+     * objection from a department that does not exist.
+     */
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const reviewId = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    await expect(
+      insertProvenancedChallenge({
+        reviewId,
+        claimId,
+        challengerKind: 'peer',
+        byDepartmentId: 'rats-desk',
+      }),
+    ).rejects.toThrow(/challenges_by_department_fk/)
+  })
+
+  it('refuses a challenge carrying no provenance at all', async () => {
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const reviewId = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    await expect(
+      sql.query(
+        `INSERT INTO analysis.challenges
+           (id, review_id, contests_claim_id, kind, argument, materiality, would_be_resolved_by)
+         VALUES ($1, $2, $3, 'fragile-assumption', 'no provenance', 'material', 'x')`,
+        [id('challenge'), reviewId, claimId],
+      ),
+    ).rejects.toThrow(/null value|not-null/i)
+  })
+
+  it('does not let a re-filed verdict rewrite who raised the objection', async () => {
+    /*
+     * Re-filing may settle an objection; it may never change who raised it or
+     * under whose mandate. `saveChallenge`'s DO UPDATE set omits both columns,
+     * and this is the behaviour that omission buys.
+     */
+    const caseId = await insertCase()
+    const { runId } = await insertRun(caseId)
+    const claimId = await insertClaim(caseId, runId)
+    const reviewId = await seedReviewBy(caseId, PEER_DEPARTMENT)
+    const challengeId = await insertProvenancedChallenge({
+      reviewId,
+      claimId,
+      challengerKind: 'peer',
+      byDepartmentId: PEER_DEPARTMENT,
+    })
+    await sql.query(
+      /*
+       * `resolved_by` is required once the outcome leaves 'open' — a
+       * pre-existing invariant (`challenges_resolved_names_resolver`), and the
+       * re-filed verdict here settles the objection, so it names a resolver.
+       */
+      `INSERT INTO analysis.challenges
+         (id, review_id, contests_claim_id, kind, argument, materiality,
+          would_be_resolved_by, outcome, resolved_by,
+          challenger_kind, by_department_id)
+       VALUES ($1, $2, $3, 'fragile-assumption', 'x', 'material', 'y', 'resolved',
+               'devils-advocate-head', 'devils-advocate', 'devils-advocate')
+       ON CONFLICT (id) DO UPDATE
+         SET outcome = EXCLUDED.outcome, resolved_by = EXCLUDED.resolved_by`,
+      [challengeId, reviewId, claimId],
+    )
+    const challenge = await reloadChallenge(reviewId, challengeId)
+    /* Provenance is untouched by the re-filing... */
+    expect(challenge.challengerKind).toBe('peer')
+    expect(challenge.byDepartmentId).toBe(PEER_DEPARTMENT)
+    /* ...while the settlement the re-filing carried did take effect. */
+    expect(challenge.resolvedBy).toBe('devils-advocate-head')
+  })
+})
+
+describe('migration 0034 backfills legacy rows from stored data', () => {
+  it('reconstructs a pre-0034 challenge with the provenance its review recorded', async () => {
+    /*
+     * Migration-level verification rather than a claim about one.
+     *
+     * A second database is migrated to 0033 only, a legacy challenge is written
+     * with exactly the insert the pre-0034 repository issued, and 0034 is then
+     * applied. The backfill must read the parent review rather than write a
+     * constant — which is the difference between restating an enforced
+     * invariant and manufacturing provenance.
+     */
+    const legacy = await createTestDatabase()
+    try {
+      const source = resolve(process.cwd(), 'db/migrations')
+      const upTo33 = mkdtempSync(join(tmpdir(), 'mig33-'))
+      for (const file of readdirSync(source)) {
+        if (file < '0034') copyFileSync(join(source, file), join(upTo33, file))
+      }
+      await migrate(legacy.owner, { directory: upTo33 })
+
+      await legacy.owner.query(
+        `INSERT INTO analysis.cases
+           (id, tenant_id, version, owner_employee_id, subject_kind, subject_ref,
+            subject_display_name, question, stage, opened_at)
+         VALUES ('legacy-case', 'system', 1, 'research-director', 'macro', 'regime',
+                 'Policy regime', 'Is the policy path mispriced?', 'intake', now())`,
+      )
+      await legacy.owner.query(
+        `INSERT INTO analysis.reviews
+           (id, kind, scope, case_id, tenant_id, by_employee_id, by_department_id, at, sequence)
+         VALUES ('legacy-review', 'devils-advocate', 'case', 'legacy-case', 'system',
+                 'devils-advocate-head', 'devils-advocate', now(), 1)`,
+      )
+      /*
+       * The challenge cites a claim, and a claim needs the run chain behind it.
+       * Seeded against THIS database rather than the suite's, which is why the
+       * helpers take a client.
+       */
+      await seedExecutionRefs(legacy.owner)
+      const legacyRun = await insertRun('legacy-case', legacy.owner)
+      const legacyClaim = await insertClaim('legacy-case', legacyRun.runId, legacy.owner)
+      await legacy.owner.query(
+        `INSERT INTO analysis.challenges
+           (id, review_id, contests_claim_id, kind, argument, materiality, would_be_resolved_by)
+         VALUES ('legacy-challenge', 'legacy-review', $1,
+                 'fragile-assumption', 'legacy objection', 'material', 'evidence')`,
+        [legacyClaim],
+      )
+
+      await migrate(legacy.owner, { directory: source })
+
+      const rows = await legacy.owner.query<ChallengeRow>(
+        `SELECT * FROM analysis.challenges WHERE id = 'legacy-challenge'`,
+      )
+      const reviews = await legacy.owner.query<ReviewRow>(
+        `SELECT * FROM analysis.reviews WHERE id = 'legacy-review'`,
+      )
+      const legacyRow = reviews.rows[0]!
+      const rawLegacyAt = legacyRow.at as unknown
+      const legacyAt =
+        rawLegacyAt instanceof Date ? rawLegacyAt.toISOString() : legacyRow.at
+      const challenge = toDevilsAdvocate({ ...legacyRow, at: legacyAt }, rows.rows, [])
+        .challenges[0]!
+
+      expect(challenge.challengerKind).toBe('devils-advocate')
+      expect(challenge.byDepartmentId).toBe('devils-advocate')
+      /* And the act itself is untouched by the migration. */
+      expect(challenge.id).toBe('legacy-challenge')
+      expect(challenge.argument).toBe('legacy objection')
+      expect(challenge.materiality).toBe('material')
+    } finally {
+      await legacy.drop()
+    }
+  }, 180_000)
 })

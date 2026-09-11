@@ -343,6 +343,263 @@ export const MACRO_REGIME_PLAYBOOK_V4: CasePlaybook = Object.freeze({
 })
 
 /**
+ * Version 5 — a second analytical desk, and synthesis that waits for both.
+ *
+ * Every earlier version had ONE desk capable of speaking about rates. A firm
+ * with one such desk cannot disagree with itself: it could record objections
+ * from its control functions, and never a substantive disagreement between two
+ * people who both know the subject. Migration 0035 seated Rates; this is the
+ * workflow that puts it to work.
+ *
+ * ## The dependency that carries the meaning
+ *
+ *     macro-analysis ──┐
+ *                      ├──> aggregation ──> peer-examination
+ *     rates-analysis ──┘
+ *
+ * **`rates-analysis` is blocked by nothing, and that is an invariant of this
+ * version rather than a scheduling convenience.** Macro and Rates form their
+ * initial views independently. A desk that reads Macro's conclusion first and
+ * then responds to it produces peer commentary; a desk that reached its own
+ * view and *then* finds it differs has produced a disagreement worth having.
+ * The point is epistemic independence before synthesis, not parallelism — so
+ * no Macro output, no aggregation output and no other desk's conclusion may
+ * ever become an input dependency of this entry.
+ *
+ * **`aggregation` waits for both.** Rates is required, so the Research Office
+ * must not synthesise before the Rates view exists — otherwise a required
+ * analysis could land after the thesis it was supposed to inform. This is a
+ * deliberate change to the institutional workflow: two independent analytical
+ * desks, then synthesis, then examination.
+ *
+ * Quant keeps exactly the relationship v4 gave it. It is an optional input to
+ * aggregation and is not redesigned here.
+ *
+ * **`peer-examination` waits for `aggregation`**, because it examines a
+ * revision and a revision does not exist until the manager has made one.
+ * `placeVerdict` already refuses a verdict on a `proposed` or `under-analysis`
+ * revision — a verdict on work nobody has finished is a verdict on a draft —
+ * and the graph respects that lifecycle rather than scheduling work the
+ * command would reject.
+ *
+ * ## Rates performs two DIFFERENT acts, and they are not collapsed
+ *
+ * `rates-analysis` is Rates forming its own view. `peer-examination` is Rates
+ * reading the synthesised revision afterwards and saying whether it agrees.
+ * The same department, two entries, because they answer different questions at
+ * different points in the argument.
+ *
+ * The second act never rewrites the first. If Rates disagreed initially and
+ * the aggregation reconciled that disagreement persuasively, Rates may examine
+ * the revision and raise nothing — and **zero challenges is a real finding**,
+ * not manufactured consensus and not a reason for anyone's confidence to rise.
+ * If the revision still rests on a claim Rates considers materially
+ * unsupported, it challenges that exact `ClaimId`.
+ *
+ * ## Everything else is carried forward untouched
+ *
+ * v4's run budget on `macro-analysis`, the conditional Risk rule, and every
+ * existing assignment are byte-identical. v1 through v4 are unchanged and stay
+ * readable against the workflows their cases actually pinned.
+ */
+const RATES_ANALYSIS: PlaybookEntry = Object.freeze({
+  key: 'rates-analysis',
+  departmentId: 'rates',
+  brief:
+    'Form an independent view of the rates market for the subject: the ' +
+    'policy path priced, nominal and real curve structure, inflation ' +
+    'compensation, and what the curve is attributing the move to. Do not ' +
+    'reconcile with another desk; state your own view and what would change it.',
+  /*
+   * Nothing. See the note above: this is epistemic independence, and adding a
+   * dependency here would quietly convert a second opinion into a response.
+   */
+  blockedBy: Object.freeze([]),
+  optionalInputs: Object.freeze([]),
+  requirement: 'required',
+  /* The same standing as `macro-analysis`: a primary analysis, not a check. */
+  priority: 100,
+  disciplineTag: 'rates',
+})
+
+const PEER_EXAMINATION: PlaybookEntry = Object.freeze({
+  key: 'peer-examination',
+  departmentId: 'rates',
+  brief:
+    'Read the synthesised revision as a qualified peer. Say on the record ' +
+    'whether you agree. Challenge any claim you consider materially ' +
+    'unsupported, naming the claim; if the argument survives your reading, ' +
+    'record that you examined it and raised nothing.',
+  /* A revision has to exist to be examined. See `placeVerdict`. */
+  blockedBy: Object.freeze(['aggregation']),
+  optionalInputs: Object.freeze([]),
+  requirement: 'required',
+  /* Alongside the other reviews of a completed revision. */
+  priority: 70,
+  disciplineTag: 'rates',
+})
+
+const MACRO_REGIME_V5_ENTRIES: readonly PlaybookEntry[] = Object.freeze([
+  ...MACRO_REGIME_V4_ENTRIES.map((entry) =>
+    entry.key === 'aggregation'
+      ? Object.freeze({
+          ...entry,
+          /* Both analytical desks, because both are required. */
+          blockedBy: Object.freeze(['macro-analysis', 'rates-analysis']),
+        })
+      : entry,
+  ),
+  RATES_ANALYSIS,
+  PEER_EXAMINATION,
+])
+
+export const MACRO_REGIME_PLAYBOOK_V5: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '5',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V5_ENTRIES,
+})
+
+/**
+ * What the firm authorizes the Research Office to spend on one synthesis, as a
+ * **proposal**.
+ *
+ * The first of the three budget sources again, for a second kind of work. **Not
+ * the firm's hard global ceiling** — TD-76 is still open and this does not
+ * close it — and not a per-case constraint either: a case may still constrain
+ * below this, because resolution is a minimum across every source that speaks.
+ *
+ * Approved 2026-09-07 from measurement rather than from the desk figure it
+ * would have been convenient to copy. A synthesis prompt is not an evidence
+ * briefing: `synthesisContext` gives the model the question, the argument on
+ * the table and the claim IDS of each accepted contribution, and never the
+ * observations. So its input scales with how many claims the desks produced,
+ * not with how much evidence they read. Counted with the provider's own token
+ * counter, against the real `aggregation` brief:
+ *
+ * | shape | input | + 4,096 output cap |
+ * |---|---|---|
+ * | 1 + 1 claims | 1,277 | 5,373 |
+ * | 7 + 7 claims — the median desk run on record | 1,721 | 5,817 |
+ * | 14 + 14 claims — the largest desk run on record | 2,239 | 6,335 |
+ * | 50 + 50 claims — stress | 4,903 | 8,999 |
+ * | 250 + 250 claims — pathology | 19,403 | 23,499 |
+ *
+ * **12,000 is deliberately not fitted just above the measurement.** It is
+ * ~1.9x the largest shape any real pair of desk runs has produced, and it still
+ * refuses the pathology — which is what a circuit breaker is for. A limit set
+ * near expected usage destroys work the firm has already paid for, which is the
+ * rule the `macro-analysis` note above states and the defect C3 Stage C
+ * measured.
+ *
+ * **The `+ 4,096` column above is superseded, and the 12,000 is not.** The
+ * table was computed against the desk answer cap, which the first live
+ * synthesis proved too small for this kind of work: a synthesis must account
+ * for every claim it is given, so its ANSWER grows with the argument, and
+ * 4,096 truncated it mid-string three times. The cap is now
+ * `LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS` (8,192), measured on that run, and the
+ * arithmetic to read this table with is `input + 8,192`.
+ *
+ * The authorization does not move, because it does not need to: the real run
+ * spent 1,989 + 5,512 = **7,501**, and the cap's worst case for the median and
+ * largest recorded shapes stays inside 12,000. What the larger cap does narrow
+ * is how big an argument this budget admits — the 50 + 50 stress shape now
+ * reaches 4,903 + 8,192 = 13,095 and would overrun. That is a **measured
+ * consequence recorded rather than papered over**: no pair of desks has
+ * produced 100 claims, and if one ever does, the answer is a new version whose
+ * budget was computed against the real cap, not a number widened here in
+ * anticipation.
+ *
+ * **The deadline is v4's envelope, reused rather than invented.** Same model,
+ * same shared-deadline retry arithmetic, so the calibration v4 recorded — one
+ * normal attempt at 66.156 s plus one full retry — transfers without a new
+ * number. Since measured: the first successful live synthesis of 31 claims
+ * returned inside the envelope, and the failing 4,096-cap attempt took 144.752 s
+ * across three attempts without exhausting it. TD-82 still applies — this is
+ * single-sample calibration, which is what the firm is living with.
+ *
+ * **The monetary figure is an authorization, not a control**, for the reason
+ * `MACRO_ANALYSIS_BUDGET` states: the Messages API reports token counts and no
+ * price, so `budgetOverruns` can never evaluate it. It is named because
+ * `budgetPermitsStart` refuses a live run with an unmeasured dimension.
+ */
+const RESEARCH_OFFICE_SYNTHESIS_BUDGET = Object.freeze({
+  tokens: 12_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+/**
+ * Version 6 — the analytical path to a synthesis, authorized to run live.
+ *
+ * **Why a sixth version.** The rule that produced v2, v3, v4 and v5:
+ * registration is append-only and a budget is inside `playbookContentHash`.
+ * Editing v5 in place would give two cases different authorizations under one
+ * pin, and only the order they started in would say which. **v1 through v5 are
+ * unchanged**, and every case pinned to one of them keeps exactly what it
+ * pinned — including the authorizations that must keep refusing live work.
+ *
+ * **The workflow itself does not move.** Same case kind, same desks, same
+ * requirement classes, same `blockedBy`, same optional inputs, same conditional
+ * Risk rule, same Rates peer examination, same governance and the same CIO
+ * boundary. Aggregation still waits for BOTH analytical desks — `macro-analysis`
+ * AND `rates-analysis` — and that dependency is not relaxed to make an
+ * autonomous run easier to reach. Two entries change, and each changes only by
+ * acquiring a budget.
+ *
+ * **`rates-analysis` reuses the desk envelope v4 approved, rather than a second
+ * number.** Measured 2026-09-07 with the provider's own token counter, against
+ * every evidence set the firm actually holds:
+ *
+ * | set | observations | macro input | rates input | rates + output cap |
+ * |---|---|---|---|---|
+ * | `7b454f28` | 60 | 15,531 | 15,562 | 19,658 |
+ * | `968b4c1c` | 24 | 5,282 | 5,313 | 9,409 |
+ * | `11aaa8c3` | 1 | 892 | 923 | 5,019 |
+ * | `c0d6bcba` | 264 | 65,902 | 65,933 | 70,029 |
+ *
+ * The two desks read the same sets through the same provider, the same system
+ * prompt and the same evidence briefing; the entire difference between them is
+ * the length of their briefs — **31 tokens**. So `MACRO_ANALYSIS_BUDGET_V4`
+ * covers the Rates desk unaltered, and it is **reused rather than copied under
+ * a desk-specific name**: two constants holding identical values would be two
+ * things to keep in step, and a divergence between them would be silent.
+ *
+ * **The breaker still breaks.** The 264-observation full window needs 70,029
+ * tokens for one attempt and stays refused at 24,000, for both desks. That
+ * measurement also corrects the estimate in v3's note — it recorded ≈28,350
+ * input tokens for that shape; counted rather than estimated, it is 65,902.
+ *
+ * **What v6 deliberately does NOT authorize.** `quant-validation`,
+ * `verification`, `challenge`, `risk-review` and `peer-examination` carry no
+ * budget and therefore still refuse to start live. Those autonomy boundaries
+ * have not been opened by anyone, and a version that budgeted every entry it
+ * happened to contain would be authorizing autonomy nobody approved. What this
+ * version authorizes is exactly one path: **Macro and Rates form independent
+ * views, and the Research Office synthesises them.**
+ */
+const MACRO_REGIME_V6_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_V5_ENTRIES.map((entry) => {
+    if (entry.key === 'rates-analysis') {
+      return Object.freeze({ ...entry, budget: MACRO_ANALYSIS_BUDGET_V4 })
+    }
+    if (entry.key === 'aggregation') {
+      return Object.freeze({ ...entry, budget: RESEARCH_OFFICE_SYNTHESIS_BUDGET })
+    }
+    return entry
+  }),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V6: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '6',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V6_ENTRIES,
+})
+
+/**
  * Every playbook this build can register.
  *
  * A list rather than a lookup by id alone, because registration is keyed on
@@ -354,4 +611,6 @@ export const COMPILED_PLAYBOOKS: readonly CasePlaybook[] = Object.freeze([
   MACRO_REGIME_PLAYBOOK_V2,
   MACRO_REGIME_PLAYBOOK_V3,
   MACRO_REGIME_PLAYBOOK_V4,
+  MACRO_REGIME_PLAYBOOK_V5,
+  MACRO_REGIME_PLAYBOOK_V6,
 ])

@@ -44,6 +44,7 @@ export function cioActor(over: Partial<ActorSnapshot> = {}): ActorSnapshot {
   return {
     kind: 'employee',
     employeeId: 'cio',
+    agentPrincipalId: null,
     roleId: 'role-cio',
     roleFunction: 'executive',
     departmentId: 'executive',
@@ -82,6 +83,22 @@ export const challengeIdsFor = (revisionId: string) =>
 export const runIdsFor = (revisionId: string) =>
   [`run-1-${revisionId}`, `run-2-${revisionId}`] as const
 export const claimIdFor = (revisionId: string) => `claim-${revisionId}`
+export const peerExaminationIdFor = (revisionId: string) => `review-p-${revisionId}`
+export const peerChallengeIdFor = (revisionId: string) => `challenge-p-${revisionId}`
+
+/**
+ * The desks the fixture's peer examination is between.
+ *
+ * Exported so `decisionSeed` writes the SAME ids the basis references. The
+ * basis names a review and a department; PostgreSQL has foreign keys to both,
+ * so a fixture that named one desk while the seed wrote another would pass in
+ * memory and be refused by the database — the exact divergence the shared
+ * contract suite exists to catch.
+ *
+ * Real ids: `rates` arrives with migration 0035, `global-macro` with 0010.
+ */
+export const PEER_EXAMINER_DEPARTMENT = 'rates'
+export const PEER_EXAMINED_DEPARTMENT = 'global-macro'
 
 /**
  * The evidence sets the seed creates, built here so both sides agree on the ids.
@@ -178,6 +195,28 @@ export function eligibilityBasis(over: Partial<EligibilityBasis> = {}): Eligibil
           : 'material') satisfies DisagreementMateriality,
       })),
     },
+    /*
+     * One desk examined another and left one objection open.
+     *
+     * Populated rather than empty for the same reason the Devil's Advocate's
+     * challenges carry mixed materiality: a fixture where nobody examined
+     * would exercise the new field's shape without exercising what it is for,
+     * and every gate test would then be reading the same empty list.
+     */
+    peerScrutiny: [
+      {
+        reviewId: peerExaminationIdFor(revisionId),
+        sequence: 1,
+        byDepartmentId: PEER_EXAMINER_DEPARTMENT,
+        examinedDepartmentId: PEER_EXAMINED_DEPARTMENT,
+        openChallenges: [
+          {
+            challengeId: peerChallengeIdFor(revisionId),
+            materiality: 'material' satisfies DisagreementMateriality,
+          },
+        ],
+      },
+    ],
     risk: { reviewId: riskIdFor(revisionId), sequence: 1, status: 'accepted' },
     riskRequirement: 'required',
     riskRuleId: 'risk-rule-1',

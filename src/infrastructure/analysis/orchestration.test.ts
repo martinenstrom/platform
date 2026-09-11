@@ -110,7 +110,7 @@ const context = (over: Partial<OrchestrationContext> = {}): OrchestrationContext
   caseId: 'case-1',
   evidenceSetId: EVIDENCE_SET_ID,
   assignmentIdFor: (key) => deriveAssignmentId('cmd-inst', key),
-  employeeIdFor: (department) => EMPLOYEE_BY_DEPARTMENT[department]!,
+  actorFor: (department: string) => ({ kind: 'employee' as const, employeeId: EMPLOYEE_BY_DEPARTMENT[department]! }),
   // Deterministic, which is what makes a re-run resolve from the ledger
   // instead of starting the work a second time.
   commandIdFor: (key, act) => `cmd-${key}-${act}`,

@@ -37,6 +37,7 @@ import type {
   CioSubmission,
   ComplianceReview,
   DevilsAdvocateReview,
+  PeerExaminationReview,
   DurableObservation,
   EvidenceAssembly,
   EvidenceSet,
@@ -44,6 +45,7 @@ import type {
   InvestmentThesis,
   ManagerAggregation,
   ObservationSeriesQuery,
+  ProducedSynthesis,
   RequirementResolution,
   RiskReview,
   TransitionEvent,
@@ -446,6 +448,29 @@ export interface ProducedClaimRepository {
 }
 
 /**
+ * A Research Office synthesis a model produced and nobody has yet adopted.
+ *
+ * The other half of what the Research Office produces, held to the same rule as
+ * its claims: model output is operational until an accountable principal
+ * explicitly adopts it. `AggregateManagerConclusion` is the only path across,
+ * and nothing in the institution has a foreign key into this store except the
+ * aggregation that adopted a candidate.
+ *
+ * There is no `listForCase`, for the reason the produced-claim store has none:
+ * a convenient case-wide listing is the first step towards reading unadopted
+ * work as though it were the firm's position.
+ */
+export interface ProducedSynthesisRepository {
+  /**
+   * Records what a run produced. Idempotent on `runId`; a second write with
+   * different content throws `ConflictingRecordError`.
+   */
+  record(candidate: ProducedSynthesis): Promise<void>
+  /** The candidate a run produced, or `null` if it produced none. */
+  get(runId: string): Promise<ProducedSynthesis | null>
+}
+
+/**
  * Reviews for a case — both the case-wide ones and every revision-scoped one.
  *
  * There is deliberately no `…ForRevision` method. Matching a review to a
@@ -467,7 +492,14 @@ export interface ReviewRepository {
   nextSequence(input: {
     caseId: string
     revisionId: string
-    kind: 'verification' | 'devils-advocate' | 'compliance' | 'risk'
+    kind:
+      | 'verification'
+      | 'devils-advocate'
+      | 'compliance'
+      | 'risk'
+      /* A peer examination takes its own position in the sequence, so two
+       * desks examining one revision cannot claim the same place. */
+      | 'peer-examination'
   }): Promise<number>
 
   /**
@@ -493,10 +525,22 @@ export interface ReviewRepository {
    */
   verificationsForCase(caseId: string): Promise<VerificationReview[]>
   challengesForCase(caseId: string): Promise<DevilsAdvocateReview[]>
+  /**
+   * Peer examinations, kept apart from `challengesForCase` on purpose.
+   *
+   * Both return reviews carrying challenges, and merging them would be the
+   * cheaper interface — but the eligibility gates ask two different questions.
+   * `CHALLENGE_UNRESOLVED` asks whether the control function's objections were
+   * settled; `PEER_SCRUTINY_ABSENT` asks whether a qualified desk looked at
+   * all. One list cannot answer the second, because a peer examination that
+   * raised nothing carries no challenge to be found in it.
+   */
+  peerExaminationsForCase(caseId: string): Promise<PeerExaminationReview[]>
   complianceForCase(caseId: string): Promise<ComplianceReview[]>
   riskForCase(caseId: string): Promise<RiskReview[]>
   saveVerification(review: VerificationReview): Promise<void>
   saveDevilsAdvocate(review: DevilsAdvocateReview): Promise<void>
+  savePeerExamination(review: PeerExaminationReview): Promise<void>
   saveCompliance(review: ComplianceReview): Promise<void>
   saveRisk(review: RiskReview): Promise<void>
 }
@@ -856,6 +900,7 @@ export interface AnalysisRepositories {
   runs: RunRepository
   claims: ClaimRepository
   producedClaims: ProducedClaimRepository
+  producedSyntheses: ProducedSynthesisRepository
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
@@ -932,15 +977,18 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   runs: ['get', 'listForCase', 'save'],
   claims: ['get', 'listForRun', 'listForCase', 'save'],
   producedClaims: ['record', 'listForRun'],
+  producedSyntheses: ['record', 'get'],
   reviews: [
     'nextSequence',
     'get',
     'verificationsForCase',
     'challengesForCase',
+    'peerExaminationsForCase',
     'complianceForCase',
     'riskForCase',
     'saveVerification',
     'saveDevilsAdvocate',
+    'savePeerExamination',
     'saveCompliance',
     'saveRisk',
   ],

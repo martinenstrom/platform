@@ -156,7 +156,7 @@ const request = (over: Partial<ContributionRequest> = {}): ContributionRequest =
   caseId: 'case-1',
   assignmentId: 'a-1',
   departmentId: 'global-macro',
-  employeeId: 'macro-analyst',
+  accountablePrincipalId: 'macro-analyst',
   brief: 'Where is the German 10y?',
   evidenceSetId: realSet.id,
   inputs: {},
@@ -391,6 +391,34 @@ describe('failures are bounded categories, never provider prose', () => {
       ContributionFailure,
     )
     await expect(provider.contribute(request())).rejects.toMatchObject({
+      category: 'malformed-output',
+    })
+  })
+
+  it('separates an answer cut off at the cap from an answer it cannot read', async () => {
+    /*
+     * Both arrive as unreadable text, and they are different failures. A
+     * truncated answer is the firm's own cap being exhausted — retrying it buys
+     * the identical truncation at full price, which is what the first live
+     * Research Office synthesis did three times before failing.
+     *
+     * The near-miss is the assertion that matters: the SAME broken JSON with an
+     * ordinary stop reason must still be `malformed-output`, or this check
+     * would have relabelled every parse failure as a budget problem.
+     */
+    const truncated = {
+      model: 'claude-opus-5',
+      content: [{ type: 'text', text: '{"claims":[{"statement":"the long end' }],
+      usage: { input_tokens: 1_989, output_tokens: 1_024 },
+    }
+
+    const cutOff = providerFor({ ...truncated, stop_reason: 'max_tokens' })
+    await expect(cutOff.provider.contribute(request())).rejects.toMatchObject({
+      category: 'budget-exhausted',
+    })
+
+    const merelyBroken = providerFor({ ...truncated, stop_reason: 'end_turn' })
+    await expect(merelyBroken.provider.contribute(request())).rejects.toMatchObject({
       category: 'malformed-output',
     })
   })

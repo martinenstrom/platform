@@ -9,6 +9,7 @@ import {
   REJECTION_CODE_LABEL,
   RUN_FAILURE_LABEL,
   usageText,
+  rejectedByText,
 } from '~/presentation/analysis/runText'
 import { formatDateTime } from '~/lib/format'
 import type { AgentRunRecord } from '~/domain/analysis'
@@ -112,7 +113,7 @@ export function RunRow({ run }: { run: AgentRunRecord }) {
         <div className="flex flex-col gap-0.5">
           <span className="type-metadata text-warning">
             {REJECTION_CODE_LABEL[run.rejection.code]} ·{' '}
-            {run.rejection.rejectedByEmployeeId}
+            {rejectedByText(run.rejection)}
           </span>
           {/*
            * The prose the person wrote, shown as written. It is the half of the

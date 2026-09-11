@@ -103,19 +103,35 @@ export async function revisionEligibility(
   const revisions = await repositories.theses.listForCase(caseId)
   if (revisions.length === 0) return []
 
-  const [assignments, runs, resolutions, verifications, challenges, risks] =
-    await Promise.all([
-      repositories.assignments.listForCase(caseId),
-      repositories.runs.listForCase(caseId),
-      repositories.requirements.listForCase(caseId),
-      repositories.reviews.verificationsForCase(caseId),
-      repositories.reviews.challengesForCase(caseId),
-      repositories.reviews.riskForCase(caseId),
-    ])
+  const [
+    assignments,
+    runs,
+    resolutions,
+    verifications,
+    challenges,
+    peerExaminations,
+    risks,
+  ] = await Promise.all([
+    repositories.assignments.listForCase(caseId),
+    repositories.runs.listForCase(caseId),
+    repositories.requirements.listForCase(caseId),
+    repositories.reviews.verificationsForCase(caseId),
+    repositories.reviews.challengesForCase(caseId),
+    repositories.reviews.peerExaminationsForCase(caseId),
+    repositories.reviews.riskForCase(caseId),
+  ])
 
+  /*
+   * Peer examinations are read whatever the policy says, and the POLICY
+   * decides whether their objections count. Reading them conditionally would
+   * put the mandate rule here, in the adapter, where the gate could not see it
+   * — and this view would then be free to disagree with the submission gate
+   * about which challenges exist.
+   */
   const reviews: CaseReviews = {
     verification: verifications,
     devilsAdvocate: challenges,
+    peerExaminations,
     risk: risks,
   }
 
@@ -202,6 +218,7 @@ export async function revisionEligibility(
     caseId,
     reviews,
     policy.challengeBlocksAtOrAbove,
+    policy.challengeMandates,
   )
 
   return decided.map((eligibility, index) => {

@@ -53,13 +53,17 @@ import {
   type RunEvent,
   type RunState,
   type RunUsage,
+  type SynthesisArtifact,
+  buildProducedSynthesis,
 } from '~/domain/analysis'
 import { buildTransitionEvent } from '~/domain/analysis'
 import { describeDefect, validateContribution } from '../contributionValidation'
 import { deriveClaimId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
-import { asCanonicalValue } from '~/domain/shared/canonicalValue'
+import { asCanonicalValue, utf8ByteOrder } from '~/domain/shared/canonicalValue'
+import { accountableEntryKeyFor } from '../caseIntake'
+import { requirePlaybook } from '../playbookRegistry'
 
 export interface RecordContributionInput {
   caseId: string
@@ -93,6 +97,18 @@ export interface RecordContributionInput {
    * report spend and a live call cannot claim it was free.
    */
   usage: RunUsage
+  /**
+   * The department's synthesis, where the department's work IS a synthesis.
+   *
+   * Legal for exactly one step: the entry the case's accountable desk answers
+   * for, in the playbook the case pinned. Every other desk supplying one is
+   * refused — this command is not a generic artifact envelope, and an optional
+   * field is not a licence.
+   *
+   * Absent everywhere else, and absent is absent. A contribution that produced
+   * no synthesis produced none.
+   */
+  synthesis?: SynthesisArtifact
 }
 
 /**
@@ -143,6 +159,14 @@ export function recordContribution(
       claims: asCanonicalValue(input.claims),
       observedStates: input.observedStates,
       usage: asCanonicalValue(input.usage),
+      /*
+       * Included only when a synthesis was produced, so a contribution without
+       * one hashes to exactly the bytes it always did. The same conditional-key
+       * rule the accountable principal follows in `commandPayloadHash`: an
+       * absent key is absent from the encoding, and every historical
+       * contribution keeps the identity it was recorded under.
+       */
+      ...(input.synthesis ? { synthesis: asCanonicalValue(input.synthesis) } : {}),
     }),
 
     async execute(repositories, context, input) {
@@ -306,6 +330,109 @@ export function recordContribution(
         }
       }
 
+      /* ------------------------------------------- the synthesis candidate */
+
+      /*
+       * A synthesis is legal for exactly one step, and which step that is comes
+       * from persisted facts: the case's own kind, routed through the intake
+       * policy to an accountable discipline, resolved against the playbook THIS
+       * CASE PINNED. Not from the caller, not from the department id on the
+       * input, and not from a hardcoded department name — an equity workflow
+       * whose synthesis desk is Equity Research routes the same way without a
+       * line of code changing.
+       *
+       * The alternative — accepting a synthesis from whoever supplies one —
+       * would turn this command into a generic artifact envelope, and Global
+       * Macro would be able to write the firm's position because the input type
+       * grew an optional field.
+       */
+      const candidate = input.synthesis
+      if (candidate) {
+        if (!investmentCase.playbookId || !investmentCase.playbookVersion) {
+          reject(
+            'illegal-prior-state',
+            `Case "${input.caseId}" has no playbook, so no step is the ` +
+              `accountable synthesis and none may produce one.`,
+          )
+        }
+        const playbook = requirePlaybook(
+          investmentCase.playbookId,
+          investmentCase.playbookVersion,
+        )
+        const synthesisEntryKey = accountableEntryKeyFor(
+          investmentCase.subject.kind,
+          playbook,
+        )
+        if (synthesisEntryKey === null) {
+          reject(
+            'invariant-violated',
+            `Playbook "${playbook.id}@${playbook.version}" names no single ` +
+              `accountable desk for a "${investmentCase.subject.kind}" case, so ` +
+              `there is no step whose work is a synthesis.`,
+          )
+        }
+        if (assignment.playbookEntryKey !== synthesisEntryKey) {
+          reject(
+            'not-authorised',
+            `"${assignment.playbookEntryKey}" is not the accountable synthesis ` +
+              `step for this case; "${synthesisEntryKey}" is. A desk states ` +
+              `claims. Stating the firm's position is a different act, and this ` +
+              `command does not carry it for whoever asks.`,
+          )
+        }
+
+        /*
+         * A synthesis is produced FROM a revision, and the adoption command
+         * synthesises ONTO one. Binding them here is what stops a candidate
+         * produced against one argument being adopted onto another.
+         */
+        if (!run.revisionId) {
+          reject(
+            'invariant-violated',
+            `Run "${input.runId}" declares no revision. A synthesis is produced ` +
+              `from the argument it reconciles, and one that names no argument ` +
+              `could be adopted onto any of them.`,
+          )
+        }
+
+        /*
+         * The exact run universe the adoption command reasons over — every
+         * completed run on the case — captured now. Adoption recomputes it and
+         * refuses on inequality. Not a timestamp: "produced two minutes ago"
+         * says nothing about whether the inputs moved.
+         */
+        const completed = await repositories.runs.listForCase(input.caseId)
+        const observedCompletedRunIds = completed
+          .filter((other) => other.state === 'completed')
+          /*
+           * Excluding this run itself, and necessarily: the synthesis is
+           * produced BEFORE its own contribution is accepted, so its own run is
+           * still `running` here and `completed` by the time anyone adopts.
+           * Including it would make every candidate stale against itself.
+           *
+           * It is also the truthful scope. A synthesis's basis is the other
+           * accepted contributions it reconciled; a desk does not reconcile its
+           * own unaccepted work.
+           */
+          .filter((other) => other.id !== run.id)
+          .map((other) => other.id)
+          .sort(utf8ByteOrder)
+
+        const produced = buildProducedSynthesis({
+          runId: run.id,
+          artifact: candidate,
+          basis: {
+            caseId: input.caseId,
+            sourceRevisionId: run.revisionId,
+            playbookId: playbook.id,
+            playbookVersion: playbook.version,
+            observedCompletedRunIds,
+          },
+          producedAt: context.occurredAt,
+        })
+        await repositories.producedSyntheses.record(produced)
+      }
+
       /* ------------------------------------------------------- the write */
 
       const stored = input.claims.map((claim) =>
@@ -377,6 +504,7 @@ export function recordContribution(
           fromState: run.state,
           toState: 'awaiting-acceptance',
           actorEmployeeId: context.actor.employeeId ?? undefined,
+          actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
           actorDepartmentId: run.departmentId,
           occurredAt: context.occurredAt,
           correlationId: context.correlationId,

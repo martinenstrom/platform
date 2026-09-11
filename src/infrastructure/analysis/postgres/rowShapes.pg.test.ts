@@ -26,6 +26,7 @@ import { createTestDatabase, type TestDatabase } from './testDatabase'
 
 /** Interface name → the table it claims to describe. */
 const MAPPED: Readonly<Record<string, string>> = {
+  ProducedSynthesisRow: 'produced_syntheses',
   CioSubmissionRow: 'cio_submissions',
   SubmissionRequiredWorkRow: 'submission_required_work',
   SubmissionDisagreementRow: 'submission_disagreements',

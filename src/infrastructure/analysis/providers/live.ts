@@ -299,6 +299,17 @@ export function createLiveContributionProvider(
       )
       if (outcome.state === 'failed') throw new ContributionFailure(outcome.category)
 
+      /*
+       * Cut off at the answer cap, reported as the budget it is. The note on
+       * `LIVE_MAX_OUTPUT_TOKENS` has always said a tight cap truncates the JSON
+       * mid-answer; until this check, that truncation arrived at the record as
+       * `malformed-output` and was retried as though the model might format it
+       * better next time.
+       */
+      if (outcome.response.stopReason === 'max_tokens') {
+        throw new ContributionFailure('budget-exhausted')
+      }
+
       const candidates = parseCandidates(outcome.response.text)
       if (!candidates) throw new ContributionFailure('malformed-output')
 

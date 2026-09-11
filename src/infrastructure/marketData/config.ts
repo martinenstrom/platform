@@ -105,7 +105,14 @@ export type EnvSource = Record<string, string | undefined>
 
 const DEFAULT_CHAINS: Record<DataCategory, string[]> = {
   'equity-index-se': ['avanza', 'fixture'],
-  'equity-index-intl': ['fixture'],
+  // S&P 500 and FTSE 100. Neither has a free official route and neither
+  // exists as an index on Avanza — only as funds written on them. Yahoo is a
+  // best-effort aggregator, so the fixture stays behind it as the fallback.
+  'equity-index-intl': ['yahoo', 'fixture'],
+  // DAX, Nasdaq 100 and Nikkei 225 — verified INDEX instruments on Avanza.
+  // S&P 500 and FTSE 100 stay in the fixture-only category above: neither
+  // exists as an index in Avanza's corpus, only as funds written on it.
+  'equity-index-intl-broker': ['avanza', 'fixture'],
   'equity-se': ['avanza', 'fixture'],
   fx: ['frankfurter', 'fixture'],
   // No universal chain: coverage and methodology differ per country. The
@@ -122,12 +129,23 @@ const DEFAULT_CHAINS: Record<DataCategory, string[]> = {
   'policy-us': ['nyfed', 'fixture'],
   'policy-ea': ['ecb', 'fixture'],
   'policy-se': ['riksbank-policy', 'fixture'],
-  commodities: ['fixture'],
+  /*
+   * Gold and Brent resolve from Avanza as commodity spot quotes (order books
+   * 18986 and 155722), verified by composite identity. Fixture stays last as
+   * the fail-safe, never as the resting state.
+   */
+  commodities: ['avanza', 'fixture'],
   crypto: ['coingecko', 'fixture'],
   news: ['marketaux', 'fixture'],
   sentiment: ['derived', 'fixture'],
   intraday: ['fixture'],
-  sectors: ['fixture'],
+  /*
+   * The nine actual S&P 500 GICS sector indices. Acquired as ONE set: the
+   * panel ranks sectors against each other, so a partial set is not a smaller
+   * truth but a misleading one, and `fetchQuotes` resolving all-or-nothing is
+   * what makes the fall to fixture honest.
+   */
+  sectors: ['yahoo', 'fixture'],
 }
 
 /** Which env var holds each provider's key. Providers absent here need none. */
@@ -155,6 +173,18 @@ const KEYLESS_PROVIDERS = [
   'riksbank-policy',
   'avanza',
   'avanza-search',
+  /*
+   * Yahoo, on the same footing as Avanza: a keyless public JSON endpoint with
+   * no account, no quota to hold and nothing to drop a chain for.
+   *
+   * Not treated like CoinGecko above. CoinGecko's opt-in exists because a
+   * *paid* official contract is available and keyless use should be a
+   * deliberate local choice. There is no free official route to the S&P 500 or
+   * the FTSE 100 at all, so gating Yahoo behind an env var would only mean
+   * both indices sit on a fixture constant by default — the state this
+   * binding exists to end.
+   */
+  'yahoo',
   'derived',
   'fixture',
 ] as const
@@ -162,6 +192,7 @@ const KEYLESS_PROVIDERS = [
 const CATEGORY_ENV: Record<DataCategory, string> = {
   'equity-index-se': 'MARKETDATA_CHAIN_EQUITY_SE_INDEX',
   'equity-index-intl': 'MARKETDATA_CHAIN_EQUITY_INTL',
+  'equity-index-intl-broker': 'MARKETDATA_CHAIN_EQUITY_INTL_BROKER',
   'equity-se': 'MARKETDATA_CHAIN_EQUITY_SE',
   fx: 'MARKETDATA_CHAIN_FX',
   'yields-us': 'MARKETDATA_CHAIN_YIELDS_US',
@@ -413,6 +444,80 @@ export function checkLiveReadiness(config: MarketDataConfig): ReadinessIssue[] {
           `return an error rather than fixture data.`,
       })
     }
+  }
+  return issues
+}
+
+/**
+ * Reports chain entries that name a provider nothing has registered.
+ *
+ * ## The gap this closes
+ *
+ * A chain is a list of provider ids and nothing validates that the ids refer to
+ * anything. Two independent filters then hide a mistake:
+ *
+ *  1. `loadMarketDataConfig` drops an id with no credential entry and warns —
+ *     but a keyless provider has a credential entry by construction, so an id
+ *     listed in `KEYLESS_PROVIDERS` always survives.
+ *  2. `chainFor` skips an id the registry cannot resolve, deliberately and
+ *     silently, because a dropped API key legitimately shortens a chain.
+ *
+ * Between them a chain can name a provider that does not exist, resolve to
+ * `['fixture']`, and report `no live provider configured` — a message that
+ * reads like a deliberate configuration choice rather than a wiring bug.
+ *
+ * Both defects found on 2026-08-25 had exactly this shape and neither was
+ * caught by any check:
+ *
+ *  - **yahoo** was implemented and registered, but missing from
+ *    `KEYLESS_PROVIDERS`, so filter (1) removed it and the S&P 500 and FTSE 100
+ *    silently kept serving fixture constants.
+ *  - **derived** is in `KEYLESS_PROVIDERS` and first in the sentiment chain,
+ *    but no adapter implements it, so filter (2) removed it and sentiment has
+ *    served a placeholder gauge ever since.
+ *
+ * This function is deliberately generic: it compares configured ids against
+ * registered ids and knows nothing about either provider.
+ *
+ * ## What this does NOT check
+ *
+ * Registration only, not capability. `chainFor` additionally requires the
+ * registration to declare the capability the category asks for, and a provider
+ * registered without it is dropped just as silently. Checking that would need a
+ * category-to-capability map, and none exists — `equity-se` alone resolves
+ * through both `quotes` and `series`, so the relation is not a function.
+ * Inventing one here to make a check look thorough would be guessing at the
+ * very layer that exists to stop guessing.
+ *
+ * ## Not fatal
+ *
+ * Reported as a readiness issue, like every other configuration warning here.
+ * Only quota overruns and missing credentials are fatal, and this does not
+ * change that: a phantom id degrades a category to its fallback, which is a
+ * working if diminished product, and refusing to start would be a worse
+ * outcome than saying so loudly.
+ */
+export function checkChainIntegrity(
+  config: MarketDataConfig,
+  isRegistered: (providerId: string) => boolean,
+): ReadinessIssue[] {
+  const issues: ReadinessIssue[] = []
+  for (const [category, chain] of Object.entries(config.chains) as Array<
+    [DataCategory, string[]]
+  >) {
+    const phantom = chain.filter((providerId) => !isRegistered(providerId))
+    if (phantom.length === 0) continue
+    const remaining = chain.filter((providerId) => isRegistered(providerId))
+    issues.push({
+      category,
+      message:
+        `Category "${category}" names provider(s) ${phantom.map((id) => `"${id}"`).join(', ')} ` +
+        `that no adapter has registered. ` +
+        (remaining.length === 0
+          ? `Nothing is left in the chain, so the category cannot resolve at all.`
+          : `It resolves from ${remaining.map((id) => `"${id}"`).join(', ')} instead — ` +
+            `which may look like a deliberate fallback rather than a wiring error.`),
+    })
   }
   return issues
 }

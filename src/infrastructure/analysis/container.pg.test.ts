@@ -117,7 +117,7 @@ describe('the runtime refuses to start when it cannot do its job', () => {
 
   it('names both versions so the mismatch is actionable', async () => {
     await expect(build({ expectedSchemaVersion: '9999' })).rejects.toThrow(
-      /expects schema version 9999.*is at 0033/s,
+      /expects schema version 9999.*is at 0047/s,
     )
   })
 
@@ -158,7 +158,7 @@ describe('storage provenance', () => {
     const container = await build()
 
     expect(container.provenance.buildId).toBe('test-build')
-    expect(container.provenance.schemaVersion).toBe('0033')
+    expect(container.provenance.schemaVersion).toBe('0047')
     expect(container.provenance.commandContractVersion).toBe('2')
     // Derived: nobody types this, so it cannot drift from what it describes.
     expect(container.provenance.adapterVersion).toMatch(/^[0-9a-f]{16}$/)
@@ -190,9 +190,16 @@ describe('the organization', () => {
     const container = await build()
     const { organization, seedVersion } = await container.organization.load()
 
-    expect(seedVersion).toBe('1')
+    /*
+     * '2' since migration 0035. The firm gained the Rates desk, so the
+     * organisation is a different organisation and says so — version 1 is
+     * preserved as the firm that existed before it, and a historical actor
+     * snapshot still resolves to the organisation that authorised it.
+     */
+    expect(seedVersion).toBe('2')
     expect(organization.chiefEmployeeId).toBe('cio')
-    expect(organization.departments).toHaveLength(15)
+    /* 16 since migration 0035 seated the Rates desk. */
+    expect(organization.departments).toHaveLength(16)
     expect(
       organization.departments.filter((department) => department.isGovernance),
     ).toHaveLength(4)

@@ -1756,3 +1756,62 @@ thirteen evidence families, and the `vite build` failure.
 
 **The honest summary stands as §7 wrote it before any of this was built: C3
 makes the pipe true. It does not make the view complete.**
+
+---
+
+## 10. Evidence-modelling doctrine — absence is absence, never null
+
+**Accepted 2026-09-04.** Not technical debt: a rule that governs how every
+future evidence family is shaped.
+
+> **Evidence describes only what the source actually supplied.**
+
+Established while modelling the firm's second evidence family. The governed
+price source publishes one value per session:
+
+```
+{ date, close }
+```
+
+The obvious modelling instinct is a price *bar*, because that is what a price
+series usually is. That would have produced:
+
+```
+open: null, high: null, low: null, volume: null, close: 176.5
+```
+
+**Financial OS models `price-close` instead, and the missing fields are absent
+rather than present-and-empty.**
+
+### Why the distinction is institutional rather than cosmetic
+
+A null-filled bar is a claim about the firm's capability. It tells every
+downstream desk that the institution holds session ranges and volumes — that a
+technical desk could reason about intraday extremes, that a liquidity claim is
+supportable — and only the values say otherwise. The shape advertises an
+analytical capability the firm does not possess, and the discovery that it does
+not possess it is deferred to whoever first writes a claim that cannot be
+substantiated.
+
+Absence, modelled as absence, is refused at the boundary instead: a desk cannot
+cite a session range from a `price-close`, because there is no field to cite.
+That is correct — the firm does not hold one.
+
+### The rule
+
+- Model the observation the source publishes, not the observation the asset
+  class usually has.
+- Name the kind for what it holds. `price-close` is a close, not a bar, and
+  calling it a bar would be the same failure as calling a `derived-spread` a
+  `yield`.
+- Where a richer source later becomes governed, that is a **new kind or a
+  widened projection with its own decision** — not a retroactive claim that the
+  older observations were bars all along.
+- A projection entry in `PROJECTED_FIELDS` is the moment this is decided. A kind
+  absent from it fails closed, and adding one is an explicit act.
+
+### What it prevents
+
+A desk inferring capability from a shape. The firm's honest answer to *"what was
+NVDA's trading range that day?"* is that it does not know, and the evidence model
+is where that answer is enforced rather than discovered.

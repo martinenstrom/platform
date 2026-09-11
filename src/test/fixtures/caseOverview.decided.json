@@ -17,6 +17,10 @@
         "status": "complete"
       },
       {
+        "step": "peer-examination",
+        "status": "not-applicable"
+      },
+      {
         "step": "verification",
         "status": "complete"
       },
@@ -565,6 +569,8 @@
       "challenges": [
         {
           "id": "chl-8f86836e64591ce9d7dd31ee784ba1b9",
+          "challengerKind": "devils-advocate",
+          "byDepartmentId": "devils-advocate",
           "contests": "clm-ca429217a05b55a7c63467e10d607877",
           "kind": "fragile-assumption",
           "argument": "The wording overstates confidence slightly.",
@@ -576,6 +582,211 @@
       "outcomes": {
         "chl-8f86836e64591ce9d7dd31ee784ba1b9": "open"
       }
+    }
+  ],
+  "peerExaminations": [],
+  "departments": [
+    {
+      "id": "devils-advocate",
+      "name": "Devil's Advocate",
+      "isGovernance": true
+    },
+    {
+      "id": "global-macro",
+      "name": "Global Macro",
+      "isGovernance": false
+    },
+    {
+      "id": "quant-technical",
+      "name": "Quant & Technical Analysis",
+      "isGovernance": false
+    },
+    {
+      "id": "research-office",
+      "name": "Research Office",
+      "isGovernance": false
+    },
+    {
+      "id": "risk",
+      "name": "Risk",
+      "isGovernance": true
+    },
+    {
+      "id": "verification",
+      "name": "Verification",
+      "isGovernance": true
+    }
+  ],
+  "assignments": [
+    {
+      "id": "asg-5311d5dad539f2a000a3aa6371809d70",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "macro-analysis",
+      "departmentId": "global-macro",
+      "assigneeEmployeeId": "macro-head",
+      "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+      "status": "completed",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "priority": 100
+    },
+    {
+      "id": "asg-60574355d98de72a922145577467585a",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "aggregation",
+      "departmentId": "research-office",
+      "assigneeEmployeeId": "research-director",
+      "brief": "Reconcile the contributions into a single thesis revision. State the position, the invalidation criteria, and which implementation implications the thesis carries. Record any perspective that was unavailable.",
+      "status": "completed",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "priority": 90
+    },
+    {
+      "id": "asg-2f7ba4b85d3c8662e7e6f85d92c47d12",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "quant-validation",
+      "departmentId": "quant-technical",
+      "assigneeEmployeeId": "quant-head",
+      "brief": "Test the macro view against the data: regime indicators, historical analogues, and whether the claimed relationships hold statistically.",
+      "status": "completed",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T09:00:00.000Z",
+      "completedAt": "2026-08-01T09:00:00.000Z",
+      "priority": 80
+    },
+    {
+      "id": "asg-2c021c0f43ca02ea03e3a17df6bb14fa",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "risk-review",
+      "departmentId": "risk",
+      "brief": "Assess the exposure acting on this thesis would create: sizing, concentration, liquidity and tail risk.",
+      "status": "active",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    },
+    {
+      "id": "asg-498c230e367123ec3d2605720309d2dc",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "challenge",
+      "departmentId": "devils-advocate",
+      "brief": "Argue the opposite case as strongly as the evidence permits. Identify the assumption the thesis cannot survive being wrong about.",
+      "status": "active",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    },
+    {
+      "id": "asg-a45f03255ecef4c4c6911fc507d15d74",
+      "caseId": "hq-fixture-decided",
+      "playbookEntryKey": "verification",
+      "departmentId": "verification",
+      "brief": "Check every factual claim the thesis rests on against its cited evidence. Record discrepancies rather than correcting them.",
+      "status": "active",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    }
+  ],
+  "roster": [
+    {
+      "id": "behavioural-finance",
+      "name": "Behavioural Finance",
+      "isGovernance": false,
+      "managerTitle": "Head of Behavioural Finance"
+    },
+    {
+      "id": "compliance",
+      "name": "Compliance",
+      "isGovernance": true,
+      "managerTitle": "Head of Compliance"
+    },
+    {
+      "id": "devils-advocate",
+      "name": "Devil's Advocate",
+      "isGovernance": true,
+      "managerTitle": "Head of Devil's Advocate"
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "isGovernance": false,
+      "managerTitle": "Editorial Director"
+    },
+    {
+      "id": "equity-research",
+      "name": "Equity Research",
+      "isGovernance": false,
+      "managerTitle": "Head of Equity Research"
+    },
+    {
+      "id": "executive",
+      "name": "Executive",
+      "isGovernance": false,
+      "managerTitle": "Chief Investment Officer"
+    },
+    {
+      "id": "flow-positioning",
+      "name": "Flow & Positioning",
+      "isGovernance": false,
+      "managerTitle": "Head of Flow & Positioning"
+    },
+    {
+      "id": "global-macro",
+      "name": "Global Macro",
+      "isGovernance": false,
+      "managerTitle": "Head of Macro"
+    },
+    {
+      "id": "market-intelligence-office",
+      "name": "Market Intelligence Office",
+      "isGovernance": false,
+      "managerTitle": "Market Intelligence Manager"
+    },
+    {
+      "id": "news-intelligence",
+      "name": "News Intelligence",
+      "isGovernance": false,
+      "managerTitle": "Head of News Intelligence"
+    },
+    {
+      "id": "portfolio-strategy",
+      "name": "Portfolio Strategy",
+      "isGovernance": false,
+      "managerTitle": "Portfolio Strategy Manager"
+    },
+    {
+      "id": "quant-technical",
+      "name": "Quant & Technical Analysis",
+      "isGovernance": false,
+      "managerTitle": "Head of Quant & Technical Analysis"
+    },
+    {
+      "id": "rates",
+      "name": "Rates",
+      "isGovernance": false,
+      "managerTitle": "Head of Rates"
+    },
+    {
+      "id": "research-office",
+      "name": "Research Office",
+      "isGovernance": false,
+      "managerTitle": "Research Director"
+    },
+    {
+      "id": "risk",
+      "name": "Risk",
+      "isGovernance": true,
+      "managerTitle": "Chief Risk Officer"
+    },
+    {
+      "id": "verification",
+      "name": "Verification",
+      "isGovernance": true,
+      "managerTitle": "Head of Verification"
     }
   ],
   "risk": [
@@ -625,6 +836,7 @@
             }
           ]
         },
+        "peerScrutiny": [],
         "risk": {
           "reviewId": "rvw-63e777a4f25ad6853cb068b837cd3975",
           "sequence": 1,
@@ -640,8 +852,8 @@
         "evaluatedAt": "2026-08-01T13:00:00.000Z",
         "manifest": {
           "algorithm": "sha256",
-          "canonicalizationVersion": 2,
-          "digest": "82f3166f126f8e7e2d1faaac3c149be193837f105f371372599802726f04ab7a"
+          "canonicalizationVersion": 3,
+          "digest": "7bd2006228f2bf65590b0858e564cea67e68b80cf1bfc4c43a43951d5fbf7200"
         }
       }
     }
@@ -656,13 +868,14 @@
     "decidedBy": {
       "kind": "employee",
       "employeeId": "cio",
+      "agentPrincipalId": null,
       "roleId": "chief-investment-officer",
       "roleFunction": "executive",
       "departmentId": "executive",
       "departmentIsGovernance": false,
       "departmentHandles": [],
       "authentication": "system-asserted",
-      "organizationSeedVersion": "1"
+      "organizationSeedVersion": "2"
     },
     "authorizationBasis": "chief-investment-officer",
     "outcome": {
@@ -702,13 +915,14 @@
       "decidedBy": {
         "kind": "employee",
         "employeeId": "cio",
+        "agentPrincipalId": null,
         "roleId": "chief-investment-officer",
         "roleFunction": "executive",
         "departmentId": "executive",
         "departmentIsGovernance": false,
         "departmentHandles": [],
         "authentication": "system-asserted",
-        "organizationSeedVersion": "1"
+        "organizationSeedVersion": "2"
       },
       "authorizationBasis": "chief-investment-officer",
       "outcome": {
@@ -1296,6 +1510,11 @@
           "code": "CHALLENGE_UNRESOLVED",
           "status": "passed",
           "detail": "1 open challenge(s), none at or above \"material\""
+        },
+        {
+          "code": "PEER_SCRUTINY_ABSENT",
+          "status": "not-applicable",
+          "detail": "policy 1 places peer scrutiny outside its scope"
         },
         {
           "code": "RISK_UNRESOLVED",

@@ -39,6 +39,8 @@ const MINIMAL: BasisContent = {
   blockers: [],
   verification: null,
   devilsAdvocate: null,
+  /* Nobody examined. The empty list is the fact, and the digest binds it. */
+  peerScrutiny: [],
   risk: null,
   riskRequirement: 'not-required',
   riskRuleId: null,
@@ -54,6 +56,18 @@ const MINIMAL: BasisContent = {
 const POPULATED: BasisContent = {
   ...MINIMAL,
   aggregationId: 'agg-1',
+  /* §4.4 — one desk examined another, and one objection is still open. */
+  peerScrutiny: [
+    {
+      reviewId: 'review-p',
+      sequence: 1,
+      byDepartmentId: 'rates',
+      examinedDepartmentId: 'global-macro',
+      openChallenges: [
+        { challengeId: 'challenge-c', materiality: 'decision-critical' },
+      ],
+    },
+  ],
   verification: { reviewId: 'review-v', sequence: 1, status: 'verified' },
   devilsAdvocate: {
     reviewId: 'review-d',
@@ -85,7 +99,16 @@ const POPULATED: BasisContent = {
 function fencedBlocks(): string[] {
   return [...spec.matchAll(/```\n([\s\S]*?)```/g)]
     .map((match) => match[1]!.replace(/[\s\n]/g, ''))
-    .filter((block) => block.startsWith('l21:'))
+    /*
+     * The SHAPE of a canonical input, not a literal prefix.
+     *
+     * This read `startsWith('l21:')`, which pinned the element count of one
+     * version into a test that is supposed to survive version changes: at v3
+     * the filter matched nothing, the comparison ran against an empty list,
+     * and it would have gone on passing had the length assertion below not
+     * been there.
+     */
+    .filter((block) => /^l\d+:i\d/.test(block))
 }
 
 describe(`the published specification matches the encoder`, () => {
@@ -121,6 +144,18 @@ describe(`the published specification matches the encoder`, () => {
     expect(populated).toContain('s12:non-material')
     expect(populated).toContain('s11:challenge-as12:non-material')
     expect(populated).toContain('s11:challenge-bs8:material')
+  })
+
+  it('documents who examined whom, and binds the peer objection', () => {
+    /*
+     * §4.4. The vector must show both department ids and a peer challenge
+     * carrying a materiality no registered policy reads — the point being that
+     * the digest binds it anyway, so a later policy can be applied to bases
+     * already written.
+     */
+    const populated = canonicalBasisInput(SUBJECT, POPULATED)
+    expect(populated).toContain('s5:ratess12:global-macro')
+    expect(populated).toContain('s11:challenge-cs17:decision-critical')
   })
 
   it('keeps the retired version preserved and marked as historical', () => {

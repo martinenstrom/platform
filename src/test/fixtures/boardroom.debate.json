@@ -1,0 +1,1713 @@
+{
+  "standing": {
+    "stage": "decision",
+    "settled": false,
+    "ownership": {
+      "kind": "chief",
+      "departmentId": null,
+      "employeeId": "cio"
+    },
+    "steps": [
+      {
+        "step": "thesis-proposed",
+        "status": "complete"
+      },
+      {
+        "step": "work-aggregated",
+        "status": "complete"
+      },
+      {
+        "step": "peer-examination",
+        "status": "complete"
+      },
+      {
+        "step": "verification",
+        "status": "complete"
+      },
+      {
+        "step": "devils-advocate",
+        "status": "complete"
+      },
+      {
+        "step": "risk",
+        "status": "complete"
+      },
+      {
+        "step": "cio-submission",
+        "status": "complete"
+      },
+      {
+        "step": "cio-decision",
+        "status": "outstanding"
+      }
+    ],
+    "blockers": [],
+    "nextAct": {
+      "act": "decide-or-return",
+      "owningDepartmentId": null
+    }
+  },
+  "investmentCase": {
+    "id": "boardroom-debate",
+    "version": 5,
+    "subject": {
+      "kind": "macro-regime",
+      "ref": "ecb",
+      "displayName": "ECB path"
+    },
+    "question": "Why did the long end move?",
+    "stage": "decision",
+    "openedAt": "2026-08-01T11:00:00.000Z",
+    "ownerEmployeeId": "research-director",
+    "participatingDepartmentIds": [
+      "devils-advocate",
+      "global-macro",
+      "quant-technical",
+      "rates",
+      "research-office",
+      "risk",
+      "verification"
+    ],
+    "transitions": [
+      {
+        "caseId": "boardroom-debate",
+        "from": "intake",
+        "to": "research",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "boardroom-debate",
+        "from": "research",
+        "to": "aggregation",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "boardroom-debate",
+        "from": "aggregation",
+        "to": "review",
+        "at": "2026-08-01T11:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      },
+      {
+        "caseId": "boardroom-debate",
+        "from": "review",
+        "to": "decision",
+        "at": "2026-08-01T13:00:00.000Z",
+        "byEmployeeId": "research-director",
+        "byDepartmentId": "research-office"
+      }
+    ],
+    "playbookId": "macro-regime",
+    "playbookVersion": "5"
+  },
+  "revisions": [
+    {
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-eb78353b5ecdedc52f81c3412015b355",
+      "revisionNumber": 1,
+      "revisionCause": "initial-proposal",
+      "caseId": "boardroom-debate",
+      "statement": "The long-end move is a growth repricing.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T11:00:00.000Z",
+      "implications": [
+        "position-sizing"
+      ],
+      "supportingClaimIds": [],
+      "opposingClaimIds": [],
+      "citedByClaimIds": [],
+      "lifecycle": "superseded",
+      "invalidationCriteria": "A real-rate decomposition showing otherwise."
+    },
+    {
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "revisionNumber": 2,
+      "supersedesRevisionId": "rev-eb78353b5ecdedc52f81c3412015b355",
+      "revisedAt": "2026-08-01T11:00:00.000Z",
+      "revisionReason": "Both desks are retained; the growth reading leads on balance.",
+      "revisionCause": "manager-aggregation",
+      "caseId": "boardroom-debate",
+      "statement": "The long-end move is predominantly a growth repricing.",
+      "position": "hold",
+      "proposedByDepartmentId": "research-office",
+      "proposedByEmployeeId": "research-director",
+      "proposedAt": "2026-08-01T11:00:00.000Z",
+      "implications": [
+        "position-sizing"
+      ],
+      "supportingClaimIds": [
+        "clm-1bde34648c09ed7dcd4b4b25e441144d",
+        "clm-fe4dc59966a598efb154e5a2e1ca09bf"
+      ],
+      "opposingClaimIds": [
+        "clm-0165ce105a90bdf734431a545d3da567"
+      ],
+      "citedByClaimIds": [],
+      "lifecycle": "verified",
+      "aggregationId": "agg-b636b619742bfe71c4e976014f3ed361",
+      "invalidationCriteria": "A real-rate decomposition showing otherwise."
+    }
+  ],
+  "aggregations": [
+    {
+      "id": "agg-b636b619742bfe71c4e976014f3ed361",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "sourceRevisionId": "rev-eb78353b5ecdedc52f81c3412015b355",
+      "producedRevisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "managerEmployeeId": "research-director",
+      "departmentId": "research-office",
+      "aggregatedAt": "2026-08-01T11:00:00.000Z",
+      "rationale": "Both desks are retained; the growth reading leads on balance.",
+      "inputs": [
+        {
+          "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+          "playbookEntryKey": "aggregation",
+          "requirementLevel": "required"
+        },
+        {
+          "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+          "playbookEntryKey": "rates-analysis",
+          "requirementLevel": "required"
+        },
+        {
+          "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+          "playbookEntryKey": "macro-analysis",
+          "requirementLevel": "required"
+        }
+      ],
+      "dispositions": [
+        {
+          "claimId": "clm-0165ce105a90bdf734431a545d3da567",
+          "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+          "disposition": "retained-unresolved",
+          "explanation": "Both readings fit the nominal path; nothing available separates them.",
+          "materiality": "material",
+          "escalationRequired": true
+        },
+        {
+          "claimId": "clm-1bde34648c09ed7dcd4b4b25e441144d",
+          "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+          "disposition": "adopted-supporting"
+        },
+        {
+          "claimId": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+          "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+          "disposition": "adopted-supporting"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "playbookEntryKey": "quant-validation",
+          "availability": "unavailable-at-aggregation",
+          "materiallyRelevant": false
+        }
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "clm-0165ce105a90bdf734431a545d3da567",
+      "type": "causal",
+      "statement": "The long-end move is a real-rate repricing, not a growth repricing.",
+      "status": "supported",
+      "evidenceRefs": [
+        {
+          "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+          "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+          "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+        }
+      ],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "moderate",
+        "basis": []
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      },
+      "attribution": {
+        "kind": "hedged-inference",
+        "reasoning": "Inferred from the shape of the move, not established."
+      }
+    },
+    {
+      "id": "clm-1bde34648c09ed7dcd4b4b25e441144d",
+      "type": "causal",
+      "statement": "The two desk readings are reconcilable only in part.",
+      "status": "supported",
+      "evidenceRefs": [
+        {
+          "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+          "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+          "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+        }
+      ],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "moderate",
+        "basis": []
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      },
+      "attribution": {
+        "kind": "hedged-inference",
+        "reasoning": "Inferred from the shape of the move, not established."
+      }
+    },
+    {
+      "id": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+      "type": "causal",
+      "statement": "The long-end move reflects stronger growth expectations.",
+      "status": "supported",
+      "evidenceRefs": [
+        {
+          "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+          "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+          "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+        }
+      ],
+      "contradictingEvidenceRefs": [],
+      "confidence": {
+        "level": "moderate",
+        "basis": []
+      },
+      "temporalScope": {
+        "asOf": "2026-08-01T09:00:00.000Z"
+      },
+      "attribution": {
+        "kind": "hedged-inference",
+        "reasoning": "Inferred from the shape of the move, not established."
+      }
+    }
+  ],
+  "runs": [
+    {
+      "id": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "departmentId": "research-office",
+      "employeeId": "research-director",
+      "agentContractVersion": "1",
+      "outputSchemaVersion": "1",
+      "evidenceSetId": "344e93445ba6bd8b6b8e734fbf0c079b",
+      "state": "completed",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
+        {
+          "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-1bde34648c09ed7dcd4b4b25e441144d",
+          "type": "causal",
+          "statement": "The two desk readings are reconcilable only in part.",
+          "status": "supported",
+          "evidenceRefs": [
+            {
+              "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+              "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+              "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+            }
+          ],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "moderate",
+            "basis": []
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          },
+          "attribution": {
+            "kind": "hedged-inference",
+            "reasoning": "Inferred from the shape of the move, not established."
+          }
+        }
+      ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [
+        "quant-validation"
+      ],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "5",
+        "playbookEntryKey": "aggregation",
+        "providerId": "recorded-desk",
+        "providerVersion": "1",
+        "providerKind": "recorded",
+        "identity": {
+          "kind": "model",
+          "prompt": {
+            "id": "brief",
+            "version": "1",
+            "contentHash": "ph"
+          },
+          "model": {
+            "id": "sonnet",
+            "provider": "anthropic",
+            "parameters": {},
+            "parametersHash": "mh"
+          }
+        }
+      }
+    },
+    {
+      "id": "run-68094403642c0bd87b006ec5d3f885c8",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "departmentId": "rates",
+      "employeeId": "rates-head",
+      "agentContractVersion": "1",
+      "outputSchemaVersion": "1",
+      "evidenceSetId": "344e93445ba6bd8b6b8e734fbf0c079b",
+      "state": "completed",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
+        {
+          "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-0165ce105a90bdf734431a545d3da567",
+          "type": "causal",
+          "statement": "The long-end move is a real-rate repricing, not a growth repricing.",
+          "status": "supported",
+          "evidenceRefs": [
+            {
+              "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+              "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+              "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+            }
+          ],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "moderate",
+            "basis": []
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          },
+          "attribution": {
+            "kind": "hedged-inference",
+            "reasoning": "Inferred from the shape of the move, not established."
+          }
+        }
+      ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "5",
+        "playbookEntryKey": "rates-analysis",
+        "providerId": "recorded-desk",
+        "providerVersion": "1",
+        "providerKind": "recorded",
+        "identity": {
+          "kind": "model",
+          "prompt": {
+            "id": "brief",
+            "version": "1",
+            "contentHash": "ph"
+          },
+          "model": {
+            "id": "sonnet",
+            "provider": "anthropic",
+            "parameters": {},
+            "parametersHash": "mh"
+          }
+        }
+      }
+    },
+    {
+      "id": "run-b0ccff47a5b72f82cb0f541160d410f2",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "departmentId": "global-macro",
+      "employeeId": "macro-head",
+      "agentContractVersion": "1",
+      "outputSchemaVersion": "1",
+      "evidenceSetId": "344e93445ba6bd8b6b8e734fbf0c079b",
+      "state": "completed",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "events": [
+        {
+          "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "awaiting-acceptance"
+        },
+        {
+          "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "completed"
+        },
+        {
+          "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+          "at": "2026-08-01T11:00:00.000Z",
+          "state": "running"
+        }
+      ],
+      "claims": [
+        {
+          "id": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+          "type": "causal",
+          "statement": "The long-end move reflects stronger growth expectations.",
+          "status": "supported",
+          "evidenceRefs": [
+            {
+              "setId": "344e93445ba6bd8b6b8e734fbf0c079b",
+              "observationId": "0baa25e8eab29d3d1503557e22ae2c6d",
+              "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+            }
+          ],
+          "contradictingEvidenceRefs": [],
+          "confidence": {
+            "level": "moderate",
+            "basis": []
+          },
+          "temporalScope": {
+            "asOf": "2026-08-01T09:00:00.000Z"
+          },
+          "attribution": {
+            "kind": "hedged-inference",
+            "reasoning": "Inferred from the shape of the move, not established."
+          }
+        }
+      ],
+      "budget": {
+        "tokens": {
+          "kind": "not-applicable"
+        },
+        "cost": {
+          "kind": "not-applicable"
+        },
+        "deadline": {
+          "kind": "limit",
+          "deadlineMs": 30000
+        }
+      },
+      "usage": {
+        "state": "not-applicable"
+      },
+      "missingOptionalInputs": [],
+      "execution": {
+        "playbookId": "macro-regime",
+        "playbookVersion": "5",
+        "playbookEntryKey": "macro-analysis",
+        "providerId": "recorded-desk",
+        "providerVersion": "1",
+        "providerKind": "recorded",
+        "identity": {
+          "kind": "model",
+          "prompt": {
+            "id": "brief",
+            "version": "1",
+            "contentHash": "ph"
+          },
+          "model": {
+            "id": "sonnet",
+            "provider": "anthropic",
+            "parameters": {},
+            "parametersHash": "mh"
+          }
+        }
+      }
+    }
+  ],
+  "evidenceSets": [
+    {
+      "id": "344e93445ba6bd8b6b8e734fbf0c079b",
+      "items": [
+        {
+          "ref": {
+            "id": "0baa25e8eab29d3d1503557e22ae2c6d",
+            "subjectKind": "series",
+            "subject": "de10y",
+            "kind": "yield",
+            "observedAt": "2026-07-31T00:00:00.000Z",
+            "sourceId": "ecb",
+            "keyGeneration": 2,
+            "referencePeriod": "2026-07-31",
+            "contentHash": "c080f53d88ff52e96ad741443b3a1a39"
+          },
+          "value": {
+            "yieldPercent": "2.41",
+            "observationDate": "2026-07-31",
+            "changeBasisPoints": null
+          },
+          "provenance": {
+            "asOf": "2026-07-31T00:00:00.000Z",
+            "ageMs": 118800000,
+            "source": {
+              "trust": "central-bank",
+              "providerId": "ecb",
+              "providerName": "ECB"
+            },
+            "isProxy": false,
+            "quality": "official-daily",
+            "isDelayed": false,
+            "receivedAt": "2026-08-01T09:00:00.000Z",
+            "delayMinutes": null,
+            "asOfPrecision": "second"
+          }
+        }
+      ],
+      "coTemporality": {
+        "publication": {
+          "kind": "aligned",
+          "at": "2026-07-31T00:00:00.000Z"
+        },
+        "reference": {
+          "kind": "aligned",
+          "at": "2026-07-31"
+        }
+      },
+      "disagreements": [],
+      "revisions": [],
+      "assembledAt": "2026-08-01T09:00:00.000Z",
+      "correlationId": "boardroom"
+    }
+  ],
+  "verification": [
+    {
+      "scope": "thesis-revision",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "byEmployeeId": "verification-head",
+      "byDepartmentId": "verification",
+      "at": "2026-08-01T14:00:00.000Z",
+      "reviewId": "rvw-53e99073f12c36ae4d051b1be5db597e",
+      "sequence": 1,
+      "status": "verified",
+      "findings": [],
+      "claimsReviewed": [
+        "clm-0165ce105a90bdf734431a545d3da567",
+        "clm-fe4dc59966a598efb154e5a2e1ca09bf"
+      ]
+    }
+  ],
+  "devilsAdvocate": [
+    {
+      "scope": "thesis-revision",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "byEmployeeId": "devils-advocate-head",
+      "byDepartmentId": "devils-advocate",
+      "at": "2026-08-01T14:00:00.000Z",
+      "reviewId": "rvw-d6886546f48ce1a91ca3b388f825d459",
+      "sequence": 1,
+      "challenges": [
+        {
+          "id": "chl-3e379209e728f102a869ad9c72cd80f2",
+          "challengerKind": "devils-advocate",
+          "byDepartmentId": "devils-advocate",
+          "contests": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+          "kind": "fragile-assumption",
+          "argument": "The growth reading rests on one print.",
+          "wouldBeResolvedBy": "A second independent print.",
+          "materiality": "non-material",
+          "counterEvidence": []
+        }
+      ],
+      "outcomes": {
+        "chl-3e379209e728f102a869ad9c72cd80f2": "open"
+      }
+    }
+  ],
+  "peerExaminations": [
+    {
+      "scope": "thesis-revision",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "byEmployeeId": "rates-head",
+      "byDepartmentId": "rates",
+      "at": "2026-08-01T11:00:00.000Z",
+      "reviewId": "rvw-c474551d85281fddf69411b7d3698e4d",
+      "sequence": 1,
+      "challenges": [
+        {
+          "id": "chl-149e51b12690d43ea27e742fd763eb2e",
+          "challengerKind": "peer",
+          "byDepartmentId": "rates",
+          "contests": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+          "kind": "fragile-assumption",
+          "argument": "The growth attribution assumes the real-rate component was unchanged.",
+          "wouldBeResolvedBy": "A nominal/real decomposition over the same window.",
+          "materiality": "material",
+          "counterEvidence": []
+        }
+      ],
+      "outcomes": {
+        "chl-149e51b12690d43ea27e742fd763eb2e": "open"
+      },
+      "examinedDepartmentId": "global-macro"
+    },
+    {
+      "scope": "thesis-revision",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "byEmployeeId": "rates-head",
+      "byDepartmentId": "rates",
+      "at": "2026-08-01T14:00:00.000Z",
+      "reviewId": "rvw-94b924ded89f143035fcdc5c0ca49d00",
+      "sequence": 2,
+      "supersedesReviewId": "rvw-c474551d85281fddf69411b7d3698e4d",
+      "challenges": [
+        {
+          "id": "chl-179984c204734061671bd980a69e0e31",
+          "challengerKind": "peer",
+          "byDepartmentId": "rates",
+          "contests": "clm-fe4dc59966a598efb154e5a2e1ca09bf",
+          "kind": "fragile-assumption",
+          "argument": "The growth attribution assumes the real-rate component was unchanged.",
+          "wouldBeResolvedBy": "A nominal/real decomposition over the same window.",
+          "materiality": "material",
+          "resolvedBy": "research-director",
+          "counterEvidence": []
+        }
+      ],
+      "outcomes": {
+        "chl-179984c204734061671bd980a69e0e31": "resolved"
+      },
+      "examinedDepartmentId": "global-macro"
+    }
+  ],
+  "departments": [
+    {
+      "id": "devils-advocate",
+      "name": "Devil's Advocate",
+      "isGovernance": true
+    },
+    {
+      "id": "global-macro",
+      "name": "Global Macro",
+      "isGovernance": false
+    },
+    {
+      "id": "rates",
+      "name": "Rates",
+      "isGovernance": false
+    },
+    {
+      "id": "research-office",
+      "name": "Research Office",
+      "isGovernance": false
+    },
+    {
+      "id": "risk",
+      "name": "Risk",
+      "isGovernance": true
+    },
+    {
+      "id": "verification",
+      "name": "Verification",
+      "isGovernance": true
+    }
+  ],
+  "assignments": [
+    {
+      "id": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "rates-analysis",
+      "departmentId": "rates",
+      "assigneeEmployeeId": "rates-head",
+      "brief": "Form an independent view of the rates market for the subject: the policy path priced, nominal and real curve structure, inflation compensation, and what the curve is attributing the move to. Do not reconcile with another desk; state your own view and what would change it.",
+      "status": "completed",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 100
+    },
+    {
+      "id": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "macro-analysis",
+      "departmentId": "global-macro",
+      "assigneeEmployeeId": "macro-head",
+      "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
+      "status": "completed",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 100
+    },
+    {
+      "id": "asg-0806dd80b61409600eab2082fc6cca50",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "aggregation",
+      "departmentId": "research-office",
+      "assigneeEmployeeId": "research-director",
+      "brief": "Reconcile the contributions into a single thesis revision. State the position, the invalidation criteria, and which implementation implications the thesis carries. Record any perspective that was unavailable.",
+      "status": "completed",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "completedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 90
+    },
+    {
+      "id": "asg-847aaf0f5d952d88f5597a3bd99f59f8",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "quant-validation",
+      "departmentId": "quant-technical",
+      "brief": "Test the macro view against the data: regime indicators, historical analogues, and whether the claimed relationships hold statistically.",
+      "status": "queued",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "priority": 80
+    },
+    {
+      "id": "asg-09d9250f1d7087e29464cd402c856d12",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "challenge",
+      "departmentId": "devils-advocate",
+      "brief": "Argue the opposite case as strongly as the evidence permits. Identify the assumption the thesis cannot survive being wrong about.",
+      "status": "active",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    },
+    {
+      "id": "asg-c3884bf702659cf1cf1a2f076d84ef01",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "peer-examination",
+      "departmentId": "rates",
+      "brief": "Read the synthesised revision as a qualified peer. Say on the record whether you agree. Challenge any claim you consider materially unsupported, naming the claim; if the argument survives your reading, record that you examined it and raised nothing.",
+      "status": "queued",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    },
+    {
+      "id": "asg-d0932b0e90ad1000806881954ec71ed0",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "risk-review",
+      "departmentId": "risk",
+      "brief": "Assess the exposure acting on this thesis would create: sizing, concentration, liquidity and tail risk.",
+      "status": "queued",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    },
+    {
+      "id": "asg-e848c70a1cdece6ae4bb2551e30312da",
+      "caseId": "boardroom-debate",
+      "playbookEntryKey": "verification",
+      "departmentId": "verification",
+      "brief": "Check every factual claim the thesis rests on against its cited evidence. Record discrepancies rather than correcting them.",
+      "status": "active",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "startedAt": "2026-08-01T11:00:00.000Z",
+      "priority": 70
+    }
+  ],
+  "roster": [
+    {
+      "id": "behavioural-finance",
+      "name": "Behavioural Finance",
+      "isGovernance": false,
+      "managerTitle": "Head of Behavioural Finance"
+    },
+    {
+      "id": "compliance",
+      "name": "Compliance",
+      "isGovernance": true,
+      "managerTitle": "Head of Compliance"
+    },
+    {
+      "id": "devils-advocate",
+      "name": "Devil's Advocate",
+      "isGovernance": true,
+      "managerTitle": "Head of Devil's Advocate"
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "isGovernance": false,
+      "managerTitle": "Editorial Director"
+    },
+    {
+      "id": "equity-research",
+      "name": "Equity Research",
+      "isGovernance": false,
+      "managerTitle": "Head of Equity Research"
+    },
+    {
+      "id": "executive",
+      "name": "Executive",
+      "isGovernance": false,
+      "managerTitle": "Chief Investment Officer"
+    },
+    {
+      "id": "flow-positioning",
+      "name": "Flow & Positioning",
+      "isGovernance": false,
+      "managerTitle": "Head of Flow & Positioning"
+    },
+    {
+      "id": "global-macro",
+      "name": "Global Macro",
+      "isGovernance": false,
+      "managerTitle": "Head of Macro"
+    },
+    {
+      "id": "market-intelligence-office",
+      "name": "Market Intelligence Office",
+      "isGovernance": false,
+      "managerTitle": "Market Intelligence Manager"
+    },
+    {
+      "id": "news-intelligence",
+      "name": "News Intelligence",
+      "isGovernance": false,
+      "managerTitle": "Head of News Intelligence"
+    },
+    {
+      "id": "portfolio-strategy",
+      "name": "Portfolio Strategy",
+      "isGovernance": false,
+      "managerTitle": "Portfolio Strategy Manager"
+    },
+    {
+      "id": "quant-technical",
+      "name": "Quant & Technical Analysis",
+      "isGovernance": false,
+      "managerTitle": "Head of Quant & Technical Analysis"
+    },
+    {
+      "id": "rates",
+      "name": "Rates",
+      "isGovernance": false,
+      "managerTitle": "Head of Rates"
+    },
+    {
+      "id": "research-office",
+      "name": "Research Office",
+      "isGovernance": false,
+      "managerTitle": "Research Director"
+    },
+    {
+      "id": "risk",
+      "name": "Risk",
+      "isGovernance": true,
+      "managerTitle": "Chief Risk Officer"
+    },
+    {
+      "id": "verification",
+      "name": "Verification",
+      "isGovernance": true,
+      "managerTitle": "Head of Verification"
+    }
+  ],
+  "risk": [
+    {
+      "scope": "thesis-revision",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "byEmployeeId": "chief-risk-officer",
+      "byDepartmentId": "risk",
+      "at": "2026-08-01T14:00:00.000Z",
+      "reviewId": "rvw-633e452646b16b5263e3f027b39efb02",
+      "sequence": 1,
+      "status": "accepted",
+      "findings": []
+    }
+  ],
+  "submissions": [
+    {
+      "id": "evt-7aeb6feb43e6404e5f372ed89a2fe27e",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "submittedByDepartmentId": "research-office",
+      "submittedByEmployeeId": "research-director",
+      "submittedAt": "2026-08-01T13:00:00.000Z",
+      "caseVersion": 4,
+      "state": "pending",
+      "basis": {
+        "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+        "thesisId": "boardroom-debate-thesis",
+        "aggregationId": "agg-b636b619742bfe71c4e976014f3ed361",
+        "eligibilityPolicyVersion": "2",
+        "blockers": [],
+        "verification": {
+          "reviewId": "rvw-53e99073f12c36ae4d051b1be5db597e",
+          "sequence": 1,
+          "status": "verified"
+        },
+        "devilsAdvocate": {
+          "reviewId": "rvw-d6886546f48ce1a91ca3b388f825d459",
+          "sequence": 1,
+          "openChallenges": [
+            {
+              "challengeId": "chl-3e379209e728f102a869ad9c72cd80f2",
+              "materiality": "non-material"
+            }
+          ]
+        },
+        "peerScrutiny": [
+          {
+            "reviewId": "rvw-94b924ded89f143035fcdc5c0ca49d00",
+            "sequence": 2,
+            "byDepartmentId": "rates",
+            "examinedDepartmentId": "global-macro",
+            "openChallenges": []
+          }
+        ],
+        "risk": {
+          "reviewId": "rvw-633e452646b16b5263e3f027b39efb02",
+          "sequence": 1,
+          "status": "accepted"
+        },
+        "riskRequirement": "required",
+        "riskRuleId": "risk-review-when-implementable",
+        "riskRuleVersion": "1",
+        "requiredWork": [],
+        "materialDisagreements": [
+          {
+            "claimId": "clm-0165ce105a90bdf734431a545d3da567",
+            "materiality": "material"
+          }
+        ],
+        "evidenceSetIds": [],
+        "storageProvenanceId": "6077d61ec78a594778a8cfe9782dd88977a4c2abf927bb2c149d209d87b77996",
+        "evaluatedAt": "<scrubbed>",
+        "manifest": {
+          "algorithm": "sha256",
+          "canonicalizationVersion": 3,
+          "digest": "7a0465c82321137b35fae22c4f0c2f1ad599328bb842910d8cc184b2a570e69c"
+        }
+      }
+    }
+  ],
+  "returns": [],
+  "decision": null,
+  "decisionHistory": [],
+  "reconsiderations": [],
+  "timeline": [
+    {
+      "eventId": "evt-09c39bb646155f2acbdc618826ff4eba",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+      "toState": "running",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "subject": "case",
+      "caseId": "boardroom-debate",
+      "toState": "research",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "intake"
+    },
+    {
+      "eventId": "evt-1b34bd54b55c2e81d163f80405e906b1",
+      "subject": "case",
+      "caseId": "boardroom-debate",
+      "toState": "aggregation",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "research"
+    },
+    {
+      "eventId": "evt-221743e18905594ddd79c2955c85b01d",
+      "subject": "thesis",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-eb78353b5ecdedc52f81c3412015b355",
+      "toState": "proposed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-22d1dd3d16e3183fc6a6d5c1866af42f",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+      "toState": "running",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-26271606802a8f0d33c6e35f0872e41d",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-e848c70a1cdece6ae4bb2551e30312da",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-29316c9cde495813a9f52a894ff470e3",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-2a6d66d69817eadcf10104b2474fcbec",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "toState": "active",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-a74d097f8e45dda5d1ce7634e382b175",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-2c089a0edf34732e5272b2a2fb798a7e",
+      "subject": "thesis",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "toState": "under-analysis",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-31053df66f2293f464a635dfaf095804",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "toState": "completed",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-321abd090c63802aa6469cd078642a1a",
+      "subject": "thesis",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "toState": "awaiting-verification",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "under-analysis"
+    },
+    {
+      "eventId": "evt-413052dbb6ec2d5f615fd0a8d0f093cf",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-09c39bb646155f2acbdc618826ff4eba",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-560824060b1fcbdc169c5a3ad02dcacc",
+      "subject": "case",
+      "caseId": "boardroom-debate",
+      "toState": "review",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "aggregation"
+    },
+    {
+      "eventId": "evt-633ca992213f13dbb73d8a7c294f880b",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-09d9250f1d7087e29464cd402c856d12",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-63d51ab228d2f36768909acb450d3cf7",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-6520989e77d0af6265e240633a764012",
+      "subject": "thesis",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-eb78353b5ecdedc52f81c3412015b355",
+      "toState": "superseded",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "reason": "Both desks are retained; the growth reading leads on balance.",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-2c089a0edf34732e5272b2a2fb798a7e",
+      "aggregateVersion": 2,
+      "fromState": "proposed"
+    },
+    {
+      "eventId": "evt-768ca227781f20685e509d37056a8218",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-c474551d85281fddf69411b7d3698e4d",
+      "challengeId": "chl-149e51b12690d43ea27e742fd763eb2e",
+      "toState": "open",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-83c51e6377ff4f4d1595aa723130e1fd",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "runId": "run-54379fae6b3e5f1fb46c7e2d65f851ef",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
+    },
+    {
+      "eventId": "evt-8bad7d3730c2071cb44db53f33a9946c",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+      "toState": "completed",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
+    },
+    {
+      "eventId": "evt-8dc5b997df891004b928d92fab6e4b74",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-09d9250f1d7087e29464cd402c856d12",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-939499202f898df07a6d848b259f5660",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-847aaf0f5d952d88f5597a3bd99f59f8",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-952d33d0c5dd48c0e330facb81797110",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-d0932b0e90ad1000806881954ec71ed0",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-9e53e0f3a134f6ddbb741416dc2f0dad",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-a74d097f8e45dda5d1ce7634e382b175",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+      "toState": "running",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-b275af97585548a3bdd4ae523f19c9d3",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-0806dd80b61409600eab2082fc6cca50",
+      "toState": "completed",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-b5e358446bddc5de896883a0f8cf414e",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-bc79bcd9a06b390adaed0d5e104109ba",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "runId": "run-68094403642c0bd87b006ec5d3f885c8",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-c42cafb6798d2d789e4f77c5b7738e88",
+      "subject": "case",
+      "caseId": "boardroom-debate",
+      "toState": "intake",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 1,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-d9fe4cbafe02a4baf9ba9e2961902bea",
+      "subject": "requirement",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "toState": "unresolved",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "pending"
+    },
+    {
+      "eventId": "evt-dfe1f01539fc94b34f7825fd40037aa3",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-c474551d85281fddf69411b7d3698e4d",
+      "toState": "examined",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-e3fedd1d7b0c92dc38a91e38019c5dac",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "active"
+    },
+    {
+      "eventId": "evt-e56f6da0e2dc7f2a6cd1ce324c4b537a",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-79f53ffb9d567aa7f14676960dd27077",
+      "toState": "active",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-22d1dd3d16e3183fc6a6d5c1866af42f",
+      "aggregateVersion": 2,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-ea789a98e4c9ba43c2f6702ebb812213",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-e848c70a1cdece6ae4bb2551e30312da",
+      "toState": "active",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "queued"
+    },
+    {
+      "eventId": "evt-f618e1fa30287c0ef60b70483f3e0e5e",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+      "toState": "awaiting-acceptance",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "running"
+    },
+    {
+      "eventId": "evt-fc4a4c2b885f9ba19ae3ca14c75cbfd1",
+      "subject": "assignment",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-c3884bf702659cf1cf1a2f076d84ef01",
+      "toState": "queued",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "causationId": "evt-11c6a1d86afec4df25d083e91e0b582f",
+      "aggregateVersion": 2,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-ff6afc94fdee87bc92521741add8a5ac",
+      "subject": "run",
+      "caseId": "boardroom-debate",
+      "assignmentId": "asg-ebda7de92ca0e34a8585a95a3afd26da",
+      "runId": "run-b0ccff47a5b72f82cb0f541160d410f2",
+      "toState": "completed",
+      "actorEmployeeId": "macro-head",
+      "actorDepartmentId": "global-macro",
+      "occurredAt": "2026-08-01T11:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 2,
+      "fromState": "awaiting-acceptance"
+    },
+    {
+      "eventId": "evt-e9fe5530c6306a8c45128df584a4a6dc",
+      "subject": "case",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "toState": "decision",
+      "actorEmployeeId": "research-director",
+      "actorDepartmentId": "research-office",
+      "occurredAt": "2026-08-01T13:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 5,
+      "fromState": "review"
+    },
+    {
+      "eventId": "evt-369801eb6c01ae14e19e45760a4cbac4",
+      "subject": "requirement",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "toState": "required",
+      "actorEmployeeId": "chief-risk-officer",
+      "actorDepartmentId": "risk",
+      "reason": "The thesis carries a sizing implication, so Risk must look.",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-3fd93c9c440e2c22db8e6939c81dc732",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-c474551d85281fddf69411b7d3698e4d",
+      "toState": "superseded",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "current"
+    },
+    {
+      "eventId": "evt-99d0bf7a63536128991a6dd906ce3498",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-94b924ded89f143035fcdc5c0ca49d00",
+      "challengeId": "chl-179984c204734061671bd980a69e0e31",
+      "toState": "resolved",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": "open"
+    },
+    {
+      "eventId": "evt-b914d16814338da13961627385d94cb1",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-d6886546f48ce1a91ca3b388f825d459",
+      "challengeId": "chl-3e379209e728f102a869ad9c72cd80f2",
+      "toState": "open",
+      "actorEmployeeId": "devils-advocate-head",
+      "actorDepartmentId": "devils-advocate",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-be0f86f47d9e159987e75d9de0fc8049",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-94b924ded89f143035fcdc5c0ca49d00",
+      "toState": "examined",
+      "actorEmployeeId": "rates-head",
+      "actorDepartmentId": "rates",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-c55d96b3465ae108631a86b8610819b8",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-633e452646b16b5263e3f027b39efb02",
+      "toState": "accepted",
+      "actorEmployeeId": "chief-risk-officer",
+      "actorDepartmentId": "risk",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    },
+    {
+      "eventId": "evt-ed84ebda48179b46ae56675d88d1f816",
+      "subject": "review",
+      "caseId": "boardroom-debate",
+      "thesisId": "boardroom-debate-thesis",
+      "revisionId": "rev-1bd001dd1ade6ce41e8453a897a40f34",
+      "reviewId": "rvw-53e99073f12c36ae4d051b1be5db597e",
+      "toState": "verified",
+      "actorEmployeeId": "verification-head",
+      "actorDepartmentId": "verification",
+      "occurredAt": "2026-08-01T14:00:00.000Z",
+      "correlationId": "boardroom",
+      "aggregateVersion": 4,
+      "fromState": null
+    }
+  ],
+  "eligibility": {
+    "kind": "recorded",
+    "policyVersion": "2",
+    "report": {
+      "eligible": true,
+      "policyVersion": "2",
+      "gates": [
+        {
+          "code": "VERIFICATION_INCOMPLETE",
+          "status": "passed",
+          "detail": "verified as \"verified\""
+        },
+        {
+          "code": "CHALLENGE_UNRESOLVED",
+          "status": "passed",
+          "detail": "1 open challenge(s), none at or above \"material\""
+        },
+        {
+          "code": "PEER_SCRUTINY_ABSENT",
+          "status": "passed",
+          "detail": "examined by 1 desk(s): rates"
+        },
+        {
+          "code": "RISK_UNRESOLVED",
+          "status": "passed",
+          "detail": "risk accepted"
+        },
+        {
+          "code": "REQUIRED_WORK_INCOMPLETE",
+          "status": "passed",
+          "detail": "the playbook required no work of this revision"
+        },
+        {
+          "code": "DISAGREEMENT_BLOCKING",
+          "status": "passed",
+          "detail": "1 disagreement(s) recorded, none blocking"
+        }
+      ],
+      "failed": []
+    }
+  }
+}

@@ -84,6 +84,15 @@ export interface TransitionEvent {
   toState: string
   /** Who or what is responsible. A department acts through an employee. */
   actorEmployeeId?: EmployeeId
+  /**
+   * The institutional agent that performed the act, where one did.
+   *
+   * Mutually exclusive with `actorEmployeeId`. Present so an autonomous desk
+   * act is attributed to the principal that performed it rather than recorded
+   * with no actor at all — an omission that would make the event say nobody
+   * did it.
+   */
+  actorAgentPrincipalId?: string
   actorDepartmentId?: DepartmentId
   /** Required for anything that blocks, returns or rejects. */
   reason?: string
@@ -209,4 +218,24 @@ export function effectiveEvents(log: TransitionLog): TransitionEvent[] {
     log.events.map((e) => e.corrects).filter((id): id is EventId => Boolean(id)),
   )
   return orderedEvents(log).filter((e) => !corrected.has(e.eventId))
+}
+
+/**
+ * The actor fields of a transition event, split by the kind of principal.
+ *
+ * One place decides which column an actor belongs in, so no command can put an
+ * agent principal into a field defined as an employee. That would be the
+ * quietest possible falsification: the record would name a person, the person
+ * would be a string nobody employs, and every reader would believe it.
+ *
+ * A system actor yields neither, which the event schema permits for the classes
+ * the domain says may carry no actor.
+ */
+export function actorFieldsOf(actor: {
+  employeeId: string | null
+  agentPrincipalId: string | null
+}): { actorEmployeeId?: string; actorAgentPrincipalId?: string } {
+  if (actor.employeeId) return { actorEmployeeId: actor.employeeId }
+  if (actor.agentPrincipalId) return { actorAgentPrincipalId: actor.agentPrincipalId }
+  return {}
 }

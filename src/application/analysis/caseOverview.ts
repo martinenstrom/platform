@@ -33,12 +33,14 @@ import {
   UnknownEligibilityPolicyError,
   type AgentClaim,
   type AgentRunRecord,
+  type Assignment,
   type CaseDecision,
   type CaseStanding,
   type CaseReconsideration,
   type CioReturn,
   type CioSubmission,
   type DevilsAdvocateReview,
+  type PeerExaminationReview,
   type EligibilityGateReport,
   type EvidenceSet,
   type InvestmentCase,
@@ -87,6 +89,63 @@ export interface CaseOverview {
   evidenceSets: readonly EvidenceSet[]
   verification: readonly VerificationReview[]
   devilsAdvocate: readonly DevilsAdvocateReview[]
+  /**
+   * Peer examinations, whole and unsummarised.
+   *
+   * Kept apart from `devilsAdvocate` for the reason the repository keeps them
+   * apart: one is a control function's standing obligation to object, the
+   * other a qualified desk's second reading of the subject, and a reader who
+   * cannot tell them apart cannot tell whether the firm was disagreed with.
+   *
+   * The REVIEWS, not a Boardroom-shaped summary of them. A projection that
+   * received only what a screen currently draws would lose the provenance the
+   * next screen needs, and the reader would have no way back to the act.
+   */
+  peerExaminations: readonly PeerExaminationReview[]
+  /**
+   * The desks this case involves, named as the organisation names them.
+   *
+   * A surface showing who said what has to be able to write "Rates" rather
+   * than `rates`. Taken from the seeded organisation rather than a lookup
+   * table in the presentation layer, which would be a second place a desk's
+   * name is decided and would drift the first time one was renamed.
+   *
+   * Only the departments the case actually involves — a roster of the whole
+   * firm would describe the org chart rather than this case.
+   */
+  departments: readonly { id: string; name: string; isGovernance: boolean }[]
+  /**
+   * Every desk the firm has, whether or not this case involved it.
+   *
+   * ORGANISATIONAL data only. The Boardroom seats the firm around a table, and
+   * a seat is a position the organisation holds — never evidence that its
+   * occupant did anything here. What a desk actually did comes from
+   * `departments` above and from the persisted acts, and nothing may infer
+   * participation from membership of this list.
+   */
+  roster: readonly {
+    id: string
+    name: string
+    isGovernance: boolean
+    /**
+     * The title of the employee who heads the desk, as the organisation names
+     * them — never a label written here.
+     *
+     * Carried because a department name is not always how the firm refers to a
+     * position: the executive desk is "Executive" on the org chart and the
+     * Chief Investment Officer in every sentence anyone speaks. `null` when the
+     * organisation names no manager for it.
+     */
+    managerTitle: string | null
+  }[]
+  /**
+   * The work this case allocated, as the playbook instantiated it.
+   *
+   * Distinct from what was DONE. A desk with an assignment and no act is a desk
+   * the firm asked and has not heard from — which the room must be able to show
+   * without implying it contributed.
+   */
+  assignments: readonly Assignment[]
   risk: readonly RiskReview[]
   submissions: readonly CioSubmission[]
   returns: readonly CioReturn[]
@@ -132,7 +191,9 @@ export async function caseOverview(input: {
     runs,
     verification,
     devilsAdvocate,
+    peerExaminations,
     risk,
+    assignments,
     timeline,
     returns,
     reconsiderations,
@@ -142,7 +203,10 @@ export async function caseOverview(input: {
     repositories.runs.listForCase(caseId),
     repositories.reviews.verificationsForCase(caseId),
     repositories.reviews.challengesForCase(caseId),
+    repositories.reviews.peerExaminationsForCase(caseId),
     repositories.reviews.riskForCase(caseId),
+    /* Standing needs the work the case was ASSIGNED, to know what it owes. */
+    repositories.assignments.listForCase(caseId),
     repositories.events.listForCase(caseId),
     repositories.submissions.returnsForCase(caseId),
     repositories.submissions.reconsiderationsForCase(caseId),
@@ -170,6 +234,28 @@ export async function caseOverview(input: {
     submissions.push(
       ...(await repositories.submissions.applicableForRevision(revision.revisionId)),
     )
+  }
+
+  /** Named once, from the organisation, for every desk the case touched. */
+  const involvedDepartments = () => {
+    const involved = new Set<string>([
+      ...runs.map((run) => run.departmentId),
+      ...aggregations.map((aggregation) => aggregation.departmentId),
+      ...verification.map((review) => review.byDepartmentId),
+      ...devilsAdvocate.map((review) => review.byDepartmentId),
+      ...peerExaminations.flatMap((review) => [
+        review.byDepartmentId,
+        review.examinedDepartmentId,
+      ]),
+      ...risk.map((review) => review.byDepartmentId),
+    ])
+    return organization.departments
+      .filter((department) => involved.has(department.id))
+      .map((department) => ({
+        id: department.id,
+        name: department.name,
+        isGovernance: department.isGovernance,
+      }))
   }
 
   const [decision, decisionHistory] = await Promise.all([
@@ -203,6 +289,9 @@ export async function caseOverview(input: {
         hasDevilsAdvocate: devilsAdvocate.length > 0,
         hasRisk: risk.length > 0,
         hasDecision: decision !== null,
+        assignments,
+        peerExaminations,
+        aggregations,
       },
     }),
     investmentCase,
@@ -213,6 +302,23 @@ export async function caseOverview(input: {
     evidenceSets,
     verification,
     devilsAdvocate,
+    peerExaminations,
+    departments: involvedDepartments(),
+    assignments,
+    roster: organization.departments.map((department) => ({
+      id: department.id,
+      name: department.name,
+      isGovernance: department.isGovernance,
+      /*
+       * Resolved the same way the agent directory resolves it. `null` rather
+       * than a substitute when the organisation names nobody: a desk shown
+       * with an invented head would be exactly the fiction this replaces.
+       */
+      managerTitle:
+        organization.employees.find(
+          (employee) => employee.id === department.managerEmployeeId,
+        )?.displayName ?? null,
+    })),
     risk,
     submissions,
     returns,

@@ -33,6 +33,7 @@
 import { CornerUpLeft, Gavel, PauseCircle } from 'lucide-react'
 import { DashboardCard } from '~/components/ui/DashboardCard'
 import { StatusBadge } from '~/components/ui/StatusBadge'
+import { DECISION_OUTCOME_LABEL } from '~/presentation/analysis/caseStandingText'
 import { cn } from '~/lib/cn'
 import { toneText } from '~/lib/tone'
 import { formatDateTime } from '~/lib/format'
@@ -56,12 +57,6 @@ const OUTCOME_TONE: Record<string, Tone> = {
   declined: 'neutral',
   /* The CIO looked and chose to wait — an answer, not a commitment. */
   deferred: 'warning',
-}
-
-const OUTCOME_LABEL: Record<string, string> = {
-  selected: 'Position tagen',
-  declined: 'Avböjt',
-  deferred: 'Bordlagt',
 }
 
 export function DecisionHistory({
@@ -130,7 +125,7 @@ function DecisionAct({ act }: { act: Extract<DecisionAct, { kind: 'decision' }> 
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusBadge tone={OUTCOME_TONE[kind] ?? 'neutral'}>
-            {OUTCOME_LABEL[kind] ?? kind}
+            {DECISION_OUTCOME_LABEL[kind] ?? kind}
           </StatusBadge>
           {superseded && (
             /*

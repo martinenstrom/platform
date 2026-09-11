@@ -35,6 +35,8 @@ import {
   type EligibilityBasis,
   type EligibilityGateReport,
   unresolvedChallenges,
+  unresolvedPeerChallenges,
+  applicablePeerExaminations,
   type EligibilityPolicy,
 } from '~/domain/analysis'
 import type { StorageProvenance, TransactionalAnalysisRepositories } from './repositories'
@@ -100,9 +102,10 @@ export async function assembleEligibilityBasis(input: {
   const revision = await repositories.theses.get(revisionId)
   if (!revision) return null
 
-  const [verifications, challenges, risks, runs] = await Promise.all([
+  const [verifications, challenges, peerExaminations, risks, runs] = await Promise.all([
     repositories.reviews.verificationsForCase(caseId),
     repositories.reviews.challengesForCase(caseId),
+    repositories.reviews.peerExaminationsForCase(caseId),
     repositories.reviews.riskForCase(caseId),
     repositories.runs.listForCase(caseId),
   ])
@@ -165,6 +168,38 @@ export async function assembleEligibilityBasis(input: {
           })),
         }
       : null,
+    /*
+     * Every desk that examined this revision, not the latest one.
+     *
+     * `forRevision.reviewsRead` names a single authoritative review per kind,
+     * which is right for the control functions — a firm has one verification,
+     * one challenge verdict, one risk view — and wrong here. Two desks
+     * examining one argument are two opinions, so `applicablePeerExaminations`
+     * applies the supersession rule WITHIN a department and not across them.
+     *
+     * Reading it here rather than through `reviewsRead` keeps that difference
+     * visible instead of hiding a list behind a field shaped for one value.
+     */
+    peerScrutiny: applicablePeerExaminations(
+      peerExaminations,
+      caseId,
+      revisionId,
+    ).map((examination) => ({
+      reviewId: examination.reviewId,
+      sequence: examination.sequence,
+      byDepartmentId: examination.byDepartmentId,
+      examinedDepartmentId: examination.examinedDepartmentId,
+      /*
+       * The domain's own answer to what remains open, and nothing filtered by
+       * materiality — exactly as for the Devil's Advocate above. An empty list
+       * here is a desk that examined and raised nothing, which is a finding;
+       * the ABSENCE of an entry is nobody having examined at all.
+       */
+      openChallenges: unresolvedPeerChallenges(examination).map((challenge) => ({
+        challengeId: challenge.id,
+        materiality: challenge.materiality,
+      })),
+    })),
     risk: risk
       ? { reviewId: risk.reviewId, sequence: risk.sequence, status: risk.status }
       : null,

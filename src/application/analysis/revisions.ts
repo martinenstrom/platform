@@ -149,7 +149,6 @@ export async function mintRevision(
         statement: '',
         position: '',
         proposedByDepartmentId: input.proposedByDepartmentId,
-        proposedByEmployeeId: context.actor.employeeId!,
         proposedAt: context.occurredAt,
         supportingClaimIds: [],
         opposingClaimIds: [],
@@ -157,6 +156,18 @@ export async function mintRevision(
         implications: [],
       }),
       ...input.changes,
+      /*
+       * Who proposed THIS revision, not who proposed the one before it.
+       *
+       * The prior revision is spread above and used to carry its proposer
+       * forward, which was harmless while every proposer was a person on the
+       * same desk and is not once a desk agent mints one: the record would name
+       * the human manager for a position the agent produced and adopted. Both
+       * fields are written from the actor so exactly one survives — spreading a
+       * new principal in without clearing the old one would leave two.
+       */
+      proposedByEmployeeId: context.actor.employeeId ?? undefined,
+      proposedByAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
       revisionId,
       revisionNumber: (input.prior?.revisionNumber ?? 0) + 1,
       ...(input.prior ? { supersedesRevisionId: input.prior.revisionId } : {}),

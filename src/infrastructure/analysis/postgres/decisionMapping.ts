@@ -64,6 +64,7 @@ import type {
   SubmissionDisagreementRow,
   SubmissionEvidenceRow,
   SubmissionOpenChallengeRow,
+  SubmissionPeerExaminationRow,
   SubmissionRequiredWorkRow,
   SubmissionRowSet,
 } from './rows'
@@ -130,6 +131,7 @@ function toActor(
   return {
     kind: 'employee',
     employeeId: row.employee_id,
+    agentPrincipalId: null,
     roleId: row.role_id,
     roleFunction: row.role_function as ActorSnapshot['roleFunction'],
     departmentId: row.department_id,
@@ -202,6 +204,26 @@ export function submissionToRows(submission: CioSubmission): SubmissionRowSet {
       challenge_id: challenge.challengeId,
       materiality: challenge.materiality,
     })),
+    peerExaminations: basis.peerScrutiny.map((examination) => ({
+      submission_id: submission.id,
+      review_id: examination.reviewId,
+      sequence: examination.sequence,
+      by_department_id: examination.byDepartmentId,
+      examined_department_id: examination.examinedDepartmentId,
+    })),
+    /*
+     * Flattened across examinations for storage and regrouped by `review_id` on
+     * read. The composite foreign key is what makes that regrouping safe: an
+     * objection cannot name an examination this submission did not record.
+     */
+    peerChallenges: basis.peerScrutiny.flatMap((examination) =>
+      examination.openChallenges.map((challenge) => ({
+        submission_id: submission.id,
+        review_id: examination.reviewId,
+        challenge_id: challenge.challengeId,
+        materiality: challenge.materiality,
+      })),
+    ),
   }
 }
 
@@ -217,6 +239,12 @@ const disagreementOrder = (
 
 const evidenceOrder = (left: SubmissionEvidenceRow, right: SubmissionEvidenceRow) =>
   byteOrder(left.evidence_set_id, right.evidence_set_id)
+
+/** By examining desk, which is the order the basis and the digest use. */
+const peerExaminationOrder = (
+  left: SubmissionPeerExaminationRow,
+  right: SubmissionPeerExaminationRow,
+) => byteOrder(left.by_department_id, right.by_department_id)
 
 /**
  * A stored materiality, or a malformed row.
@@ -337,6 +365,33 @@ export function submissionFromRows(
     blockers: [],
     verification,
     devilsAdvocate,
+    /*
+     * Regrouped by the examination that raised them. The composite foreign key
+     * guarantees every peer challenge names an examination this submission
+     * recorded, so an objection cannot end up attributed to a desk that never
+     * filed it — and an examination with no rows here is a desk that read the
+     * argument and raised nothing, which is the finding the gate reads.
+     */
+    peerScrutiny: [...rows.peerExaminations]
+      .sort(peerExaminationOrder)
+      .map((examination) => ({
+        reviewId: examination.review_id,
+        sequence: examination.sequence,
+        byDepartmentId: examination.by_department_id,
+        examinedDepartmentId: examination.examined_department_id,
+        openChallenges: rows.peerChallenges
+          .filter((challenge) => challenge.review_id === examination.review_id)
+          .slice()
+          .sort((a, b) => byteOrder(a.challenge_id, b.challenge_id))
+          .map((challenge) => ({
+            challengeId: challenge.challenge_id,
+            materiality: asMateriality(
+              challenge.materiality,
+              challenge.challenge_id,
+              operation,
+            ),
+          })),
+      })),
     risk,
     riskRequirement: row.risk_requirement as EligibilityBasis['riskRequirement'],
     riskRuleId: row.risk_rule_id,

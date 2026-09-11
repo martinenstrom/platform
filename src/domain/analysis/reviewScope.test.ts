@@ -26,6 +26,11 @@ import {
   type RiskReview,
   type VerificationReview,
 } from './index'
+import { eligibilityPolicy } from '~/domain/analysis'
+
+/** Version 1's mandates, read from the registry rather than restated. */
+const DA_ONLY = eligibilityPolicy('1').challengeMandates
+
 
 const AT = '2026-07-28T10:00:00.000Z'
 const CASE = 'case-1'
@@ -77,6 +82,8 @@ const challengeReview = (
   at: AT,
   challenges: [
     buildChallenge({
+      challengerKind: 'devils-advocate',
+      byDepartmentId: 'devils-advocate',
       id: 'ch-1',
       contests: 'claim-1',
       kind: 'fragile-assumption',
@@ -170,6 +177,7 @@ describe('a superseding revision inherits nothing', () => {
         verification: [verification(rev1)],
       },
       'material',
+      DA_ONLY,
     )
     expect(gates[0]!.passed).toBe(false)
     expect(gates[0]!.blockers.map((b) => b.kind)).toContain('verification-missing')
@@ -184,6 +192,7 @@ describe('a superseding revision inherits nothing', () => {
         verification: [verification(rev1)],
       },
       'material',
+      DA_ONLY,
     )
     expect(gates.find((g) => g.revisionId === 'buy-r1')?.passed).toBe(true)
     expect(gates.find((g) => g.revisionId === 'buy-r2')?.passed).toBe(false)
@@ -201,6 +210,7 @@ describe('a superseding revision inherits nothing', () => {
         devilsAdvocate: [challengeReview(rev1)],
       },
       'material',
+      DA_ONLY,
     )
     expect(
       gates.find((g) => g.revisionId === 'buy-r1')?.blockers.map((b) => b.kind),
@@ -221,6 +231,7 @@ describe('a superseding revision inherits nothing', () => {
         devilsAdvocate: [resolved],
       },
       'material',
+      DA_ONLY,
     )
     expect(gates[0]!.passed).toBe(false)
   })
@@ -246,6 +257,7 @@ describe('a superseding revision inherits nothing', () => {
         risk: [risk],
       },
       'material',
+      DA_ONLY,
     )
     expect(gates.find((g) => g.revisionId === 'buy-r1')?.passed).toBe(false)
     expect(gates.find((g) => g.revisionId === 'buy-r2')?.passed).toBe(true)
@@ -272,6 +284,7 @@ describe('a superseding revision inherits nothing', () => {
         compliance: [compliance],
       },
       'material',
+      DA_ONLY,
     )
     expect(
       gates.every((g) => g.blockers.some((b) => b.kind === 'compliance-block')),
@@ -292,6 +305,7 @@ describe('a superseding revision inherits nothing', () => {
         ],
       },
       'material',
+      DA_ONLY,
     )
     // Changing its mind is a new review; the gate reads the current one and
     // the record keeps both.
@@ -307,6 +321,7 @@ describe('the CIO decision', () => {
     decidedBy: {
       kind: 'employee',
       employeeId: 'cio',
+      agentPrincipalId: null,
       roleId: 'role-cio',
       roleFunction: 'executive',
       departmentId: 'executive',
@@ -341,6 +356,7 @@ describe('the CIO decision', () => {
       CASE,
       reviews,
       'material',
+      DA_ONLY,
     )
 
   it('refuses a revision whose only reviews belong to its predecessor', () => {

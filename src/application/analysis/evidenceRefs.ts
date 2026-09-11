@@ -360,3 +360,45 @@ export function isRiksbankState(
 ): state is RiksbankPolicyState {
   return state.centralBank === 'riksbank'
 }
+
+/**
+ * A governed daily close, as an observation reference.
+ *
+ * The sanctioned bridge from a price source into observation identity, and the
+ * only one: an adapter that minted its own ref could put a ticker in `subject`,
+ * and the join that proves two providers describe one security would be gone.
+ *
+ * `subject` is the `SecurityId` — never the symbol, never the provider's
+ * ticker. `sourceId` and `seriesId` still record who said it and under what
+ * name, so the record shows both the institutional identity and the provider's
+ * own, without either standing in for the other.
+ */
+export function priceCloseRef(input: {
+  securityId: string
+  /** The venue's session date, e.g. `2026-08-29`. The reference period. */
+  sessionDate: string
+  close: number
+  providerSymbol: string
+  provenance: Provenance
+}): ObservationRef {
+  return observationRef(
+    {
+      subjectKind: 'instrument',
+      subject: input.securityId,
+      kind: 'price-close',
+      observedAt: input.provenance.asOf,
+      /*
+       * The session, not the retrieval. Re-fetching yesterday's history must
+       * reproduce yesterday's identities exactly, or every ingest would mint a
+       * parallel set of observations for days the firm already holds.
+       */
+      referencePeriod: input.sessionDate,
+      sourceId: input.provenance.source.providerId,
+      seriesId: input.providerSymbol,
+    },
+    {
+      close: canonicalDecimalFromNumber(input.close),
+      sessionDate: input.sessionDate,
+    },
+  )
+}

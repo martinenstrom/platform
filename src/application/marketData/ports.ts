@@ -53,7 +53,16 @@ export type Capability =
  */
 export type DataCategory =
   | 'equity-index-se'
+  /**
+   * International indices with no approved live route. Fixture only.
+   *
+   * Kept separate from the broker-routed set below so a provider outage and an
+   * absent source stay distinguishable: one is a failure, the other is a
+   * capability the firm does not have.
+   */
   | 'equity-index-intl'
+  /** International indices Avanza exposes as actual index instruments. */
+  | 'equity-index-intl-broker'
   | 'equity-se'
   | 'fx'
   | 'yields-us'

@@ -183,7 +183,19 @@ export function managerAggregationSemanticKey(aggregation: ManagerAggregation): 
     thesisId: aggregation.thesisId,
     sourceRevisionId: aggregation.sourceRevisionId,
     producedRevisionId: aggregation.producedRevisionId,
-    managerEmployeeId: aggregation.managerEmployeeId,
+    /*
+     * Both principals and the adopted candidate. Two aggregations differing
+     * only in who stood behind them, or in which candidate became the position,
+     * are two different accounts — and a key that could not tell them apart
+     * would let the second be answered with the first.
+     *
+     * `?? null` rather than omission: absent and null are the same fact here
+     * (this principal did not act), and the canonical encoder distinguishes an
+     * absent key from a null one.
+     */
+    managerEmployeeId: aggregation.managerEmployeeId ?? null,
+    managerAgentPrincipalId: aggregation.managerAgentPrincipalId ?? null,
+    synthesisRunId: aggregation.synthesisRunId ?? null,
     departmentId: aggregation.departmentId,
     aggregatedAt: aggregation.aggregatedAt,
     rationale: aggregation.rationale,
@@ -293,6 +305,25 @@ export function cioSubmissionSemanticKey(submission: CioSubmission): string {
               .map((c) => `${c.challengeId}:${c.materiality}`),
           })
         : null,
+      /*
+       * Part of the identity, like the Devil's Advocate above. Two submissions
+       * differing only in which desks examined the revision are different
+       * submissions, and replaying one as the other would report scrutiny that
+       * did not happen for the work in hand.
+       */
+      peerScrutiny: sorted(
+        basis.peerScrutiny.map((examination) =>
+          asCanonicalValueString({
+            reviewId: examination.reviewId,
+            sequence: examination.sequence,
+            byDepartmentId: examination.byDepartmentId,
+            examinedDepartmentId: examination.examinedDepartmentId,
+            openChallenges: [...examination.openChallenges]
+              .sort((a, b) => (a.challengeId < b.challengeId ? -1 : 1))
+              .map((c) => `${c.challengeId}:${c.materiality}`),
+          }),
+        ),
+      ),
       risk: basis.risk ? asCanonicalValueString(basis.risk) : null,
       riskRequirement: basis.riskRequirement,
       riskRuleId: basis.riskRuleId,

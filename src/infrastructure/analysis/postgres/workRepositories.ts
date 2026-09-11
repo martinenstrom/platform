@@ -21,6 +21,7 @@ import type {
   AssignmentRepository,
   ClaimRepository,
   ProducedClaimRepository,
+  ProducedSynthesisRepository,
   RunRepository,
 } from '~/application/analysis/repositories'
 import {
@@ -39,11 +40,18 @@ import {
 } from '~/domain/analysis'
 import { groupBy } from './caseRepositories'
 import { ensureProvenance } from './provenance'
-import { toAssignment, toClaim, toRun, toRunEvent } from './mapping'
+import {
+  toAssignment,
+  toClaim,
+  toProducedSynthesis,
+  toRun,
+  toRunEvent,
+} from './mapping'
 import type {
   AssignmentRow,
   ClaimEvidenceRow,
   ClaimRow,
+  ProducedSynthesisRow,
   RunEventRow,
   RunRow,
 } from './rows'
@@ -53,7 +61,8 @@ import { singleStatement, unitOfWork, type Scope } from './transaction'
 /* ------------------------------------------------------------ assignments */
 
 const ASSIGNMENT_COLUMNS = `
-  id, case_id, tenant_id, department_id, assignee_employee_id, playbook_entry_key,
+  id, case_id, tenant_id, department_id, assignee_employee_id,
+  assignee_agent_principal_id, playbook_entry_key,
   brief, status, priority, ${ts('created_at')}, ${ts('started_at')},
   ${ts('completed_at')}, waiting_on_kind, waiting_on_assignment_id,
   waiting_on_description, returned_reason
@@ -79,13 +88,15 @@ export const ASSIGNMENT_SQL = catalog({
    */
   save: `INSERT INTO analysis.assignments
            (id, case_id, tenant_id, department_id, assignee_employee_id,
+            assignee_agent_principal_id,
             playbook_entry_key, brief, status, priority, created_at, started_at,
             completed_at, waiting_on_kind, waiting_on_assignment_id,
             waiting_on_description, returned_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (id) DO UPDATE SET
            status = EXCLUDED.status,
            assignee_employee_id = EXCLUDED.assignee_employee_id,
+           assignee_agent_principal_id = EXCLUDED.assignee_agent_principal_id,
            priority = EXCLUDED.priority,
            started_at = EXCLUDED.started_at,
            completed_at = EXCLUDED.completed_at,
@@ -143,6 +154,7 @@ export function createAssignmentRepository(
           tenantId,
           assignment.departmentId,
           assignment.assigneeEmployeeId ?? null,
+          assignment.assigneeAgentPrincipalId ?? null,
           // Half of the identity that makes opening a case idempotent. Null for
           // ad-hoc work, several of which on one case is legitimate.
           assignment.playbookEntryKey ?? null,
@@ -229,6 +241,105 @@ export async function hydrateClaims(
   )
   const byClaim = groupBy(evidence, (item) => item.claim_id)
   return rows.map((row) => toClaim(row, byClaim.get(row.id) ?? []))
+}
+
+export const PRODUCED_SYNTHESIS_SQL = catalog({
+  get: `SELECT run_id, case_id, tenant_id, statement, position, rationale,
+               invalidation_criteria, horizon, implications, dispositions,
+               optional_inputs, input_run_ids, source_revision_id, playbook_id,
+               playbook_version, observed_completed_run_ids, content_hash,
+               canonicalization_version, ${ts('produced_at')}
+        FROM analysis.produced_syntheses WHERE run_id = $1`,
+
+  record: `INSERT INTO analysis.produced_syntheses
+             (run_id, case_id, tenant_id, statement, position, rationale,
+              invalidation_criteria, horizon, implications, dispositions,
+              optional_inputs, input_run_ids, source_revision_id, playbook_id,
+              playbook_version, observed_completed_run_ids, content_hash,
+              canonicalization_version, produced_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                   $18,$19)
+           ON CONFLICT (run_id) DO NOTHING`,
+})
+
+/**
+ * The Research Office's unadopted synthesis.
+ *
+ * See `ProducedSynthesisRepository` and migration 0045. Write-once: the store
+ * holds `SELECT` and `INSERT` and nothing else, so a candidate cannot be edited
+ * into agreement with the synthesis that was actually adopted.
+ */
+export function createProducedSynthesisRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): ProducedSynthesisRepository {
+  const read = async (client: Queryable, runId: string, operation: string) => {
+    const row = await one<ProducedSynthesisRow>(
+      client,
+      context,
+      operation,
+      PRODUCED_SYNTHESIS_SQL.get,
+      [runId],
+    )
+    return row ? toProducedSynthesis(row) : null
+  }
+
+  return {
+    record: (candidate) =>
+      unitOfWork(scope, 'producedSyntheses.record', async (client) => {
+        const existing = await read(client, candidate.runId, 'producedSyntheses.record')
+        if (existing) {
+          /*
+           * One run produces one synthesis. The content hash covers the
+           * artifact AND the basis it was produced against, so comparing it
+           * answers "is this the same candidate" exactly: a retry matches, and
+           * a second, different synthesis for the same run does not.
+           */
+          if (existing.contentHash !== candidate.contentHash) {
+            throw new ConflictingRecordError(
+              'Produced synthesis',
+              candidate.runId,
+              'producedSyntheses.record',
+            )
+          }
+          return
+        }
+        await run(
+          client,
+          context,
+          'producedSyntheses.record',
+          PRODUCED_SYNTHESIS_SQL.record,
+          [
+            candidate.runId,
+            candidate.caseId,
+            tenantId,
+            candidate.artifact.statement,
+            candidate.artifact.position,
+            candidate.artifact.rationale,
+            candidate.artifact.invalidationCriteria,
+            /* Absent is absent. An empty string is refused by the CHECK. */
+            candidate.artifact.horizon ?? null,
+            JSON.stringify([...candidate.artifact.implications]),
+            JSON.stringify([...candidate.artifact.dispositions]),
+            JSON.stringify([...candidate.artifact.optionalInputs]),
+            JSON.stringify([...candidate.artifact.inputRunIds]),
+            candidate.basis.sourceRevisionId,
+            candidate.basis.playbookId,
+            candidate.basis.playbookVersion,
+            JSON.stringify([...candidate.basis.observedCompletedRunIds]),
+            candidate.contentHash,
+            candidate.canonicalizationVersion,
+            candidate.producedAt,
+          ],
+        )
+      }),
+
+    get: (runId) =>
+      unitOfWork(scope, 'producedSyntheses.get', (client) =>
+        read(client, runId, 'producedSyntheses.get'),
+      ),
+  }
 }
 
 export const PRODUCED_CLAIM_SQL = catalog({
@@ -406,7 +517,8 @@ export function createClaimRepository(
 /* -------------------------------------------------------------------- runs */
 
 const RUN_COLUMNS = `
-  id, case_id, tenant_id, assignment_id, department_id, employee_id, revision_id,
+  id, case_id, tenant_id, assignment_id, department_id, employee_id,
+  agent_principal_id, revision_id,
   state, obsolete, agent_contract_version, output_schema_version,
   identity_kind, prompt_id,
   prompt_version, prompt_content_hash, model_id, model_provider,
@@ -415,7 +527,8 @@ const RUN_COLUMNS = `
   evidence_set_id,
   ${ts('started_at')}, ${ts('completed_at')},
   failure_category, failure_retryable, failure_attempt, ${ts('failed_at')},
-  rejection_code, rejection_detail, rejected_by_employee_id, ${ts('rejected_at')},
+  rejection_code, rejection_detail, rejected_by_employee_id,
+  rejected_by_agent_principal_id, ${ts('rejected_at')},
   playbook_id, playbook_version, playbook_entry_key,
   provider_id, provider_version, provider_kind, missing_optional_inputs,
   usage_state, usage_cost_state, input_tokens, output_tokens, cost_minor_units, currency,
@@ -439,6 +552,7 @@ export const RUN_SQL = catalog({
 
   save: `INSERT INTO analysis.runs
            (id, case_id, tenant_id, assignment_id, department_id, employee_id,
+            agent_principal_id,
             revision_id, state, obsolete, agent_contract_version,
             output_schema_version, identity_kind,
             prompt_id, prompt_version, prompt_content_hash,
@@ -446,7 +560,8 @@ export const RUN_SQL = catalog({
             scenario_id, stub_version, identity_unavailable_reason, recording_id,
             evidence_set_id, started_at, completed_at,
             failure_category, failure_retryable, failure_attempt, failed_at,
-            rejection_code, rejection_detail, rejected_by_employee_id, rejected_at,
+            rejection_code, rejection_detail, rejected_by_employee_id,
+            rejected_by_agent_principal_id, rejected_at,
             playbook_id, playbook_version, playbook_entry_key,
             provider_id, provider_version, provider_kind, missing_optional_inputs,
             provenance_id,
@@ -457,7 +572,7 @@ export const RUN_SQL = catalog({
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
                  $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
                  $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,
-                 $48,$49,$50,$51,$52,$53,$54,$55)
+                 $48,$49,$50,$51,$52,$53,$54,$55,$56,$57)
          ON CONFLICT (id) DO UPDATE SET
            state = EXCLUDED.state,
            obsolete = EXCLUDED.obsolete,
@@ -469,6 +584,8 @@ export const RUN_SQL = catalog({
            rejection_code = EXCLUDED.rejection_code,
            rejection_detail = EXCLUDED.rejection_detail,
            rejected_by_employee_id = EXCLUDED.rejected_by_employee_id,
+           rejected_by_agent_principal_id =
+             EXCLUDED.rejected_by_agent_principal_id,
            rejected_at = EXCLUDED.rejected_at,
            usage_state = EXCLUDED.usage_state,
            usage_cost_state = EXCLUDED.usage_cost_state,
@@ -613,7 +730,8 @@ export function createRunRepository(
           tenantId,
           record.assignmentId,
           record.departmentId,
-          record.employeeId,
+          record.employeeId ?? null,
+          record.agentPrincipalId ?? null,
           record.revisionId ?? null,
           record.state,
           record.obsolete ?? false,
@@ -641,6 +759,7 @@ export function createRunRepository(
           record.rejection?.code ?? null,
           record.rejection?.detail ?? null,
           record.rejection?.rejectedByEmployeeId ?? null,
+          record.rejection?.rejectedByAgentPrincipalId ?? null,
           record.rejection?.rejectedAt ?? null,
           record.execution.playbookId,
           record.execution.playbookVersion,

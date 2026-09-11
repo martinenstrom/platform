@@ -196,20 +196,56 @@ export const CONTRIBUTION_REJECTION_CODES: readonly ContributionRejectionCode[] 
   ])
 
 /**
- * A human declining an agent's work, and why.
+ * A principal declining an agent's work, and why.
  *
  * **One primary code, and prose that is required rather than optional.** A code
  * alone teaches nobody anything, and a rejection nobody can learn from is the
  * discarded history this record exists to prevent. Secondary codes are
  * deliberately not modelled.
+ *
+ * This used to say "the person who declined it. Never an agent." That stopped
+ * being true when P4 widened `RejectContribution` to the accountable
+ * institutional principal: the same authority that may adopt a desk's work may
+ * decline it. The storage contract still required an employee, so an agent
+ * declining a contribution failed at the foreign key — repaired in `0044`.
  */
 export interface ContributionRejection {
   code: ContributionRejectionCode
   /** Required. What was actually wrong, for whoever tries to fix it. */
   detail: string
-  /** The person who declined it. Never an agent. */
-  rejectedByEmployeeId: EmployeeId
+  /**
+   * The accountable institutional principal that declined the produced
+   * contribution.
+   *
+   * Exactly one of these two is set, enforced by the database. Two optional
+   * fields rather than one required id, for the reason `AgentRunRecord` carries
+   * them that way: a single column holding either kind would make "which sort
+   * of principal was this" a lookup rather than a fact.
+   */
+  rejectedByEmployeeId?: EmployeeId
+  /** The institutional agent that declined it, where one did. */
+  rejectedByAgentPrincipalId?: string
   rejectedAt: string
+}
+
+/**
+ * The principal that declined, whichever kind it was.
+ *
+ * For readers that need to name the decliner and do not care which kind it is.
+ * Anything that renders a person's name, or attributes the act to staff, must
+ * read the two fields directly instead — an agent id shown under a heading that
+ * says "employee" is the fiction this pair exists to prevent.
+ */
+export function rejectingPrincipalId(rejection: ContributionRejection): string {
+  const principal =
+    rejection.rejectedByEmployeeId ?? rejection.rejectedByAgentPrincipalId
+  if (!principal) {
+    throw new Error(
+      'A rejection names no accountable principal. Exactly one of ' +
+        '`rejectedByEmployeeId` and `rejectedByAgentPrincipalId` is required.',
+    )
+  }
+  return principal
 }
 
 export type RunState =
@@ -663,7 +699,15 @@ export interface AgentRunRecord {
   caseId: CaseId
   assignmentId: AssignmentId
   departmentId: DepartmentId
-  employeeId: EmployeeId
+  /**
+   * The human accountable for the run, where one is.
+   *
+   * Optional since a desk may act for itself: exactly one of this and
+   * `agentPrincipalId` is set, enforced by the database.
+   */
+  employeeId?: EmployeeId
+  /** The institutional agent accountable for the run, where one is. */
+  agentPrincipalId?: string
 
   /**
    * The two version axes every producer has.
@@ -836,6 +880,24 @@ export function buildRunRecord(record: AgentRunRecord): AgentRunRecord {
   }
   if (record.rejection && record.rejection.detail.trim() === '') {
     throw new Error(`Run "${record.id}" is rejected with no explanation`)
+  }
+  /*
+   * Exactly one accountable rejecting principal. Mirrors
+   * `runs_rejected_by_one_principal` in migration 0044, so a record that the
+   * database would refuse does not get as far as the database.
+   */
+  if (record.rejection) {
+    const named = [
+      record.rejection.rejectedByEmployeeId,
+      record.rejection.rejectedByAgentPrincipalId,
+    ].filter((principal) => principal !== undefined).length
+    if (named !== 1) {
+      throw new Error(
+        `Run "${record.id}" names ${named} accountable principals for its ` +
+          `rejection. A rejection is declined by exactly one principal the ` +
+          `firm can ask about it.`,
+      )
+    }
   }
   return Object.freeze({
     ...record,

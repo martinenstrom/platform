@@ -50,6 +50,7 @@ const commandIntent = (over: Partial<CommandIntent> = {}): CommandIntent => ({
   actor: {
     kind: 'employee',
     employeeId: 'research-director',
+    agentPrincipalId: null,
     roleId: 'research-director',
     roleFunction: 'manager',
     departmentId: 'research-office',

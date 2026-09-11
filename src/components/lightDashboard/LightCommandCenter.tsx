@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   Activity,
-  BarChart3,
   Bell,
   BellRing,
   Briefcase,
@@ -13,7 +12,7 @@ import {
   Flame,
   Landmark,
   LayoutGrid,
-  Newspaper,
+  Library,
   Package,
   Plus,
   Radio,
@@ -21,7 +20,6 @@ import {
   Settings,
   ShoppingBag,
   Star,
-  TrendingUp,
 } from 'lucide-react'
 import {
   CartesianGrid,
@@ -47,6 +45,12 @@ import { getMarketStatus, MARKET_CENTERS } from '~/data/countryExplorer/marketCe
 import { countryExplorerService } from '~/services/countryExplorerService'
 import { cn } from '~/lib/cn'
 import { formatPercent } from '~/lib/format'
+import {
+  discloseEnvelope,
+  discloseObservation,
+  disclosureTitle,
+  type Disclosure,
+} from '~/presentation/marketData/disclosure'
 import {
   dataOr,
   formatDataFreshness,
@@ -121,6 +125,37 @@ const INTRADAY_SERIES_COLORS = [
   CATEGORICAL[3],
 ]
 
+/**
+ * A disclosure marker on a market row.
+ *
+ * Every number on this screen is presented as current market context, and
+ * until now none of them said whether it was. The envelope has always known —
+ * `ok`, `stale` or `fixture` — and the projection threw that away, leaving one
+ * sentence at the foot of a panel to answer for every figure above it.
+ *
+ * The marker is deliberately small and unsaturated. This is institutional
+ * disclosure: it has to be impossible to miss while reading the row and
+ * impossible to mistake for an alarm. A current observation renders nothing,
+ * which is what gives a marker meaning when it appears.
+ */
+function MarketDisclosure({ disclosure }: { disclosure: Disclosure }) {
+  if (disclosure.marker === null) return null
+  const fixture = disclosure.state === 'fixture'
+  return (
+    <span
+      title={disclosureTitle(disclosure)}
+      className="ml-2 shrink-0 whitespace-nowrap rounded-[3px] border px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.09em]"
+      style={
+        fixture
+          ? { borderColor: 'rgba(214,164,90,0.45)', color: '#d6a45a' }
+          : { borderColor: 'rgba(122,145,168,0.35)', color: '#8fa3b8' }
+      }
+    >
+      {disclosure.marker}
+    </span>
+  )
+}
+
 /** Legend/series order for "Utveckling idag", matched to the snapshot order. */
 function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
   const byRange = dataOr(snapshot.intraday, {} as Record<SeriesRange, never[]>)
@@ -129,23 +164,38 @@ function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
     id: entry.symbol,
     label: snapshot.instruments[entry.symbol]?.displayName ?? entry.symbol,
     color: INTRADAY_SERIES_COLORS[index % INTRADAY_SERIES_COLORS.length] as string,
+    /*
+     * Per series, not per chart. A `MarketSeries` carries its own provenance,
+     * so two lines on one chart can differ in source and state — and the
+     * legend, where each line is named, is the only place a reader can be told
+     * which one is which.
+     */
+    disclosure: discloseObservation(entry.provenance, snapshot.intraday, {
+      symbol: entry.symbol,
+    }),
   }))
 }
 
 /* ------------------------------------------------------------- sections — */
 
+/*
+ * This screen's own navigation column.
+ *
+ * `Marknader` is gone from it, and its absence is the point: this screen IS
+ * Marknader now. The route still exists and redirects here, so leaving the
+ * entry in would have offered the reader a link back to the page they are
+ * already reading — which is how a navigation stops describing the product and
+ * starts describing its own routing table.
+ *
+ * `Kommandocentral` leads because that is this page, and `Huvudkontor` is the
+ * way to the firm.
+ */
 const NAV_ITEMS = [
-  { to: '/', label: 'Översikt', icon: LayoutGrid },
-  { to: '/markets', label: 'Marknader', icon: TrendingUp },
+  { to: '/', label: 'Kommandocentral', icon: LayoutGrid },
   { to: '/watchlist', label: 'Bevakning', icon: Star },
+  { to: '/headquarters', label: 'Huvudkontor', icon: Landmark },
+  { to: '/evidence', label: 'Underlag', icon: Library },
   { to: '/portfolio', label: 'Portfölj', icon: Briefcase },
-  { to: '/agents', label: 'Analys', icon: BarChart3 },
-  /*
-   * Headquarters. Placed after Analys because it is where analysis ends up:
-   * the cases the firm is holding, and where each one stands.
-   */
-  { to: '/cases', label: 'Huvudkontor', icon: Landmark },
-  { to: '/reports', label: 'Nyheter', icon: Newspaper },
   { to: '/reports', label: 'Rapporter', icon: FileText },
   { to: '/settings', label: 'Aviseringar', icon: BellRing },
   { to: '/settings', label: 'Inställningar', icon: Settings },
@@ -170,9 +220,14 @@ function Sidebar() {
           HX
         </Link>
         <nav className="mt-8 flex flex-1 flex-col gap-1.5">
-          {NAV_ITEMS.map((item, index) => {
+          {NAV_ITEMS.map((item) => {
             const Icon = item.icon
-            const active = index === 0
+            /*
+             * This screen is the home page again, so the highlight is back on
+             * `/`. It has been wrong twice by being pinned to the wrong route,
+             * which is why it reads from the entry rather than from an index.
+             */
+            const active = item.to === '/'
             return (
               <Link
                 key={item.label}
@@ -414,25 +469,93 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
   // Every figure below is read from the snapshot and formatted by the
   // presentation layer. Nothing on this screen computes, parses or invents a
   // financial value any more.
+  /*
+   * Disclosure per category, resolved once and carried onto every row it
+   * governs. `dataOr` is still the right call for the decorative series — a
+   * sparkline is a shape, not a quoted figure — but every number a reader
+   * could take for a current market observation now travels with its state.
+   */
+  /*
+   * The only panel-level marker left on this screen, and it is panel-level
+   * because the panel renders exactly one observation.
+   *
+   * `MarketSentiment` is a single derived score with a single `Provenance`.
+   * Its `components` carry their own `inputAsOf` and `inputQuality`, and the
+   * domain already folds the stalest input into the score's own provenance —
+   * "a score is only as fresh as its stalest input". None of the components is
+   * rendered here, so there is no second value on this panel that could
+   * disagree with the marker.
+   */
+  /*
+   * Panel-level, but still judged as an observation: a derived sentiment
+   * score served under stale-while-revalidate is not stale merely because the
+   * cache turned over behind it.
+   */
+  const sentimentDisclosure = discloseEnvelope(snapshot.sentiment, {
+    /*
+     * The composite's own session, not a constituent's. `closed` earns the
+     * closed-session allowance from the frozen freshness policy, which is what
+     * keeps the last complete US-session reading current overnight instead of
+     * stale fifteen minutes after the bell.
+     */
+    session: hasData(snapshot.sentiment) ? snapshot.sentiment.data.session : 'unknown',
+  })
+
   const sparklines = dataOr(snapshot.indexSparklines, {})
   const marketCards = dataOr(snapshot.indices, []).map((quote) => ({
     ...toQuoteViewModel(quote),
     spark: toSparklineValues(sparklines[quote.symbol]),
+    disclosure: discloseObservation(quote.provenance, snapshot.indices, {
+      symbol: quote.symbol,
+      session: quote.session,
+    }),
   }))
   const currentMarkets = [
-    ...dataOr(snapshot.fx, []),
-    ...dataOr(snapshot.commodities, []),
-    ...dataOr(snapshot.crypto, []),
-  ].map(toMarketRowViewModel)
-  const rates = dataOr(snapshot.yields, []).map(toYieldViewModel)
+    ...dataOr(snapshot.fx, []).map((quote) => ({
+      quote,
+      disclosure: discloseObservation(quote.provenance, snapshot.fx, {
+        symbol: quote.symbol,
+        session: quote.session,
+      }),
+    })),
+    ...dataOr(snapshot.commodities, []).map((quote) => ({
+      quote,
+      disclosure: discloseObservation(quote.provenance, snapshot.commodities, {
+        symbol: quote.symbol,
+        session: quote.session,
+      }),
+    })),
+    ...dataOr(snapshot.crypto, []).map((quote) => ({
+      quote,
+      disclosure: discloseObservation(quote.provenance, snapshot.crypto, {
+        symbol: quote.symbol,
+        session: quote.session,
+      }),
+    })),
+  ].map(({ quote, disclosure }) => ({ ...toMarketRowViewModel(quote), disclosure }))
+  const rates = dataOr(snapshot.yields, []).map((entry) => ({
+    ...toYieldViewModel(entry),
+    disclosure: discloseObservation(entry.provenance, snapshot.yields, {
+      symbol: entry.symbol,
+    }),
+  }))
   const rateCurve = toYieldCurveValues(
     hasData(snapshot.yieldCurve) ? snapshot.yieldCurve.data : undefined,
   )
-  const sectors = dataOr(snapshot.sectors, []).map(toSectorViewModel)
+  const sectors = dataOr(snapshot.sectors, []).map((entry) => ({
+    ...toSectorViewModel(entry),
+    disclosure: discloseObservation(entry.provenance, snapshot.sectors, {
+      symbol: entry.symbol,
+    }),
+  }))
   const watchlistSparks = dataOr(snapshot.watchlistSparklines, {})
-  const watchlistItems = dataOr(snapshot.watchlist, []).map((quote) =>
-    toWatchlistViewModel(quote, watchlistSparks[quote.symbol]),
-  )
+  const watchlistItems = dataOr(snapshot.watchlist, []).map((quote) => ({
+    ...toWatchlistViewModel(quote, watchlistSparks[quote.symbol]),
+    disclosure: discloseObservation(quote.provenance, snapshot.watchlist, {
+      symbol: quote.symbol,
+      session: quote.session,
+    }),
+  }))
   // Relative news ages are measured against the snapshot's own generation
   // time, not a live clock: the labels stay stable between renders and the
   // page does not silently re-time itself every second.
@@ -446,6 +569,50 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
   const sentimentLabel = hasData(snapshot.sentiment)
     ? snapshot.sentiment.data.label
     : 'neutral'
+
+  /*
+   * What a reader needs to act on the headline, in one inspectable string.
+   *
+   * A composite of 45 built from 43/45/47 and one built from 5/45/85 are the
+   * same number and entirely different statements, so the legs and the
+   * dispersion travel with the score rather than behind it. The credit leg's
+   * proxy note comes too: the aggregate must never hide that it is measured
+   * through two ETFs.
+   */
+  const riskAppetite = hasData(snapshot.sentiment) ? snapshot.sentiment.data : null
+  const riskAppetiteDetail = riskAppetite
+    ? [
+        `${riskAppetite.score.toFixed(0)} (${riskAppetite.label})`,
+        ...riskAppetite.components.map(
+          (component) =>
+            `${component.label} ${component.inputValue.toFixed(0)}` +
+            (component.isProxy ? ' (proxy)' : ''),
+        ),
+        riskAppetite.dispersion === undefined
+          ? null
+          : `Spridning ${riskAppetite.dispersion.toFixed(0)}`,
+        `Metod ${riskAppetite.formulaVersion}`,
+        `Observerad ${riskAppetite.provenance.asOf.slice(0, 10)}` +
+          (riskAppetite.session ? ` (${riskAppetite.session})` : ''),
+        riskAppetite.components.find((component) => component.proxyNote)?.proxyNote ??
+          null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : sentimentDisclosure.detail
+
+  /**
+   * Cross-asset disagreement, shown rather than buried.
+   *
+   * Dispersion never alters the score — that separation is the whole point —
+   * but a headline produced by legs that disagree severely must not read like
+   * a settled one. Measured over two years the median is ~41 and the top
+   * quartile begins near 60, so 60 is where "the legs disagree" stops being
+   * the normal state and starts being the thing to say out loud.
+   */
+  const riskAppetiteDispersion = riskAppetite?.dispersion ?? null
+  const riskAppetiteDisagrees =
+    riskAppetiteDispersion !== null && riskAppetiteDispersion > 60
 
   const tickerItems = [
     ...marketCards.map((c) => ({
@@ -501,7 +668,10 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 {marketCards.map((card) => (
                   <div key={card.id} className={cn(CARD_INNER, CARD_HOVER, 'p-3.5')}>
-                    <p className="text-[12px] font-medium text-[#7f97ad]">{card.label}</p>
+                    <p className="flex items-center text-[12px] font-medium text-[#7f97ad]">
+                      <span className="truncate">{card.label}</span>
+                      <MarketDisclosure disclosure={card.disclosure} />
+                    </p>
                     <p className="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums">
                       {card.value}
                     </p>
@@ -518,12 +688,14 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
                   </div>
                 ))}
               </div>
-              <Link
-                to="/markets"
-                className="mt-4 inline-block text-[13px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
-              >
-                Visa alla marknader →
-              </Link>
+              {/*
+               * The link out to a fuller market list is gone with the route it
+               * pointed at. `/markets` held a ticker list of indices, FX and
+               * crypto, all of which this screen already shows — so the link
+               * now redirects to the page it sits on, and promising "all
+               * markets" somewhere else would promise a page that does not
+               * exist.
+               */}
             </SectionCard>
 
             {/* Globe centerpiece — overlaps down into the middle row. */}
@@ -592,6 +764,7 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
                           {row.icon}
                         </span>
                         <span className="truncate">{row.label}</span>
+                        <MarketDisclosure disclosure={row.disclosure} />
                       </span>
                       <span className="flex shrink-0 items-center gap-3">
                         <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
@@ -608,14 +781,37 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
               </SectionCard>
 
               <SectionCard
-                title="Sentiment"
+                /*
+                 * The visible concept. Operator- and cache-facing identifiers
+                 * (the `sentiment` category, MARKETDATA_CHAIN_SENTIMENT, the
+                 * cache key, the port) stay as they are: renaming them would
+                 * break configuration and invalidate cache keys for no reader's
+                 * benefit. What changes is the claim made to a human — this
+                 * measures cross-asset risk pricing, not investor psychology.
+                 */
+                title="Cross-Asset Risk Appetite"
                 action={
-                  <span className="text-[13px] font-semibold" style={{ color: POSITIVE }}>
-                    {sentimentLabel === 'risk-on'
-                      ? 'Risk-on'
-                      : sentimentLabel === 'risk-off'
-                        ? 'Risk-off'
-                        : 'Neutral'}
+                  <span className="flex items-center gap-2" title={riskAppetiteDetail}>
+                    <MarketDisclosure disclosure={sentimentDisclosure} />
+                    {riskAppetiteDispersion !== null && (
+                      <span
+                        className="text-[10px] font-medium uppercase tracking-[0.09em]"
+                        style={{ color: riskAppetiteDisagrees ? '#d6a45a' : '#6f88a0' }}
+                      >
+                        {riskAppetiteDisagrees ? 'Spridning ' : 'Spr '}
+                        {riskAppetiteDispersion.toFixed(0)}
+                      </span>
+                    )}
+                    <span
+                      className="text-[13px] font-semibold"
+                      style={{ color: POSITIVE }}
+                    >
+                      {sentimentLabel === 'risk-on'
+                        ? 'Risk-on'
+                        : sentimentLabel === 'risk-off'
+                          ? 'Risk-off'
+                          : 'Neutral'}
+                    </span>
                   </span>
                 }
               >
@@ -653,27 +849,29 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
               title="Utveckling idag"
               className="xl:col-span-5"
               action={
-                <div
-                  role="group"
-                  aria-label="Tidsintervall"
-                  className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5"
-                >
-                  {SERIES_RANGES.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      aria-pressed={r === range}
-                      onClick={() => setRange(r)}
-                      className={cn(
-                        'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200',
-                        r === range
-                          ? 'bg-[rgba(72,167,232,0.18)] text-[#73c8ff]'
-                          : 'text-[#6b7d90] hover:text-[#c9d6e2]',
-                      )}
-                    >
-                      {RANGE_LABELS[r]}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <div
+                    role="group"
+                    aria-label="Tidsintervall"
+                    className="flex gap-0.5 rounded-full border border-[rgba(70,130,163,0.2)] bg-[rgba(6,18,29,0.7)] p-0.5"
+                  >
+                    {SERIES_RANGES.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        aria-pressed={r === range}
+                        onClick={() => setRange(r)}
+                        className={cn(
+                          'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200',
+                          r === range
+                            ? 'bg-[rgba(72,167,232,0.18)] text-[#73c8ff]'
+                            : 'text-[#6b7d90] hover:text-[#c9d6e2]',
+                        )}
+                      >
+                        {RANGE_LABELS[r]}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               }
             >
@@ -731,6 +929,7 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
                       />
                       <span className="text-[#9aa7b7]">{s.label}</span>
                       {card && <ChangeText value={card.changePercent} />}
+                      <MarketDisclosure disclosure={s.disclosure} />
                     </span>
                   )
                 })}
@@ -745,7 +944,10 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
                     key={rate.label}
                     className="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
                   >
-                    <span className="text-sm text-[#9aa7b7]">{rate.label}</span>
+                    <span className="flex min-w-0 items-center text-sm text-[#9aa7b7]">
+                      <span className="truncate">{rate.label}</span>
+                      <MarketDisclosure disclosure={rate.disclosure} />
+                    </span>
                     <span className="flex shrink-0 items-center gap-3">
                       <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                         {rate.value}
@@ -795,6 +997,7 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
                       >
                         {formatPercent(sector.change)}
                       </span>
+                      <MarketDisclosure disclosure={sector.disclosure} />
                     </li>
                   )
                 })}
@@ -842,20 +1045,23 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
           <SectionCard
             title="Bevakning"
             action={
-              <Link
-                to="/watchlist"
-                className="flex items-center gap-1.5 text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
-              >
-                Lägg till bevakning <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
+              <span className="flex items-center gap-2">
+                <Link
+                  to="/watchlist"
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-[#48a7e8] transition-colors duration-200 hover:text-[#73a4ff]"
+                >
+                  Lägg till bevakning <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </span>
             }
           >
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               {watchlistItems.map((item) => (
                 <div key={item.id} className={cn(CARD_INNER, CARD_HOVER, 'p-3.5')}>
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="truncate text-[13px] font-semibold text-[#dbe4ee]">
-                      {item.name}
+                    <p className="flex min-w-0 items-baseline text-[13px] font-semibold text-[#dbe4ee]">
+                      <span className="truncate">{item.name}</span>
+                      <MarketDisclosure disclosure={item.disclosure} />
                     </p>
                     <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                       {item.price}
@@ -898,7 +1104,27 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
               </span>
             </span>
           ))}
+          {/*
+           * Whether every category on this screen is actually serving live
+           * data, said out loud.
+           *
+           * `hasDegradedCategory` has been computed on the snapshot since Phase
+           * 0 and rendered nowhere — so a panel could serve a fixture or a
+           * stale value under `MARKETDATA_MODE=hybrid` and look exactly like a
+           * live one. That is the plainest way a market surface misleads, and
+           * the Command Center v1 gate required it closed wherever market
+           * context could otherwise read as authoritative.
+           *
+           * It states the degraded case AND the clean one: "everything here is
+           * current" is a claim the snapshot supports, and leaving it unsaid
+           * would make the absence of a warning the only signal.
+           */}
           <span className="ml-auto shrink-0 text-[11px] text-[#5a6a7c]">
+            {snapshot.hasDegradedCategory
+              ? 'Vissa kategorier är ej tillgängliga, fördröjda eller ersatta'
+              : 'Alla kategorier levererar aktuell data'}
+          </span>
+          <span className="shrink-0 text-[11px] text-[#5a6a7c]">
             {/* When the dashboard was refreshed, from the server-resolved
                 snapshot — not render time (D5), and deliberately not the
                 oldest category (D16), which would let one daily source such as

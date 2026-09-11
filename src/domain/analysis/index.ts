@@ -32,6 +32,7 @@ export * from './contributions'
 export * from './authority'
 export * from './requirements'
 export * from './aggregation'
+export * from './synthesisCandidate'
 
 /** One advance of the domain contract, and what it changed about stored meaning. */
 export interface DomainContractRevision {

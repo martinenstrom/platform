@@ -339,6 +339,40 @@ export interface EligibilityBasis {
       materiality: DisagreementMateriality
     }>
   } | null
+  /**
+   * Which analytical desks examined this revision, and what each still contests.
+   *
+   * A LIST, not a flag. "Was this peer reviewed" is answerable from a boolean
+   * and useless: the CIO needs to know that Rates read the Macro desk's
+   * attribution, not that scrutiny abstractly occurred. An empty list is the
+   * honest record that nobody qualified looked.
+   *
+   * **An entry with no open challenges is a finding, not an absence.** A desk
+   * that read the argument and had nothing to contest has examined it; a
+   * revision nobody examined has no entry at all. Those are different facts
+   * about the firm's process and the gate reads the difference.
+   *
+   * Not nullable, for the same reason. `null` and `[]` would be two spellings
+   * of one fact, and a reader would eventually treat them as two facts.
+   *
+   * `openChallenges` mirrors `devilsAdvocate` exactly, including carrying
+   * materiality on every entry and filtering by none of it. Whether a peer's
+   * objection blocks is a policy question a later policy version may answer
+   * differently; storing only the blocking ones would be a stored conclusion
+   * that a policy change could make wrong.
+   */
+  peerScrutiny: ReadonlyArray<{
+    reviewId: string
+    sequence: number
+    /** The desk that examined. */
+    byDepartmentId: string
+    /** The desk whose claims were examined. */
+    examinedDepartmentId: string
+    openChallenges: ReadonlyArray<{
+      challengeId: string
+      materiality: DisagreementMateriality
+    }>
+  }>
   risk: { reviewId: string; sequence: number; status: RiskStatus } | null
   riskRequirement: RiskRequirementState
   riskRuleId: string | null

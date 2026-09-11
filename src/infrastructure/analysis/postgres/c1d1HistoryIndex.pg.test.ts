@@ -191,7 +191,7 @@ describe('the query the index was added for', () => {
              -- A synthetic witness. Nothing here hydrates through the mapper,
              -- so it is never verified; it exists so the seed satisfies the
              -- real CHECKs rather than a relaxed schema.
-             'sha256', '2', '0000000000000000000000000000000000000000000000000000000000000000'
+             'sha256', '3', '0000000000000000000000000000000000000000000000000000000000000000'
       FROM generate_series(0, 999) AS n`)
 
     /*
