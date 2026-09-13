@@ -21,6 +21,10 @@ import { loadMigrations } from './postgres/migrations'
 import type { OrganizationReader } from '~/application/analysis/organizationReader'
 import type { StorageProvenance } from '~/application/analysis/repositories'
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
+import {
+  createFinancialOsSystem,
+  type FinancialOsSystem,
+} from '~/application/analysis/domainSystem'
 import type {
   StorageLogger,
   StorageMetrics,
@@ -51,6 +55,14 @@ export interface AnalysisContainer {
   provenance: StorageProvenance
   /** Everything `runCommand` needs, assembled once. */
   commandDeps(): Promise<CommandDeps>
+  /**
+   * Financial OS as a host sees it.
+   *
+   * The seam for the system above this one: a host constructs the container
+   * and takes the port, never the repositories. Same runtime, same commands,
+   * same ledger — the port adds no way into the firm that the product lacks.
+   */
+  domainSystem(): FinancialOsSystem
   close(): Promise<void>
 }
 
@@ -129,21 +141,29 @@ export async function createAnalysisContainer(
 
     await ensureProvenance(repositories.sql, context, provenance, options.clock.isoNow())
 
+    const commandDeps = async (): Promise<CommandDeps> => {
+      const current = await organization.load()
+      return {
+        repositories,
+        organization: current.organization,
+        organizationSeedVersion: current.seedVersion,
+        provenance,
+        now: () => options.clock.isoNow(),
+      }
+    }
+
     return {
       repositories,
       organization,
       provenance,
+      commandDeps,
 
-      async commandDeps() {
-        const current = await organization.load()
-        return {
+      domainSystem: () =>
+        createFinancialOsSystem({
           repositories,
-          organization: current.organization,
-          organizationSeedVersion: current.seedVersion,
-          provenance,
+          commandDeps,
           now: () => options.clock.isoNow(),
-        }
-      },
+        }),
 
       close: () => repositories.close(),
     }

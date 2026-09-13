@@ -2459,3 +2459,37 @@ Swedish operator prose. Adding a variant is a change to the surface's exhaustive
 handling and its text, and P4.5b closed without needing it once the readiness
 defect was corrected. It belongs with the next piece of work that opens that
 surface.
+
+## TD-91 · a fresh case reports the wrong owning desk · open
+
+**Opened 2026-09-13**, measured while giving Financial OS a host-facing port.
+
+`ownershipFor` in `domain/analysis/caseStanding.ts` answers "whose desk is
+this on" for a case in `research` with:
+
+```ts
+departmentId: investmentCase.participatingDepartmentIds[0] ?? null,
+employeeId: investmentCase.ownerEmployeeId,
+```
+
+and `InstantiatePlaybook` grows participation to every department the
+playbook engages, then **sorts it by UTF-8 byte order**. In the seeded firm and
+in the test organisation alike, the first participant after convening is
+therefore `devils-advocate` — so every freshly convened case reports the
+Devil's Advocate as its owning desk while naming the Research Director as its
+owner. The person is right; the department beside them is whichever desk sorts
+first.
+
+It has not been noticed because the surfaces that render ownership either use
+the employee or were never opened on a fresh case. A host presenting "your
+question is with the Devil's Advocate" would be presenting it.
+
+**The fix is small and belongs in the domain:** derive the department from the
+owner employee through the organisation, or from the intake's accountable
+department, never from participation order. It is deliberately not made here —
+`ownership` sits inside captured `caseOverview` fixtures and inside the
+standing every list and page reads, so it is a domain-rule change with its own
+verification, not a side effect of the integration seam.
+
+**Until then:** read `ownership.employeeId`, never `ownership.departmentId`,
+for a case in `research`. The port's test says so at the assertion.

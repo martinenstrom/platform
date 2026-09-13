@@ -248,9 +248,15 @@ describe('when the first commit succeeds and the second does not', () => {
      */
     const first = await ask()
     const again = await ask()
-    expect((again as { caseId: string }).caseId).toBe(
-      (first as { caseId: string }).caseId,
-    )
+    expect(first.state).toBe('convened')
+    /*
+     * And the retry is told the truth: the committee is sitting. Before
+     * `conveneCommittee` read the case first, the retried convene arrived
+     * under the same command id with a moved `expectedVersion`, the ledger
+     * refused it as `payload-conflict`, and a Chairman whose question had
+     * landed was told the convening was incomplete.
+     */
+    expect(again).toEqual(first)
     expect(await repositories.cases.list()).toHaveLength(1)
   })
 

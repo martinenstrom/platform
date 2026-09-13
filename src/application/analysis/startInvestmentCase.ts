@@ -44,6 +44,7 @@
 import { stableHashHex } from '~/domain/shared/hash'
 import { systemClock } from '~/domain/shared/clock'
 import type { AnalysisRepositories } from './repositories'
+import type { CommandInitiator } from '~/domain/analysis'
 import { runCommand, type CommandDeps } from './commands/runCommand'
 import { openInvestmentCase } from './commands/openInvestmentCase'
 import { instantiatePlaybook } from './commands/instantiatePlaybook'
@@ -77,6 +78,17 @@ export interface StartInvestmentCaseInput {
   /** Minted once per submission so a retry does not open a second case. */
   requestId: string
   actingEmployeeId: string
+  /**
+   * Who dispatched the act, where that is not the person themselves.
+   *
+   * Absent — the Chairman Console — the actor and the initiator are one person
+   * at a form, which is what the ledger has always recorded for this act. A
+   * host acting on the person's behalf names itself here as an orchestrator,
+   * so the record says who dispatched the act without ever saying the host
+   * performed it. A host that could not say so would have the ledger claim the
+   * person acted directly, which is false provenance.
+   */
+  initiator?: CommandInitiator
   now?: () => string
 }
 
@@ -92,11 +104,17 @@ export function caseIdFor(requestId: string): string {
   return `case-${stableHashHex(requestId).slice(0, 24)}`
 }
 
-/** The envelope for the Chairman's act. Actor and initiator are one person. */
+/**
+ * The envelope for the Chairman's act.
+ *
+ * The actor is always the person. The initiator is the person too unless a
+ * host dispatched the act on their behalf — see `StartInvestmentCaseInput`.
+ */
 function chairmanEnvelope(
   commandId: string,
   caseId: string,
   employeeId: string,
+  initiator: CommandInitiator,
   occurredAt: string,
   over: Record<string, unknown> = {},
 ) {
@@ -104,11 +122,17 @@ function chairmanEnvelope(
     commandId,
     correlationId: caseId,
     actor: { kind: 'employee' as const, employeeId },
-    initiator: { kind: 'employee' as const, employeeId },
+    initiator,
     occurredAt,
     ...over,
   }
 }
+
+/** The console's case: the person at the form dispatched their own act. */
+const selfInitiated = (employeeId: string): CommandInitiator => ({
+  kind: 'employee',
+  employeeId,
+})
 
 /**
  * Convene the committee on an already-open case.
@@ -123,10 +147,28 @@ async function conveneCommittee(
   caseId: string,
   intake: ResolvedCaseIntake,
   actingEmployeeId: string,
+  initiator: CommandInitiator,
   occurredAt: string,
 ): Promise<{ committed: boolean; code: string }> {
   const current = await repositories.cases.get(caseId)
   if (!current) return { committed: false, code: 'NOT_FOUND' }
+
+  /*
+   * Already convened: the case pins a workflow. Reported as convened without a
+   * second command, because that is the truth and the alternative was not.
+   *
+   * Measured when a host retried a delegation that had fully succeeded. The
+   * first command replays cleanly — same id, same payload — but this one
+   * carries `expectedVersion`, which the first convening moved, so the replay
+   * arrived as a different payload under the same command id and the ledger
+   * refused it as `payload-conflict`. The caller was then told
+   * `convening-incomplete` about a committee that was sitting. Reading the
+   * case first makes a retry after success what the retry doctrine says it
+   * is: a no-op onto the same case.
+   */
+  if (current.playbookId && current.playbookVersion) {
+    return { committed: true, code: 'CONVENED' }
+  }
 
   const result = await runCommand(
     instantiatePlaybook(deps.organization),
@@ -136,9 +178,16 @@ async function conveneCommittee(
       playbookVersion: intake.playbookVersion,
       onBehalfOfDepartmentId: intake.onBehalfOfDepartmentId,
     },
-    chairmanEnvelope(`${caseId}-convene`, caseId, actingEmployeeId, occurredAt, {
-      expectedVersion: current.version,
-    }),
+    chairmanEnvelope(
+      `${caseId}-convene`,
+      caseId,
+      actingEmployeeId,
+      initiator,
+      occurredAt,
+      {
+        expectedVersion: current.version,
+      },
+    ),
     deps,
   )
 
@@ -159,6 +208,7 @@ export async function startInvestmentCase(
 ): Promise<StartInvestmentCaseResult> {
   const { repositories, deps, actingEmployeeId } = input
   const now = input.now ?? (() => systemClock.isoNow())
+  const initiator = input.initiator ?? selfInitiated(actingEmployeeId)
 
   /* --------------------------------------------- before anything is created */
 
@@ -202,7 +252,7 @@ export async function startInvestmentCase(
       ownerEmployeeId: intake.ownerEmployeeId,
       participatingDepartmentIds: intake.participatingDepartmentIds,
     },
-    chairmanEnvelope(`${caseId}-open`, caseId, actingEmployeeId, at),
+    chairmanEnvelope(`${caseId}-open`, caseId, actingEmployeeId, initiator, at),
     deps,
   )
 
@@ -226,6 +276,7 @@ export async function startInvestmentCase(
     caseId,
     intake,
     actingEmployeeId,
+    initiator,
     at,
   )
   return convened.committed
@@ -245,9 +296,12 @@ export async function resumeConvening(input: {
   deps: CommandDeps
   caseId: string
   actingEmployeeId: string
+  /** As on `StartInvestmentCaseInput`: absent means the person dispatched it. */
+  initiator?: CommandInitiator
   now?: () => string
 }): Promise<StartInvestmentCaseResult> {
   const now = input.now ?? (() => systemClock.isoNow())
+  const initiator = input.initiator ?? selfInitiated(input.actingEmployeeId)
   const existing = await input.repositories.cases.get(input.caseId)
   if (!existing) return { state: 'refused', code: 'NOT_FOUND' }
 
@@ -264,6 +318,7 @@ export async function resumeConvening(input: {
     input.caseId,
     intake,
     input.actingEmployeeId,
+    initiator,
     now(),
   )
   return convened.committed
