@@ -23,6 +23,8 @@ describe('the configured operator', () => {
         displayName: expect.any(String),
         departmentId: 'global-macro',
         roleId: expect.any(String),
+        /* The organisation's title for the role — what a surface shows beside the name. */
+        roleTitle: expect.any(String),
         authentication: 'system-asserted',
       },
     })

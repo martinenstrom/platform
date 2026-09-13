@@ -25,6 +25,7 @@
  * reproduced the audit would be the report stack again, in a smaller box.
  */
 
+import { Link } from '@tanstack/react-router'
 import type { CaseOverview } from '~/application/analysis/caseOverview'
 import type { CaseDecision } from '~/domain/analysis'
 import { StatusBadge } from '~/components/ui/StatusBadge'
@@ -103,9 +104,13 @@ export function CioDecisionPanel({
       </p>
       <Inspect>{decision.decisionId}</Inspect>
 
-      <a href={`/cases/${overview.investmentCase.id}/underlag`} className="brd-console-link">
+      <Link
+        to="/cases/$caseId/underlag"
+        params={{ caseId: overview.investmentCase.id }}
+        className="brd-console-link"
+      >
         Hela underlaget →
-      </a>
+      </Link>
     </aside>
   )
 }

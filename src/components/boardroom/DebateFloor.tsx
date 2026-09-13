@@ -31,9 +31,15 @@
  *
  * Chairman Console, desk transcript and decision panel open over the room. A
  * committee you are thrown out of to read something is not a room you are in.
+ *
+ * The one thing that does navigate — the door to the record — is a router
+ * link, not a document load. The room is prop-driven and renders wherever it
+ * is given an overview; what it must not do is tear down whatever is mounted
+ * above it on the way out.
  */
 
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import type { BoardroomProjection } from '~/application/analysis/boardroomSeating'
 import type { CaseOverview } from '~/application/analysis/caseOverview'
 import { CaseQuestion, CaseRail } from './CaseMasthead'
@@ -55,7 +61,10 @@ export function DebateFloor({
 }) {
   const { timeline, seats } = boardroom
   const [open, setOpen] = useState<
-    { kind: 'none' } | { kind: 'chairman' } | { kind: 'desk'; departmentId: string } | { kind: 'decision' }
+    | { kind: 'none' }
+    | { kind: 'chairman' }
+    | { kind: 'desk'; departmentId: string }
+    | { kind: 'decision' }
   >({ kind: 'none' })
 
   const chief = seats.find((seat) => seat.executive !== null)
@@ -79,12 +88,13 @@ export function DebateFloor({
         masthead={<CaseQuestion overview={overview} />}
         standing={<CaseRail overview={overview} chief={chief} />}
         record={
-          <a
-            href={`/cases/${overview.investmentCase.id}/underlag`}
+          <Link
+            to="/cases/$caseId/underlag"
+            params={{ caseId: overview.investmentCase.id }}
             className="brd-room-record"
           >
             Öppna underlag →
-          </a>
+          </Link>
         }
         onOpenChairman={() => setOpen({ kind: 'chairman' })}
         onSelectDesk={(departmentId) => setOpen({ kind: 'desk', departmentId })}

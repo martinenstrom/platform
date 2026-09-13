@@ -30,7 +30,7 @@ describe('CountrySearch', () => {
     const input = screen.getByRole('combobox')
     await user.type(input, 'Japan')
     // The li carries role="option"; the actual click handler lives on the
-    // button nested inside it (same pattern as AppHeader's instrument search).
+    // button nested inside it.
     await user.click(await screen.findByRole('button', { name: /Japan/i }))
 
     expect(onSelectCountry).toHaveBeenCalledWith(

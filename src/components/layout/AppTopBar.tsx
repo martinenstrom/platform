@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Bell, Mail, Search } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { primaryNav } from '~/lib/navigation'
 
@@ -9,20 +8,23 @@ import { primaryNav } from '~/lib/navigation'
  *
  * Matched to the reference's geometry: a shallow full-width band, the firm's
  * wordmark in bronze at the upper left, compact uppercase sections in the
- * middle, and a right cluster of state and utilities. Nothing about it scrolls
- * and nothing about it is a page — it is the edge of the environment.
+ * middle, and the clock at the right. Nothing about it scrolls and nothing
+ * about it is a page — it is the edge of the environment.
  *
  * **Huvudkontoret does not render this at all.** That page carries the firm's
  * identity and its destinations in its own institutional rail, and a
- * horizontal band of sections above it made the investment floor read as a web
- * application with a navbar. The shell decides; see `AppLayout`.
+ * horizontal band of sections above it made the investment floor read as a
+ * web application with a navbar. The shell decides; see `AppLayout`.
  *
  * **What it does not carry, and why.** The reference has a market-session pill
  * and a "● LIVE" indicator. This rail shows the clock, which is the browser's
  * and says which zone it is in, and no status light at all: the firm holds no
  * session state, and a dot that is always green is the smallest possible
- * fabrication. The mail and bell icons are utilities, not counts — they carry
- * no badge, because there is nothing to count.
+ * fabrication. It once also carried search, alert and mail buttons; none of
+ * them had a handler, and a control that does nothing when pressed teaches the
+ * reader that the rail is decorative. They are gone rather than wired, because
+ * the thing that will answer a question or carry a notification here is the
+ * presence the shell is about to gain, not three more buttons.
  */
 export function AppTopBar() {
   return (
@@ -64,32 +66,9 @@ export function AppTopBar() {
           </ul>
         </nav>
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Clock />
-          <RailButton label="Sök">
-            <Search className="h-[15px] w-[15px]" aria-hidden="true" />
-          </RailButton>
-          <RailButton label="Aviseringar">
-            <Bell className="h-[15px] w-[15px]" aria-hidden="true" />
-          </RailButton>
-          <RailButton label="Meddelanden">
-            <Mail className="h-[15px] w-[15px]" aria-hidden="true" />
-          </RailButton>
-        </div>
+        <Clock />
       </div>
     </header>
-  )
-}
-
-function RailButton({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-[4px] text-content-subtle transition-colors hover:bg-surface-2 hover:text-content"
-    >
-      {children}
-    </button>
   )
 }
 
@@ -110,7 +89,7 @@ function Clock() {
   }, [])
 
   return (
-    <span className="type-machine mr-2 hidden text-content-muted sm:inline">
+    <span className="type-machine hidden shrink-0 text-content-muted sm:inline">
       {now
         ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${localZone()}`
         : ''}

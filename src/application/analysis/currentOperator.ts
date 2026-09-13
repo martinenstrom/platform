@@ -53,6 +53,8 @@ export interface CurrentOperator {
   displayName: string
   departmentId: string
   roleId: string
+  /** The role's title, as the organisation names it — what a surface may show beside the name. */
+  roleTitle: string
   /**
    * Stated on the identity itself so no surface can imply otherwise.
    *
@@ -63,8 +65,7 @@ export interface CurrentOperator {
 }
 
 export type CurrentOperatorResult =
-  | { ok: true; operator: CurrentOperator }
-  | { ok: false; code: OperatorRefusal }
+  { ok: true; operator: CurrentOperator } | { ok: false; code: OperatorRefusal }
 
 /**
  * Resolve the configured operator against the organisation.
@@ -80,15 +81,22 @@ export function resolveCurrentOperator(
   const employeeId = configuredEmployeeId?.trim()
   if (!employeeId) return { ok: false, code: 'NOT_CONFIGURED' }
 
-  const employee = organization.employees.find(
-    (candidate) => candidate.id === employeeId,
-  )
+  const employee = organization.employees.find((candidate) => candidate.id === employeeId)
   /*
    * An id the firm does not employ is a configuration error, and it refuses
    * rather than falling back. A fallback here would put a real act against a
    * person nobody selected.
    */
   if (!employee) return { ok: false, code: 'UNKNOWN_EMPLOYEE' }
+
+  /*
+   * `validateOrganization` refuses an employee with an unknown role, so this
+   * cannot happen against a seeded firm. Refused rather than substituted
+   * anyway: an operator with an invented title would sign acts as somebody the
+   * organisation does not describe.
+   */
+  const role = organization.roles.find((candidate) => candidate.id === employee.roleId)
+  if (!role) return { ok: false, code: 'UNKNOWN_EMPLOYEE' }
 
   return {
     ok: true,
@@ -97,6 +105,7 @@ export function resolveCurrentOperator(
       displayName: employee.displayName,
       departmentId: employee.departmentId,
       roleId: employee.roleId,
+      roleTitle: role.title,
       authentication: 'system-asserted',
     },
   }

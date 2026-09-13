@@ -1,9 +1,13 @@
 # JARVIS HQ — measurement of the existing HQ before any visual change
 
-**Status: measured, no visual change made, awaiting ruling.** Written against
+**Status: measured; ruled; slice A (UI hygiene) implemented.** Written against
 `2e00792` on 2026-09-13, under the Master Product Ruling (JARVIS HQ + Financial
 OS) §30. Every statement below is **read** from the repository or **measured**
-by a probe; where a claim is reasoned rather than measured it says so.
+by a probe; where a claim is reasoned rather than measured it says so. The
+second ruling of the same day accepted the measurement, moved the presence to
+the **left** rail area, and ordered the work A → F (hygiene, gateway, shell,
+states, voice, contextual polish). §13 records what slice A changed; §1–§12
+describe the HQ as it was when measured.
 
 The question this answers: where, in the HQ that exists, can a restrained JARVIS
 presence with voice mount cleanly — without a rewrite, without a parallel
@@ -268,6 +272,33 @@ function in front of the port — and the ruling's high-level contract
 (_ask / advance / status / result / inspect / resume_) does not exist yet:
 _advance_ is precisely the "what may a host commission autonomously versus
 under a decision gate" ruling the integration gate is waiting for.
+
+---
+
+## 13. Slice A — what the hygiene commit changed, and what it did not
+
+Every item is UI-layer. No command, read model, mandate, migration or domain
+rule moved; `currentOperator` gained one additive read field (`roleTitle`).
+
+| Measured in                 | Change                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| §3 dead shells              | `AppSidebar.tsx`, `AppHeader.tsx` deleted                                                                                                        |
+| §1 unreachable root branch  | `__root.tsx` renders one shell; the `/markets` full-bleed branch is gone                                                                         |
+| §3 three navigation systems | `lib/navigation.ts` is the one definition (`primaryNav` + `utilityNav`); the landing column, the top rail and Huvudkontoret's doors all read it  |
+| §3 landing rail             | Bevakning (panel link remains), Portfölj, Rapporter (mock-backed) and the duplicate `/settings` left the column; 3 destinations + 1 utility stay |
+| §9 seven hard navigations   | all seven are router navigation: `navigate` after convening, `router.invalidate()` after resume, `Link` for the five anchors                     |
+| §6 placeholders             | the two landing header buttons and the three top-rail buttons (no handlers) removed                                                              |
+| §11 literal identity        | greeting and plate address the resolved configured operator, or nobody                                                                           |
+
+Kept deliberately: the landing column itself (it is the click path from `/`
+to the firm until the presence takes the space — stop condition §40.1), the
+watchlist, the top rail on shell routes, every route as a deep link.
+
+What moved in tests: the golden baseline was re-captured (second approved
+intentional change, documented in the test header); the two case surfaces now
+render inside a memory router because they contain real `Link`s
+(`src/test/renderInRouter.tsx`); the semantic suite names the reconciled
+column and the absent controls.
 
 ---
 

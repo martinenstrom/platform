@@ -40,15 +40,8 @@
  */
 
 import { Link } from '@tanstack/react-router'
-import {
-  Activity,
-  ArrowDown,
-  Inbox,
-  LayoutDashboard,
-  Library,
-  SlidersHorizontal,
-  type LucideIcon,
-} from 'lucide-react'
+import { Activity, ArrowDown, Inbox, Library, type LucideIcon } from 'lucide-react'
+import { primaryNav, utilityNav } from '~/lib/navigation'
 import type {
   CommandCenterView,
   ObligationGroup,
@@ -605,34 +598,43 @@ function Figure({ label, value, note }: { label: string; value: number; note: st
  * that go nowhere is worse than a short one — it teaches the reader that the
  * product's own navigation is decorative.
  *
- * So these are the destinations that exist. The wordmark above is already the
- * home affordance; Kommandocentral appears here too, because a reader looking
- * for a named destination should not have to know that.
+ * So these are the destinations that exist, read from the product's one
+ * definition of them (`~/lib/navigation`) rather than listed again here. The
+ * wordmark above is already the home affordance; Kommandocentral appears here
+ * too, because a reader looking for a named destination should not have to
+ * know that. This page is left out of its own doors.
  */
+const DOOR_NOTES: Record<string, string> = {
+  '/': 'Marknadsläget',
+  '/evidence': 'Vad firman håller',
+  '/settings': 'Miljö och konto',
+}
+
 function DoorsBand() {
+  const doors = primaryNav.filter((item) => item.to !== '/headquarters')
   return (
     <section className="ref-rail-band px-2 py-2.5">
       <h2 className="ref-rail-label px-2">Institutionella ytor</h2>
       <ul className="mt-1.5 flex flex-col">
-        <RailLink
-          to="/evidence"
-          icon={Library}
-          label="Underlag"
-          note="Vad firman håller"
-        />
+        {doors.map((item) => (
+          <RailLink
+            key={item.to}
+            to={item.to}
+            icon={item.icon}
+            label={item.label}
+            note={DOOR_NOTES[item.to] ?? ''}
+          />
+        ))}
         <RailLink to="#arenden" icon={Inbox} label="Ärenden" note="Hela kön" anchor />
-        <RailLink
-          to="/"
-          icon={LayoutDashboard}
-          label="Kommandocentral"
-          note="Marknadsläget"
-        />
-        <RailLink
-          to="/settings"
-          icon={SlidersHorizontal}
-          label="Inställningar"
-          note="Miljö och konto"
-        />
+        {utilityNav.map((item) => (
+          <RailLink
+            key={item.to}
+            to={item.to}
+            icon={item.icon}
+            label={item.label}
+            note={DOOR_NOTES[item.to] ?? ''}
+          />
+        ))}
       </ul>
     </section>
   )

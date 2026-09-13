@@ -2,24 +2,16 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   Activity,
-  Bell,
-  BellRing,
-  Briefcase,
   Building2,
   Cpu,
   Factory,
   FileText,
   Flame,
   Landmark,
-  LayoutGrid,
-  Library,
   Package,
   Plus,
   Radio,
-  Search,
-  Settings,
   ShoppingBag,
-  Star,
 } from 'lucide-react'
 import {
   CartesianGrid,
@@ -68,6 +60,8 @@ import {
 import { hasData, SERIES_RANGES, type SeriesRange } from '~/domain/market'
 import type { OverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
 import type { CountryMacroData, CountryRegistryEntry } from '~/types/countryExplorer'
+import { primaryNav, utilityNav, type NavItem } from '~/lib/navigation'
+import type { CurrentOperator } from '~/application/analysis/currentOperator'
 
 /**
  * Financial-District night photograph used as the sidebar background — a dark,
@@ -178,36 +172,24 @@ function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
 
 /* ------------------------------------------------------------- sections — */
 
-/*
- * This screen's own navigation column.
- *
- * `Marknader` is gone from it, and its absence is the point: this screen IS
- * Marknader now. The route still exists and redirects here, so leaving the
- * entry in would have offered the reader a link back to the page they are
- * already reading — which is how a navigation stops describing the product and
- * starts describing its own routing table.
- *
- * `Kommandocentral` leads because that is this page, and `Huvudkontor` is the
- * way to the firm.
- */
-const NAV_ITEMS = [
-  { to: '/', label: 'Kommandocentral', icon: LayoutGrid },
-  { to: '/watchlist', label: 'Bevakning', icon: Star },
-  { to: '/headquarters', label: 'Huvudkontor', icon: Landmark },
-  { to: '/evidence', label: 'Underlag', icon: Library },
-  { to: '/portfolio', label: 'Portfölj', icon: Briefcase },
-  { to: '/reports', label: 'Rapporter', icon: FileText },
-  { to: '/settings', label: 'Aviseringar', icon: BellRing },
-  { to: '/settings', label: 'Inställningar', icon: Settings },
-] as const
-
 /**
- * Left navigation column — logo, nav items, active state and profile. It is a
- * transparent layer that sits on top of the hero photograph, which is rendered
- * behind it at the page root (see the hero block in the component's return) so
- * the image can extend past the nav and dissolve into the dashboard.
+ * Left navigation column — logo, the product's destinations, and who is here.
+ * It is a transparent layer that sits on top of the hero photograph, which is
+ * rendered behind it at the page root (see the hero block in the component's
+ * return) so the image can extend past the nav and dissolve into the dashboard.
+ *
+ * It reads the product's ONE definition of its destinations, `~/lib/navigation`.
+ * It used to carry a list of its own — eight entries, two of them mock-backed
+ * pages the primary navigation had already removed as fabricated, and
+ * `/settings` twice — which is how one product came to describe itself three
+ * different ways on three screens. `Bevakning` is not lost: the panel that
+ * shows it links to it.
+ *
+ * This column is also the space a persistent presence is ruled to occupy next.
+ * What remains in it is the set of doors that must stay reachable by a click
+ * until then; `Kommandocentral` is this page and stays lit.
  */
-function Sidebar() {
+function Sidebar({ operator }: { operator?: CurrentOperator }) {
   return (
     <aside className="relative z-10 hidden w-[306px] shrink-0 md:flex">
       {/* Nav sits on top of the hero image, which is rendered behind at the page root. */}
@@ -220,50 +202,86 @@ function Sidebar() {
           HX
         </Link>
         <nav className="mt-8 flex flex-1 flex-col gap-1.5">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
+          {primaryNav.map((item) => (
             /*
-             * This screen is the home page again, so the highlight is back on
-             * `/`. It has been wrong twice by being pinned to the wrong route,
-             * which is why it reads from the entry rather than from an index.
+             * This screen is the home page, so the highlight is on `/`. It has
+             * been wrong twice by being pinned to the wrong route, which is why
+             * it reads from the entry rather than from an index.
              */
-            const active = item.to === '/'
-            return (
-              <Link
-                key={item.label}
-                to={item.to}
-                className={cn(
-                  'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
-                  active
-                    ? 'border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.55)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.14)] backdrop-blur-sm'
-                    : 'border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white',
-                )}
-              >
-                <Icon
-                  className="h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                />
-                <span className="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-                  {item.label}
-                </span>
-              </Link>
-            )
-          })}
+            <RailItem key={item.to} item={item} active={item.to === '/'} />
+          ))}
+          <div className="mt-auto flex flex-col gap-1.5">
+            {utilityNav.map((item) => (
+              <RailItem key={item.to} item={item} active={false} />
+            ))}
+          </div>
         </nav>
-        <div className="mt-4 flex flex-col items-center gap-1">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.35)] bg-[rgba(9,24,37,0.75)] text-[12px] font-semibold text-[#dbe4ee] backdrop-blur-sm">
-            AS
-          </span>
-          <span className="text-center text-[8px] leading-tight text-[#c4d0dd] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-            Anders
-            <br />
-            Private Banking
-          </span>
-        </div>
+        <OperatorPlate operator={operator} />
       </div>
     </aside>
   )
+}
+
+function RailItem({ item, active }: { item: NavItem; active: boolean }) {
+  const Icon = item.icon
+  return (
+    <Link
+      to={item.to}
+      className={cn(
+        'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
+        active
+          ? 'border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.55)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.14)] backdrop-blur-sm'
+          : 'border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white',
+      )}
+    >
+      <Icon
+        className="h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      />
+      <span className="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+        {item.label}
+      </span>
+    </Link>
+  )
+}
+
+/**
+ * Who the product is addressing.
+ *
+ * The server-trusted configured operator, resolved against the seeded
+ * organisation — never a literal. This plate used to read *AS · Anders ·
+ * Private Banking*, a person the product had never resolved. Unconfigured,
+ * nothing renders: a name the product cannot resolve is not a name it may
+ * show, and a placeholder person would be the fiction this replaces.
+ */
+function OperatorPlate({ operator }: { operator?: CurrentOperator }) {
+  if (!operator) return null
+  return (
+    <div className="mt-4 flex flex-col items-center gap-1">
+      <span
+        aria-hidden="true"
+        className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.35)] bg-[rgba(9,24,37,0.75)] text-[12px] font-semibold text-[#dbe4ee] backdrop-blur-sm"
+      >
+        {initials(operator.displayName)}
+      </span>
+      <span className="text-center text-[8px] leading-tight text-[#c4d0dd] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+        {operator.displayName}
+        <br />
+        {operator.roleTitle}
+      </span>
+    </div>
+  )
+}
+
+/** The first letter of the first two words, as a monogram. */
+function initials(displayName: string): string {
+  return displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('')
 }
 
 /** Client-only clock: null during SSR/first paint so live time can't cause a
@@ -278,7 +296,7 @@ function useClock(): Date | null {
   return now
 }
 
-function Header({ asOf }: { asOf: string }) {
+function Header({ asOf, operator }: { asOf: string; operator?: CurrentOperator }) {
   const now = useClock()
   // Before mount the snapshot's own timestamp stands in, so the greeting and
   // date come from real data rather than a frozen mock clock (defect D3).
@@ -305,8 +323,13 @@ function Header({ asOf }: { asOf: string }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-6">
       <div>
+        {/*
+         * Addressed to the resolved operator, or to nobody. The name was a
+         * literal for as long as this screen existed; a greeting the product
+         * cannot back with an identity is a greeting it does not make.
+         */}
         <h1 className="text-[31px] font-semibold tracking-tight text-[#f4f7fb]">
-          {greeting}, Anders
+          {operator ? `${greeting}, ${operator.displayName}` : greeting}
         </h1>
         <p className="mt-1 text-sm text-[#9aa7b7]">
           Här är din globala marknadsöversikt för idag, {dateText}.
@@ -331,20 +354,12 @@ function Header({ asOf }: { asOf: string }) {
           </span>
           <span className="block text-[10px] text-[#697787]">Stockholm</span>
         </span>
-        <button
-          type="button"
-          aria-label="Sök"
-          className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
-        >
-          <Search className="h-4 w-4" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label="Notiser"
-          className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] text-[#9aa7b7] transition-colors duration-200 hover:text-[#f4f7fb]"
-        >
-          <Bell className="h-4 w-4" aria-hidden="true" />
-        </button>
+        {/*
+         * A search button and a notifications button stood here with no
+         * handler behind either. Removed rather than wired: the thing that will
+         * answer a question or carry a notification on this page is the
+         * presence the shell is about to gain, not two more buttons.
+         */}
       </div>
     </header>
   )
@@ -428,7 +443,14 @@ function SectionCard({
 
 /* ----------------------------------------------------------------- page — */
 
-export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot }) {
+export function LightCommandCenter({
+  snapshot,
+  operator,
+}: {
+  snapshot: OverviewSnapshot
+  /** Who the product is addressing; absent when no operator is configured. */
+  operator?: CurrentOperator
+}) {
   const [mounted, setMounted] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [entry, setEntry] = useState<CountryRegistryEntry | null>(null)
@@ -656,11 +678,11 @@ export function LightCommandCenter({ snapshot }: { snapshot: OverviewSnapshot })
         <div className="absolute inset-0 bg-gradient-to-r from-transparent from-[47%] via-[rgba(4,10,18,0.55)] via-[70%] to-[#020711]" />
       </div>
 
-      <Sidebar />
+      <Sidebar operator={operator} />
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
-          <Header asOf={snapshot.asOf} />
+          <Header asOf={snapshot.asOf} operator={operator} />
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             {/* Market overview cards. */}

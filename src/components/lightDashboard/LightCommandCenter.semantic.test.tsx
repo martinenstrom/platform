@@ -118,15 +118,9 @@ async function renderOverview(
     path: '/',
     component: () => <LightCommandCenter snapshot={snapshot} />,
   })
-  const stubs = [
-    '/markets',
-    '/watchlist',
-    '/portfolio',
-    '/agents',
-    '/reports',
-    '/settings',
-  ].map((path) =>
-    createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
+  const stubs = ['/headquarters', '/evidence', '/watchlist', '/reports', '/settings'].map(
+    (path) =>
+      createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
   )
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, ...stubs]),
@@ -470,48 +464,74 @@ describe('navigation', () => {
     expect(link.getAttribute('href')).toBe('/headquarters')
   })
 
-  it('keeps the existing entries and their order', async () => {
+  it('carries the product’s one navigation, in its order, and nothing else', async () => {
     /*
-     * This names the order so a change cannot quietly reshuffle it, which a
-     * snapshot diff would show but not explain.
+     * This names the entries so a change cannot quietly reshuffle or regrow
+     * them, which a snapshot diff would show but not explain.
      *
-     * **Reordered by Command Center v1, then shortened by the ruling that
-     * followed it.** This screen is the product home again, and it is the
-     * market view — so `Marknader` left the rail. `/markets` redirects here,
-     * and an entry linking the reader back to the page they are on is a
-     * routing table rendered as navigation.
-     *
-     * `Portfölj` and `Rapporter` remain, and remain mock-backed. They are out
-     * of the primary navigation and reachable from this rail; putting real
-     * read models behind them is a capability decision, not a placement one.
+     * **Reordered by Command Center v1, shortened by the ruling that followed
+     * it, and reconciled by the JARVIS HQ hygiene slice.** The column used to
+     * carry a list of its own: `Bevakning` (a drill-down the panel below links
+     * to), `Portfölj` and `Rapporter` (mock-backed, removed from the primary
+     * navigation long before) and `/settings` twice under two names. It now
+     * reads `~/lib/navigation`, the one definition every rail shares, so what
+     * is asserted here is that definition and its order — plus the utility
+     * that closes the column.
      */
     await renderOverview()
 
+    const former = ['Bevakning', 'Portfölj', 'Rapporter', 'Aviseringar']
     const labels = screen
       .getAllByRole('link')
-      .map((node) => node.textContent?.trim())
-      .filter((label): label is string =>
+      .map((node) => node.textContent?.trim() ?? '')
+      .filter((label) =>
         [
           'Kommandocentral',
-          'Bevakning',
           'Huvudkontor',
           'Underlag',
-          'Portfölj',
-          'Rapporter',
-          'Aviseringar',
           'Inställningar',
-        ].includes(label ?? ''),
+          ...former,
+        ].includes(label),
       )
 
     expect(labels).toEqual([
       'Kommandocentral',
-      'Bevakning',
       'Huvudkontor',
       'Underlag',
-      'Portfölj',
-      'Rapporter',
-      'Aviseringar',
       'Inställningar',
     ])
+  })
+
+  it('still reaches Bevakning from the panel that shows it', async () => {
+    /*
+     * The rail entry left; the capability did not. The Bevakning panel has
+     * always linked to its own page, and that link is the entry now.
+     */
+    await renderOverview()
+    const link = screen.getByRole('link', { name: /Lägg till bevakning/ })
+    expect(link.getAttribute('href')).toBe('/watchlist')
+  })
+
+  it('offers no control it cannot honour', async () => {
+    /*
+     * A search button and a notifications button used to sit in the header
+     * with no handler behind either. A control that does nothing when pressed
+     * teaches the reader that the screen is decorative.
+     */
+    await renderOverview()
+    expect(screen.queryByRole('button', { name: 'Sök' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Notiser' })).toBeNull()
+  })
+
+  it('addresses the resolved operator, or nobody', async () => {
+    /*
+     * The greeting named a literal person for as long as the screen existed.
+     * Without an operator the greeting stands alone and no plate renders;
+     * with one, both carry the name the organisation resolved.
+     */
+    await renderOverview()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('God eftermiddag')
+    expect(screen.queryByText('Anders')).toBeNull()
+    expect(screen.queryByText('Private Banking')).toBeNull()
   })
 })

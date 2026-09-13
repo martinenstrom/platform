@@ -27,6 +27,15 @@
  * shows the true data `asOf` instead of render time. That value is asserted
  * separately below rather than absorbed into the snapshot, so the change is
  * explicit and reviewable instead of silent.
+ *
+ * THE SECOND APPROVED INTENTIONAL CHANGE (JARVIS HQ hygiene, 2026-09-13): the
+ * baseline was re-captured after the left column began reading the product's
+ * one navigation definition (three destinations and a utility, instead of
+ * eight entries including two mock-backed pages and `/settings` twice), after
+ * the two handler-less header buttons were removed, and after the greeting and
+ * the profile plate stopped naming a literal person. Nothing else on the
+ * screen moved; the semantic suite names the new column, and every panel,
+ * tile, rate, sector and news label is still asserted below by name.
  */
 
 // Must precede every other import: Intl and Date read TZ at construction.
@@ -162,10 +171,9 @@ async function renderOverview(dataClock?: Date) {
     component: () => <LightCommandCenter snapshot={snapshot} />,
   })
   const stubRoutes = [
-    '/markets',
+    '/headquarters',
+    '/evidence',
     '/watchlist',
-    '/portfolio',
-    '/agents',
     '/reports',
     '/settings',
   ].map((path) =>

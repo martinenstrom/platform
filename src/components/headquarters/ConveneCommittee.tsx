@@ -34,6 +34,7 @@
  */
 
 import { useState } from 'react'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { DashboardCard } from '~/components/ui/DashboardCard'
 import type { OperatorIdentity } from '~/application/analysis/operatorIdentity'
 import type { StartInvestmentCaseResponse } from '~/infrastructure/analysis/serverFns'
@@ -71,6 +72,7 @@ export function ConveneCommittee({
    * on the same case rather than opening a second one holding one question.
    */
   const [requestId, setRequestId] = useState(() => crypto.randomUUID())
+  const navigate = useNavigate()
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -85,8 +87,12 @@ export function ConveneCommittee({
     setResult(answer)
 
     if (answer.state === 'convened') {
-      /* Straight into the room the question now has. */
-      window.location.href = `/cases/${answer.caseId}`
+      /*
+       * Straight into the room the question now has — a navigation, not a
+       * document load, so nothing mounted above the page is torn down on the
+       * way (measured: docs/jarvis-hq-measurement.md §9).
+       */
+      await navigate({ to: '/cases/$caseId', params: { caseId: answer.caseId } })
       return
     }
     if (answer.state === 'refused') {
@@ -149,12 +155,16 @@ export function ConveneCommittee({
              */}
             <p className="brd-console-warning">Kommittén kunde inte sammankallas.</p>
             <p className="type-metadata">
-              {OUTCOME_TEXT[result.code] ?? 'Sammankallningen gick inte igenom.'}{' '}
-              Frågan är registrerad och ärendet finns kvar.
+              {OUTCOME_TEXT[result.code] ?? 'Sammankallningen gick inte igenom.'} Frågan
+              är registrerad och ärendet finns kvar.
             </p>
-            <a href={`/cases/${result.caseId}`} className="brd-console-link">
+            <Link
+              to="/cases/$caseId"
+              params={{ caseId: result.caseId }}
+              className="brd-console-link"
+            >
               Öppna ärendet och återuppta →
-            </a>
+            </Link>
           </div>
         )}
 

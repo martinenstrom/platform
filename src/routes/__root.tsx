@@ -1,11 +1,5 @@
 import type { ReactNode } from 'react'
-import {
-  Outlet,
-  createRootRoute,
-  HeadContent,
-  Scripts,
-  useRouterState,
-} from '@tanstack/react-router'
+import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { AppLayout } from '~/components/layout/AppLayout'
 import appCss from '~/styles/app.css?url'
 
@@ -33,28 +27,24 @@ export const Route = createRootRoute({
   component: RootComponent,
 })
 
+/**
+ * The root of every page, and the one component that never unmounts.
+ *
+ * One shell for every route. `/markets` once bypassed it as a full-bleed page;
+ * that route has redirected to `/` since the market overview returned home,
+ * so the branch could never render and is gone. Which routes own their own
+ * shell is `AppLayout`'s decision, and it is made in one place.
+ *
+ * This is also the seam a persistent presence mounts on. A sibling of the
+ * `Outlet` here keeps its identity and state while the routed page beneath it
+ * changes — measured, not assumed: see `docs/jarvis-hq-measurement.md` §5.
+ */
 function RootComponent() {
-  /*
-   * `/markets` is the full-bleed light market overview and brings its own
-   * navigation column; every other route, the Command Center included, keeps
-   * the dark institutional shell.
-   *
-   * It used to be `/`. The Command Center took that route, and the market
-   * screen kept its layout rather than being rebuilt into the shell — moving
-   * it was an information-architecture decision, not a visual one.
-   */
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const fullBleed = pathname === '/markets'
-
   return (
     <RootDocument>
-      {fullBleed ? (
+      <AppLayout>
         <Outlet />
-      ) : (
-        <AppLayout>
-          <Outlet />
-        </AppLayout>
-      )}
+      </AppLayout>
     </RootDocument>
   )
 }

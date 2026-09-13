@@ -31,7 +31,7 @@
  * case's record.
  */
 
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { FileQuestion, ServerOff } from 'lucide-react'
 import { PageHeader, PageShell } from '~/components/layout/PageHeader'
 import { DashboardCard } from '~/components/ui/DashboardCard'
@@ -40,10 +40,7 @@ import { StatusBadge } from '~/components/ui/StatusBadge'
 import { CaseStandingPanel } from '~/components/headquarters/CaseStandingPanel'
 import { DecisionHistory } from '~/components/headquarters/DecisionHistory'
 import { getCaseOverviewFn } from '~/infrastructure/analysis/serverFns'
-import {
-  eligibilityText,
-  GATE_STATUS,
-} from '~/presentation/analysis/caseStandingText'
+import { eligibilityText, GATE_STATUS } from '~/presentation/analysis/caseStandingText'
 import { formatDateTime } from '~/lib/format'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 
@@ -90,14 +87,11 @@ export function CaseRecord({ response }: { response: CaseOverviewResponse }) {
 
   return (
     <PageShell>
-      <PageHeader
-        title="Underlag"
-        description={overview.investmentCase.question}
-      />
+      <PageHeader title="Underlag" description={overview.investmentCase.question} />
       <p className="type-metadata">
-        <a href={`/cases/${overview.investmentCase.id}`}>
+        <Link to="/cases/$caseId" params={{ caseId: overview.investmentCase.id }}>
           ← Tillbaka till styrelserummet
-        </a>
+        </Link>
       </p>
       <DashboardCard title="Beslutsunderlagets status">
         <div className="flex flex-col gap-4">

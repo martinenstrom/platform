@@ -16,15 +16,12 @@
  * find that out.
  */
 
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { FileQuestion, ServerOff } from 'lucide-react'
 import { PageHeader, PageShell } from '~/components/layout/PageHeader'
 import { EmptyState } from '~/components/ui/EmptyState'
 import { DebateFloor } from '~/components/boardroom/DebateFloor'
-import {
-  getCaseOverviewFn,
-  resumeConveningFn,
-} from '~/infrastructure/analysis/serverFns'
+import { getCaseOverviewFn, resumeConveningFn } from '~/infrastructure/analysis/serverFns'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 
 export const Route = createFileRoute('/cases/$caseId')({
@@ -40,18 +37,46 @@ const FAILURE_TEXT: Record<string, string> = {
 }
 
 function CasePage() {
-  return <CaseOverviewPage response={Route.useLoaderData() as CaseOverviewResponse} />
+  const router = useRouter()
+  return (
+    <CaseOverviewPage
+      response={Route.useLoaderData() as CaseOverviewResponse}
+      onResumeConvening={async (caseId, actingEmployeeId) => {
+        await resumeConveningFn({ data: { caseId, actingEmployeeId } })
+        /*
+         * Re-run the loader rather than reload the document. The page re-reads
+         * the case it now has, and nothing mounted above the route — the shell,
+         * and whatever presence it comes to hold — is torn down to do it.
+         */
+        await router.invalidate()
+      }}
+    />
+  )
 }
 
 /**
  * The page itself, taking its data as a prop.
  *
- * Separated from the route so it can be rendered without a router. The point is
+ * Separated from the route so it can be rendered without a loader. The point is
  * not tidiness: the human-visible page has to be provable against the same
  * institutional record the read model was verified with, and a component that
  * can only be reached through a loader cannot be put in front of one.
+ *
+ * The resume act is a prop for the same reason: it needs the router, and the
+ * page does not.
  */
-export function CaseOverviewPage({ response }: { response: CaseOverviewResponse }) {
+export function CaseOverviewPage({
+  response,
+  onResumeConvening,
+}: {
+  response: CaseOverviewResponse
+  /**
+   * Only ever the SECOND command, against the case that already exists. A
+   * resume that could open a case would be a second open command wearing a
+   * different name.
+   */
+  onResumeConvening?: (caseId: string, actingEmployeeId: string) => Promise<void>
+}) {
   if (!response.ok) {
     return (
       <PageShell>
@@ -93,22 +118,16 @@ export function CaseOverviewPage({ response }: { response: CaseOverviewResponse 
       <DebateFloor
         overview={overview}
         boardroom={boardroom}
-        /*
-         * Only ever the SECOND command, against the case that already exists.
-         * A resume that could open a case would be a second open command
-         * wearing a different name.
-         */
-        onResumeConvening={async () => {
-          await resumeConveningFn({
-            data: {
-              caseId: overview.investmentCase.id,
-              actingEmployeeId: overview.investmentCase.ownerEmployeeId,
-            },
-          })
-          window.location.reload()
-        }}
+        onResumeConvening={
+          onResumeConvening
+            ? () =>
+                onResumeConvening(
+                  overview.investmentCase.id,
+                  overview.investmentCase.ownerEmployeeId,
+                )
+            : undefined
+        }
       />
-
     </PageShell>
   )
 }

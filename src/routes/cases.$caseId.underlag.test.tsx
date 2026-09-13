@@ -32,6 +32,7 @@ import type { CaseOverview } from '~/application/analysis/caseOverview'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 import { boardroomTimeline } from '~/application/analysis/boardroomTimeline'
 import { boardroomSeating } from '~/application/analysis/boardroomSeating'
+import { renderInRouter } from '~/test/renderInRouter'
 
 /*
  * JSON has no idea about the union arms, and re-deriving the type here would be
@@ -58,7 +59,7 @@ const ok = (fixture: unknown): CaseOverviewResponse => {
 }
 
 const renderCase = (fixture: unknown) =>
-  render(<CaseRecord response={ok(fixture)} />)
+  renderInRouter(<CaseRecord response={ok(fixture)} />)
 
 /** The card a section lives in, so an assertion cannot match a neighbour. */
 const card = (heading: RegExp) =>
@@ -67,8 +68,8 @@ const card = (heading: RegExp) =>
 /* ------------------------------------------------- the twelve institutional items */
 
 describe('a decided case shows every institutional item', () => {
-  it('names the case by its question', () => {
-    renderCase(decided)
+  it('names the case by its question', async () => {
+    await renderCase(decided)
     /*
      * The record is subordinate to the question it answers, but the question
      * is not this page's heading — the Boardroom owns that. Here it names the
@@ -77,8 +78,8 @@ describe('a decided case shows every institutional item', () => {
     expect(screen.getByText(/Does the ECB cut before Q2?/)).toBeInTheDocument()
   })
 
-  it('renders the standing panel above the record', () => {
-    renderCase(decided)
+  it('renders the standing panel above the record', async () => {
+    await renderCase(decided)
     /*
      * Scoped to the panel. The Boardroom masthead states the same standing
      * compactly above, so a page-wide query would match either and prove
@@ -91,8 +92,8 @@ describe('a decided case shows every institutional item', () => {
     expect(within(standing).getByText('Beslutad')).toBeInTheDocument()
   })
 
-  it('renders all seven institutional steps by name', () => {
-    renderCase(decided)
+  it('renders all seven institutional steps by name', async () => {
+    await renderCase(decided)
     for (const label of [
       'Tes formulerad',
       'Arbetet sammanvägt',
@@ -106,8 +107,8 @@ describe('a decided case shows every institutional item', () => {
     }
   })
 
-  it('renders thesis, contributions, evidence and aggregation', () => {
-    renderCase(decided)
+  it('renders thesis, contributions, evidence and aggregation', async () => {
+    await renderCase(decided)
     const fixture = asOverview(decided)
 
     expect(
@@ -123,21 +124,21 @@ describe('a decided case shows every institutional item', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders the three governance verdicts', () => {
-    renderCase(decided)
+  it('renders the three governance verdicts', async () => {
+    await renderCase(decided)
     expect(card(/^Faktagranskning \(/)).toBeInTheDocument()
     expect(card(/^Devil's Advocate \(/)).toBeInTheDocument()
     expect(card(/^Risk \(/)).toBeInTheDocument()
   })
 
-  it('renders the submission with the policy it was judged under', () => {
-    renderCase(decided)
+  it('renders the submission with the policy it was judged under', async () => {
+    await renderCase(decided)
     const submissions = card(/^Inlämningar till CIO \(/)
     expect(within(submissions).getByText(/policy 1/)).toBeInTheDocument()
   })
 
-  it('renders the decision, its author and its mandate', () => {
-    renderCase(decided)
+  it('renders the decision, its author and its mandate', async () => {
+    await renderCase(decided)
     const decision = card(/^Beslut$/)
 
     /*
@@ -151,8 +152,8 @@ describe('a decided case shows every institutional item', () => {
     expect(within(decision).getByText(/chief-investment-officer/)).toBeInTheDocument()
   })
 
-  it('renders the timeline with its actors', () => {
-    renderCase(decided)
+  it('renders the timeline with its actors', async () => {
+    await renderCase(decided)
     const timeline = card(/^Händelseförlopp$/)
     const fixture = asOverview(decided)
 
@@ -177,8 +178,8 @@ describe('a decided case shows every institutional item', () => {
 /* ------------------------------------------------------------------ dissent */
 
 describe('dissent survives to the screen', () => {
-  it('shows the objection, its weight, and the answer to it', () => {
-    renderCase(decided)
+  it('shows the objection, its weight, and the answer to it', async () => {
+    await renderCase(decided)
     const decision = card(/^Beslut$/)
 
     expect(within(decision).getByText(/Kvarstående avvikande mening/)).toBeInTheDocument()
@@ -202,15 +203,15 @@ describe('dissent survives to the screen', () => {
 /* -------------------------------------------------- the three eligibility states */
 
 describe('the three eligibility states render distinctly', () => {
-  it('shows a recorded verdict with the policy the basis names', () => {
-    renderCase(decided)
+  it('shows a recorded verdict with the policy the basis names', async () => {
+    await renderCase(decided)
     const panel = card(/^Beslutsunderlagets status$/)
     expect(within(panel).getByText('Uppfyllde kraven')).toBeInTheDocument()
     expect(within(panel).getByText(/Bedömt enligt policy 1/)).toBeInTheDocument()
   })
 
-  it('shows "not submitted" as its own state, not as a failure', () => {
-    renderCase(inflight)
+  it('shows "not submitted" as its own state, not as a failure', async () => {
+    await renderCase(inflight)
     const panel = card(/^Beslutsunderlagets status$/)
 
     expect(within(panel).getByText('Inte inlämnad för beslut')).toBeInTheDocument()
@@ -222,14 +223,14 @@ describe('the three eligibility states render distinctly', () => {
     expect(within(panel).queryByText('VERIFICATION_INCOMPLETE')).not.toBeInTheDocument()
   })
 
-  it('shows an unreadable policy as a problem with the record', () => {
+  it('shows an unreadable policy as a problem with the record', async () => {
     /*
      * The only state no real case can currently produce — every stored basis
      * names policy 1, and the registry resolves it. Constructed from the union
      * rather than left unproved: it is the arm a reader is most likely to meet
      * years from now, and least likely to have been rendered before.
      */
-    render(
+    await renderInRouter(
       <CaseRecord
         response={ok({
           ...asOverview(decided),
@@ -248,8 +249,8 @@ describe('the three eligibility states render distinctly', () => {
 /* ------------------------------------------- not-applicable is not a pass */
 
 describe('not-applicable never renders as passed', () => {
-  it('marks a Risk step the firm ruled unnecessary as its own state', () => {
-    renderCase(noRisk)
+  it('marks a Risk step the firm ruled unnecessary as its own state', async () => {
+    await renderCase(noRisk)
 
     /*
      * From a real case: the position declared no implications, so the firm
@@ -273,8 +274,8 @@ describe('not-applicable never renders as passed', () => {
     expect(within(risk).queryByText('Klart')).toBeNull()
   })
 
-  it('gives the two states different marks, not only different colours', () => {
-    const { container } = renderCase(noRisk)
+  it('gives the two states different marks, not only different colours', async () => {
+    const { container } = await renderCase(noRisk)
     /*
      * Colour alone is no distinction for a reader who cannot see it, and these
      * two carry different obligations. Asserted through the icon element so a
@@ -291,8 +292,8 @@ describe('not-applicable never renders as passed', () => {
 /* ------------------------------------------------------------ ownership */
 
 describe('ownership', () => {
-  it('gives a settled case no current owner', () => {
-    renderCase(decided)
+  it('gives a settled case no current owner', async () => {
+    await renderCase(decided)
     const standing = card(/^Ärendets ställning$/)
 
     /* The words, not a blank: an empty owner reads as missing data. */
@@ -304,8 +305,8 @@ describe('ownership', () => {
     expect(within(standing).getAllByText(/Inget utestående/).length).toBe(2)
   })
 
-  it('puts a submitted case on the chief’s desk, with a real next act', () => {
-    renderCase(awaiting)
+  it('puts a submitted case on the chief’s desk, with a real next act', async () => {
+    await renderCase(awaiting)
     /* Scoped: the masthead names the owner too, and this is about the panel. */
     const standing = card(/^Ärendets ställning$/)
     expect(within(standing).getByText('cio')).toBeInTheDocument()
@@ -315,8 +316,8 @@ describe('ownership', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('names the department that owes the next act while work is in flight', () => {
-    renderCase(inflight)
+  it('names the department that owes the next act while work is in flight', async () => {
+    await renderCase(inflight)
     const standing = card(/^Ärendets ställning$/)
 
     expect(within(standing).getByText('Registrera faktagranskning')).toBeInTheDocument()
@@ -332,8 +333,8 @@ describe('ownership', () => {
 /* -------------------------------------- the non-material open challenge */
 
 describe('a non-material open challenge', () => {
-  it('is visible, and its gate is not a failure', () => {
-    renderCase(decided)
+  it('is visible, and its gate is not a failure', async () => {
+    await renderCase(decided)
     const fixture = asOverview(decided)
 
     /* Recorded and weighed, in the basis the CIO decided on. */
@@ -348,8 +349,8 @@ describe('a non-material open challenge', () => {
     expect(within(row).queryByText('Ej uppfylld')).not.toBeInTheDocument()
   })
 
-  it('shows the Devil’s Advocate section carrying the objection', () => {
-    renderCase(decided)
+  it('shows the Devil’s Advocate section carrying the objection', async () => {
+    await renderCase(decided)
     expect(
       within(card(/^Devil's Advocate \(/)).getByText(/1 invändningar/),
     ).toBeInTheDocument()
@@ -359,13 +360,13 @@ describe('a non-material open challenge', () => {
 /* --------------------------------------------------------- failure states */
 
 describe('failures say what happened and nothing about how', () => {
-  it('renders a missing case without leaking a code', () => {
+  it('renders a missing case without leaking a code', async () => {
     render(<CaseRecord response={{ ok: false, code: 'NOT_FOUND' }} />)
     expect(screen.getByText('Ärendet finns inte.')).toBeInTheDocument()
     expect(screen.queryByText(/NOT_FOUND/)).not.toBeInTheDocument()
   })
 
-  it('renders an unreachable runtime without leaking connection detail', () => {
+  it('renders an unreachable runtime without leaking connection detail', async () => {
     render(<CaseRecord response={{ ok: false, code: 'SERVICE_UNAVAILABLE' }} />)
     expect(screen.getByText('Analysmiljön svarar inte just nu.')).toBeInTheDocument()
     expect(screen.queryByText(/postgres|SERVICE_UNAVAILABLE/)).not.toBeInTheDocument()
@@ -375,8 +376,8 @@ describe('failures say what happened and nothing about how', () => {
 /* ------------------------------------------------ the reconsideration loop */
 
 describe('a case that was deferred, reopened and then decided', () => {
-  it('renders all three acts as one history, in the order they happened', () => {
-    renderCase(reconsidered)
+  it('renders all three acts as one history, in the order they happened', async () => {
+    await renderCase(reconsidered)
     const history = card(/^Beslutshistorik/)
 
     /* Three acts on the decision boundary, not one live decision. */
@@ -394,8 +395,8 @@ describe('a case that was deferred, reopened and then decided', () => {
     expect(text.indexOf('Återupptaget')).toBeLessThan(text.indexOf('Position tagen'))
   })
 
-  it('keeps the deferral’s own reasons and its conditions', () => {
-    renderCase(reconsidered)
+  it('keeps the deferral’s own reasons and its conditions', async () => {
+    await renderCase(reconsidered)
     const history = card(/^Beslutshistorik/)
     const fixture = asOverview(reconsidered)
     const deferral = fixture.decisionHistory.find(
@@ -410,8 +411,8 @@ describe('a case that was deferred, reopened and then decided', () => {
     expect(within(history).getByText(/June staff projections/)).toBeInTheDocument()
   })
 
-  it('says why the case came back', () => {
-    renderCase(reconsidered)
+  it('says why the case came back', async () => {
+    await renderCase(reconsidered)
     const history = card(/^Beslutshistorik/)
 
     expect(within(history).getByText('Villkor som uppfylldes')).toBeInTheDocument()
@@ -420,8 +421,8 @@ describe('a case that was deferred, reopened and then decided', () => {
     expect(within(history).getAllByText(/cio/).length).toBeGreaterThan(0)
   })
 
-  it('shows the superseded deferral as a real act, not a correction', () => {
-    renderCase(reconsidered)
+  it('shows the superseded deferral as a real act, not a correction', async () => {
+    await renderCase(reconsidered)
     const history = card(/^Beslutshistorik/)
 
     /*
@@ -433,8 +434,8 @@ describe('a case that was deferred, reopened and then decided', () => {
     expect(history.querySelector('s, del, .line-through')).toBeNull()
   })
 
-  it('shows no new governance verdict was created for the unchanged revision', () => {
-    renderCase(reconsidered)
+  it('shows no new governance verdict was created for the unchanged revision', async () => {
+    await renderCase(reconsidered)
     const fixture = asOverview(reconsidered)
 
     /*
@@ -462,8 +463,8 @@ describe('a case that was deferred, reopened and then decided', () => {
     }
   })
 
-  it('renders the reopening in the timeline as a case movement', () => {
-    renderCase(reconsidered)
+  it('renders the reopening in the timeline as a case movement', async () => {
+    await renderCase(reconsidered)
     const timeline = card(/^Händelseförlopp$/)
 
     expect(within(timeline).getAllByText(/decision → deferred/).length).toBeGreaterThan(0)

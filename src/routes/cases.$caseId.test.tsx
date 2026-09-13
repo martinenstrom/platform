@@ -28,6 +28,7 @@ import type { CaseOverview } from '~/application/analysis/caseOverview'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 import { boardroomTimeline } from '~/application/analysis/boardroomTimeline'
 import { boardroomSeating } from '~/application/analysis/boardroomSeating'
+import { renderInRouter } from '~/test/renderInRouter'
 
 const asOverview = (fixture: unknown) => fixture as unknown as CaseOverview
 
@@ -49,29 +50,29 @@ const ok = (fixture: unknown): CaseOverviewResponse => {
 }
 
 const renderRoom = (fixture: unknown) =>
-  render(<CaseOverviewPage response={ok(fixture)} />)
+  renderInRouter(<CaseOverviewPage response={ok(fixture)} />)
 
 describe('the room leads with the question', () => {
-  it('makes the investment question the page heading', () => {
-    renderRoom(decided)
+  it('makes the investment question the page heading', async () => {
+    await renderRoom(decided)
     expect(
       screen.getByRole('heading', { name: /Does the ECB cut before Q2\?/ }),
     ).toBeInTheDocument()
   })
 
-  it('does not carry the long-form record any more', () => {
+  it('does not carry the long-form record any more', async () => {
     /*
      * The point of the split. These headings are the record's, and finding one
      * here would mean the report stack had grown back under the photograph.
      */
-    renderRoom(decided)
+    await renderRoom(decided)
     for (const heading of [/^Händelseförlopp$/, /^Ärendets ställning$/, /^Tes \(/]) {
       expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument()
     }
   })
 
-  it('offers the record one click away', () => {
-    renderRoom(decided)
+  it('offers the record one click away', async () => {
+    await renderRoom(decided)
     const link = screen.getByRole('link', { name: /Öppna underlag/ })
     expect(link).toHaveAttribute(
       'href',
@@ -81,20 +82,20 @@ describe('the room leads with the question', () => {
 })
 
 describe('the committee is in the room', () => {
-  it('seats the firm and says who took part', () => {
-    renderRoom(decided)
+  it('seats the firm and says who took part', async () => {
+    await renderRoom(decided)
     const room = screen.getByRole('region', { name: 'Investeringskommitténs bord' })
     /* Seats are exposed as a list so participation reaches assistive
      * technology as words rather than as illumination. */
     expect(within(room).getAllByRole('listitem').length).toBeGreaterThan(0)
   })
 
-  it('never turns a desk that did not take part into a control', () => {
+  it('never turns a desk that did not take part into a control', async () => {
     /*
      * A clickable empty seat suggests there is something behind it. There is
      * not: a desk the case never involved has no acts to show.
      */
-    renderRoom(decided)
+    await renderRoom(decided)
     const room = screen.getByRole('region', { name: 'Investeringskommitténs bord' })
     for (const button of within(room).getAllByRole('button')) {
       expect(button.textContent).not.toMatch(/Ej i ärendet/i)
@@ -103,9 +104,9 @@ describe('the committee is in the room', () => {
 })
 
 describe('the debate in the room is the record', () => {
-  it('shows a persisted claim in the desk that made it', () => {
+  it('shows a persisted claim in the desk that made it', async () => {
     const overview = asOverview(decided)
-    renderRoom(decided)
+    await renderRoom(decided)
     /*
      * Every visible statement must project a stored object. This asserts the
      * text came from a claim the fixture holds, not from wording composed for
@@ -118,8 +119,8 @@ describe('the debate in the room is the record', () => {
     expect(shown.length).toBeGreaterThan(0)
   })
 
-  it('says whose work an objection contests', () => {
-    renderRoom(decided)
+  it('says whose work an objection contests', async () => {
+    await renderRoom(decided)
     const contests = screen.queryAllByText(/invänder mot/)
     for (const node of contests) {
       /* Never a bare "objection": the record names the desk that was read. */
@@ -127,12 +128,12 @@ describe('the debate in the room is the record', () => {
     }
   })
 
-  it('keeps the room restrained', () => {
+  it('keeps the room restrained', async () => {
     /*
      * At most two acts in focus. The photograph is the room, and a wall of
      * cards over it would be a chat log with a picture behind it.
      */
-    const { container } = renderRoom(decided)
+    const { container } = await renderRoom(decided)
     const plates = container.querySelectorAll('.brd-statement')
     /* Between one and two: nought would mean the room shows no debate at all,
      * which for a case holding claims would be its own failure. */
@@ -143,7 +144,7 @@ describe('the debate in the room is the record', () => {
 
 describe('the Chairman is the way in', () => {
   it('opens the console from the chair without navigating', async () => {
-    renderRoom(decided)
+    await renderRoom(decided)
     await userEvent.click(
       screen.getByRole('button', { name: 'Öppna ordförandens konsol' }),
     )
@@ -158,7 +159,7 @@ describe('the Chairman is the way in', () => {
      * reconsideration — and the firm has not been asked to conflate them. A
      * disabled button would be a fiction; there is nothing instead.
      */
-    renderRoom(decided)
+    await renderRoom(decided)
     await userEvent.click(
       screen.getByRole('button', { name: 'Öppna ordförandens konsol' }),
     )
@@ -172,7 +173,7 @@ describe('the CIO is dark until a decision exists', () => {
     const overview = asOverview(awaiting)
     expect(overview.decision).toBeNull()
 
-    render(<CaseOverviewPage response={ok(awaiting)} />)
+    await renderInRouter(<CaseOverviewPage response={ok(awaiting)} />)
     await userEvent.click(
       screen.getByRole('button', { name: 'Öppna ordförandens konsol' }),
     )
@@ -184,7 +185,7 @@ describe('the CIO is dark until a decision exists', () => {
     const overview = asOverview(decided)
     expect(overview.decision).not.toBeNull()
 
-    renderRoom(decided)
+    await renderRoom(decided)
     await userEvent.click(
       screen.getByRole('button', { name: 'Öppna ordförandens konsol' }),
     )
@@ -192,7 +193,7 @@ describe('the CIO is dark until a decision exists', () => {
   })
 
   it('shows the decision without reproducing the audit', async () => {
-    renderRoom(decided)
+    await renderRoom(decided)
     await userEvent.click(
       screen.getByRole('button', { name: 'Öppna ordförandens konsol' }),
     )
@@ -214,13 +215,13 @@ describe('the CIO is dark until a decision exists', () => {
 /* --------------------------------------------------------- failure states */
 
 describe('failures say what happened and nothing about how', () => {
-  it('renders a missing case without leaking a code', () => {
+  it('renders a missing case without leaking a code', async () => {
     render(<CaseOverviewPage response={{ ok: false, code: 'NOT_FOUND' }} />)
     expect(screen.getByText('Ärendet finns inte.')).toBeInTheDocument()
     expect(screen.queryByText(/NOT_FOUND/)).not.toBeInTheDocument()
   })
 
-  it('renders an unreachable runtime without leaking connection detail', () => {
+  it('renders an unreachable runtime without leaking connection detail', async () => {
     render(<CaseOverviewPage response={{ ok: false, code: 'SERVICE_UNAVAILABLE' }} />)
     expect(screen.getByText('Analysmiljön svarar inte just nu.')).toBeInTheDocument()
     expect(screen.queryByText(/postgres|SERVICE_UNAVAILABLE/)).not.toBeInTheDocument()

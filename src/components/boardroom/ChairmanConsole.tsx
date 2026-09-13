@@ -21,6 +21,7 @@
  * zero rows. That emptiness is correct and is not filled with a fixture.
  */
 
+import { Link } from '@tanstack/react-router'
 import type { CaseOverview } from '~/application/analysis/caseOverview'
 import type { BoardroomSeat } from '~/application/analysis/boardroomSeating'
 import {
@@ -107,9 +108,9 @@ export function ChairmanConsole({
         </div>
       )}
 
-      <a href={`/cases/${caseId}/underlag`} className="brd-console-link">
+      <Link to="/cases/$caseId/underlag" params={{ caseId }} className="brd-console-link">
         Öppna underlag →
-      </a>
+      </Link>
     </aside>
   )
 }

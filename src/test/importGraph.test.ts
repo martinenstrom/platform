@@ -489,8 +489,9 @@ describe('C1 — the legacy stack is frozen', () => {
    * things structural. Adding one here should require the same deliberation as
    * adding a provider.
    *
-   * Absent because they have migrated: `AppHeader`, `routes/watchlist.tsx`,
-   * `routes/markets.tsx`.
+   * Absent because they have migrated: `routes/watchlist.tsx`,
+   * `routes/markets.tsx`. `AppHeader` migrated and was later deleted with
+   * `AppSidebar`: neither was mounted by any route or layout.
    */
   const FROZEN_MOCK_CONSUMERS = [
     'components/countryExplorer/FloatingMarketChips.tsx',

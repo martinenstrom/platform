@@ -1,4 +1,10 @@
-import { Landmark, LayoutDashboard, Library, type LucideIcon } from 'lucide-react'
+import {
+  Landmark,
+  LayoutDashboard,
+  Library,
+  Settings,
+  type LucideIcon,
+} from 'lucide-react'
 
 export interface NavItem {
   to: string
@@ -13,6 +19,13 @@ export interface NavItem {
  *   Kommandocentral   `/`              what is happening in the world
  *   Huvudkontor       `/headquarters`  what the firm is, and what it owes
  *   Underlag          `/evidence`      what the firm holds to reason from
+ *
+ * **This is the product's one definition of its destinations.** The market
+ * landing page's own column, the institutional top rail and Huvudkontoret's
+ * doors all read it. The landing page used to carry a list of its own — eight
+ * entries, two of them pages this file had already removed as fabricated —
+ * which is how one product came to describe itself three different ways on
+ * three screens.
  *
  * **Marknader is gone, and that is not a removal of anything.** It pointed at
  * the same market overview the home page now renders, so leaving it in the
@@ -29,7 +42,8 @@ export interface NavItem {
  *
  * `Bevakning` left for a different reason: it is real, but it is market data,
  * and it is a drill-down from the market landing page rather than a peer of
- * the firm's own obligations.
+ * the firm's own obligations. The landing page links to it from the panel
+ * that shows it.
  *
  * Paths must match the file routes in `src/routes`.
  */
@@ -37,4 +51,12 @@ export const primaryNav: NavItem[] = [
   { to: '/', label: 'Kommandocentral', icon: LayoutDashboard },
   { to: '/headquarters', label: 'Huvudkontor', icon: Landmark },
   { to: '/evidence', label: 'Underlag', icon: Library },
+]
+
+/**
+ * Utilities — reachable from every rail that carries one, never a peer of the
+ * three destinations. Listed here for the same reason as above: one place.
+ */
+export const utilityNav: NavItem[] = [
+  { to: '/settings', label: 'Inställningar', icon: Settings },
 ]
