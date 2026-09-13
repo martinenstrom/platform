@@ -22,6 +22,9 @@ import type {
   ClaimRepository,
   ProducedClaimRepository,
   ProducedSynthesisRepository,
+  ProducedVerificationReviewRepository,
+  ProducedDevilsAdvocateReviewRepository,
+  ProducedPeerExaminationRepository,
   RunRepository,
 } from '~/application/analysis/repositories'
 import {
@@ -30,12 +33,17 @@ import {
   runEventIdentity,
   runEventSemanticKey,
 } from '~/application/analysis/writeOnce'
+import type { QueryResultRow } from 'pg'
 import {
   measuredCost,
   modelOf,
   promptOf,
   type AgentClaim,
   type AgentRunRecord,
+  type GovernanceCandidateBasis,
+  type ProducedVerificationReview,
+  type ProducedDevilsAdvocateReview,
+  type ProducedPeerExamination,
   type RunEvent,
 } from '~/domain/analysis'
 import { groupBy } from './caseRepositories'
@@ -44,6 +52,9 @@ import {
   toAssignment,
   toClaim,
   toProducedSynthesis,
+  toProducedVerificationReview,
+  toProducedDevilsAdvocateReview,
+  toProducedPeerExamination,
   toRun,
   toRunEvent,
 } from './mapping'
@@ -52,6 +63,9 @@ import type {
   ClaimEvidenceRow,
   ClaimRow,
   ProducedSynthesisRow,
+  ProducedVerificationReviewRow,
+  ProducedDevilsAdvocateReviewRow,
+  ProducedPeerExaminationRow,
   RunEventRow,
   RunRow,
 } from './rows'
@@ -340,6 +354,214 @@ export function createProducedSynthesisRepository(
         read(client, runId, 'producedSyntheses.get'),
       ),
   }
+}
+
+/*
+ * The basis columns, identical across the three governance candidate tables.
+ * Written once so a column cannot be read by one act and forgotten by another.
+ */
+const GOVERNANCE_BASIS_COLUMNS =
+  'thesis_id, source_revision_id, playbook_id, playbook_version, ' +
+  'playbook_entry_key, observed_claim_ids'
+
+export const PRODUCED_VERIFICATION_SQL = catalog({
+  get: `SELECT run_id, case_id, tenant_id, status, findings, claims_reviewed,
+               ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+               canonicalization_version, ${ts('produced_at')}
+        FROM analysis.produced_verification_reviews WHERE run_id = $1`,
+
+  record: `INSERT INTO analysis.produced_verification_reviews
+             (run_id, case_id, tenant_id, status, findings, claims_reviewed,
+              ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+              canonicalization_version, produced_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           ON CONFLICT (run_id) DO NOTHING`,
+})
+
+export const PRODUCED_DEVILS_ADVOCATE_SQL = catalog({
+  get: `SELECT run_id, case_id, tenant_id, challenges,
+               ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+               canonicalization_version, ${ts('produced_at')}
+        FROM analysis.produced_devils_advocate_reviews WHERE run_id = $1`,
+
+  record: `INSERT INTO analysis.produced_devils_advocate_reviews
+             (run_id, case_id, tenant_id, challenges,
+              ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+              canonicalization_version, produced_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           ON CONFLICT (run_id) DO NOTHING`,
+})
+
+export const PRODUCED_PEER_EXAMINATION_SQL = catalog({
+  get: `SELECT run_id, case_id, tenant_id, challenges, examined_department_id,
+               ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+               canonicalization_version, ${ts('produced_at')}
+        FROM analysis.produced_peer_examinations WHERE run_id = $1`,
+
+  record: `INSERT INTO analysis.produced_peer_examinations
+             (run_id, case_id, tenant_id, challenges, examined_department_id,
+              ${GOVERNANCE_BASIS_COLUMNS}, content_hash,
+              canonicalization_version, produced_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (run_id) DO NOTHING`,
+})
+
+/**
+ * An unfiled governance candidate store, against PostgreSQL.
+ *
+ * One factory for the three, because the STORAGE BEHAVIOUR is identical —
+ * write-once, idempotent on the producing run, compared by content hash — and
+ * three copies of that would be three chances for one of them to stop comparing
+ * the digest. What differs is the columns, supplied by the caller; what keeps
+ * the three acts apart is the domain builders and the database constraints.
+ *
+ * Write-once in the strong sense: each table holds `SELECT` and `INSERT` and
+ * nothing else, so a candidate cannot be edited into agreement with the verdict
+ * that was actually filed.
+ */
+function createProducedGovernanceRepository<
+  Row extends QueryResultRow,
+  Candidate extends { runId: string; contentHash: string },
+>(
+  scope: Scope,
+  context: SqlContext,
+  options: {
+    label: string
+    sql: { get: string; record: string }
+    toDomain: (row: Row) => Candidate
+    params: (candidate: Candidate) => unknown[]
+  },
+): {
+  record(candidate: Candidate): Promise<void>
+  get(runId: string): Promise<Candidate | null>
+} {
+  const read = async (client: Queryable, runId: string, operation: string) => {
+    const row = await one<Row>(client, context, operation, options.sql.get, [runId])
+    return row ? options.toDomain(row) : null
+  }
+
+  return {
+    record: (candidate) =>
+      unitOfWork(scope, `${options.label}.record`, async (client) => {
+        const existing = await read(client, candidate.runId, `${options.label}.record`)
+        if (existing) {
+          /*
+           * One run produces one candidate. The content hash covers the
+           * artifact AND the basis it was produced against, so comparing it
+           * answers "is this the same candidate" exactly: a retry matches, and
+           * a second, different verdict for the same run does not.
+           */
+          if (existing.contentHash !== candidate.contentHash) {
+            throw new ConflictingRecordError(
+              options.label,
+              candidate.runId,
+              `${options.label}.record`,
+            )
+          }
+          return
+        }
+        await run(
+          client,
+          context,
+          `${options.label}.record`,
+          options.sql.record,
+          options.params(candidate),
+        )
+      }),
+
+    get: (runId) =>
+      unitOfWork(scope, `${options.label}.get`, (client) =>
+        read(client, runId, `${options.label}.get`),
+      ),
+  }
+}
+
+/** The basis parameters, in the order `GOVERNANCE_BASIS_COLUMNS` names them. */
+const governanceBasisParams = (basis: GovernanceCandidateBasis): unknown[] => [
+  basis.thesisId,
+  basis.sourceRevisionId,
+  basis.playbookId,
+  basis.playbookVersion,
+  basis.playbookEntryKey,
+  JSON.stringify([...basis.observedClaimIds]),
+]
+
+export function createProducedVerificationRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): ProducedVerificationReviewRepository {
+  return createProducedGovernanceRepository<
+    ProducedVerificationReviewRow,
+    ProducedVerificationReview
+  >(scope, context, {
+    label: 'producedVerifications',
+    sql: PRODUCED_VERIFICATION_SQL,
+    toDomain: toProducedVerificationReview,
+    params: (candidate) => [
+      candidate.runId,
+      candidate.caseId,
+      tenantId,
+      candidate.artifact.status,
+      JSON.stringify([...candidate.artifact.findings]),
+      JSON.stringify([...candidate.artifact.claimsReviewed]),
+      ...governanceBasisParams(candidate.basis),
+      candidate.contentHash,
+      candidate.canonicalizationVersion,
+      candidate.producedAt,
+    ],
+  })
+}
+
+export function createProducedDevilsAdvocateRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): ProducedDevilsAdvocateReviewRepository {
+  return createProducedGovernanceRepository<
+    ProducedDevilsAdvocateReviewRow,
+    ProducedDevilsAdvocateReview
+  >(scope, context, {
+    label: 'producedChallenges',
+    sql: PRODUCED_DEVILS_ADVOCATE_SQL,
+    toDomain: toProducedDevilsAdvocateReview,
+    params: (candidate) => [
+      candidate.runId,
+      candidate.caseId,
+      tenantId,
+      JSON.stringify([...candidate.artifact.challenges]),
+      ...governanceBasisParams(candidate.basis),
+      candidate.contentHash,
+      candidate.canonicalizationVersion,
+      candidate.producedAt,
+    ],
+  })
+}
+
+export function createProducedPeerExaminationRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): ProducedPeerExaminationRepository {
+  return createProducedGovernanceRepository<
+    ProducedPeerExaminationRow,
+    ProducedPeerExamination
+  >(scope, context, {
+    label: 'producedPeerExaminations',
+    sql: PRODUCED_PEER_EXAMINATION_SQL,
+    toDomain: toProducedPeerExamination,
+    params: (candidate) => [
+      candidate.runId,
+      candidate.caseId,
+      tenantId,
+      JSON.stringify([...candidate.artifact.challenges]),
+      candidate.basis.examinedDepartmentId,
+      ...governanceBasisParams(candidate.basis),
+      candidate.contentHash,
+      candidate.canonicalizationVersion,
+      candidate.producedAt,
+    ],
+  })
 }
 
 export const PRODUCED_CLAIM_SQL = catalog({

@@ -114,6 +114,10 @@ describe('a clean database reaches the expected schema', () => {
       '0046',
       /* An agent's synthesis names the candidate it adopted. */
       '0047',
+      /* Governance verdicts, objections and examinations, before they are filed. */
+      '0048',
+      /* The review natural key names the principal, agent or employee. */
+      '0049',
     ])
   })
 
@@ -169,7 +173,16 @@ describe('a clean database reaches the expected schema', () => {
       'playbook_versions',
       'playbooks',
       'produced_claims',
+      /*
+       * Governance control acts a model produced and nobody has filed. Three
+       * tables, because a verification verdict always has a status, a Devil's
+       * Advocate filing is never empty and a peer examination legitimately is —
+       * constraints one shared table would have to drop.
+       */
+      'produced_devils_advocate_reviews',
+      'produced_peer_examinations',
       'produced_syntheses',
+      'produced_verification_reviews',
       'requirement_resolutions',
       'responsibilities',
       'reviews',

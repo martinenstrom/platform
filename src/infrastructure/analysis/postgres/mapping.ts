@@ -25,6 +25,15 @@ import {
   buildRequirementResolution,
   buildClaim,
   buildProducedSynthesis,
+  buildVerificationCandidate,
+  buildDevilsAdvocateCandidate,
+  buildPeerExaminationCandidate,
+  type GovernanceCandidateBasis,
+  type ProducedVerificationReview,
+  type ProducedDevilsAdvocateReview,
+  type ProducedPeerExamination,
+  type ProposedChallenge,
+  type VerificationStatus,
   buildEvidenceSet,
   buildObservation,
   buildManagerAggregation,
@@ -95,6 +104,9 @@ import type {
   ClaimEvidenceRow,
   ClaimRow,
   ProducedSynthesisRow,
+  ProducedVerificationReviewRow,
+  ProducedDevilsAdvocateReviewRow,
+  ProducedPeerExaminationRow,
   EvidenceItemRow,
   EvidenceAssemblyRow,
   ObservationRow,
@@ -373,6 +385,152 @@ export function toProducedSynthesis(row: ProducedSynthesisRow): ProducedSynthesi
     )
   }
   return seal(candidate, 'produced_syntheses')
+}
+
+/**
+ * The basis every governance candidate row carries, read back once.
+ *
+ * Shared because the three acts are produced against the same kind of
+ * institutional state. Three copies would be three chances for one of them to
+ * stop reading the revision, which is the member the whole stale check rests on.
+ */
+function toGovernanceBasis(
+  row: ProducedVerificationReviewRow | ProducedDevilsAdvocateReviewRow,
+  act: string,
+): GovernanceCandidateBasis {
+  return {
+    caseId: row.case_id,
+    thesisId: row.thesis_id,
+    sourceRevisionId: row.source_revision_id,
+    playbookId: row.playbook_id,
+    playbookVersion: row.playbook_version,
+    playbookEntryKey: row.playbook_entry_key,
+    observedClaimIds: expectArray(
+      row.observed_claim_ids,
+      act,
+      'observed_claim_ids',
+    ) as string[],
+  }
+}
+
+/**
+ * A stored digest that does not attest its own row is a refusal, not a warning.
+ *
+ * The same rule `toProducedSynthesis` applies: reading a candidate whose hash
+ * disagrees with its contents would hand a filing command something the record
+ * cannot vouch for, and the filing command is the last place that could catch
+ * it.
+ */
+function assertCandidateDigest(
+  computed: { contentHash: string; canonicalizationVersion: string },
+  row: { content_hash: string; canonicalization_version: string },
+  act: string,
+  table: string,
+): void {
+  if (
+    computed.contentHash !== row.content_hash ||
+    computed.canonicalizationVersion !== row.canonicalization_version
+  ) {
+    throw new MalformedRowError(
+      act,
+      `stored digest ${row.content_hash} (v${row.canonicalization_version}) does ` +
+        `not match the candidate it is stored with`,
+      table,
+    )
+  }
+}
+
+export function toProducedVerificationReview(
+  row: ProducedVerificationReviewRow,
+): ProducedVerificationReview {
+  const candidate = build(
+    'produced verification review',
+    'produced_verification_reviews',
+    () =>
+      buildVerificationCandidate({
+        runId: row.run_id,
+        artifact: {
+          status: row.status as VerificationStatus,
+          findings: expectArray(
+            row.findings,
+            'produced verification review',
+            'findings',
+          ) as VerificationFinding[],
+          claimsReviewed: expectArray(
+            row.claims_reviewed,
+            'produced verification review',
+            'claims_reviewed',
+          ) as string[],
+        },
+        basis: toGovernanceBasis(row, 'produced verification review'),
+        producedAt: row.produced_at,
+      }),
+  )
+  assertCandidateDigest(
+    candidate,
+    row,
+    'produced verification review',
+    'produced_verification_reviews',
+  )
+  return seal(candidate, 'produced_verification_reviews')
+}
+
+export function toProducedDevilsAdvocateReview(
+  row: ProducedDevilsAdvocateReviewRow,
+): ProducedDevilsAdvocateReview {
+  const candidate = build(
+    "produced devil's advocate review",
+    'produced_devils_advocate_reviews',
+    () =>
+      buildDevilsAdvocateCandidate({
+        runId: row.run_id,
+        artifact: {
+          challenges: expectArray(
+            row.challenges,
+            "produced devil's advocate review",
+            'challenges',
+          ) as ProposedChallenge[],
+        },
+        basis: toGovernanceBasis(row, "produced devil's advocate review"),
+        producedAt: row.produced_at,
+      }),
+  )
+  assertCandidateDigest(
+    candidate,
+    row,
+    "produced devil's advocate review",
+    'produced_devils_advocate_reviews',
+  )
+  return seal(candidate, 'produced_devils_advocate_reviews')
+}
+
+export function toProducedPeerExamination(
+  row: ProducedPeerExaminationRow,
+): ProducedPeerExamination {
+  const candidate = build('produced peer examination', 'produced_peer_examinations', () =>
+    buildPeerExaminationCandidate({
+      runId: row.run_id,
+      artifact: {
+        challenges: expectArray(
+          row.challenges,
+          'produced peer examination',
+          'challenges',
+        ) as ProposedChallenge[],
+      },
+      basis: {
+        ...toGovernanceBasis(row, 'produced peer examination'),
+        examinedDepartmentId: row.examined_department_id,
+      },
+      producedAt: row.produced_at,
+    }),
+  )
+  assertCandidateDigest(
+    candidate,
+    row,
+    'produced peer examination',
+    'produced_peer_examinations',
+  )
+  return seal(candidate, 'produced_peer_examinations')
 }
 
 export function toClaim(
@@ -681,8 +839,7 @@ export function toRun(
                     : {}),
                   ...(row.rejected_by_agent_principal_id
                     ? {
-                        rejectedByAgentPrincipalId:
-                          row.rejected_by_agent_principal_id,
+                        rejectedByAgentPrincipalId: row.rejected_by_agent_principal_id,
                       }
                     : {}),
                   rejectedAt: row.rejected_at!,
@@ -885,12 +1042,20 @@ function toScope(row: ReviewRow): ReviewScope {
   }
 }
 
+/**
+ * Who filed the verdict, whichever kind of principal that was.
+ *
+ * `present` drops the absent one rather than carrying an explicit null, so a
+ * human review reads back exactly as it always has and an agent's carries its
+ * principal instead of an employee it never had.
+ */
 function attribution(row: ReviewRow) {
-  return {
-    byEmployeeId: row.by_employee_id,
+  return present({
+    byEmployeeId: row.by_employee_id ?? undefined,
+    byAgentPrincipalId: row.by_agent_principal_id ?? undefined,
     byDepartmentId: row.by_department_id,
     at: row.at,
-  }
+  })
 }
 
 /** Identity and position — common to every verdict since 0019. */
@@ -900,6 +1065,16 @@ function order(row: ReviewRow) {
     sequence: row.sequence,
     supersedesReviewId: row.supersedes_review_id,
     reason: row.reason,
+    /*
+     * Whichever candidate column this kind may carry. The database allows at
+     * most one and only the one matching `kind`, so reading all three and
+     * taking the first present cannot conflate two acts — and a review a person
+     * authored has none of them, which reads back as absent.
+     */
+    filedFromCandidateRunId:
+      row.verification_candidate_run_id ??
+      row.devils_advocate_candidate_run_id ??
+      row.peer_examination_candidate_run_id,
   })
 }
 

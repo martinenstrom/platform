@@ -70,8 +70,11 @@ export function reviewRowId(
 
 const REVIEW_COLUMNS = `
   id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-  by_employee_id, by_department_id, ${ts('at')}, status, detail,
-  sequence, supersedes_review_id, reason, examined_department_id
+  by_employee_id, by_agent_principal_id, by_department_id, ${ts('at')},
+  status, detail, sequence, supersedes_review_id, reason,
+  examined_department_id,
+  verification_candidate_run_id, devils_advocate_candidate_run_id,
+  peer_examination_candidate_run_id
 `
 
 /**
@@ -81,7 +84,9 @@ const REVIEW_COLUMNS = `
  * verdicts recorded in the same millisecond in an arbitrary order, so "the
  * current verdict" was not a function of the data.
  */
-const REVIEW_ORDER = `ORDER BY sequence, at, by_employee_id COLLATE "C",
+const REVIEW_ORDER = `ORDER BY sequence, at,
+                               coalesce(by_employee_id, by_agent_principal_id)
+                                 COLLATE "C",
                                coalesce(revision_id, '') COLLATE "C"`
 
 export const REVIEW_SQL = catalog({
@@ -165,9 +170,13 @@ export const REVIEW_SQL = catalog({
    */
   save: `INSERT INTO analysis.reviews
            (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
-            by_employee_id, by_department_id, at, status, detail,
-            sequence, supersedes_review_id, reason, examined_department_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            by_employee_id, by_agent_principal_id, by_department_id, at,
+            status, detail, sequence, supersedes_review_id, reason,
+            examined_department_id,
+            verification_candidate_run_id, devils_advocate_candidate_run_id,
+            peer_examination_candidate_run_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                 $18,$19,$20)
          RETURNING id`,
 
   /*
@@ -370,6 +379,18 @@ export function createReviewRepository(
      * read off the review, and the four control-function callers pass nothing.
      */
     examinedDepartmentId: string | null = null,
+    /*
+     * Which produced candidate this verdict institutionalises, where one did.
+     * Typed per kind by the database (`reviews_candidate_matches_kind`), so the
+     * caller passes the one its own kind may carry and the row refuses any
+     * other. Null on every human direct-author path, which generates no
+     * candidate and is not given a synthetic one.
+     */
+    candidate: {
+      verification?: string | null
+      devilsAdvocate?: string | null
+      peerExamination?: string | null
+    } = {},
   ): Promise<string | null> {
     const id = review.reviewId
     const revisionId = review.scope === 'thesis-revision' ? review.revisionId : null
@@ -391,7 +412,14 @@ export function createReviewRepository(
             tenantId,
             review.scope === 'thesis-revision' ? review.thesisId : null,
             revisionId,
-            review.byEmployeeId,
+            /*
+             * Exactly one of these is set, and the database says so. Writing
+             * the agent id into the employee column would attribute a control
+             * function's verdict to a person who never filed it — the failure
+             * `reviews_one_accountable_principal` exists to make impossible.
+             */
+            review.byEmployeeId ?? null,
+            review.byAgentPrincipalId ?? null,
             review.byDepartmentId,
             review.at,
             status,
@@ -400,6 +428,9 @@ export function createReviewRepository(
             review.supersedesReviewId ?? null,
             review.reason ?? null,
             examinedDepartmentId,
+            candidate.verification ?? null,
+            candidate.devilsAdvocate ?? null,
+            candidate.peerExamination ?? null,
           ],
         )
         await client.query(`RELEASE SAVEPOINT review_insert`)
@@ -556,13 +587,25 @@ export function createReviewRepository(
     challengesForCase: (caseId) =>
       unitOfWork(scope, 'reviews.challengesForCase', async (client) => {
         const operation = 'reviews.challengesForCase'
-        return withChallenges(client, 'devils-advocate', caseId, operation, toDevilsAdvocate)
+        return withChallenges(
+          client,
+          'devils-advocate',
+          caseId,
+          operation,
+          toDevilsAdvocate,
+        )
       }),
 
     peerExaminationsForCase: (caseId) =>
       unitOfWork(scope, 'reviews.peerExaminationsForCase', async (client) => {
         const operation = 'reviews.peerExaminationsForCase'
-        return withChallenges(client, 'peer-examination', caseId, operation, toPeerExamination)
+        return withChallenges(
+          client,
+          'peer-examination',
+          caseId,
+          operation,
+          toPeerExamination,
+        )
       }),
 
     /** One statement: compliance carries no typed children. */
@@ -618,6 +661,8 @@ export function createReviewRepository(
           review.status,
           {},
           operation,
+          null,
+          { verification: review.filedFromCandidateRunId ?? null },
         )
         if (!id) return
 
@@ -664,6 +709,8 @@ export function createReviewRepository(
           null,
           {},
           operation,
+          null,
+          { devilsAdvocate: review.filedFromCandidateRunId ?? null },
         )
         if (!id) return
 
@@ -681,6 +728,7 @@ export function createReviewRepository(
           {},
           operation,
           review.examinedDepartmentId,
+          { peerExamination: review.filedFromCandidateRunId ?? null },
         )
         /*
          * The row is written even when `review.challenges` is empty, and that

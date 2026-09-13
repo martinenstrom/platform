@@ -942,6 +942,8 @@ describe('Phase C1A — the command foundation', () => {
       'recordCaseDecision.ts',
       'recordContribution.ts',
       'recordDevilsAdvocateReview.ts',
+      /* What a control function's model produced, before anyone files it. */
+      'recordGovernanceCandidate.ts',
       'recordPeerExamination.ts',
       'recordRiskReview.ts',
       'recordVerificationReview.ts',

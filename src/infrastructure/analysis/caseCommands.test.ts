@@ -284,6 +284,7 @@ describe('command declarations', () => {
       'RecordCaseDecision',
       'RecordContribution',
       'RecordDevilsAdvocateReview',
+      'RecordGovernanceCandidate',
       'RecordPeerExamination',
       'RecordRiskReview',
       'RecordVerificationReview',

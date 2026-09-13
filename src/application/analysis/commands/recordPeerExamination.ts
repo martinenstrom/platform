@@ -54,30 +54,39 @@
 import {
   buildChallenge,
   buildTransitionEvent,
+  PEER_EXAMINATION_CANDIDATE_CANONICALIZATION_VERSION,
+  peerExaminationCandidateHashMatches,
+  type AgentRunRecord,
   type Challenge,
   type ChallengeStatus,
+  type GovernanceCandidateBasis,
   type Organization,
   type PeerExaminationReview,
 } from '~/domain/analysis'
 import {
+  accountablePrincipal,
+  candidateReadyToFile,
   claimsInScopeOf,
+  completeProducingWork,
+  PEER_EXAMINATION_ENTRY_KEY,
   placeVerdict,
   type ChallengeSubmission,
 } from '../reviewRecording'
+import type { TransactionalAnalysisRepositories } from '../repositories'
+import type { CanonicalValue } from '~/domain/shared/canonicalValue'
 import { deriveChallengeId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
-/**
- * The playbook entry a peer examination is performed under.
- *
- * Named here and not yet registered in a playbook: the entry arrives with
- * playbook v5. Until then this is the key the placement carries, so the two
- * cannot disagree about what it is called when v5 lands.
+/*
+ * Re-exported for the callers that have always read it from here. It is DEFINED
+ * in `reviewRecording` because the command that records a peer candidate needs
+ * it too, and a command handler may not import another command handler.
  */
-export const PEER_EXAMINATION_ENTRY_KEY = 'peer-examination'
+export { PEER_EXAMINATION_ENTRY_KEY }
 
-export interface RecordPeerExaminationInput {
+/** An examination a human peer files in this act. Unchanged, deliberately. */
+export interface DirectPeerExaminationInput {
   caseId: string
   thesisId: string
   revisionId: string
@@ -91,6 +100,123 @@ export interface RecordPeerExaminationInput {
    */
   challenges: readonly ChallengeSubmission[]
   supersedesReviewId?: string
+  /** Absent: nothing is being filed, because this examination is being written. */
+  candidateFromRunId?: undefined
+}
+
+/**
+ * An examination a desk's agent files, having produced it as a candidate.
+ *
+ * The reference is the whole substantive input. The examined desk comes from
+ * the candidate's basis rather than from the caller, so which desk was read
+ * cannot change between producing the examination and filing it.
+ */
+export interface FiledPeerExaminationInput {
+  caseId: string
+  byDepartmentId: string
+  /** The run whose produced examination this act files. */
+  candidateFromRunId: string
+  supersedesReviewId?: string
+
+  thesisId?: undefined
+  revisionId?: undefined
+  examinedDepartmentId?: undefined
+  challenges?: undefined
+}
+
+export type RecordPeerExaminationInput =
+  DirectPeerExaminationInput | FiledPeerExaminationInput
+
+/**
+ * The semantic payload, in one of two shapes because there are two acts.
+ *
+ * The direct one is byte-for-byte what it always was. The filed one is the
+ * candidate reference and nothing else, which is content-bound: the candidate's
+ * hash covers the examination, the desk examined and the institutional basis
+ * together.
+ */
+function peerExaminationPayload(
+  input: RecordPeerExaminationInput,
+): Record<string, CanonicalValue> {
+  if (input.candidateFromRunId !== undefined) {
+    return {
+      byDepartmentId: input.byDepartmentId,
+      candidateFromRunId: input.candidateFromRunId,
+      supersedesReviewId: input.supersedesReviewId ?? null,
+    }
+  }
+  return {
+    revisionId: input.revisionId,
+    thesisId: input.thesisId,
+    byDepartmentId: input.byDepartmentId,
+    examinedDepartmentId: input.examinedDepartmentId,
+    challenges: input.challenges.map((challenge) => ({
+      contests: challenge.contests,
+      kind: challenge.kind,
+      argument: challenge.argument,
+      materiality: challenge.materiality,
+      outcome: challenge.outcome ?? 'open',
+    })),
+    supersedesReviewId: input.supersedesReviewId ?? null,
+  }
+}
+
+/**
+ * Loads the candidate this act files, and refuses it if it cannot still be.
+ *
+ * Note what is NOT re-derived: the desk examined comes from the candidate's
+ * basis, so a filing cannot quietly redirect an examination at a desk the work
+ * never read. Whether the examiner is ALLOWED to examine it — not itself, not
+ * as a control function, not as the Devil's Advocate — is checked by the
+ * command afterwards, on exactly these values.
+ *
+ * Zero objections is not a refusal here and must not become one: a peer that
+ * looked and agreed performed the scrutiny.
+ */
+async function loadPeerExaminationCandidate(
+  repositories: TransactionalAnalysisRepositories,
+  caseId: string,
+  byDepartmentId: string,
+  candidateFromRunId: string,
+): Promise<{
+  runId: string
+  run: AgentRunRecord
+  basis: GovernanceCandidateBasis
+  thesisId: string
+  revisionId: string
+  examinedDepartmentId: string
+  challenges: readonly ChallengeSubmission[]
+}> {
+  const candidate = await repositories.producedPeerExaminations.get(candidateFromRunId)
+  if (!candidate) {
+    reject(
+      'not-found',
+      `Run "${candidateFromRunId}" produced no peer examination. There is ` +
+        `nothing to file.`,
+    )
+  }
+
+  const adoption = await candidateReadyToFile(repositories, {
+    caseId,
+    byDepartmentId,
+    runId: candidateFromRunId,
+    basis: candidate.basis,
+    hashMatches: peerExaminationCandidateHashMatches(candidate),
+    knownCanonicalization:
+      candidate.canonicalizationVersion ===
+      String(PEER_EXAMINATION_CANDIDATE_CANONICALIZATION_VERSION),
+    refuse: reject,
+  })
+
+  return {
+    runId: adoption.runId,
+    run: adoption.run,
+    basis: adoption.basis,
+    thesisId: candidate.basis.thesisId,
+    revisionId: candidate.basis.sourceRevisionId,
+    examinedDepartmentId: candidate.basis.examinedDepartmentId,
+    challenges: candidate.artifact.challenges.map((challenge) => ({ ...challenge })),
+  }
 }
 
 export function recordPeerExamination(
@@ -115,23 +241,37 @@ export function recordPeerExamination(
       kind: 'department-contribution',
       departmentId: input.byDepartmentId,
     }),
-    scope: (input) => ({ caseId: input.caseId, thesisRevisionId: input.revisionId }),
-    payload: (input) => ({
-      revisionId: input.revisionId,
-      thesisId: input.thesisId,
-      byDepartmentId: input.byDepartmentId,
-      examinedDepartmentId: input.examinedDepartmentId,
-      challenges: input.challenges.map((challenge) => ({
-        contests: challenge.contests,
-        kind: challenge.kind,
-        argument: challenge.argument,
-        materiality: challenge.materiality,
-        outcome: challenge.outcome ?? 'open',
-      })),
-      supersedesReviewId: input.supersedesReviewId ?? null,
+    /* See `RecordVerificationReview`: the filed path's revision is the candidate's. */
+    scope: (input) => ({
+      caseId: input.caseId,
+      ...(input.revisionId ? { thesisRevisionId: input.revisionId } : {}),
     }),
+    payload: peerExaminationPayload,
 
     async execute(repositories, context, input) {
+      /* ------------------------------------------------------ what is filed */
+
+      /*
+       * On the filed path the examination — including WHICH desk was read —
+       * comes from the immutable candidate. `adoption` is null for a person
+       * filing directly, which keeps that path exactly as it was.
+       */
+      const adoption = input.candidateFromRunId
+        ? await loadPeerExaminationCandidate(
+            repositories,
+            input.caseId,
+            input.byDepartmentId,
+            input.candidateFromRunId,
+          )
+        : null
+
+      const filing = adoption ?? {
+        thesisId: input.thesisId!,
+        revisionId: input.revisionId!,
+        examinedDepartmentId: input.examinedDepartmentId!,
+        challenges: input.challenges!,
+      }
+
       /* ------------------------------------------------ who may examine */
 
       if (input.byDepartmentId === 'devils-advocate') {
@@ -166,10 +306,10 @@ export function recordPeerExamination(
       }
 
       const examined = organization.departments.find(
-        (department) => department.id === input.examinedDepartmentId,
+        (department) => department.id === filing.examinedDepartmentId,
       )
       if (!examined) {
-        reject('not-found', `There is no department "${input.examinedDepartmentId}".`)
+        reject('not-found', `There is no department "${filing.examinedDepartmentId}".`)
       }
 
       /*
@@ -178,7 +318,7 @@ export function recordPeerExamination(
        * `reviews_peer_examines_another_department`; refused here so the caller
        * gets an institutional reason rather than a constraint violation.
        */
-      if (input.byDepartmentId === input.examinedDepartmentId) {
+      if (input.byDepartmentId === filing.examinedDepartmentId) {
         reject(
           'invariant-violated',
           `"${input.byDepartmentId}" cannot peer-examine itself. A desk ` +
@@ -194,8 +334,8 @@ export function recordPeerExamination(
         context,
         {
           caseId: input.caseId,
-          revisionId: input.revisionId,
-          thesisId: input.thesisId,
+          revisionId: filing.revisionId,
+          thesisId: filing.thesisId,
           byDepartmentId: input.byDepartmentId,
           kind: 'peer-examination',
           playbookEntryKey: PEER_EXAMINATION_ENTRY_KEY,
@@ -221,7 +361,7 @@ export function recordPeerExamination(
       const challenges: Challenge[] = []
       const outcomes: Record<string, ChallengeStatus> = {}
 
-      for (const [ordinal, submission] of input.challenges.entries()) {
+      for (const [ordinal, submission] of filing.challenges.entries()) {
         if (inScope.size > 0 && !inScope.has(submission.contests)) {
           reject(
             'invariant-violated',
@@ -266,22 +406,32 @@ export function recordPeerExamination(
       const review: PeerExaminationReview = {
         scope: 'thesis-revision',
         caseId: input.caseId,
-        thesisId: input.thesisId,
-        revisionId: input.revisionId,
+        thesisId: filing.thesisId,
+        revisionId: filing.revisionId,
         reviewId: placement.reviewId,
         sequence: placement.sequence,
-        byEmployeeId: context.actor.employeeId!,
+        ...accountablePrincipal(context),
         byDepartmentId: input.byDepartmentId,
-        examinedDepartmentId: input.examinedDepartmentId,
+        examinedDepartmentId: filing.examinedDepartmentId,
         at: context.occurredAt,
         challenges,
         outcomes,
+        ...(adoption ? { filedFromCandidateRunId: adoption.runId } : {}),
         ...(input.supersedesReviewId
           ? { supersedesReviewId: input.supersedesReviewId }
           : {}),
         ...(context.reason ? { reason: context.reason } : {}),
       }
       await repositories.reviews.savePeerExamination(review)
+
+      /*
+       * Filing completes the producing run and the assignment it discharged.
+       * Reached on the zero-objection path too: a peer that looked and agreed
+       * performed the scrutiny, and the work it discharged is finished.
+       */
+      if (adoption) {
+        await completeProducingWork(repositories, context, adoption)
+      }
 
       /* Recorded against, not moved. Same reason as the other verdicts. */
       const caseVersion = (await repositories.cases.get(input.caseId))?.version ?? 0
@@ -303,13 +453,14 @@ export function recordPeerExamination(
           }),
           caseId: input.caseId,
           subject: 'review',
-          thesisId: input.thesisId,
-          revisionId: input.revisionId,
+          thesisId: filing.thesisId,
+          revisionId: filing.revisionId,
           reviewId: placement.reviewId,
           fromState: null,
           toState: challenges.length === 0 ? 'examined-no-objection' : 'examined',
           occurredAt: context.occurredAt,
           actorEmployeeId: context.actor.employeeId ?? undefined,
+          actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
           actorDepartmentId: context.actor.departmentId ?? undefined,
           correlationId: context.correlationId,
           aggregateVersion: caseVersion,
@@ -328,14 +479,15 @@ export function recordPeerExamination(
             }),
             caseId: input.caseId,
             subject: 'review',
-            thesisId: input.thesisId,
-            revisionId: input.revisionId,
+            thesisId: filing.thesisId,
+            revisionId: filing.revisionId,
             reviewId: placement.reviewId,
             challengeId: challenge.id,
             fromState: settled ? 'open' : null,
             toState: outcomes[challenge.id]!,
             occurredAt: context.occurredAt,
             actorEmployeeId: context.actor.employeeId ?? undefined,
+            actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
             actorDepartmentId: context.actor.departmentId ?? undefined,
             correlationId: context.correlationId,
             aggregateVersion: caseVersion,
@@ -353,13 +505,14 @@ export function recordPeerExamination(
             }),
             caseId: input.caseId,
             subject: 'review',
-            thesisId: input.thesisId,
-            revisionId: input.revisionId,
+            thesisId: filing.thesisId,
+            revisionId: filing.revisionId,
             reviewId: placement.superseded.reviewId,
             fromState: 'current',
             toState: 'superseded',
             occurredAt: context.occurredAt,
             actorEmployeeId: context.actor.employeeId ?? undefined,
+            actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
             actorDepartmentId: context.actor.departmentId ?? undefined,
             correlationId: context.correlationId,
             aggregateVersion: caseVersion,

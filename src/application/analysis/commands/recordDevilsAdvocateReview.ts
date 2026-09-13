@@ -24,27 +24,159 @@
 import {
   buildChallenge,
   buildTransitionEvent,
+  DEVILS_ADVOCATE_CANDIDATE_CANONICALIZATION_VERSION,
+  devilsAdvocateCandidateHashMatches,
+  type AgentRunRecord,
   type Challenge,
   type ChallengeStatus,
   type DevilsAdvocateReview,
+  type GovernanceCandidateBasis,
   type Organization,
 } from '~/domain/analysis'
 import {
+  accountablePrincipal,
+  candidateReadyToFile,
   claimsInScopeOf,
+  completeProducingWork,
   placeVerdict,
   type ChallengeSubmission,
 } from '../reviewRecording'
+import type { TransactionalAnalysisRepositories } from '../repositories'
+import type { CanonicalValue } from '~/domain/shared/canonicalValue'
 import { deriveChallengeId, deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
 
-export interface RecordDevilsAdvocateReviewInput {
+/**
+ * Objections a human Devil's Advocate files in this act.
+ *
+ * Unchanged, deliberately. A person can read the argument and state an
+ * objection they stand behind in one act; requiring them to produce a candidate
+ * first and file it second would be ceremony.
+ */
+export interface DirectDevilsAdvocateInput {
   caseId: string
   thesisId: string
   revisionId: string
   byDepartmentId: string
   challenges: readonly ChallengeSubmission[]
   supersedesReviewId?: string
+  /** Absent: nothing is being filed, because these objections are being written. */
+  candidateFromRunId?: undefined
+}
+
+/**
+ * Objections the Devil's Advocate files, having produced them as a candidate.
+ *
+ * The reference is the whole substantive input, and every other field is
+ * `never`: no argument, no materiality, no challenged subject, no statement of
+ * what would resolve it. A caller cannot name candidate A and file objections
+ * B, so a candidate cannot survive as decorative provenance beside a filing it
+ * does not match.
+ */
+export interface FiledDevilsAdvocateInput {
+  caseId: string
+  byDepartmentId: string
+  /** The run whose produced objections this act files. */
+  candidateFromRunId: string
+  supersedesReviewId?: string
+
+  thesisId?: undefined
+  revisionId?: undefined
+  challenges?: undefined
+}
+
+export type RecordDevilsAdvocateReviewInput =
+  DirectDevilsAdvocateInput | FiledDevilsAdvocateInput
+
+/**
+ * The semantic payload, in one of two shapes because there are two acts.
+ *
+ * The direct one is byte-for-byte what it always was, so every historical
+ * filing keeps the identity it was recorded under. The filed one is the
+ * candidate reference and nothing else, which is content-bound: the candidate's
+ * hash covers the objections and the institutional basis together.
+ */
+function devilsAdvocatePayload(
+  input: RecordDevilsAdvocateReviewInput,
+): Record<string, CanonicalValue> {
+  if (input.candidateFromRunId !== undefined) {
+    return {
+      byDepartmentId: input.byDepartmentId,
+      candidateFromRunId: input.candidateFromRunId,
+      supersedesReviewId: input.supersedesReviewId ?? null,
+    }
+  }
+  return {
+    revisionId: input.revisionId,
+    thesisId: input.thesisId,
+    byDepartmentId: input.byDepartmentId,
+    challenges: input.challenges.map((challenge) => ({
+      contests: challenge.contests,
+      kind: challenge.kind,
+      argument: challenge.argument,
+      materiality: challenge.materiality,
+      outcome: challenge.outcome ?? 'open',
+    })),
+    supersedesReviewId: input.supersedesReviewId ?? null,
+  }
+}
+
+/**
+ * Loads the candidate this act files, and refuses it if it cannot still be.
+ *
+ * The objections come from here and from nowhere else. The Devil's Advocate's
+ * standing requirement — that it must object — is enforced at the candidate
+ * builder, so a zero-objection draft cannot exist to be filed; this reads what
+ * was stored and re-checks that it may still be institutionalised.
+ */
+async function loadDevilsAdvocateCandidate(
+  repositories: TransactionalAnalysisRepositories,
+  caseId: string,
+  byDepartmentId: string,
+  candidateFromRunId: string,
+): Promise<{
+  runId: string
+  run: AgentRunRecord
+  basis: GovernanceCandidateBasis
+  thesisId: string
+  revisionId: string
+  challenges: readonly ChallengeSubmission[]
+}> {
+  const candidate = await repositories.producedChallenges.get(candidateFromRunId)
+  if (!candidate) {
+    reject(
+      'not-found',
+      `Run "${candidateFromRunId}" produced no Devil's Advocate candidate. ` +
+        `There is nothing to file.`,
+    )
+  }
+
+  const adoption = await candidateReadyToFile(repositories, {
+    caseId,
+    byDepartmentId,
+    runId: candidateFromRunId,
+    basis: candidate.basis,
+    hashMatches: devilsAdvocateCandidateHashMatches(candidate),
+    knownCanonicalization:
+      candidate.canonicalizationVersion ===
+      String(DEVILS_ADVOCATE_CANDIDATE_CANONICALIZATION_VERSION),
+    refuse: reject,
+  })
+
+  return {
+    runId: adoption.runId,
+    run: adoption.run,
+    basis: adoption.basis,
+    thesisId: candidate.basis.thesisId,
+    revisionId: candidate.basis.sourceRevisionId,
+    /*
+     * A produced objection is filed OPEN. The producer proposed the argument
+     * and its materiality; it did not settle anything, and `resolvedBy` is not
+     * on the proposal at all.
+     */
+    challenges: candidate.artifact.challenges.map((challenge) => ({ ...challenge })),
+  }
 }
 
 export function recordDevilsAdvocateReview(
@@ -61,20 +193,12 @@ export function recordDevilsAdvocateReview(
      * the organization whether a department handles itself.
      */
     mandate: () => ({ kind: 'governance-verdict', discipline: 'challenge' }),
-    scope: (input) => ({ caseId: input.caseId, thesisRevisionId: input.revisionId }),
-    payload: (input) => ({
-      revisionId: input.revisionId,
-      thesisId: input.thesisId,
-      byDepartmentId: input.byDepartmentId,
-      challenges: input.challenges.map((challenge) => ({
-        contests: challenge.contests,
-        kind: challenge.kind,
-        argument: challenge.argument,
-        materiality: challenge.materiality,
-        outcome: challenge.outcome ?? 'open',
-      })),
-      supersedesReviewId: input.supersedesReviewId ?? null,
+    /* See `RecordVerificationReview`: the filed path's revision is the candidate's. */
+    scope: (input) => ({
+      caseId: input.caseId,
+      ...(input.revisionId ? { thesisRevisionId: input.revisionId } : {}),
     }),
+    payload: devilsAdvocatePayload,
 
     async execute(repositories, context, input) {
       if (input.byDepartmentId !== 'devils-advocate') {
@@ -84,7 +208,33 @@ export function recordDevilsAdvocateReview(
             `control function files its objections.`,
         )
       }
-      if (input.challenges.length === 0) {
+      /*
+       * On the filed path the objections come from the immutable candidate.
+       * `adoption` is null for a person filing directly, which keeps that path
+       * exactly as it was.
+       */
+      const adoption = input.candidateFromRunId
+        ? await loadDevilsAdvocateCandidate(
+            repositories,
+            input.caseId,
+            input.byDepartmentId,
+            input.candidateFromRunId,
+          )
+        : null
+
+      const filing = adoption ?? {
+        thesisId: input.thesisId!,
+        revisionId: input.revisionId!,
+        challenges: input.challenges!,
+      }
+
+      /*
+       * The Devil's Advocate must object — the standing requirement, applied to
+       * both paths. The candidate builder already refuses an empty draft, so on
+       * the filed path this is unreachable and kept anyway: the rule belongs to
+       * the institutional act, not to whichever producer happened to draft it.
+       */
+      if (filing.challenges.length === 0) {
         reject(
           'invariant-violated',
           `A Devil's Advocate verdict with no challenges records nothing. If the ` +
@@ -99,8 +249,8 @@ export function recordDevilsAdvocateReview(
         context,
         {
           caseId: input.caseId,
-          revisionId: input.revisionId,
-          thesisId: input.thesisId,
+          revisionId: filing.revisionId,
+          thesisId: filing.thesisId,
           byDepartmentId: input.byDepartmentId,
           kind: 'devils-advocate',
           playbookEntryKey: 'challenge',
@@ -118,7 +268,7 @@ export function recordDevilsAdvocateReview(
       const challenges: Challenge[] = []
       const outcomes: Record<string, ChallengeStatus> = {}
 
-      for (const [ordinal, submission] of input.challenges.entries()) {
+      for (const [ordinal, submission] of filing.challenges.entries()) {
         if (inScope.size > 0 && !inScope.has(submission.contests)) {
           reject(
             'invariant-violated',
@@ -163,21 +313,31 @@ export function recordDevilsAdvocateReview(
       const review: DevilsAdvocateReview = {
         scope: 'thesis-revision',
         caseId: input.caseId,
-        thesisId: input.thesisId,
-        revisionId: input.revisionId,
+        thesisId: filing.thesisId,
+        revisionId: filing.revisionId,
         reviewId: placement.reviewId,
         sequence: placement.sequence,
-        byEmployeeId: context.actor.employeeId!,
+        ...accountablePrincipal(context),
         byDepartmentId: input.byDepartmentId,
         at: context.occurredAt,
         challenges,
         outcomes,
+        ...(adoption ? { filedFromCandidateRunId: adoption.runId } : {}),
         ...(input.supersedesReviewId
           ? { supersedesReviewId: input.supersedesReviewId }
           : {}),
         ...(context.reason ? { reason: context.reason } : {}),
       }
       await repositories.reviews.saveDevilsAdvocate(review)
+
+      /*
+       * Filing completes the producing run and the assignment it discharged —
+       * the other half of adoption, in the same transaction as the objections.
+       * See `RecordVerificationReview`.
+       */
+      if (adoption) {
+        await completeProducingWork(repositories, context, adoption)
+      }
 
       /*
        * The case version the verdict was recorded AGAINST, not one it moved.
@@ -201,14 +361,15 @@ export function recordDevilsAdvocateReview(
             }),
             caseId: input.caseId,
             subject: 'review',
-            thesisId: input.thesisId,
-            revisionId: input.revisionId,
+            thesisId: filing.thesisId,
+            revisionId: filing.revisionId,
             reviewId: placement.reviewId,
             challengeId: challenge.id,
             fromState: settled ? 'open' : null,
             toState: outcomes[challenge.id]!,
             occurredAt: context.occurredAt,
             actorEmployeeId: context.actor.employeeId ?? undefined,
+            actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
             actorDepartmentId: context.actor.departmentId ?? undefined,
             correlationId: context.correlationId,
             aggregateVersion: caseVersion,
@@ -226,13 +387,14 @@ export function recordDevilsAdvocateReview(
             }),
             caseId: input.caseId,
             subject: 'review',
-            thesisId: input.thesisId,
-            revisionId: input.revisionId,
+            thesisId: filing.thesisId,
+            revisionId: filing.revisionId,
             reviewId: placement.superseded.reviewId,
             fromState: 'current',
             toState: 'superseded',
             occurredAt: context.occurredAt,
             actorEmployeeId: context.actor.employeeId ?? undefined,
+            actorAgentPrincipalId: context.actor.agentPrincipalId ?? undefined,
             actorDepartmentId: context.actor.departmentId ?? undefined,
             correlationId: context.correlationId,
             aggregateVersion: caseVersion,

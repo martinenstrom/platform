@@ -13,16 +13,20 @@
  */
 
 import {
+  buildRunRecord,
+  candidateStaleness,
   isRevisionScoped,
+  type AgentRunRecord,
   type Challenge,
   type ChallengeStatus,
+  type GovernanceCandidateBasis,
   type InvestmentThesis,
   type ReviewAttribution,
   type ReviewOrder,
   type ReviewRecordId,
   type ReviewScope,
 } from '~/domain/analysis'
-import type { TransactionalAnalysisRepositories } from './repositories'
+import type { StorageProvenance, TransactionalAnalysisRepositories } from './repositories'
 import type { CommandContext } from './commands/definition'
 import { reject } from './commands/envelope'
 import { deriveReviewId } from './commands/eventIdentity'
@@ -220,6 +224,168 @@ export function requireReasonForChangedVerdict(
       `A reversal the record cannot explain is a reversal nobody can review.`,
   )
 }
+
+/* ------------------------------------------------------------- adoption */
+
+/**
+ * Exactly one accountable principal, taken from whoever acted.
+ *
+ * Returns the field that applies rather than both, so the object spreads into a
+ * review with no null beside it — and so the database's
+ * `reviews_one_accountable_principal` has nothing to object to.
+ *
+ * A system actor is refused: a verdict booked to the orchestrator is a verdict
+ * booked to nobody, and the whole point of the control functions is that
+ * somebody answers for what they filed.
+ */
+export function accountablePrincipal(context: {
+  actor: { employeeId?: string | null; agentPrincipalId?: string | null }
+}): { byEmployeeId: string } | { byAgentPrincipalId: string } {
+  if (context.actor.employeeId) return { byEmployeeId: context.actor.employeeId }
+  if (context.actor.agentPrincipalId) {
+    return { byAgentPrincipalId: context.actor.agentPrincipalId }
+  }
+  throw new Error(
+    'A governance verdict names no accountable principal. The orchestrator ' +
+      'dispatches control work; it does not perform it.',
+  )
+}
+
+/** What a filing command learned by loading the candidate it is adopting. */
+export interface CandidateAdoption {
+  runId: string
+  basis: GovernanceCandidateBasis
+  run: AgentRunRecord
+}
+
+/**
+ * Checks that a candidate may still be filed, and hands back what filing needs.
+ *
+ * One definition for all three control functions, so they cannot disagree about
+ * what makes a draft filable. Every check is against durable state — never
+ * against a clock, because prose produced an hour ago against unchanged work is
+ * fine and prose produced a second ago against changed work is not.
+ */
+export async function candidateReadyToFile(
+  repositories: TransactionalAnalysisRepositories,
+  args: {
+    caseId: string
+    byDepartmentId: string
+    runId: string
+    basis: GovernanceCandidateBasis
+    hashMatches: boolean
+    knownCanonicalization: boolean
+    refuse: (
+      code: 'not-found' | 'illegal-prior-state' | 'not-authorised',
+      why: string,
+    ) => never
+  },
+): Promise<CandidateAdoption> {
+  const run = await repositories.runs.get(args.runId)
+  if (!run) args.refuse('not-found', `Run "${args.runId}" does not exist`)
+  if (run.caseId !== args.caseId) {
+    args.refuse(
+      'illegal-prior-state',
+      `Run "${args.runId}" belongs to case "${run.caseId}".`,
+    )
+  }
+  if (run.departmentId !== args.byDepartmentId) {
+    args.refuse(
+      'not-authorised',
+      `The candidate was produced by "${run.departmentId}", and ` +
+        `"${args.byDepartmentId}" is filing it. A control function files its ` +
+        `own work.`,
+    )
+  }
+  /*
+   * Filing a candidate twice would institutionalise one draft as two verdicts.
+   * The run leaves `awaiting-acceptance` exactly once, and that is the guard.
+   */
+  if (run.state !== 'awaiting-acceptance') {
+    args.refuse(
+      'illegal-prior-state',
+      `Run "${args.runId}" is ${run.state}, not awaiting acceptance. A ` +
+        `candidate is filed once.`,
+    )
+  }
+
+  const revisions = await repositories.theses.listForCase(args.caseId)
+  const current = revisions.find((revision) => revision.lifecycle !== 'superseded')
+  const claims = await claimsInScopeOf(
+    repositories,
+    revisions.find((revision) => revision.revisionId === args.basis.sourceRevisionId) ??
+      current!,
+  )
+
+  const stale = candidateStaleness({
+    basis: args.basis,
+    hashMatches: args.hashMatches,
+    knownCanonicalization: args.knownCanonicalization,
+    currentRevisionId: current?.revisionId ?? '',
+    currentClaimIds: [...claims],
+  })
+  if (stale.length > 0) {
+    args.refuse(
+      'illegal-prior-state',
+      `The candidate cannot be filed against the firm's current state: ` +
+        `${stale.join(', ')}. Scrutiny is filed against the argument it ` +
+        `examined, and that argument has moved.`,
+    )
+  }
+
+  return { runId: args.runId, basis: args.basis, run }
+}
+
+/**
+ * Completes the run that produced a filed candidate, and the work it discharged.
+ *
+ * The other half of adoption. Producing a candidate completes nothing; filing
+ * it completes both, in the same transaction as the institutional verdict — so
+ * "the review exists and the run still awaits acceptance" is not a state the
+ * store can be left in.
+ */
+export async function completeProducingWork(
+  repositories: TransactionalAnalysisRepositories,
+  context: { occurredAt: string; provenance: StorageProvenance },
+  adoption: CandidateAdoption,
+): Promise<void> {
+  await repositories.runs.save(
+    buildRunRecord({
+      ...adoption.run,
+      state: 'completed',
+      completedAt: context.occurredAt,
+      events: [
+        ...adoption.run.events,
+        { runId: adoption.run.id, at: context.occurredAt, state: 'completed' },
+      ],
+    }),
+    context.provenance,
+  )
+
+  const assignment = await repositories.assignments.get(adoption.run.assignmentId)
+  if (assignment && assignment.status !== 'completed') {
+    await repositories.assignments.save({
+      ...assignment,
+      status: 'completed',
+      completedAt: context.occurredAt,
+    })
+  }
+}
+
+/**
+ * The playbook entry a peer examination is performed under.
+ *
+ * Registered since playbook v5 and carried unchanged into v6, where the entry
+ * is owned by the Rates desk and blocks on `aggregation`. Named once so the
+ * placement, the playbook and the command that produces a peer candidate cannot
+ * disagree about what the entry is called.
+ *
+ * It lives here rather than on `RecordPeerExamination` because two commands
+ * need it — the one that files an examination and the one that records the
+ * candidate for it — and a command handler may not import another command
+ * handler. `importGraph.test.ts` enforces that, and caught this exact reach.
+ */
+export const PEER_EXAMINATION_ENTRY_KEY = 'peer-examination'
 
 /**
  * The claims a verdict is allowed to speak about.

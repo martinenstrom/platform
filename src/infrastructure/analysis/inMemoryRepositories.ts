@@ -29,6 +29,7 @@
  */
 
 import {
+  accountableReviewer,
   DOMAIN_CONTRACT_VERSION,
   playbookAssignmentIdentity,
   reviewIdentity,
@@ -62,6 +63,9 @@ import {
   isRunTerminal,
   type ManagerAggregation,
   type ProducedSynthesis,
+  type ProducedVerificationReview,
+  type ProducedDevilsAdvocateReview,
+  type ProducedPeerExamination,
   type RequirementResolution,
   type RunEvent,
   type ReviewAttribution,
@@ -141,6 +145,14 @@ interface Store {
   producedClaims: Map<string, { caseId: string; claims: readonly AgentClaim[] }>
   /** Keyed on the producing run. One run, one synthesis. */
   producedSyntheses: Map<string, ProducedSynthesis>
+  /*
+   * Unfiled governance control acts, three stores for the reason the ports
+   * state: the invariants differ, and one store could hold all three only by
+   * dropping them. Keyed on the producing run — one run, one candidate.
+   */
+  producedVerifications: Map<string, ProducedVerificationReview>
+  producedChallenges: Map<string, ProducedDevilsAdvocateReview>
+  producedPeerExaminations: Map<string, ProducedPeerExamination>
   verifications: VerificationReview[]
   challenges: DevilsAdvocateReview[]
   /* Kept apart from `challenges` for the reason the port states: a peer
@@ -186,6 +198,9 @@ function emptyStore(): Store {
     claims: new Map(),
     producedClaims: new Map(),
     producedSyntheses: new Map(),
+    producedVerifications: new Map(),
+    producedChallenges: new Map(),
+    producedPeerExaminations: new Map(),
     verifications: [],
     challenges: [],
     peerExaminations: [],
@@ -230,6 +245,9 @@ function snapshot(store: Store): Store {
     claims: new Map(store.claims),
     producedClaims: new Map(store.producedClaims),
     producedSyntheses: new Map(store.producedSyntheses),
+    producedVerifications: new Map(store.producedVerifications),
+    producedChallenges: new Map(store.producedChallenges),
+    producedPeerExaminations: new Map(store.producedPeerExaminations),
     verifications: [...store.verifications],
     challenges: [...store.challenges],
     peerExaminations: [...store.peerExaminations],
@@ -699,15 +717,52 @@ function producedSynthesisRepository(
         }
         return
       }
-      store.producedSyntheses.set(
-        candidate.runId,
-        seal(candidate, 'producedSyntheses'),
-      )
+      store.producedSyntheses.set(candidate.runId, seal(candidate, 'producedSyntheses'))
     },
 
     async get(runId) {
       guard(scope, 'producedSyntheses.get')
       return store.producedSyntheses.get(runId) ?? null
+    },
+  }
+}
+
+/**
+ * An unfiled governance candidate store.
+ *
+ * One factory for the three, because their BEHAVIOUR is genuinely identical —
+ * record idempotently on the producing run, read back by it — and three copies
+ * of that would be three chances for one of them to stop comparing the content
+ * hash. What differs between the acts is their content and their invariants,
+ * and those live in the domain builders and in the database constraints, which
+ * is where the three are kept apart.
+ */
+function producedGovernanceRepository<T extends { runId: string; contentHash: string }>(
+  candidates: Map<string, T>,
+  scope: Scope,
+  label: string,
+): { record(candidate: T): Promise<void>; get(runId: string): Promise<T | null> } {
+  return {
+    async record(candidate) {
+      guard(scope, `${label}.record`)
+      const existing = candidates.get(candidate.runId)
+      if (existing) {
+        /*
+         * One run produces one candidate. The content hash covers the artifact
+         * AND the basis, so comparing it answers "is this the same candidate"
+         * exactly — a retry matches, a second different verdict does not.
+         */
+        if (existing.contentHash !== candidate.contentHash) {
+          throw new ConflictingRecordError(label, candidate.runId, `${label}.record`)
+        }
+        return
+      }
+      candidates.set(candidate.runId, seal(candidate, label))
+    },
+
+    async get(runId) {
+      guard(scope, `${label}.get`)
+      return candidates.get(runId) ?? null
     },
   }
 }
@@ -778,7 +833,13 @@ const sameReview = (
 const byReview = <T extends ReviewScope & ReviewAttribution & ReviewOrder>(a: T, b: T) =>
   a.sequence - b.sequence ||
   byString(a.at, b.at) ||
-  byString(a.byEmployeeId, b.byEmployeeId) ||
+  /*
+   * The accountable principal, whichever kind filed it. Ordering on the
+   * employee alone would sort every agent-filed verdict as the same blank and
+   * hand ties back to insertion order — the arbitrariness `sequence` exists to
+   * remove.
+   */
+  byString(accountableReviewer(a), accountableReviewer(b)) ||
   byString(
     a.scope === 'thesis-revision' ? a.revisionId : '',
     b.scope === 'thesis-revision' ? b.revisionId : '',
@@ -868,7 +929,9 @@ function reviewRepository(store: Store, scope: Scope): ReviewRepository {
     async savePeerExamination(review) {
       guard(scope, 'reviews.savePeerExamination')
       seal(review, 'reviews.peerExamination')
-      if (!store.peerExaminations.some((r) => sameReview('peer-examination', r, review))) {
+      if (
+        !store.peerExaminations.some((r) => sameReview('peer-examination', r, review))
+      ) {
         store.peerExaminations.push(review)
       }
     },
@@ -1339,6 +1402,21 @@ function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepos
     claims: claimRepository(store, scope),
     producedClaims: producedClaimRepository(store, scope),
     producedSyntheses: producedSynthesisRepository(store, scope),
+    producedVerifications: producedGovernanceRepository(
+      store.producedVerifications,
+      scope,
+      'producedVerifications',
+    ),
+    producedChallenges: producedGovernanceRepository(
+      store.producedChallenges,
+      scope,
+      'producedChallenges',
+    ),
+    producedPeerExaminations: producedGovernanceRepository(
+      store.producedPeerExaminations,
+      scope,
+      'producedPeerExaminations',
+    ),
     reviews: reviewRepository(store, scope),
     events: eventRepository(store, scope),
     evidence: evidenceRepository(store, scope),

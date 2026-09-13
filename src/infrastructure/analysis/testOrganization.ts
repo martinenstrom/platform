@@ -112,6 +112,30 @@ export const TEST_ORGANIZATION: Organization = {
       displayName: 'Rates',
       active: true,
     },
+    /*
+     * The two control functions that may file their own drafts. They hold the
+     * `governance` role, which is what `governance-verdict` actually checks —
+     * so a test proving an analytical agent cannot verify has something real to
+     * fail against, and is not passing merely because no such principal exists.
+     *
+     * Risk is deliberately absent: its requirement-resolution seam is unruled,
+     * and seating a principal for it here would let a test quietly assume an
+     * autonomy nobody approved.
+     */
+    {
+      id: 'verification-agent',
+      departmentId: 'verification',
+      roleId: 'governance',
+      displayName: 'Verification',
+      active: true,
+    },
+    {
+      id: 'devils-advocate-agent',
+      departmentId: 'devils-advocate',
+      roleId: 'governance',
+      displayName: "Devil's Advocate",
+      active: true,
+    },
   ],
   employees: [
     {

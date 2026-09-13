@@ -34,6 +34,18 @@ const PORT_INTERFACES: Readonly<Record<string, { file: string; name: string }>> 
     file: 'repositories.ts',
     name: 'ProducedSynthesisRepository',
   },
+  producedVerifications: {
+    file: 'repositories.ts',
+    name: 'ProducedVerificationReviewRepository',
+  },
+  producedChallenges: {
+    file: 'repositories.ts',
+    name: 'ProducedDevilsAdvocateReviewRepository',
+  },
+  producedPeerExaminations: {
+    file: 'repositories.ts',
+    name: 'ProducedPeerExaminationRepository',
+  },
   reviews: { file: 'repositories.ts', name: 'ReviewRepository' },
   events: { file: 'repositories.ts', name: 'EventRepository' },
   evidence: { file: 'repositories.ts', name: 'EvidenceRepository' },

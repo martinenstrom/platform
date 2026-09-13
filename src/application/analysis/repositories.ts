@@ -46,6 +46,9 @@ import type {
   ManagerAggregation,
   ObservationSeriesQuery,
   ProducedSynthesis,
+  ProducedVerificationReview,
+  ProducedDevilsAdvocateReview,
+  ProducedPeerExamination,
   RequirementResolution,
   RiskReview,
   TransitionEvent,
@@ -468,6 +471,44 @@ export interface ProducedSynthesisRepository {
   record(candidate: ProducedSynthesis): Promise<void>
   /** The candidate a run produced, or `null` if it produced none. */
   get(runId: string): Promise<ProducedSynthesis | null>
+}
+
+/**
+ * Governance control acts a model produced and no principal has yet filed.
+ *
+ * Three stores, not one, and the reason is the same one that keeps the
+ * produced-claim store narrow: each act's invariants differ, and a shared store
+ * could only hold all three by dropping the constraints that make each what it
+ * is. A verification verdict always carries a status, a Devil's Advocate filing
+ * is never empty, and a peer examination legitimately is.
+ *
+ * Each has `record` and `get` and nothing else. No `listForCase`, for the
+ * reason neither of the other candidate stores has one — and here the reason is
+ * sharper: a case-wide listing of unfiled scrutiny is the first step towards
+ * reading it as scrutiny the firm performed. Producing a Verification candidate
+ * is not Verification, and no read model may make it look like it.
+ *
+ * Nothing in the institution has a foreign key into these stores except the
+ * review that filed a candidate.
+ */
+export interface ProducedVerificationReviewRepository {
+  /**
+   * Records what a run produced. Idempotent on `runId`; a second write with
+   * different content throws `ConflictingRecordError`.
+   */
+  record(candidate: ProducedVerificationReview): Promise<void>
+  /** The candidate a run produced, or `null` if it produced none. */
+  get(runId: string): Promise<ProducedVerificationReview | null>
+}
+
+export interface ProducedDevilsAdvocateReviewRepository {
+  record(candidate: ProducedDevilsAdvocateReview): Promise<void>
+  get(runId: string): Promise<ProducedDevilsAdvocateReview | null>
+}
+
+export interface ProducedPeerExaminationRepository {
+  record(candidate: ProducedPeerExamination): Promise<void>
+  get(runId: string): Promise<ProducedPeerExamination | null>
 }
 
 /**
@@ -901,6 +942,9 @@ export interface AnalysisRepositories {
   claims: ClaimRepository
   producedClaims: ProducedClaimRepository
   producedSyntheses: ProducedSynthesisRepository
+  producedVerifications: ProducedVerificationReviewRepository
+  producedChallenges: ProducedDevilsAdvocateReviewRepository
+  producedPeerExaminations: ProducedPeerExaminationRepository
   reviews: ReviewRepository
   events: EventRepository
   evidence: EvidenceRepository
@@ -978,6 +1022,9 @@ export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   claims: ['get', 'listForRun', 'listForCase', 'save'],
   producedClaims: ['record', 'listForRun'],
   producedSyntheses: ['record', 'get'],
+  producedVerifications: ['record', 'get'],
+  producedChallenges: ['record', 'get'],
+  producedPeerExaminations: ['record', 'get'],
   reviews: [
     'nextSequence',
     'get',

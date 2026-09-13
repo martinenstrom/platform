@@ -870,7 +870,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "cb3ccf635e9b8aa715f52b1fdca7ec23a9f027c2f9fac3e82e2f373722b7a5ff"
+          "digest": "069aa17b8340d49125b9044d9d5aada8003394a88f1833b83354b3eb3745e461"
         }
       }
     },
@@ -922,7 +922,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "0e0abbadfc7b5707ec08986e20ef8526dda6f03f954230f1e68368cb1a4879e4"
+          "digest": "b0ae12facb434134f98ad7d5577e03bed37fc952ab10e0b17b59fd595a981fd9"
         }
       }
     }

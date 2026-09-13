@@ -87,11 +87,46 @@ export type ReviewScope =
 
 export type RevisionScopedReview = Extract<ReviewScope, { scope: 'thesis-revision' }>
 
-/** Who performed the review, and when. Common to all four control functions. */
+/**
+ * Who performed the review, and when. Common to all control functions.
+ *
+ * **Exactly one accountable principal**, the same shape `AgentRunRecord` uses
+ * and the database enforces (`reviews_one_accountable_principal`, migration
+ * 0040): a human control officer, or the control function's own institutional
+ * agent. Never both, and never neither — a verdict booked to nobody is the one
+ * thing a governance record may not be.
+ *
+ * Both are optional in the type because which one is present depends on who
+ * acted; the invariant is stated once here and enforced where it can be, rather
+ * than expressed as a union that every read site would have to narrow.
+ */
 export interface ReviewAttribution {
-  byEmployeeId: EmployeeId
+  /** The human accountable for the verdict, where a person filed it. */
+  byEmployeeId?: EmployeeId
+  /** The institutional agent accountable, where a control function filed it. */
+  byAgentPrincipalId?: string
   byDepartmentId: DepartmentId
   at: string
+}
+
+/**
+ * The id of whoever is accountable, whichever kind of principal they are.
+ *
+ * Used where the record needs one identifier rather than two nullable ones —
+ * the natural key, most importantly. Throws rather than returning a placeholder:
+ * an attribution with no principal is not a review the firm can file, and
+ * substituting an empty string would let it be stored and deduped as though it
+ * were.
+ */
+export function accountableReviewer(attribution: ReviewAttribution): string {
+  const principal = attribution.byEmployeeId ?? attribution.byAgentPrincipalId
+  if (!principal) {
+    throw new Error(
+      'A review names no accountable principal. Every verdict is booked to the ' +
+        'person or the institutional agent that filed it.',
+    )
+  }
+  return principal
 }
 
 export function isRevisionScoped<T extends ReviewScope>(
@@ -146,7 +181,15 @@ export function reviewIdentity(
     thesisId,
     revisionId,
     review.byDepartmentId,
-    review.byEmployeeId,
+    /*
+     * The accountable principal, whichever kind it is, in the position the
+     * employee id has always occupied — so a human review's key is byte for byte
+     * the one it has always had, and an agent's is its own rather than a shared
+     * blank. `reviews_natural_key_unique` carries both columns for the same
+     * reason: two agent verdicts must collide with each other and not with
+     * every other row whose employee is null.
+     */
+    accountableReviewer(review),
     review.at,
   ].join('|')
 }
@@ -288,10 +331,32 @@ export interface ReviewRecordId {
   reviewId: string
 }
 
+/**
+ * The produced candidate this verdict institutionalised, where one did.
+ *
+ * Present only on the three acts a model can draft — verification, the Devil's
+ * Advocate's objections, a peer examination. Compliance and Risk do not carry
+ * it, because nothing produces candidates for them, and a field they could set
+ * would be a field the database refuses
+ * (`reviews_candidate_matches_kind`, migration 0048).
+ *
+ * Absent on every human direct-author path. That path generates no candidate
+ * and is not given a synthetic one, so `undefined` means "a person wrote this"
+ * rather than "we lost the link".
+ *
+ * It exists so `model artifact → persisted candidate → institutional verdict`
+ * is answerable BY JOIN. Matching prose is not proof; it is a coincidence that
+ * usually holds.
+ */
+export interface FiledFromCandidate {
+  filedFromCandidateRunId?: string
+}
+
 export type VerificationReview = ReviewScope &
   ReviewAttribution &
   ReviewRecordId &
   ReviewOrder &
+  FiledFromCandidate &
   VerificationVerdict
 
 /** Statuses that stop a case reaching the CIO. */
@@ -469,6 +534,7 @@ export type PeerExaminationReview = ReviewScope &
   ReviewAttribution &
   ReviewRecordId &
   ReviewOrder &
+  FiledFromCandidate &
   PeerExaminationVerdict
 
 /** Peer objections still open. Same rule as `unresolvedChallenges`. */
@@ -480,6 +546,7 @@ export type DevilsAdvocateReview = ReviewScope &
   ReviewAttribution &
   ReviewRecordId &
   ReviewOrder &
+  FiledFromCandidate &
   DevilsAdvocateVerdict
 
 export function unresolvedChallenges(review: DevilsAdvocateReview): Challenge[] {
@@ -1038,7 +1105,11 @@ export function applicablePeerExaminations(
     if (latest) standing.push(latest)
   }
   return standing.sort((a, b) =>
-    a.byDepartmentId < b.byDepartmentId ? -1 : a.byDepartmentId > b.byDepartmentId ? 1 : 0,
+    a.byDepartmentId < b.byDepartmentId
+      ? -1
+      : a.byDepartmentId > b.byDepartmentId
+        ? 1
+        : 0,
   )
 }
 

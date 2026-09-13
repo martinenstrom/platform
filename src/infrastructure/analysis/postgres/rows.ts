@@ -115,6 +115,43 @@ export interface ProducedSynthesisRow {
   produced_at: string
 }
 
+/**
+ * What every unfiled governance candidate row carries.
+ *
+ * The basis columns are identical across the three acts, so they are declared
+ * once — the artifact columns are what differ, and they are what the three
+ * interfaces below add.
+ */
+interface GovernanceCandidateRow {
+  run_id: string
+  case_id: string
+  tenant_id: string
+  thesis_id: string
+  source_revision_id: string
+  playbook_id: string
+  playbook_version: string
+  playbook_entry_key: string
+  observed_claim_ids: unknown
+  content_hash: string
+  canonicalization_version: string
+  produced_at: string
+}
+
+export interface ProducedVerificationReviewRow extends GovernanceCandidateRow {
+  status: string
+  findings: unknown
+  claims_reviewed: unknown
+}
+
+export interface ProducedDevilsAdvocateReviewRow extends GovernanceCandidateRow {
+  challenges: unknown
+}
+
+export interface ProducedPeerExaminationRow extends GovernanceCandidateRow {
+  challenges: unknown
+  examined_department_id: string
+}
+
 export interface RunRow {
   id: string
   case_id: string
@@ -297,7 +334,9 @@ export interface ReviewRow {
   tenant_id: string
   thesis_id: string | null
   revision_id: string | null
-  by_employee_id: string
+  /** Exactly one of these two is set; see migration 0040. */
+  by_employee_id: string | null
+  by_agent_principal_id: string | null
   by_department_id: string
   at: string
   status: string | null
@@ -311,6 +350,14 @@ export interface ReviewRow {
    * in migration 0036 — a control function reviews an argument, not a peer.
    */
   examined_department_id: string | null
+  /**
+   * Which produced candidate this verdict institutionalised, where one did.
+   * At most one is set, and only the one matching `kind` —
+   * `reviews_candidate_matches_kind`, migration 0048.
+   */
+  verification_candidate_run_id: string | null
+  devils_advocate_candidate_run_id: string | null
+  peer_examination_candidate_run_id: string | null
 }
 
 export interface VerificationFindingRow {

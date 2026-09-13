@@ -98,6 +98,17 @@ interface ReviewRow {
   revisionId?: string | null
   by?: { employee: string; department: string }
   at?: string
+  /**
+   * The position among verdicts of one kind on one revision.
+   *
+   * Controllable so a test can isolate WHICH unique index refuses a row.
+   * `reviews_sequence_unique` and `reviews_natural_key_unique` both refuse a
+   * naive replay, and which one fires first is an ordering detail of the
+   * indexes rather than a property of the model — so a test about the natural
+   * key varies the sequence, leaving the natural key as the only thing that can
+   * object.
+   */
+  sequence?: number
 }
 
 /** Each kind has its own verdict vocabulary; a Devil's Advocate review has none. */
@@ -114,7 +125,7 @@ function insertReview(row: ReviewRow) {
     `INSERT INTO analysis.reviews
        (id, kind, scope, case_id, tenant_id, thesis_id, revision_id,
         by_employee_id, by_department_id, at, status, sequence)
-     VALUES ($1, $2, $3, $4, 'system', $5, $6, $7, $8, $9, $10, 1)`,
+     VALUES ($1, $2, $3, $4, 'system', $5, $6, $7, $8, $9, $10, $11)`,
     [
       row.reviewId ?? id('review'),
       kind,
@@ -126,6 +137,7 @@ function insertReview(row: ReviewRow) {
       row.by?.department ?? 'verification',
       row.at ?? new Date().toISOString(),
       STATUS_FOR[kind] ?? null,
+      row.sequence ?? 1,
     ],
   )
 }
@@ -298,7 +310,15 @@ describe('the natural key includes the exact scope', () => {
     const row: ReviewRow = { scope: 'thesis-revision', caseId, thesisId, revisionId, at }
 
     await insertReview(row)
-    await expect(insertReview(row)).rejects.toThrow(/reviews_natural_key_unique/)
+    /*
+     * A different sequence, so `reviews_sequence_unique` cannot be what refuses
+     * it. What remains is the natural key — the same kind, case, thesis,
+     * revision, department, principal and instant — which is the claim this
+     * test exists to make.
+     */
+    await expect(insertReview({ ...row, sequence: 2 })).rejects.toThrow(
+      /reviews_natural_key_unique/,
+    )
   })
 
   it('accepts a verdict on a second revision at the same instant', async () => {

@@ -41,10 +41,7 @@ import {
   createResultStore,
 } from './evidenceRepositories'
 import { createObservationRepository, OBSERVATION_SQL } from './observationRepositories'
-import {
-  createEvidenceAssemblyRepository,
-  ASSEMBLY_SQL,
-} from './assemblyRepositories'
+import { createEvidenceAssemblyRepository, ASSEMBLY_SQL } from './assemblyRepositories'
 import { AGGREGATION_SQL, createAggregationRepository } from './aggregationRepositories'
 import { COMMAND_SQL, createCommandLog } from './commandLog'
 import {
@@ -76,11 +73,17 @@ import {
   CLAIM_SQL,
   PRODUCED_CLAIM_SQL,
   PRODUCED_SYNTHESIS_SQL,
+  PRODUCED_VERIFICATION_SQL,
+  PRODUCED_DEVILS_ADVOCATE_SQL,
+  PRODUCED_PEER_EXAMINATION_SQL,
   RUN_SQL,
   createAssignmentRepository,
   createClaimRepository,
   createProducedClaimRepository,
   createProducedSynthesisRepository,
+  createProducedVerificationRepository,
+  createProducedDevilsAdvocateRepository,
+  createProducedPeerExaminationRepository,
   createRunRepository,
 } from './workRepositories'
 import {
@@ -147,6 +150,9 @@ const CATALOGS = registerCatalogues([
   { name: 'claim', statements: CLAIM_SQL },
   { name: 'producedClaim', statements: PRODUCED_CLAIM_SQL },
   { name: 'producedSynthesis', statements: PRODUCED_SYNTHESIS_SQL },
+  { name: 'producedVerification', statements: PRODUCED_VERIFICATION_SQL },
+  { name: 'producedDevilsAdvocate', statements: PRODUCED_DEVILS_ADVOCATE_SQL },
+  { name: 'producedPeerExamination', statements: PRODUCED_PEER_EXAMINATION_SQL },
   { name: 'evidence', statements: EVIDENCE_SQL },
   { name: 'observations', statements: OBSERVATION_SQL },
   { name: 'assemblies', statements: ASSEMBLY_SQL },
@@ -243,6 +249,13 @@ export async function createPostgresRepositories(
     claims: createClaimRepository(scope, context, tenantId),
     producedClaims: createProducedClaimRepository(scope, context, tenantId),
     producedSyntheses: createProducedSynthesisRepository(scope, context, tenantId),
+    producedVerifications: createProducedVerificationRepository(scope, context, tenantId),
+    producedChallenges: createProducedDevilsAdvocateRepository(scope, context, tenantId),
+    producedPeerExaminations: createProducedPeerExaminationRepository(
+      scope,
+      context,
+      tenantId,
+    ),
     reviews: createReviewRepository(scope, context, tenantId),
     events: createEventRepository(scope, context, tenantId),
     evidence: createEvidenceRepository(scope, context),
