@@ -102,6 +102,11 @@ import {
   startInvestmentCase,
   type StartInvestmentCaseResult,
 } from '~/application/analysis/startInvestmentCase'
+import { parseHostRequest, type HostResult } from '~/application/analysis/hostContract'
+import {
+  createHostGateway,
+  HOST_ORCHESTRATOR_ID,
+} from '~/application/analysis/hostGateway'
 import type { RejectionCode } from '~/application/analysis/commandLog'
 import {
   CONTRIBUTION_REJECTION_CODES,
@@ -1109,3 +1114,56 @@ export const getCurrentOperatorFn = createServerFn({ method: 'POST' }).handler(
     }
   },
 )
+
+/* ------------------------------------------------ the host's one door */
+
+/**
+ * JARVIS's way into the firm, and the only one.
+ *
+ * One function, one discriminated request, one typed product result — see
+ * `application/analysis/hostContract`. It is not a way to reach the sixteen
+ * functions above: it exposes no command, accepts no actor, names no playbook
+ * entry and returns no run state. The host holds a reference and the firm
+ * interprets its own record.
+ *
+ * Input is taken as `unknown` and parsed inside, because a request that
+ * carries a field the contract does not name — an actor, say — has to be
+ * refused as a typed result the host can read, not thrown as a transport
+ * error nobody can.
+ *
+ * Who is asking is the server-resolved current operator, exactly as
+ * `getCurrentOperatorFn` reports it; the host is recorded as the initiator.
+ */
+export type FinancialOsHostResponse = HostResult
+
+export const financialOsHostFn = createServerFn({ method: 'POST' })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }): Promise<FinancialOsHostResponse> => {
+    const parsed = parseHostRequest(data)
+    if (!parsed.ok)
+      return { state: 'failed', reason: 'invalid-request', field: parsed.field }
+
+    try {
+      const analysis = await runtime()
+      const gateway = createHostGateway({
+        system: analysis.domainSystem(),
+        operator: async () => {
+          const deps = await analysis.commandDeps()
+          return resolveCurrentOperator(process.env[OPERATOR_ENV], deps.organization)
+        },
+        surfaces: (caseId) => ({
+          boardroom: `/cases/${caseId}`,
+          record: `/cases/${caseId}/underlag`,
+        }),
+        orchestratorId: HOST_ORCHESTRATOR_ID,
+        now: () => systemClock.isoNow(),
+      })
+      return await gateway(parsed.request)
+    } catch (error) {
+      if (error instanceof NotConfiguredError) {
+        return { state: 'failed', reason: 'not-configured' }
+      }
+      console.error('[analysis] host gateway failed', error)
+      return { state: 'failed', reason: 'service-unavailable' }
+    }
+  })
