@@ -294,6 +294,17 @@ Kept deliberately: the landing column itself (it is the click path from `/`
 to the firm until the presence takes the space — stop condition §40.1), the
 watchlist, the top rail on shell routes, every route as a deep link.
 
+**Found while measuring the live pages after the commit:** the Underlag deep
+link had **never rendered**. `cases.$caseId.underlag.tsx` was a child of
+`cases.$caseId.tsx` in the generated tree, the Boardroom renders no
+`<Outlet/>`, so `/cases/$caseId/underlag` served the Boardroom for every case
+since the record was split out of the room. Every suite was green because
+every suite rendered the component, never the route. Fixed by the router's
+own un-nesting convention (`cases.$caseId_.underlag.tsx`, as
+`agents_.$departmentId.commission.tsx` already does), and guarded by
+`src/test/routeNesting.test.ts`: a file route may only nest under a parent
+whose source renders an outlet.
+
 What moved in tests: the golden baseline was re-captured (second approved
 intentional change, documented in the test header); the two case surfaces now
 render inside a memory router because they contain real `Link`s

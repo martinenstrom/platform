@@ -22,7 +22,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CaseRecord } from './cases.$caseId.underlag'
+import { CaseRecord } from './cases.$caseId_.underlag'
 import decided from '~/test/fixtures/caseOverview.decided.json'
 import awaiting from '~/test/fixtures/caseOverview.awaiting.json'
 import inflight from '~/test/fixtures/caseOverview.inflight.json'

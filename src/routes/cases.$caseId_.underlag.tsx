@@ -44,7 +44,7 @@ import { eligibilityText, GATE_STATUS } from '~/presentation/analysis/caseStandi
 import { formatDateTime } from '~/lib/format'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 
-export const Route = createFileRoute('/cases/$caseId/underlag')({
+export const Route = createFileRoute('/cases/$caseId_/underlag')({
   loader: async ({ params }) => getCaseOverviewFn({ data: params.caseId }),
   component: CaseRecordPage,
 })

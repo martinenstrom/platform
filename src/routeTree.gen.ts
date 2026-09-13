@@ -23,7 +23,7 @@ import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
-import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId.underlag'
+import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId_.underlag'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -97,9 +97,9 @@ const AgentsDepartmentIdCommissionRoute =
     getParentRoute: () => rootRouteImport,
   } as any)
 const CasesCaseIdUnderlagRoute = CasesCaseIdUnderlagRouteImport.update({
-  id: '/underlag',
-  path: '/underlag',
-  getParentRoute: () => CasesCaseIdRoute,
+  id: '/cases/$caseId_/underlag',
+  path: '/cases/$caseId/underlag',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -112,7 +112,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
-  '/cases/$caseId': typeof CasesCaseIdRouteWithChildren
+  '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
@@ -129,7 +129,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
-  '/cases/$caseId': typeof CasesCaseIdRouteWithChildren
+  '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents': typeof AgentsIndexRoute
   '/cases': typeof CasesIndexRoute
@@ -147,12 +147,12 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
-  '/cases/$caseId': typeof CasesCaseIdRouteWithChildren
+  '/cases/$caseId': typeof CasesCaseIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
   '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
-  '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
+  '/cases/$caseId_/underlag': typeof CasesCaseIdUnderlagRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -205,7 +205,7 @@ export interface FileRouteTypes {
     | '/agents/'
     | '/cases/'
     | '/agents_/$departmentId/commission'
-    | '/cases/$caseId/underlag'
+    | '/cases/$caseId_/underlag'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -218,11 +218,12 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
-  CasesCaseIdRoute: typeof CasesCaseIdRouteWithChildren
+  CasesCaseIdRoute: typeof CasesCaseIdRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   CasesIndexRoute: typeof CasesIndexRoute
   AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
+  CasesCaseIdUnderlagRoute: typeof CasesCaseIdUnderlagRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -325,27 +326,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsDepartmentIdCommissionRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/cases/$caseId/underlag': {
-      id: '/cases/$caseId/underlag'
-      path: '/underlag'
+    '/cases/$caseId_/underlag': {
+      id: '/cases/$caseId_/underlag'
+      path: '/cases/$caseId/underlag'
       fullPath: '/cases/$caseId/underlag'
       preLoaderRoute: typeof CasesCaseIdUnderlagRouteImport
-      parentRoute: typeof CasesCaseIdRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface CasesCaseIdRouteChildren {
-  CasesCaseIdUnderlagRoute: typeof CasesCaseIdUnderlagRoute
-}
-
-const CasesCaseIdRouteChildren: CasesCaseIdRouteChildren = {
-  CasesCaseIdUnderlagRoute: CasesCaseIdUnderlagRoute,
-}
-
-const CasesCaseIdRouteWithChildren = CasesCaseIdRoute._addFileChildren(
-  CasesCaseIdRouteChildren,
-)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -357,11 +346,12 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,
-  CasesCaseIdRoute: CasesCaseIdRouteWithChildren,
+  CasesCaseIdRoute: CasesCaseIdRoute,
   RunsRunIdRoute: RunsRunIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   CasesIndexRoute: CasesIndexRoute,
   AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,
+  CasesCaseIdUnderlagRoute: CasesCaseIdUnderlagRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

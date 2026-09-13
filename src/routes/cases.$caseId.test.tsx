@@ -3,7 +3,7 @@
  *
  * The long-form record used to be asserted here, because it used to be on this
  * page. It moved to `/cases/$caseId/underlag` and its assertions moved with it,
- * unchanged, into `cases.$caseId.underlag.test.tsx` — 27 of them. Nothing was
+ * unchanged, into `cases.$caseId_.underlag.test.tsx` — 27 of them. Nothing was
  * dropped in the move; what is left here is what the room itself is answerable
  * for.
  *
