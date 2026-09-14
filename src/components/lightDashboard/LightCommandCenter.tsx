@@ -60,7 +60,6 @@ import {
 import { hasData, SERIES_RANGES, type SeriesRange } from '~/domain/market'
 import type { OverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
 import type { CountryMacroData, CountryRegistryEntry } from '~/types/countryExplorer'
-import { primaryNav, utilityNav, type NavItem } from '~/lib/navigation'
 import type { CurrentOperator } from '~/application/analysis/currentOperator'
 
 /**
@@ -173,115 +172,27 @@ function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
 /* ------------------------------------------------------------- sections — */
 
 /**
- * Left navigation column — logo, the product's destinations, and who is here.
- * It is a transparent layer that sits on top of the hero photograph, which is
- * rendered behind it at the page root (see the hero block in the component's
- * return) so the image can extend past the nav and dissolve into the dashboard.
+ * The column the left navigation used to take, and JARVIS takes now.
  *
- * It reads the product's ONE definition of its destinations, `~/lib/navigation`.
- * It used to carry a list of its own — eight entries, two of them mock-backed
- * pages the primary navigation had already removed as fabricated, and
- * `/settings` twice — which is how one product came to describe itself three
- * different ways on three screens. `Bevakning` is not lost: the panel that
- * shows it links to it.
+ * Kept as a spacer so the composition to its right does not move: the hero
+ * photograph still dissolves into the dashboard from behind it, and the market
+ * panels keep the geometry they were approved with. The presence itself is
+ * mounted from the root route, beside every page, and stands at the left edge
+ * of this space — it is not this screen's to render.
  *
- * This column is also the space a persistent presence is ruled to occupy next.
- * What remains in it is the set of doors that must stay reachable by a click
- * until then; `Kommandocentral` is this page and stays lit.
+ * What stood here before is gone rather than hidden. The rail listed the
+ * product's destinations; the presence carries them as shortcuts, and
+ * `Bevakning` is linked from the panel that shows it. The operator plate that
+ * named who is here is JARVIS's to show, because JARVIS is the one addressing
+ * them.
  */
-function Sidebar({ operator }: { operator?: CurrentOperator }) {
+function RailSpace() {
   return (
-    <aside className="relative z-10 hidden w-[306px] shrink-0 md:flex">
-      {/* Nav sits on top of the hero image, which is rendered behind at the page root. */}
-      <div className="flex w-[112px] flex-col items-center py-5">
-        <Link
-          to="/"
-          aria-label="Översikt"
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(240,151,66,0.35)] bg-[rgba(111,66,29,0.55)] text-[15px] font-bold text-[#ffb366] shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-sm"
-        >
-          HX
-        </Link>
-        <nav className="mt-8 flex flex-1 flex-col gap-1.5">
-          {primaryNav.map((item) => (
-            /*
-             * This screen is the home page, so the highlight is on `/`. It has
-             * been wrong twice by being pinned to the wrong route, which is why
-             * it reads from the entry rather than from an index.
-             */
-            <RailItem key={item.to} item={item} active={item.to === '/'} />
-          ))}
-          <div className="mt-auto flex flex-col gap-1.5">
-            {utilityNav.map((item) => (
-              <RailItem key={item.to} item={item} active={false} />
-            ))}
-          </div>
-        </nav>
-        <OperatorPlate operator={operator} />
-      </div>
-    </aside>
+    <div
+      aria-hidden="true"
+      className="relative z-10 hidden w-[306px] shrink-0 md:block"
+    />
   )
-}
-
-function RailItem({ item, active }: { item: NavItem; active: boolean }) {
-  const Icon = item.icon
-  return (
-    <Link
-      to={item.to}
-      className={cn(
-        'flex w-[72px] flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-200',
-        active
-          ? 'border border-[rgba(240,151,66,0.3)] bg-[rgba(111,66,29,0.55)] text-[#ffb366] shadow-[0_0_18px_rgba(240,151,66,0.14)] backdrop-blur-sm'
-          : 'border border-transparent text-[#c4d0dd] hover:bg-white/[0.06] hover:text-white',
-      )}
-    >
-      <Icon
-        className="h-[18px] w-[18px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      />
-      <span className="text-[9px] font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-        {item.label}
-      </span>
-    </Link>
-  )
-}
-
-/**
- * Who the product is addressing.
- *
- * The server-trusted configured operator, resolved against the seeded
- * organisation — never a literal. This plate used to read *AS · Anders ·
- * Private Banking*, a person the product had never resolved. Unconfigured,
- * nothing renders: a name the product cannot resolve is not a name it may
- * show, and a placeholder person would be the fiction this replaces.
- */
-function OperatorPlate({ operator }: { operator?: CurrentOperator }) {
-  if (!operator) return null
-  return (
-    <div className="mt-4 flex flex-col items-center gap-1">
-      <span
-        aria-hidden="true"
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(70,130,163,0.35)] bg-[rgba(9,24,37,0.75)] text-[12px] font-semibold text-[#dbe4ee] backdrop-blur-sm"
-      >
-        {initials(operator.displayName)}
-      </span>
-      <span className="text-center text-[8px] leading-tight text-[#c4d0dd] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-        {operator.displayName}
-        <br />
-        {operator.roleTitle}
-      </span>
-    </div>
-  )
-}
-
-/** The first letter of the first two words, as a monogram. */
-function initials(displayName: string): string {
-  return displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('')
 }
 
 /** Client-only clock: null during SSR/first paint so live time can't cause a
@@ -678,7 +589,7 @@ export function LightCommandCenter({
         <div className="absolute inset-0 bg-gradient-to-r from-transparent from-[47%] via-[rgba(4,10,18,0.55)] via-[70%] to-[#020711]" />
       </div>
 
-      <Sidebar operator={operator} />
+      <RailSpace />
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">

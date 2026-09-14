@@ -313,6 +313,41 @@ column and the absent controls.
 
 ---
 
+## 14. Slice C — the presence
+
+Mounted from `routes/__root.tsx` as a sibling of the routed page — the seam
+§5 measured — in `src/components/jarvis/JarvisPresence.tsx`. It stands at the
+left edge of every page in the space the landing rail took; `AppLayout`
+reserves its resting width (`pl-16`) on shell routes — and its engaged width
+(`pl-[306px]`) while it is open, so a shell page moves inward rather than
+disappearing under the conversation — and the landing page keeps the former
+rail column as a spacer (`RailSpace`) so nothing to its right moves. The rail itself is gone: its destinations are the presence's
+shortcuts (`Genvägar`), `Bevakning` is linked from its panel, and the
+operator plate is JARVIS's to show.
+
+At rest: a 64 px strip — the mark, a state dot, the word JARVIS, and a
+microphone drawn muted and labelled _Röst kommer i en senare version_. No
+audio API is touched. Engaged (the mark, or the strip's button): 306 px — the
+former rail column, and no wider; a first cut at 380 px ran over it and
+clipped the greeting — expanding inward — the operator the server resolved, the conversation, the
+active case with follow-ups (_Var står det? · Vad kom ni fram till? · Vilka
+invändningar finns? · Hur gick debatten?_) and the two doors (_Visa hur ni
+kom fram till det → · Visa underlaget →_), a compose with _Fråga_ and _Om_,
+and the shortcuts. Escape collapses it, scoped to the panel so the HQ's own
+Escape is untouched.
+
+It talks to `financialOsHostFn` and `getCurrentOperatorFn` and to nothing
+lower; a test scans the directory's imports. Every typed question is an
+`ask` — the layer that decides whether a question needs the firm at all is
+later work, and this is the institutional branch made callable. The
+sentences are `presentation/jarvis/hostStateText.ts`'s: three different
+ones for work, no way forward and your decision, and none of them in
+Financial OS. Continuity is `sessionStorage` (`presenceStore.ts`): open or
+collapsed, the turns, and the reference — a pointer, never the thesis; every
+follow-up asks the firm again.
+
+---
+
 ## What this measurement recommends, for ruling
 
 1. **Mount JARVIS in `__root.tsx`** beside the shell conditional (measured to

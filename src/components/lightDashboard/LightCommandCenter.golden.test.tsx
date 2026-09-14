@@ -36,6 +36,14 @@
  * the profile plate stopped naming a literal person. Nothing else on the
  * screen moved; the semantic suite names the new column, and every panel,
  * tile, rate, sector and news label is still asserted below by name.
+ *
+ * THE THIRD APPROVED INTENTIONAL CHANGE (JARVIS HQ slice C, 2026-09-14): the
+ * left column no longer carries a rail at all. Its 306 px stay as a spacer so
+ * the composition to the right does not move, and the presence that now
+ * stands there is mounted from the root route — outside this component, and
+ * therefore outside this snapshot. The semantic suite asserts that no rail
+ * label survives here as a link and that the way to the institution is the
+ * presence's.
  */
 
 // Must precede every other import: Intl and Date read TZ at construction.

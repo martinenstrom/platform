@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { AppLayout } from '~/components/layout/AppLayout'
+import { JarvisPresence } from '~/components/jarvis/JarvisPresence'
 import appCss from '~/styles/app.css?url'
 
 export const Route = createRootRoute({
@@ -35,9 +36,10 @@ export const Route = createRootRoute({
  * so the branch could never render and is gone. Which routes own their own
  * shell is `AppLayout`'s decision, and it is made in one place.
  *
- * This is also the seam a persistent presence mounts on. A sibling of the
+ * This is also the seam the persistent presence mounts on. A sibling of the
  * `Outlet` here keeps its identity and state while the routed page beneath it
  * changes — measured, not assumed: see `docs/jarvis-hq-measurement.md` §5.
+ * JARVIS is that sibling: mounted once, beside every page, never inside one.
  */
 function RootComponent() {
   return (
@@ -45,6 +47,7 @@ function RootComponent() {
       <AppLayout>
         <Outlet />
       </AppLayout>
+      <JarvisPresence />
     </RootDocument>
   )
 }

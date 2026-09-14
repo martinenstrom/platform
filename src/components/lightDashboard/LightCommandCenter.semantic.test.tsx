@@ -444,62 +444,48 @@ describe('live mode', () => {
 /* --------------------------------------------------------- navigation */
 
 describe('navigation', () => {
-  it('offers Headquarters, and points it at the investment floor', async () => {
+  it('leaves the way to the institution to the presence', async () => {
     /*
-     * An approved intentional change, asserted here rather than absorbed into
-     * the golden snapshot — the same treatment D5/D10 had. The snapshot proves
-     * nothing else moved; this states what was added and why it is there.
-     *
-     * Headquarters is the entry point to the institution: without a nav item
-     * the floor exists but is reachable only by typing a URL, which is a
-     * capability nobody has.
-     *
-     * It points at `/headquarters` since Command Center v1 merged the desk
-     * directory and the case queue into one floor. `/cases` still resolves and
-     * redirects there.
+     * Headquarters is the entry point to the institution, and for two gates
+     * this screen carried the link to it. Slice C moved that door into JARVIS
+     * — the presence beside every page offers `Huvudkontor` among its
+     * shortcuts, and `JarvisPresence.test.tsx` asserts the href. This screen
+     * no longer offers it, and must not grow it back: one door, one place.
      */
     await renderOverview()
-
-    const link = screen.getByRole('link', { name: /Huvudkontor/ })
-    expect(link.getAttribute('href')).toBe('/headquarters')
+    expect(screen.queryByRole('link', { name: /Huvudkontor/ })).toBeNull()
   })
 
-  it('carries the product’s one navigation, in its order, and nothing else', async () => {
+  it('carries no navigation of its own: the presence beside it does', async () => {
     /*
-     * This names the entries so a change cannot quietly reshuffle or regrow
-     * them, which a snapshot diff would show but not explain.
-     *
      * **Reordered by Command Center v1, shortened by the ruling that followed
-     * it, and reconciled by the JARVIS HQ hygiene slice.** The column used to
-     * carry a list of its own: `Bevakning` (a drill-down the panel below links
-     * to), `Portfölj` and `Rapporter` (mock-backed, removed from the primary
-     * navigation long before) and `/settings` twice under two names. It now
-     * reads `~/lib/navigation`, the one definition every rail shares, so what
-     * is asserted here is that definition and its order — plus the utility
-     * that closes the column.
+     * it, reconciled by the JARVIS HQ hygiene slice, and removed by slice C.**
+     * The column used to carry a list of its own, then the product's one
+     * definition of its destinations; now it carries nothing, because the
+     * space is JARVIS's and the destinations are its shortcuts. The spacer
+     * stays so the composition to its right does not move.
+     *
+     * Asserted here so a rail cannot quietly regrow on this screen: every
+     * label a rail ever carried, absent as a link.
      */
     await renderOverview()
 
-    const former = ['Bevakning', 'Portfölj', 'Rapporter', 'Aviseringar']
-    const labels = screen
-      .getAllByRole('link')
-      .map((node) => node.textContent?.trim() ?? '')
-      .filter((label) =>
-        [
-          'Kommandocentral',
-          'Huvudkontor',
-          'Underlag',
-          'Inställningar',
-          ...former,
-        ].includes(label),
-      )
-
-    expect(labels).toEqual([
+    const railLabels = [
       'Kommandocentral',
       'Huvudkontor',
       'Underlag',
       'Inställningar',
-    ])
+      'Bevakning',
+      'Portfölj',
+      'Rapporter',
+      'Aviseringar',
+    ]
+    const found = screen
+      .getAllByRole('link')
+      .map((node) => node.textContent?.trim() ?? '')
+      .filter((label) => railLabels.includes(label))
+    expect(found).toEqual([])
+    expect(screen.queryByRole('navigation')).toBeNull()
   })
 
   it('still reaches Bevakning from the panel that shows it', async () => {
@@ -526,8 +512,9 @@ describe('navigation', () => {
   it('addresses the resolved operator, or nobody', async () => {
     /*
      * The greeting named a literal person for as long as the screen existed.
-     * Without an operator the greeting stands alone and no plate renders;
-     * with one, both carry the name the organisation resolved.
+     * Without an operator the greeting stands alone; with one, it carries the
+     * name the organisation resolved. Who is here is otherwise JARVIS's to
+     * show — the plate that stood in the rail went with the rail.
      */
     await renderOverview()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('God eftermiddag')

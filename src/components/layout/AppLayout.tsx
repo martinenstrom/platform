@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { cn } from '~/lib/cn'
+import { usePresence } from '~/components/jarvis/presenceStore'
 import { AppTopBar } from './AppTopBar'
 
 /**
@@ -41,8 +42,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
    */
   const railCarriesNavigation = pathname === '/headquarters'
 
+  /*
+   * The presence stands at the left edge of every page, mounted from the
+   * root. Shell routes reserve its resting width so nothing sits under it,
+   * and its engaged width while it is open, so the page moves inward rather
+   * than disappearing under the conversation — measured on Huvudkontoret,
+   * where the engaged panel otherwise covered half the convene form. The
+   * market landing page reserves the whole former rail column itself.
+   */
+  const { open } = usePresence()
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
+    <div
+      className={cn(
+        'flex min-h-screen flex-col bg-canvas transition-[padding] duration-200',
+        !ownsItsShell && (open ? 'pl-[306px]' : 'pl-16'),
+      )}
+    >
       {!ownsItsShell && !railCarriesNavigation && <AppTopBar />}
       {/* Tight, and the same on every edge: the workstation owns the canvas. */}
       <main className={cn('min-h-0 flex-1', ownsItsShell ? 'p-0' : 'p-2 lg:p-2.5')}>
