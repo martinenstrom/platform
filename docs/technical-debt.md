@@ -2493,3 +2493,40 @@ verification, not a side effect of the integration seam.
 
 **Until then:** read `ownership.employeeId`, never `ownership.departmentId`,
 for a case in `research`. The port's test says so at the assertion.
+
+## TD-92 · an abandoned run stays `running`; nothing owns its recovery · open
+
+**Opened 2026-09-14**, measured by the first live browser probe of the host
+gateway (`scripts/probe-host-gateway.mjs`).
+
+`analysis.runs` held `run-dc77ede8f344ab2792482e0732aaacf7` — provider
+`probe`, kind `stub`, started **2026-09-06T20:18:44Z** — in state `running`
+eight days later. The process that wrote the row died; the row did not. The
+first cut of the host gateway read it as work in progress, and a host would
+have told the person "jag återkommer" about a run nobody was running.
+
+The sequence is general, not a probe artefact:
+
+```
+process starts run  →  process dies  →  run stays `running`
+                    →  no lease, heartbeat or recovery owns the abandoned work
+```
+
+**Mitigation in force, and what it is not.** The gateway
+(`application/analysis/hostGateway.ts`) reports `working` only for a run
+inside its **active execution window** — `running`, with a measured deadline
+the clock has not passed. Every live run records that deadline, because the
+firm refuses to start one without (`commissionAnalysis`, `orchestrator`). A
+run outside any window is `expired` and the case is `blocked` on
+`execution-recovery-required`. This stops a host from promising indefinite
+work. It repairs nothing: the row is still `running`, the assignment is still
+occupied, and `runs.save` will refuse a second live run on it.
+
+**The debt.** The deterministic runner/orchestration work the roadmap defers
+must measure and rule on: an execution lease; a heartbeat or equivalent
+ownership signal; deadline expiry as an institutional event rather than a
+reading; abandoned-run recovery (who may mark it `timed-out`/`failed`, under
+what authority, with what ledger entry); safe retry and resume; and
+exactly-once / idempotent continuation. Until then the gateway's behaviour is
+an accepted mitigation, not orchestration semantics — and the orphan above is
+left in the dev firm as the specimen.

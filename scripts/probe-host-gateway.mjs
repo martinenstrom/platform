@@ -59,23 +59,25 @@ const results = await page.evaluate(async () => {
           state: result.state,
           reference: result.reference,
           question: result.question,
+          kind: result.kind ?? null,
           decision: result.decision ?? null,
+          block: result.block ?? null,
           activity: {
             stage: result.activity.stage,
             desks: result.activity.desks.map((d) => d.name),
             outstanding: result.activity.outstanding,
             inFlight: result.activity.inFlight,
-            unverified: result.activity.unverified,
+            expired: result.activity.expired,
             awaitingAdoption: result.activity.awaitingAdoption,
           },
           answer: result.answer
             ? {
-                outcome: result.answer.decision.outcome,
-                rationale: result.answer.decision.rationale.slice(0, 80),
+                kind: result.answer.kind,
+                outcome: result.answer.decision?.outcome ?? null,
                 thesis: result.answer.thesis?.position ?? null,
                 dissent: result.answer.dissent.length,
                 material: result.answer.materialDissentCount,
-                triggers: result.answer.reconsiderationTriggers.length,
+                scrutiny: result.answer.scrutiny ?? null,
               }
             : undefined,
           inspection: result.inspection

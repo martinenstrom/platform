@@ -203,15 +203,16 @@ describe('reads re-read the firm', () => {
     const result = positive(await gateway({ kind: 'status', reference: asked.reference }))
     expect(result.state).toBe('working')
     expect(result.activity.inFlight).toBe(1)
-    expect(result.activity.unverified).toBe(0)
+    expect(result.activity.expired).toBe(0)
   })
 
-  it('does not report working for a running row its own deadline has passed', async () => {
+  it('reports a running row outside its window as blocked on recovery, never as work', async () => {
     /*
      * The orphan the live probe found: a run persisted as `running` by a
      * process that died. Its recorded minute of wall clock ended an hour
      * before "now"; the firm cannot vouch for it, and the host is not told to
-     * wait for it. The case reports what it actually owes instead.
+     * wait for it — nor is the person asked to decide anything about it. It
+     * is the firm's to recover.
      */
     const asked = positive(await gateway(question))
     const caseId = asked.reference.id
@@ -223,9 +224,14 @@ describe('reads re-read the firm', () => {
     )
 
     const result = positive(await gateway({ kind: 'status', reference: asked.reference }))
-    expect(result.state).toBe('needs-decision')
+    expect(result.state).toBe('blocked')
+    if (result.state !== 'blocked') throw new Error(result.state)
+    expect(result.block).toMatchObject({
+      reason: 'execution-recovery-required',
+      owner: { id: assignment.departmentId },
+    })
     expect(result.activity.inFlight).toBe(0)
-    expect(result.activity.unverified).toBe(1)
+    expect(result.activity.expired).toBe(1)
   })
 
   it('answers result without an answer where the firm has not decided', async () => {
@@ -296,7 +302,7 @@ describe('nothing internal crosses the contract', () => {
     for (const result of results) {
       const text = JSON.stringify(result)
       expect(text).not.toMatch(
-        /awaiting-acceptance|illegal-prior-state|payload-conflict|"queued"|"running"|candidate|playbookEntryKey|entryKey|AcceptContribution|Record\w+Review/,
+        /awaiting-acceptance|illegal-prior-state|payload-conflict|"queued"|"running"|candidate|playbookEntryKey|entryKey|AcceptContribution|Record\w+Review|propose-thesis|aggregate-conclusion|submit-for-|record-verification|record-peer|record-devils|record-risk|resolve-risk|decide-or-return/,
       )
     }
   })

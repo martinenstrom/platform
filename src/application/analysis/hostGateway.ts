@@ -2,41 +2,50 @@
  * The gateway: one host request in, one typed product state out.
  *
  * Sits on `FinancialOsSystem` and adds no institutional behaviour. What it adds
- * is translation — the firm interprets its own record and answers in the five
+ * is translation — the firm interprets its own record and answers in the six
  * product states the host understands — and a refusal to be anything more.
  *
- * ## `working` is proven, never assumed
+ * ## Three states the firm must never confuse
  *
- * A run in state `running` **and inside its own recorded deadline** is the
- * only persisted fact that means work is genuinely under way. A case that was
- * just convened has nothing running; a run that finished and awaits its
- * desk's adoption has nothing running; a case blocked on a human act has
- * nothing running. None of them is `working`, because a host that says "jag
- * återkommer" on the strength of any of them would be promising work nobody
- * is doing.
+ * The firm may have work to do. The firm may be unable to proceed. The firm
+ * may need the person. `working`, `blocked` and `needs-decision` are those
+ * three, and the derivation below keeps them apart because a host turns each
+ * into a different sentence — "jag kollar på det", "analysen kan inte
+ * fortsätta just nu", "jag behöver ditt beslut" — and the wrong one is a lie.
  *
- * The deadline matters because a `running` row outlives the process that
- * wrote it. Measured on the dev firm on 2026-09-14: a stub run started on
+ * ## `working` is an active execution window, not process liveness
+ *
+ * A run in state `running` whose recorded deadline the clock has not passed
+ * is a run the firm itself still considers inside its authorised execution
+ * window. That is what `working` means here — and all it means. It does not
+ * prove that an operating-system process or a provider connection is alive at
+ * this instant; the firm has no lease or heartbeat that could (TD-92).
+ *
+ * The window matters because a `running` row outlives the process that wrote
+ * it. Measured on the dev firm on 2026-09-14: a stub run started on
  * 2026-09-06 still sat in `running` a week later, and a first cut of this
  * derivation reported it as work. Every live run records the wall clock it
  * was authorised — the firm refuses to start one without — so "running and
- * not yet past that clock" is a bound the firm wrote down, not a threshold
- * invented here. A running row with no measured deadline, or past it, is
- * counted as `unverified` and is not work the host may promise.
+ * not past that clock" is a bound the firm wrote down, not a threshold
+ * invented here. A running row outside any window is `expired`, and an
+ * expired run is `blocked` on recovery: the person is never asked to repair
+ * infrastructure.
  *
- * ## `answer-ready` is the firm's decision, not a model's prose
+ * ## `answer-ready` says what kind of authority it carries
  *
- * A live CIO decision on a settled case. The answer that travels with it is
- * read field by field from that decision, the revision it selected, the
- * dissent it acknowledged and the triggers it set. Nothing generates it.
+ * A live CIO decision on a settled case is `cio-decision`. The committee's
+ * conclusion — the current synthesis, after every scrutiny the workflow
+ * required of it and with nothing blocking it — is `committee-conclusion`,
+ * and is the normal investment answer while CIO authority is deferred. The
+ * one is never promoted into the other. A conclusion that has actually been
+ * put to the CIO is with the CIO, which is a decision the person may owe.
  *
- * ## `needs-decision` names the seam it stopped at
+ * ## `needs-decision` is the person's, and nobody else's
  *
- * TD-88 first: a convened case with no thesis is `institutional-initialization-
- * required`, and the gateway does not propose one. A case with the CIO is
- * `cio-decision-required`. Anything else outstanding is
- * `institutional-act-required` with the firm's own name for the act and the
- * desk that owes it.
+ * TD-88 — a convened case with no thesis, and no authorised path to one —
+ * and a case with the CIO. Nothing a desk or a control function owes is ever
+ * reported as the person's decision; that is `blocked`, with the semantic
+ * reason and the desk that owes it.
  *
  * ## The host holds a reference, and the firm re-reads
  *
@@ -46,16 +55,29 @@
  * stale answer.
  */
 
-import { dissentRequiresAcknowledgement, type AgentRunRecord } from '~/domain/analysis'
+import {
+  dissentRequiresAcknowledgement,
+  type AgentRunRecord,
+  type Blocker,
+  type CaseStep,
+  type InvestmentThesis,
+} from '~/domain/analysis'
 import type { CaseOverview } from './caseOverview'
-import { boardroomTimeline, type BoardroomEntry } from './boardroomTimeline'
+import {
+  boardroomTimeline,
+  type BoardroomEntry,
+  type BoardroomTimeline,
+} from './boardroomTimeline'
 import { boardroomSeating } from './boardroomSeating'
 import type { CurrentOperatorResult } from './currentOperator'
 import type { Delegation, DomainReference, FinancialOsSystem } from './domainSystem'
 import type { StartInvestmentCaseResult } from './startInvestmentCase'
 import { FINANCIAL_OS_SYSTEM_ID } from './domainSystem'
 import type {
+  AnswerThesis,
+  BlockedReason,
   HostActivity,
+  HostBlock,
   HostDecision,
   HostDesk,
   HostInspection,
@@ -75,7 +97,8 @@ export const HOST_ORCHESTRATOR_ID = 'jarvis'
 /** The product state of a case, read from its record. Pure. */
 export type ProductState =
   | { state: 'working' }
-  | { state: 'answer-ready' }
+  | { state: 'answer-ready'; kind: InstitutionalAnswer['kind'] }
+  | { state: 'blocked'; block: HostBlock }
   | { state: 'needs-decision'; decision: HostDecision }
   | { state: 'unsupported'; reason: 'no-institutional-conclusion' }
 
@@ -88,56 +111,215 @@ const deskOf = (overview: CaseOverview, departmentId: string | null): HostDesk |
 }
 
 /**
- * Whether a run's own record says it can still be executing.
+ * Whether a run's own record places it inside its active execution window.
  *
- * `running`, with a measured deadline the clock has not passed. A run without
- * a measured deadline cannot be verified either way, and is not claimed.
+ * `running`, with a measured deadline the clock has not passed. This is the
+ * firm's own view of the run, not a liveness check; a run without a measured
+ * deadline has no window to be inside.
  */
-export function verifiablyRunning(run: AgentRunRecord, now: string): boolean {
+export function withinExecutionWindow(run: AgentRunRecord, now: string): boolean {
   if (run.state !== 'running') return false
   if (run.budget.deadline.kind !== 'limit') return false
   return Date.parse(run.startedAt) + run.budget.deadline.deadlineMs > Date.parse(now)
 }
 
-export function productStateFor(overview: CaseOverview, now: string): ProductState {
+const expiredRuns = (overview: CaseOverview, now: string) =>
+  overview.runs.filter(
+    (run) => run.state === 'running' && !withinExecutionWindow(run, now),
+  )
+
+const heldRuns = (overview: CaseOverview) =>
+  overview.runs.filter((run) => run.state === 'awaiting-acceptance')
+
+/** The revision governance and the CIO are reading — the latest, as the gate reads it. */
+const currentRevision = (overview: CaseOverview): InvestmentThesis | null =>
+  overview.revisions[overview.revisions.length - 1] ?? null
+
+/** The gates a committee conclusion must have passed. The CIO's steps are not among them. */
+const COMMITTEE_GATES: readonly CaseStep[] = [
+  'peer-examination',
+  'verification',
+  'devils-advocate',
+  'risk',
+]
+
+/**
+ * Whether the committee's conclusion is ready to be presented.
+ *
+ * A synthesis exists (a revision produced by aggregation, not merely
+ * proposed); every scrutiny step the instantiated workflow requires is
+ * complete or not applicable, as the standing reads it; and the evaluator
+ * that decides eligibility records nothing that blocks a decision. Every
+ * input is persisted state read through the firm's own derivations — no
+ * approval concept is added here.
+ */
+export function committeeConclusionReady(overview: CaseOverview): boolean {
+  const current = currentRevision(overview)
+  if (!current || !current.aggregationId) return false
   /*
-   * In flight wins. Whatever else the case owes, a run that is verifiably
-   * executing is work the firm is doing right now, and that is the one thing
-   * `working` may mean.
+   * Everything before the CIO is done, as the firm reads its own process:
+   * not returned, not blocked on a stage, and not already put to the CIO. A
+   * conclusion the CIO holds is the CIO's decision to make, not an answer.
    */
-  if (overview.runs.some((run) => verifiablyRunning(run, now)))
+  if (overview.standing.nextAct.act !== 'submit-for-cio-decision') return false
+  const status = new Map(overview.standing.steps.map((step) => [step.step, step.status]))
+  if (COMMITTEE_GATES.some((gate) => status.get(gate) === 'outstanding')) return false
+  return !overview.standing.blockers.some(
+    (blocker) => blocker.severity === 'blocks-decision',
+  )
+}
+
+/** A live decision the case is settled on. */
+const liveDecision = (overview: CaseOverview) =>
+  overview.decision && overview.standing.settled ? overview.decision : null
+
+/**
+ * What a blocker means to a host. Reads the evaluator's blockers; decides
+ * nothing about whether they block — that was decided where they were made.
+ */
+function reasonFor(kind: Blocker['kind']): BlockedReason {
+  switch (kind) {
+    case 'verification-missing':
+    case 'verification-correction-required':
+    case 'unresolved-citation':
+      return 'verification-required'
+    case 'unresolved-material-challenge':
+    case 'decision-critical-disagreement':
+      return 'objections-unresolved'
+    case 'risk-requirement-unresolved':
+    case 'risk-review-missing':
+    case 'risk-review-rejected':
+    case 'risk-review-not-expected':
+      return 'risk-review-required'
+    case 'missing-required-contribution':
+    case 'required-assignment-failed':
+      return 'analysis-required'
+    default:
+      return 'institutional-requirement-outstanding'
+  }
+}
+
+function blockedBy(overview: CaseOverview, blockers: readonly Blocker[]): HostBlock {
+  const first = blockers[0]
+  const owning = blockers.find((blocker) => blocker.owningDepartmentId)
+  return {
+    reason: first ? reasonFor(first.kind) : 'institutional-requirement-outstanding',
+    owner: deskOf(overview, owning?.owningDepartmentId ?? null),
+  }
+}
+
+export function productStateFor(overview: CaseOverview, now: string): ProductState {
+  /* In flight wins. A run inside its window is work the firm is doing now. */
+  if (overview.runs.some((run) => withinExecutionWindow(run, now)))
     return { state: 'working' }
 
+  /* The firm decided, and the case is settled on it. */
+  if (liveDecision(overview)) return { state: 'answer-ready', kind: 'cio-decision' }
+
   /*
-   * A live decision on a settled case. A decision that still stands while the
-   * case is back with the CIO — a deferral reopened — is history, not the
-   * answer, and falls through to the CIO's queue below.
+   * Work the firm holds and cannot move on its own. Before any decision the
+   * person might owe, because these are the firm's to recover or adopt and a
+   * person asked to decide first would be asked to repair the machinery.
    */
-  if (overview.decision && overview.standing.settled) return { state: 'answer-ready' }
+  const expired = expiredRuns(overview, now)
+  if (expired.length > 0) {
+    return {
+      state: 'blocked',
+      block: {
+        reason: 'execution-recovery-required',
+        owner: deskOf(overview, expired[0]!.departmentId),
+      },
+    }
+  }
+  const held = heldRuns(overview)
+  if (held.length > 0) {
+    return {
+      state: 'blocked',
+      block: {
+        reason: 'adoption-required',
+        owner: deskOf(overview, held[0]!.departmentId),
+      },
+    }
+  }
 
   const next = overview.standing.nextAct
+  const governanceOwner = (departmentId: string | null): HostDesk | null =>
+    deskOf(overview, departmentId)
+
   switch (next.act) {
     case 'propose-thesis':
-      /* TD-88. The question is registered, the committee convened, and no one is authorised to open. */
+      /* TD-88. Registered, convened, and no one is authorised to open. */
       return {
         state: 'needs-decision',
         decision: { reason: 'institutional-initialization-required' },
       }
     case 'decide-or-return':
+      /* Actually with the CIO. */
       return { state: 'needs-decision', decision: { reason: 'cio-decision-required' } }
     case 'none-settled':
       /* Settled with nothing to stand behind. Reported, not dressed up. */
       return { state: 'unsupported', reason: 'no-institutional-conclusion' }
-    default:
+    case 'submit-for-cio-decision':
+      /*
+       * Every step before the CIO is done. Whether the committee's conclusion
+       * can be presented is the gate's answer, and if it cannot, the gate says
+       * what stands in the way.
+       */
+      return committeeConclusionReady(overview)
+        ? { state: 'answer-ready', kind: 'committee-conclusion' }
+        : { state: 'blocked', block: blockedBy(overview, overview.standing.blockers) }
+    case 'unblock':
+      return { state: 'blocked', block: blockedBy(overview, overview.standing.blockers) }
+    /*
+     * Owners below come only from the firm's governance table. The desk the
+     * standing names for the analytical acts is `participatingDepartmentIds[0]`,
+     * which is an array order rather than an owner (TD-91), and is not
+     * repeated here.
+     */
+    case 'aggregate-conclusion':
+      return { state: 'blocked', block: { reason: 'synthesis-required', owner: null } }
+    case 'submit-for-verification':
+      return { state: 'blocked', block: { reason: 'verification-required', owner: null } }
+    case 'record-peer-examination':
       return {
-        state: 'needs-decision',
-        decision: {
-          reason: 'institutional-act-required',
-          act: next.act,
-          owner: deskOf(overview, next.owningDepartmentId),
+        state: 'blocked',
+        block: { reason: 'peer-scrutiny-required', owner: null },
+      }
+    case 'record-verification-review':
+      return {
+        state: 'blocked',
+        block: {
+          reason: 'verification-required',
+          owner: governanceOwner(next.owningDepartmentId),
         },
       }
+    case 'record-devils-advocate-review':
+      return {
+        state: 'blocked',
+        block: {
+          reason: 'challenge-required',
+          owner: governanceOwner(next.owningDepartmentId),
+        },
+      }
+    case 'resolve-risk-requirement':
+    case 'record-risk-review':
+      return {
+        state: 'blocked',
+        block: {
+          reason: 'risk-review-required',
+          owner: governanceOwner(next.owningDepartmentId),
+        },
+      }
+    case 'resubmit-after-return':
+      return { state: 'blocked', block: { reason: 'returned-for-revision', owner: null } }
+    default:
+      return exhaustive(next.act)
   }
+}
+
+/** An institutional act the contract has not mapped cannot reach a host unnamed. */
+function exhaustive(act: never): never {
+  throw new Error(`Unmapped institutional act: ${String(act)}`)
 }
 
 export function activityFor(overview: CaseOverview, now: string): HostActivity {
@@ -153,84 +335,137 @@ export function activityFor(overview: CaseOverview, now: string): HostActivity {
     outstanding: overview.standing.steps
       .filter((step) => step.status === 'outstanding')
       .map((step) => step.step),
-    inFlight: overview.runs.filter((run) => verifiablyRunning(run, now)).length,
-    unverified: overview.runs.filter(
-      (run) => run.state === 'running' && !verifiablyRunning(run, now),
-    ).length,
-    awaitingAdoption: overview.runs.filter((run) => run.state === 'awaiting-acceptance')
-      .length,
+    inFlight: overview.runs.filter((run) => withinExecutionWindow(run, now)).length,
+    expired: expiredRuns(overview, now).length,
+    awaitingAdoption: heldRuns(overview).length,
   }
 }
 
+/* ---------------------------------------------------------- the answer */
+
+const thesisOf = (revision: InvestmentThesis): AnswerThesis => ({
+  revisionId: revision.revisionId,
+  statement: revision.statement,
+  position: revision.position,
+  invalidationCriteria: revision.invalidationCriteria,
+  ...(revision.horizon ? { horizon: revision.horizon } : {}),
+  implications: revision.implications,
+  proposedByDepartmentId: revision.proposedByDepartmentId,
+})
+
+/** Every objection in the timeline, with the act that filed it beside it. */
+function objectionsOf(timeline: BoardroomTimeline): HostObjection[] {
+  const objections: HostObjection[] = []
+  for (const entry of timeline.entries) {
+    if (!entry.objections) continue
+    const raisedAs =
+      entry.kind === 'peer-examination' ? 'peer-examination' : 'devils-advocate'
+    for (const objection of entry.objections) {
+      objections.push({
+        ...objection,
+        reviewId: entry.id,
+        byDepartmentId: entry.byDepartmentId,
+        raisedAs,
+        superseded: entry.superseded === true,
+      })
+    }
+  }
+  return objections
+}
+
 /**
- * The answer, read from the decision. `null` where the case holds no live
- * decision — the caller has already established that it does.
+ * The answer, read from the record. The CIO's decision where the case is
+ * settled on one; otherwise the committee's conclusion where it is ready;
+ * otherwise `null`. The same predicates `productStateFor` uses, so the kind a
+ * `status` announces is the kind a `result` delivers.
  */
 export function institutionalAnswerFor(
   overview: CaseOverview,
 ): InstitutionalAnswer | null {
-  const decision = overview.decision
-  if (!decision) return null
+  const decision = liveDecision(overview)
+  if (decision) {
+    const selected =
+      decision.outcome.kind === 'selected'
+        ? (overview.revisions.find(
+            (revision) => revision.revisionId === decision.outcome.selectedRevisionId,
+          ) ?? null)
+        : null
 
-  const selected =
-    decision.outcome.kind === 'selected'
-      ? (overview.revisions.find(
-          (revision) => revision.revisionId === decision.outcome.selectedRevisionId,
-        ) ?? null)
-      : null
+    return {
+      kind: 'cio-decision',
+      decision: {
+        decisionId: decision.decisionId,
+        outcome: decision.outcome.kind,
+        consideredRevisionIds: decision.outcome.consideredRevisionIds,
+        rationale: decision.rationale,
+        decidedAt: decision.decidedAt,
+        decidedByEmployeeId: decision.decidedByEmployeeId,
+        authorizationBasis: decision.authorizationBasis,
+        evidenceSetId: decision.evidenceSetId,
+      },
+      thesis: selected ? thesisOf(selected) : null,
+      dissent: decision.unresolvedDissent.map((entry) => ({
+        sourceId: entry.sourceId,
+        source: entry.source,
+        materiality: entry.materiality,
+        rationale: entry.rationale,
+        ...(entry.raisedByDepartmentId
+          ? { raisedByDepartmentId: entry.raisedByDepartmentId }
+          : {}),
+        ...(entry.acknowledgement ? { acknowledgement: entry.acknowledgement } : {}),
+        disposition: entry.dispositionAtDecision,
+      })),
+      /*
+       * "Material or above" is the domain's reading, not this module's: the
+       * same rule that decides whether the CIO owed an acknowledgement decides
+       * whether a host may leave it unsaid.
+       */
+      materialDissentCount: decision.unresolvedDissent.filter((entry) =>
+        dissentRequiresAcknowledgement(entry.materiality),
+      ).length,
+      reconsiderationTriggers: decision.reconsiderationTriggers.map((trigger) => ({
+        id: trigger.id,
+        conditionType: trigger.conditionType,
+        rationale: trigger.rationale,
+        ...(trigger.qualitativeCondition
+          ? { qualitativeCondition: trigger.qualitativeCondition }
+          : {}),
+        ...(trigger.threshold ? { threshold: trigger.threshold } : {}),
+      })),
+    }
+  }
+
+  if (!committeeConclusionReady(overview)) return null
+  const current = currentRevision(overview)!
+  const forCurrent = <T extends { revisionId?: string }>(reviews: readonly T[]) =>
+    reviews.filter((review) => review.revisionId === current.revisionId)
+  const latest = <T>(reviews: readonly T[]) => reviews[reviews.length - 1] ?? null
+  const timeline = boardroomTimeline(overview)
+  const open = objectionsOf(timeline).filter(
+    (objection) => objection.outcome === 'open' && !objection.superseded,
+  )
+  const synthesis = overview.aggregations.find(
+    (aggregation) => aggregation.producedRevisionId === current.revisionId,
+  )
 
   return {
-    decision: {
-      decisionId: decision.decisionId,
-      outcome: decision.outcome.kind,
-      consideredRevisionIds: decision.outcome.consideredRevisionIds,
-      rationale: decision.rationale,
-      decidedAt: decision.decidedAt,
-      decidedByEmployeeId: decision.decidedByEmployeeId,
-      authorizationBasis: decision.authorizationBasis,
-      evidenceSetId: decision.evidenceSetId,
+    kind: 'committee-conclusion',
+    thesis: thesisOf(current),
+    synthesisedBy: deskOf(overview, synthesis?.departmentId ?? null),
+    scrutiny: {
+      verification: latest(forCurrent(overview.verification))?.status ?? null,
+      risk: latest(forCurrent(overview.risk))?.status ?? null,
+      peerExaminations: forCurrent(overview.peerExaminations).length,
+      devilsAdvocateReviews: forCurrent(overview.devilsAdvocate).length,
     },
-    thesis: selected
-      ? {
-          revisionId: selected.revisionId,
-          statement: selected.statement,
-          position: selected.position,
-          invalidationCriteria: selected.invalidationCriteria,
-          ...(selected.horizon ? { horizon: selected.horizon } : {}),
-          implications: selected.implications,
-          proposedByDepartmentId: selected.proposedByDepartmentId,
-        }
-      : null,
-    dissent: decision.unresolvedDissent.map((entry) => ({
-      sourceId: entry.sourceId,
-      source: entry.source,
-      materiality: entry.materiality,
-      rationale: entry.rationale,
-      ...(entry.raisedByDepartmentId
-        ? { raisedByDepartmentId: entry.raisedByDepartmentId }
-        : {}),
-      ...(entry.acknowledgement ? { acknowledgement: entry.acknowledgement } : {}),
-      disposition: entry.dispositionAtDecision,
-    })),
-    /*
-     * "Material or above" is the domain's reading, not this module's: the
-     * same rule that decides whether the CIO owed an acknowledgement decides
-     * whether a host may leave it unsaid.
-     */
-    materialDissentCount: decision.unresolvedDissent.filter((entry) =>
-      dissentRequiresAcknowledgement(entry.materiality),
+    dissent: open,
+    materialDissentCount: open.filter((objection) =>
+      dissentRequiresAcknowledgement(objection.materiality),
     ).length,
-    reconsiderationTriggers: decision.reconsiderationTriggers.map((trigger) => ({
-      id: trigger.id,
-      conditionType: trigger.conditionType,
-      rationale: trigger.rationale,
-      ...(trigger.qualitativeCondition
-        ? { qualitativeCondition: trigger.qualitativeCondition }
-        : {}),
-      ...(trigger.threshold ? { threshold: trigger.threshold } : {}),
-    })),
   }
 }
+
+/* --------------------------------------------------------- inspection */
 
 /**
  * Deeper material, from the projections the Boardroom already renders.
@@ -251,22 +486,7 @@ export function inspectionFor(
   }
 
   if (view.kind === 'objections') {
-    const objections: HostObjection[] = []
-    for (const entry of timeline.entries) {
-      if (!entry.objections) continue
-      const raisedAs =
-        entry.kind === 'peer-examination' ? 'peer-examination' : 'devils-advocate'
-      for (const objection of entry.objections) {
-        objections.push({
-          ...objection,
-          reviewId: entry.id,
-          byDepartmentId: entry.byDepartmentId,
-          raisedAs,
-          superseded: entry.superseded === true,
-        })
-      }
-    }
-    return { view: 'objections', objections }
+    return { view: 'objections', objections: objectionsOf(timeline) }
   }
 
   const desk = deskOf(overview, view.departmentId)
@@ -307,7 +527,7 @@ export interface HostGatewayDeps {
   surfaces: (caseId: string) => HostSurfaces
   /** How this host is recorded as initiator. */
   orchestratorId: string
-  /** Domain time, for reading a run's deadline against. */
+  /** Domain time, for reading a run's execution window against. */
   now: () => string
 }
 
@@ -366,8 +586,15 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
         return { ...context, state: 'working' }
       case 'answer-ready': {
         const answer = wants.answer ? institutionalAnswerFor(overview) : null
-        return { ...context, state: 'answer-ready', ...(answer ? { answer } : {}) }
+        return {
+          ...context,
+          state: 'answer-ready',
+          kind: product.kind,
+          ...(answer ? { answer } : {}),
+        }
       }
+      case 'blocked':
+        return { ...context, state: 'blocked', block: product.block }
       case 'needs-decision':
         return { ...context, state: 'needs-decision', decision: product.decision }
     }

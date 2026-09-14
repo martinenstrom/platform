@@ -3,7 +3,7 @@
  * the firm answers in.
  *
  * JARVIS decides that a request needs the firm. This is what it then says, and
- * what it gets back. Five operations in, five product states out, and nothing
+ * what it gets back. Five operations in, six product states out, and nothing
  * in either direction that names a command, an actor, a playbook entry, a
  * candidate or a run state.
  *
@@ -26,10 +26,17 @@
  *
  * Every product state is read off persisted institutional state at the moment
  * of the call. The host holds a `DomainReference` and asks again; it never
- * holds the thesis. `working` means a run is genuinely in flight — not that a
- * case id exists, not that the firm has work it cannot continue.
- * `answer-ready` means the institution has decided and stands behind it.
- * `needs-decision` means the next act is somebody's to take, and says whose.
+ * holds the thesis. Three of the states are the ones a host must never
+ * confuse, because each is a different sentence to the person asking:
+ *
+ *   `working`         the firm has work in its active execution window
+ *   `blocked`         the firm cannot proceed on its own, and it is not the
+ *                     person's decision that is missing
+ *   `needs-decision`  the person, or an explicitly gated higher authority,
+ *                     genuinely has to decide something
+ *
+ * `answer-ready` means the institution stands behind a current result — the
+ * committee's conclusion, or a CIO decision above it — and says which.
  *
  * ## No model in the contract
  *
@@ -46,15 +53,16 @@ import type {
   DisagreementMateriality,
   DisclosedDissent,
   DissentSource,
-  InstitutionalAct,
+  RiskStatus,
   TriggerConditionType,
+  VerificationStatus,
 } from '~/domain/analysis'
 import type { DomainReference } from './domainSystem'
 import type { BoardroomEntry, BoardroomObjection } from './boardroomTimeline'
 import type { BoardroomSeat, SeatParticipation } from './boardroomSeating'
 
 /** Bumped when the shape or meaning of a request or result changes. */
-export const HOST_CONTRACT_VERSION = '1'
+export const HOST_CONTRACT_VERSION = '2'
 
 /* ------------------------------------------------------------- requests */
 
@@ -112,47 +120,136 @@ export interface HostActivity {
   desks: readonly HostDesk[]
   /** The institutional steps still owed. */
   outstanding: readonly CaseStep[]
-  /** Runs genuinely in flight at the moment of the read: running, inside their own deadline. */
+  /**
+   * Runs inside their active execution window: `running`, and the clock has
+   * not passed the wall clock the firm authorised. This is what the firm
+   * itself still considers work in progress; it is not a claim that a
+   * process is physically alive at this instant.
+   */
   inFlight: number
   /**
-   * Runs the record calls `running` that the firm cannot verify are: past
-   * their recorded deadline, or without one. A process that died leaves
-   * exactly this behind. Never counted as work.
+   * Runs the record calls `running` that are outside any execution window —
+   * past the one they recorded, or without one. A process that died leaves
+   * exactly this behind. Never counted as work; reported as `blocked`.
    */
-  unverified: number
+  expired: number
   /** Produced work the firm holds that its desk has not yet adopted. */
   awaitingAdoption: number
 }
 
 /**
- * Why the firm has stopped, and whose act it is.
+ * A decision only the person — or an explicitly gated higher authority —
+ * can make. Nothing internal to the firm's desks is ever one of these.
  *
- * Typed so a host can explain the missing decision naturally without knowing
- * a command name. `institutional-initialization-required` is TD-88: the
- * question is registered and the committee convened, and the firm has no
- * authorised path to its own opening thesis. The gateway never manufactures
- * one.
+ * `institutional-initialization-required` is TD-88: the question is
+ * registered and the committee convened, and the firm has no authorised path
+ * to its own opening thesis. The gateway never manufactures one.
+ * `cio-decision-required` is a case actually with the CIO.
  */
 export type HostDecision =
   | { reason: 'institutional-initialization-required' }
   | { reason: 'cio-decision-required' }
-  | {
-      reason: 'institutional-act-required'
-      /** The firm's own name for the outstanding act. */
-      act: InstitutionalAct
-      /** Whose queue it is in, where the firm names one. */
-      owner: HostDesk | null
-    }
 
 /**
- * The institution's result, in typed form.
+ * Why the firm cannot proceed on its own right now.
  *
- * Every field is read from a persisted record — the live decision, the
- * revision it selected, the dissent it acknowledged, the triggers it set. No
- * model is consulted to produce it and nothing is summarised. A host phrases
- * it; it does not get to improve it.
+ * Semantic reasons, not command names: a host may say "Verification has not
+ * reviewed this yet" and must never have to know what act the firm records
+ * to change that. Each is a capability or requirement the case is waiting
+ * on, and `owner` is the desk that owes it where the firm names one.
  */
-export interface InstitutionalAnswer {
+export type BlockedReason =
+  /** A run outside its execution window needs recovery nobody owns yet. */
+  | 'execution-recovery-required'
+  /** Produced work awaits its desk's adoption, and nothing continues it on its own. */
+  | 'adoption-required'
+  /** A required desk contribution is missing or failed. */
+  | 'analysis-required'
+  /** The Research Office has not synthesised the desks' work. */
+  | 'synthesis-required'
+  | 'peer-scrutiny-required'
+  | 'verification-required'
+  /** The Devil's Advocate has not reviewed the argument. */
+  | 'challenge-required'
+  | 'risk-review-required'
+  /** An objection or disagreement that decides the answer is still open. */
+  | 'objections-unresolved'
+  /** The CIO sent the work back; the desks have not resubmitted. */
+  | 'returned-for-revision'
+  /** A requirement the firm records that fits none of the above. */
+  | 'institutional-requirement-outstanding'
+
+export interface HostBlock {
+  reason: BlockedReason
+  owner: HostDesk | null
+}
+
+/** The revision the firm stands behind, as it was written. */
+export interface AnswerThesis {
+  revisionId: string
+  statement: string
+  position: string
+  /** What would have to happen for the firm to be wrong. */
+  invalidationCriteria: string
+  horizon?: string
+  implications: readonly string[]
+  proposedByDepartmentId: string
+}
+
+export interface HostClaim {
+  id: string
+  statement: string
+  type: string
+  status: string
+  confidence: ConfidenceLevel
+  supportsThesisId?: string
+  opposesThesisId?: string
+}
+
+/** One objection with the act that filed it beside it. */
+export interface HostObjection extends BoardroomObjection {
+  reviewId: string
+  byDepartmentId: string
+  /** Under which mandate it was raised. */
+  raisedAs: 'peer-examination' | 'devils-advocate'
+  /** True when a later act of the same kind replaced the review it came from. */
+  superseded: boolean
+}
+
+/**
+ * The committee's conclusion: the current synthesis, after every scrutiny
+ * the workflow required of it and with nothing blocking it.
+ *
+ * The normal investment answer while CIO authority is deferred. It is not a
+ * decision and is never presented as one; a CIO decision, where one exists,
+ * is a different `kind` and sits above it.
+ */
+export interface CommitteeConclusion {
+  kind: 'committee-conclusion'
+  thesis: AnswerThesis
+  /** The desk that synthesised it, where the record names one. */
+  synthesisedBy: HostDesk | null
+  /** The verdicts on this exact revision, as stored. */
+  scrutiny: {
+    verification: VerificationStatus | null
+    risk: RiskStatus | null
+    peerExaminations: number
+    devilsAdvocateReviews: number
+  }
+  /** Objections still open against this revision. Never stripped. */
+  dissent: readonly HostObjection[]
+  /** How many of those are material or above — the count a host must not hide. */
+  materialDissentCount: number
+}
+
+/**
+ * A CIO decision, read field by field from the persisted record — the
+ * decision, the revision it selected, the dissent it acknowledged and the
+ * triggers it set. No model is consulted to produce it and nothing is
+ * summarised. A host phrases it; it does not get to improve it.
+ */
+export interface CioDecisionAnswer {
+  kind: 'cio-decision'
   decision: {
     decisionId: string
     outcome: CioDecisionOutcome['kind']
@@ -165,16 +262,7 @@ export interface InstitutionalAnswer {
     evidenceSetId: string
   }
   /** The revision the firm now holds, where the outcome selected one. */
-  thesis: {
-    revisionId: string
-    statement: string
-    position: string
-    /** What would have to happen for the firm to be wrong. */
-    invalidationCriteria: string
-    horizon?: string
-    implications: readonly string[]
-    proposedByDepartmentId: string
-  } | null
+  thesis: AnswerThesis | null
   /** Objections acknowledged and decided against. Never dropped, never softened. */
   dissent: readonly {
     sourceId: string
@@ -199,25 +287,8 @@ export interface InstitutionalAnswer {
   }[]
 }
 
-export interface HostClaim {
-  id: string
-  statement: string
-  type: string
-  status: string
-  confidence: ConfidenceLevel
-  supportsThesisId?: string
-  opposesThesisId?: string
-}
-
-/** One objection with the act that filed it beside it. */
-export interface HostObjection extends BoardroomObjection {
-  reviewId: string
-  byDepartmentId: string
-  /** Under which mandate it was raised. */
-  raisedAs: 'peer-examination' | 'devils-advocate'
-  /** True when a later act of the same kind replaced the review it came from. */
-  superseded: boolean
-}
+/** The institution's result, in typed form, saying what kind of authority it carries. */
+export type InstitutionalAnswer = CommitteeConclusion | CioDecisionAnswer
 
 export type HostInspection =
   | {
@@ -264,18 +335,25 @@ export type FailureReason =
   | 'refused'
 
 export type HostResult =
-  /** A run is genuinely in flight. Only then. */
+  /** A run is inside its active execution window. Only then. */
   | (HostCaseContext & { state: 'working'; inspection?: HostInspection })
   /**
-   * The institution has decided and stands behind it. `answer` is carried by
-   * `result`; `status` states the fact without the material.
+   * The institution stands behind a current result. `answer` is carried by
+   * `result`; `status` states the fact — and its kind — without the material.
    */
   | (HostCaseContext & {
       state: 'answer-ready'
+      kind: InstitutionalAnswer['kind']
       answer?: InstitutionalAnswer
       inspection?: HostInspection
     })
-  /** The next act is somebody's to take, and `decision` says whose and which. */
+  /** The firm cannot proceed on its own; the person's decision is not what is missing. */
+  | (HostCaseContext & {
+      state: 'blocked'
+      block: HostBlock
+      inspection?: HostInspection
+    })
+  /** A real decision is owed by the person or a gated higher authority. */
   | (HostCaseContext & {
       state: 'needs-decision'
       decision: HostDecision
