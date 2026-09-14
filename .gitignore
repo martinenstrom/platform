@@ -9,3 +9,7 @@ dist
 
 # Local development database cluster (scripts/dev-db.ts)
 .pgdata/
+
+# Voice bake-off: the person's own recordings and provider outputs never enter the repository
+scripts/voice-bakeoff/recordings/
+scripts/voice-bakeoff/results/

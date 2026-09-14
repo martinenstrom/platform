@@ -1,0 +1,65 @@
+{
+  "$comment": "The fixed TTS test set: sentences JARVIS actually says, plus two paragraphs long enough to hear whether the voice stays convincing. `english` lists the spans a Swedish voice must pronounce as English; Azure gets them wrapped in <lang xml:lang=\"en-US\"> in the tagged variant, and untagged in the other, so the difference is measured. ElevenLabs v3 receives the plain text.",
+  "answers": [
+    {
+      "id": "a01",
+      "kind": "acknowledgement",
+      "text": "Jag kollar på det och återkommer.",
+      "english": []
+    },
+    {
+      "id": "a02",
+      "kind": "answer-ready",
+      "text": "Jag är klar. Kommitténs slutsats är behåll.",
+      "english": []
+    },
+    {
+      "id": "a03",
+      "kind": "objection",
+      "text": "Den största invändningen är värderingen.",
+      "english": []
+    },
+    {
+      "id": "a04",
+      "kind": "condition",
+      "text": "Om den amerikanska tioårsräntan fortsätter upp förändras riskbilden.",
+      "english": []
+    },
+    {
+      "id": "a05",
+      "kind": "English terms inside Swedish",
+      "text": "Nvidia ser fortsatt starkt ut operativt, men equity risk premium är mindre attraktiv på dagens värdering.",
+      "english": ["Nvidia", "equity risk premium"]
+    },
+    {
+      "id": "a06",
+      "kind": "two central banks",
+      "text": "Fed och ECB befinner sig i olika delar av räntecykeln.",
+      "english": ["Fed", "ECB"]
+    },
+    {
+      "id": "a07",
+      "kind": "blocked",
+      "text": "Analysen kan inte fortsätta just nu. Faktagranskningen är inte gjord, och ärendet ligger hos Verification.",
+      "english": ["Verification"]
+    },
+    {
+      "id": "a08",
+      "kind": "needs-decision",
+      "text": "Jag behöver ditt beslut på en sak innan jag kan fortsätta. Kommittén är sammankallad men saknar en utgångstes.",
+      "english": []
+    },
+    {
+      "id": "a09",
+      "kind": "long committee answer, about 45 seconds",
+      "text": "Kommitténs slutsats är behåll. Research Office bedömer att Nvidia fortsatt levererar operativt, med tvåsiffrig tillväxt i datacenter och marginaler som håller. Den största invändningen kommer från Devil's Advocate och gäller värderingen: på nästan fyrtio gånger vinsten är equity risk premium tunn, och synen skulle försvagas ytterligare om realräntorna fortsätter upp. Rates noterar att den amerikanska tioårsräntan ligger nära fyra och en halv procent och att term premium har stigit sedan i somras, vilket gör långa durationsexponeringar känsligare. Verification har granskat underlaget utan anmärkning. Riskgranskningen är godkänd med begränsningar för positionsstorlek. Två materiella invändningar kvarstår, och kommittén står bakom slutsatsen med dem synliga.",
+      "english": ["Research Office", "Nvidia", "Devil's Advocate", "equity risk premium", "Rates", "term premium", "Verification"]
+    },
+    {
+      "id": "a10",
+      "kind": "long macro answer, about 40 seconds",
+      "text": "Fed och ECB befinner sig i olika delar av räntecykeln. I USA prisar marknaden in en långsammare sänkningstakt efter den senaste CPI-siffran, som kom in på tre komma två procent mot väntade tre komma noll, och yield curve har brantnat något i den långa änden. I Europa är bilden den omvända: ECB har utrymme att sänka i december om inflationen fortsätter ned, och det pressar realräntan i Sverige. För Handelsbanken Hållbar Energi betyder higher for longer i USA en fortsatt motvind för långa kassaflöden, medan en europeisk sänkning skulle ge visst stöd. Kommittén föreslår att avvakta nästa rapportperiod innan positionen ändras.",
+      "english": ["Fed", "ECB", "CPI", "yield curve", "Handelsbanken Hållbar Energi", "higher for longer"]
+    }
+  ]
+}

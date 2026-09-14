@@ -278,6 +278,46 @@ timer.
 
 Estimated effort: one afternoon; cost under a euro.
 
+### 9.1 The harness — built to the credential boundary, 2026-09-14
+
+The listening test the ruling authorised lives in
+[`scripts/voice-bakeoff/`](../scripts/voice-bakeoff/README.md), outside the
+product, with no SDK and no dependency added. What is measured about it:
+
+- **Recorder** (`record.html` + `record-server.mjs`): a localhost page that
+  lists the twelve fixed utterances and saves each as webm/opus into a
+  git-ignored `recordings/`. Proven by `probe-recorder.mjs` — headless
+  Chromium with a fake microphone records utterance 01 for two seconds and
+  the server writes a file with a WebM header (PASS; the fake file is
+  removed afterwards).
+- **Test sets**: `utterances.json` (12 utterances, each with the finance
+  terms that must survive and their accepted spellings; the ruling's
+  examples included; one all-English) and `answers.json` (8 JARVIS
+  sentences plus two long paragraphs, each with its English spans).
+- **STT** (`stt.mjs`, providers in `stt-providers.mjs`): AssemblyAI
+  Universal-3.5 Pro via upload → transcript → poll, with
+  `language_detection` + `code_switching` + `keyterms_prompt`; ElevenLabs
+  Scribe v2 via multipart with `keyterms` and no language code; OpenAI
+  `gpt-transcribe` optional baseline with `languages[]` and a vocabulary
+  prompt. Same hints for all. Output: transcript beside reference, detected
+  language, term hits, WER, latency to final transcript, and a markdown
+  report. The scorer has its own check (`lib.test.mjs`, 4 passing).
+- **TTS** (`tts.mjs`): every Swedish-capable Azure voice the region lists
+  (HD included, narrowable by `AZURE_TTS_VOICES`), synthesised twice per
+  answer — English spans wrapped in `<lang xml:lang="en-US">` and untagged —
+  and ElevenLabs v3 on named voice ids; first-audio and total latency from
+  the streamed response; `--roundtrip` sends each mp3 back through the STT
+  finalists as a proxy for English-term clarity.
+- **Boundary behaviour, measured**: with no keys configured `stt.mjs` and
+  `tts.mjs` name each missing variable, send nothing, and exit 3 before
+  creating any output; `recordings/`, `results/` and `.env` are confirmed
+  ignored by `git check-ignore`.
+
+The harness stops there. Credentials needed to run it, kept in `.env` or the
+shell and never in the repository: `ASSEMBLYAI_API_KEY`, `ELEVENLABS_API_KEY`
+(+ `ELEVENLABS_VOICE_IDS`), `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`, and
+optionally `OPENAI_API_KEY`. Plus the person's own twelve recordings.
+
 ## 10. Data and retention
 
 - **Raw audio is never persisted by JARVIS.** It exists as a stream from

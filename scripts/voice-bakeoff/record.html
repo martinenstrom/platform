@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <title>JARVIS röst — inspelning av testmeningar</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #e8edf7; background: #060910; }
+      h1 { font-size: 1.2rem; }
+      p.hint { color: #98a3b8; }
+      ol { padding-left: 0; list-style: none; }
+      li { border: 1px solid #1a2434; border-radius: 6px; padding: 0.8rem 1rem; margin: 0.6rem 0; }
+      .text { font-size: 1.05rem; margin: 0.3rem 0 0.6rem; }
+      .kind { color: #818da1; font-size: 0.8rem; }
+      button { font: inherit; padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #26344a; background: #101826; color: #e8edf7; cursor: pointer; }
+      button[data-recording='true'] { border-color: #f2555a; color: #f2555a; }
+      .status { margin-left: 0.6rem; font-size: 0.85rem; color: #98a3b8; }
+      .done { color: #2ecc84; }
+    </style>
+  </head>
+  <body>
+    <h1>Läs varje mening i din vanliga takt. Tryck en gång för att börja, en gång för att sluta.</h1>
+    <p class="hint">Inspelningarna sparas som webm/opus direkt i <code>scripts/voice-bakeoff/recordings/</code> — ingenting laddas upp någon annanstans. Spela gärna in om en mening om du snubblade; den senaste sparas.</p>
+    <ol id="list"></ol>
+    <script>
+      const list = document.getElementById('list')
+      let stream = null
+      let active = null
+
+      async function microphone() {
+        if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        return stream
+      }
+
+      async function toggle(item, button, status) {
+        if (active) {
+          active.recorder.stop()
+          return
+        }
+        const media = await microphone()
+        const chunks = []
+        const recorder = new MediaRecorder(media, { mimeType: 'audio/webm;codecs=opus' })
+        recorder.ondataavailable = (event) => chunks.push(event.data)
+        recorder.onstop = async () => {
+          active = null
+          button.dataset.recording = 'false'
+          button.textContent = 'Spela in igen'
+          const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' })
+          status.textContent = `sparar ${Math.round(blob.size / 1024)} kB…`
+          const response = await fetch(`/recordings/${item.id}.webm`, { method: 'POST', body: blob })
+          status.textContent = response.ok ? 'sparad ✓' : `kunde inte spara (${response.status})`
+          status.className = response.ok ? 'status done' : 'status'
+        }
+        recorder.start()
+        active = { recorder }
+        button.dataset.recording = 'true'
+        button.textContent = 'Stoppa'
+        status.textContent = 'spelar in…'
+      }
+
+      fetch('/utterances.json')
+        .then((response) => response.json())
+        .then(({ utterances }) => {
+          for (const item of utterances) {
+            const li = document.createElement('li')
+            li.innerHTML = `<div class="kind">${item.id} · ${item.kind}</div><div class="text">${item.text}</div>`
+            const button = document.createElement('button')
+            button.textContent = 'Spela in'
+            const status = document.createElement('span')
+            status.className = 'status'
+            button.addEventListener('click', () => toggle(item, button, status))
+            li.append(button, status)
+            list.append(li)
+          }
+        })
+    </script>
+  </body>
+</html>

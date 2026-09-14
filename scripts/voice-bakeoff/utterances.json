@@ -1,0 +1,153 @@
+{
+  "$comment": "The fixed STT test set. `text` is the reference a native speaker would write down; `terms` are the tokens whose loss matters more than any article — each with the spellings a correct transcript may use. Record every utterance in your own voice at a natural pace; `kind` says what each one is for.",
+  "languageHints": ["sv", "en"],
+  "vocabulary": [
+    "Nvidia",
+    "Microsoft",
+    "Handelsbanken",
+    "Hållbar Energi",
+    "Federal Reserve",
+    "Fed",
+    "ECB",
+    "CPI",
+    "P/E",
+    "EBITDA",
+    "US 10-year",
+    "Treasury",
+    "Treasuries",
+    "yield curve",
+    "duration",
+    "basispunkter",
+    "earnings yield",
+    "equity risk premium",
+    "realränta",
+    "term premium",
+    "higher for longer",
+    "investeringskommittén"
+  ],
+  "utterances": [
+    {
+      "id": "01",
+      "kind": "ordinary Swedish with a company name and an acronym",
+      "text": "Jarvis, hur ser du på Nvidia efter senaste CPI-siffran?",
+      "terms": [
+        { "term": "Nvidia", "accept": ["nvidia"] },
+        { "term": "CPI", "accept": ["cpi"] }
+      ]
+    },
+    {
+      "id": "02",
+      "kind": "rates terminology, a number and basis points",
+      "text": "Vad händer med durationen om US 10-year går upp 50 basispunkter?",
+      "terms": [
+        { "term": "durationen", "accept": ["durationen", "duration"] },
+        { "term": "US 10-year", "accept": ["us 10-year", "us 10 year", "us tenyear", "us ten-year", "us tioåring", "us 10-åring"] },
+        { "term": "50 basispunkter", "accept": ["50 basispunkter", "50 punkter", "femtio basispunkter"] }
+      ]
+    },
+    {
+      "id": "03",
+      "kind": "an English phrase inside Swedish grammar, and a fund name",
+      "text": "Hur påverkar higher for longer Handelsbanken Hållbar Energi?",
+      "terms": [
+        { "term": "higher for longer", "accept": ["higher for longer"] },
+        { "term": "Handelsbanken", "accept": ["handelsbanken"] },
+        { "term": "Hållbar Energi", "accept": ["hållbar energi"] }
+      ]
+    },
+    {
+      "id": "04",
+      "kind": "three English finance terms in one Swedish question",
+      "text": "Vad säger Fed, earnings yield och equity risk premium just nu?",
+      "terms": [
+        { "term": "Fed", "accept": ["fed", "federal reserve"] },
+        { "term": "earnings yield", "accept": ["earnings yield"] },
+        { "term": "equity risk premium", "accept": ["equity risk premium"] }
+      ]
+    },
+    {
+      "id": "05",
+      "kind": "equity terminology with numbers and a percentage",
+      "text": "Om Microsoft växer EBITDA med 12 procent och handlas på P/E 31, är det rimligt?",
+      "terms": [
+        { "term": "Microsoft", "accept": ["microsoft"] },
+        { "term": "EBITDA", "accept": ["ebitda"] },
+        { "term": "12 procent", "accept": ["12 procent", "12 %", "12%", "tolv procent"] },
+        { "term": "P/E 31", "accept": ["p/e 31", "pe 31", "p/e-tal 31", "p e 31"] }
+      ]
+    },
+    {
+      "id": "06",
+      "kind": "curve terminology in Swedish sentence structure",
+      "text": "Är yield curve fortfarande inverterad mellan tvååringen och tioåringen?",
+      "terms": [
+        { "term": "yield curve", "accept": ["yield curve", "yieldkurvan", "yield-kurvan"] },
+        { "term": "inverterad", "accept": ["inverterad"] },
+        { "term": "tvååringen", "accept": ["tvååringen", "2-åringen", "tvåårsräntan"] },
+        { "term": "tioåringen", "accept": ["tioåringen", "10-åringen", "tioårsräntan"] }
+      ]
+    },
+    {
+      "id": "07",
+      "kind": "central bank, a month, and a Swedish rates term",
+      "text": "Sänker ECB i december, och vad betyder det för realräntan i Sverige?",
+      "terms": [
+        { "term": "ECB", "accept": ["ecb"] },
+        { "term": "december", "accept": ["december"] },
+        { "term": "realräntan", "accept": ["realräntan", "realränta"] }
+      ]
+    },
+    {
+      "id": "08",
+      "kind": "term premium and Treasuries",
+      "text": "Har term premium på amerikanska Treasuries stigit sedan i somras?",
+      "terms": [
+        { "term": "term premium", "accept": ["term premium", "termpremium", "term-premium"] },
+        { "term": "Treasuries", "accept": ["treasuries", "treasury", "treasurys"] }
+      ]
+    },
+    {
+      "id": "09",
+      "kind": "fast conversational follow-up, no finance term",
+      "text": "Okej men ska jag faktiskt köpa den nu eller vänta till rapporten?",
+      "terms": [
+        { "term": "köpa", "accept": ["köpa"] },
+        { "term": "rapporten", "accept": ["rapporten"] }
+      ]
+    },
+    {
+      "id": "10",
+      "kind": "all English, so the answer language rule can be exercised",
+      "text": "Jarvis, what does the committee think about Nvidia's valuation right now?",
+      "terms": [
+        { "term": "committee", "accept": ["committee"] },
+        { "term": "Nvidia's valuation", "accept": ["nvidia's valuation", "nvidias valuation", "nvidia valuation"] }
+      ]
+    },
+    {
+      "id": "11",
+      "kind": "acronym, two decimals, and a full institution name",
+      "text": "CPI kom in på 3,2 procent mot väntade 3,0 – ändrar det Federal Reserves bana?",
+      "terms": [
+        { "term": "CPI", "accept": ["cpi"] },
+        { "term": "3,2 procent", "accept": ["3,2 procent", "3.2 procent", "3,2 %", "3.2%", "3,2%"] },
+        { "term": "3,0", "accept": ["3,0", "3.0", "tre komma noll"] },
+        { "term": "Federal Reserve", "accept": ["federal reserve", "federal reserves", "fed"] }
+      ]
+    },
+    {
+      "id": "12",
+      "kind": "a long natural investment question",
+      "text": "Givet att den amerikanska tioårsräntan ligger runt 4,5 procent, att equity risk premium är låg och att Nvidia handlas på nästan 40 gånger vinsten, borde investeringskommittén minska tekniksektorn eller vänta på nästa rapportperiod?",
+      "terms": [
+        { "term": "tioårsräntan", "accept": ["tioårsräntan", "10-årsräntan", "tioåringen"] },
+        { "term": "4,5 procent", "accept": ["4,5 procent", "4.5 procent", "4,5 %", "4.5%", "4,5%"] },
+        { "term": "equity risk premium", "accept": ["equity risk premium"] },
+        { "term": "Nvidia", "accept": ["nvidia"] },
+        { "term": "40 gånger", "accept": ["40 gånger", "fyrtio gånger", "40 ggr"] },
+        { "term": "investeringskommittén", "accept": ["investeringskommittén", "investeringskommitten"] },
+        { "term": "tekniksektorn", "accept": ["tekniksektorn", "teknologisektorn", "tech-sektorn", "techsektorn"] }
+      ]
+    }
+  ]
+}
