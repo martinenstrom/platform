@@ -34,6 +34,11 @@ test('termHits matches whole words only, under any accepted spelling', () => {
   assert.deepEqual(hits.map((h) => h.hit), [true, true, true])
   const federalOnly = termHits([{ term: 'Fed', accept: ['fed'] }], 'Federal Reserve höjde.')
   assert.equal(federalOnly[0].hit, false)
+  /* Swedish compounds join the term with a hyphen; that is the term, present. */
+  const compound = termHits([{ term: 'CPI', accept: ['cpi'] }], 'Nvidia efter senaste CPI-siffran?')
+  assert.equal(compound[0].hit, true)
+  const split = termHits([{ term: 'US 10-year', accept: ['us 10-year'] }], 'om US 10 year går upp')
+  assert.equal(split[0].hit, true)
 })
 
 test('median handles odd, even and empty', () => {

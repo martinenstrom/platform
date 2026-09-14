@@ -318,6 +318,9 @@ shell and never in the repository: `ASSEMBLYAI_API_KEY`, `ELEVENLABS_API_KEY`
 (+ `ELEVENLABS_VOICE_IDS`), `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`, and
 optionally `OPENAI_API_KEY`. Plus the person's own twelve recordings.
 
+**Run on 2026-09-15** → [`jarvis-voice-bakeoff.md`](./jarvis-voice-bakeoff.md):
+the results, what could not be measured and why, and the recommendation.
+
 ## 10. Data and retention
 
 - **Raw audio is never persisted by JARVIS.** It exists as a stream from

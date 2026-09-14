@@ -28,6 +28,7 @@ or read from anywhere else, and none is ever printed.
 | ElevenLabs Scribe v2 + Eleven v3 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_IDS` (comma-separated; run `tts.mjs` once without it to list voices and their labels) | `stt.mjs`, `tts.mjs` |
 | Azure Speech                    | `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` (e.g. `swedencentral`); optional `AZURE_TTS_VOICES` | `tts.mjs`    |
 | OpenAI (optional baseline)      | `OPENAI_API_KEY`; optional `OPENAI_STT_MODEL` (default `gpt-transcribe`)   | `stt.mjs`    |
+| Azure fast transcription (not a finalist: a second ear for the round trip, and a measured control) | the Azure Speech key and region above; optional `AZURE_STT_LOCALES` (default `sv-SE,en-US`; empty = multilingual model) | `stt.mjs`, `roundtrip.mjs` |
 
 A provider without credentials is skipped and named; with none configured
 the scripts stop and say so.
@@ -36,16 +37,30 @@ the scripts stop and say so.
 
 ```
 node scripts/voice-bakeoff/stt.mjs              # results/stt-report.md, results/stt-<provider>.json
-node scripts/voice-bakeoff/tts.mjs              # results/tts-report.md, results/tts/*.mp3
-node scripts/voice-bakeoff/tts.mjs --roundtrip  # additionally sends each mp3 through the STT finalists
+node scripts/voice-bakeoff/tts.mjs              # results/tts-report.md, results/listen.html, results/tts/*.mp3
+node scripts/voice-bakeoff/roundtrip.mjs        # results/tts-roundtrip.md: every mp3 back through the STT finalists
 ```
+
+`STT_PROVIDERS` and `TTS_PROVIDERS` (comma-separated) narrow a run; a
+provider that refuses the key or has no quota is skipped after its first
+refusal. Runs are cumulative: `stt-report.md` is rebuilt from every
+`results/stt-<provider>.json` on disk; each TTS run writes its own file under
+`results/tts-runs/`, and the report and `listen.html` are rebuilt from all of
+them, with a re-run of the same voice replacing its earlier rows. The round
+trip keeps its rows per file and ear and only transcribes what is missing
+(`--all` redoes everything). So Azure and ElevenLabs can be run separately,
+a voice added later, and an ear added after the fact.
 
 Every STT provider receives the same language hints (`sv`, `en`) and the same
 vocabulary list, through the mechanism it would receive them in production
 (`keyterms_prompt`, `keyterms`, `keywords`/`prompt`). Nothing is tuned per
 provider after a result is seen. Azure is synthesised twice per answer — with
 English spans tagged `<lang xml:lang="en-US">`, as it would ship, and
-untagged — so the tag's effect is heard, not assumed.
+untagged — so the tag's effect is heard, not assumed. ElevenLabs premade
+voices have fixed public ids (George `JBFqnCBsd6RMkjVDRZzb`, Daniel
+`onwK4e9ZLuTAKqWW03F9`, Charlotte `XB0fDUnXU5powFXDhCwa`, Sarah
+`EXAVITQu4vr4xnSDxMaL`, Brian `nPczCjzI2devNBz1zQrb`, Roger
+`CwhRBWXzGAHq8TQ4Fs17`), usable even when the key lacks `voices_read`.
 
 ## 4. Score
 
@@ -56,7 +71,10 @@ finance-term correctness, code-switching, readability, latency — a wrong
 number or a lost term above any article.
 
 `tts-report.md` carries first-audio and total latency per voice and the path
-of every file. Listen in `results/tts/` and score: Swedish naturalness, calm
+of every file; `listen.html` puts every voice beside every answer with a
+player each; `tts-roundtrip.md` says how much of the Swedish and how many of
+the English spans an STT finalist recovered from each file — a proxy for
+clarity, never for sound. Listen in `results/tts/` and score: Swedish naturalness, calm
 authority, English terms inside Swedish, prosody, long-form listenability
 (a09, a10), fit with the JARVIS brief — Swedish, calm, intelligent, confident
 without theatre, professional without corporate polish, warm but restrained.

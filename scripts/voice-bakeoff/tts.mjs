@@ -14,12 +14,13 @@
  * Needs:
  *   AZURE_SPEECH_KEY, AZURE_SPEECH_REGION   (e.g. swedencentral)
  *   ELEVENLABS_API_KEY, ELEVENLABS_VOICE_IDS  (comma-separated; run once without to list voices)
- *   optional: AZURE_TTS_VOICES (comma-separated ShortNames), ELEVENLABS_TTS_MODEL (default eleven_v3)
+ *   optional: AZURE_TTS_VOICES (comma-separated ShortNames), ELEVENLABS_TTS_MODEL (default eleven_v3),
+ *             TTS_PROVIDERS (comma-separated subset of azure,elevenlabs; runs are cumulative)
  *
  * Writes results/tts/<provider>-<voice>[-tagged]-<id>.mp3 and results/tts-report.md.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HERE, RESULTS, cell, credentials, loadEnv, median, ms, now, readJson, termHits, writeResult } from './lib.mjs'
 import { providers as sttProviders } from './stt-providers.mjs'
@@ -116,9 +117,11 @@ async function elevenSpeak(voiceId, text) {
 /* ---------------------------------------------------------------- run */
 
 const jobs = []
+const selected = (process.env.TTS_PROVIDERS ?? 'azure,elevenlabs').split(',')
 
 const azure = credentials(['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'])
-if (azure.ok) {
+if (!selected.includes('azure')) console.log('skip Azure: not in TTS_PROVIDERS')
+else if (azure.ok) {
   const voices = await azureVoices()
   console.log(`Azure: ${voices.length} Swedish-capable voice(s): ${voices.map((v) => `${v.ShortName} [${v.VoiceType}/${v.Status}]`).join(', ')}`)
   for (const voice of voices) {
@@ -128,7 +131,8 @@ if (azure.ok) {
 } else console.log(`skip Azure: missing ${azure.missing.join(', ')}`)
 
 const eleven = credentials(['ELEVENLABS_API_KEY'])
-if (eleven.ok) {
+if (!selected.includes('elevenlabs')) console.log('skip ElevenLabs: not in TTS_PROVIDERS')
+else if (eleven.ok) {
   const ids = process.env.ELEVENLABS_VOICE_IDS?.split(',').map((v) => v.trim()).filter(Boolean) ?? []
   if (ids.length === 0) {
     const voices = await elevenVoices()
@@ -144,24 +148,46 @@ if (jobs.length === 0) {
 }
 mkdirSync(OUT, { recursive: true })
 
-const results = []
+const fresh = []
 for (const job of jobs) {
+  let refused = false
   for (const answer of answers) {
+    if (refused) break
     const name = `${job.provider}-${job.voice.replace(/[^\w.-]/g, '_')}-${job.variant}-${answer.id}`
     process.stdout.write(`${name} … `)
     try {
       const out = await job.speak(answer)
       const file = join(OUT, `${name}.mp3`)
       writeFileSync(file, out.bytes)
-      results.push({ ...job, speak: undefined, answerId: answer.id, file, firstAudioMs: out.firstAudioMs, totalMs: out.totalMs, bytes: out.bytes.length })
+      fresh.push({ ...job, speak: undefined, name, answerId: answer.id, file, firstAudioMs: out.firstAudioMs, totalMs: out.totalMs, bytes: out.bytes.length })
       console.log(`first audio ${out.firstAudioMs} ms · total ${out.totalMs} ms · ${Math.round(out.bytes.length / 1024)} kB`)
     } catch (error) {
-      results.push({ ...job, speak: undefined, answerId: answer.id, error: String(error.message ?? error) })
-      console.log(`FAILED: ${error.message ?? error}`)
+      const message = String(error.message ?? error)
+      fresh.push({ ...job, speak: undefined, name, answerId: answer.id, error: message })
+      console.log(`FAILED: ${message.split('\n')[0]}`)
+      /* A refused key or an exhausted quota will not change on the next answer. */
+      refused = /\b(401|402|403|429)\b/.test(message)
     }
   }
 }
-writeResult('tts-results.json', results)
+
+/*
+ * Runs are cumulative and may overlap in time: each run writes its own
+ * file under results/tts-runs/, the report is rebuilt from all of them,
+ * and a later run of the same voice replaces its earlier rows.
+ */
+const RUNS = join(RESULTS, 'tts-runs')
+mkdirSync(RUNS, { recursive: true })
+writeFileSync(join(RUNS, `${new Date().toISOString().replace(/[:.]/g, '-')}-${selected.join('+')}.json`), JSON.stringify(fresh, null, 2))
+const results = allRuns()
+
+function allRuns() {
+  const legacy = join(RESULTS, 'tts-results.json')
+  const files = [...(existsSync(legacy) ? [legacy] : []), ...readdirSync(RUNS).sort().map((f) => join(RUNS, f))]
+  const byName = new Map()
+  for (const file of files) for (const row of readJson(file)) byName.set(row.name ?? row.file, row)
+  return [...byName.values()]
+}
 
 /* ---------------------------------------------- optional round trip */
 
@@ -176,7 +202,7 @@ if (roundtrip) {
   recovery = []
   const ears = Object.entries(sttProviders).filter(([, p]) => credentials(p.keys).ok)
   if (ears.length === 0) console.log('round trip skipped: no STT provider has credentials')
-  for (const r of results.filter((x) => !x.error)) {
+  for (const r of fresh.filter((x) => !x.error)) {
     const answer = answers.find((a) => a.id === r.answerId)
     const terms = answer.english.map((term) => ({ term, accept: [term] }))
     if (terms.length === 0) continue
@@ -215,3 +241,36 @@ if (recovery) {
 lines.push('', '## Human scoring (fill in)', '', 'Per voice, 1–5: Swedish naturalness · calm authority · English terms inside Swedish · prosody · long-form listenability (a09, a10) · fit with the JARVIS brief. Note first-audio latency beside it.', '')
 const path = writeResult('tts-report.md', lines.join('\n'))
 console.log('report:', path)
+
+/* ------------------------------------------------------ listening set */
+
+/*
+ * One page, every answer, every voice beside it, so the ear compares like
+ * with like. Opened straight from disk; the audio sits next to it.
+ */
+const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const voices = [...groups.keys()]
+const html = [
+  '<!doctype html><html lang="sv"><head><meta charset="utf-8"><title>JARVIS röst — lyssningsset</title>',
+  '<style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#e8edf7;background:#060910}',
+  'h1{font-size:1.2rem}h2{font-size:1rem;margin-top:2rem;color:#98a3b8}p.text{font-size:1.02rem;line-height:1.5;border-left:2px solid #26344a;padding-left:.8rem}',
+  'table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.35rem .5rem;border-bottom:1px solid #1a2434;font-size:.9rem;vertical-align:middle}',
+  'th{color:#818da1;font-weight:500}audio{width:100%;height:32px}.ms{color:#98a3b8;white-space:nowrap}</style></head><body>',
+  '<h1>Lyssningsset — samma svar, varje röst bredvid varandra</h1>',
+  `<p>Bedöm 1–5 per röst: svensk naturlighet · lugn auktoritet · engelska termer inne i svenskan · prosodi · långform (a09, a10) · passar JARVIS-briefen. ${voices.length} röster/varianter.</p>`,
+]
+for (const answer of answers) {
+  html.push(`<h2>${answer.id} — ${escapeHtml(answer.kind)}</h2><p class="text">${escapeHtml(answer.text)}</p>`)
+  html.push('<table><tr><th style="width:34%">Röst</th><th>Ljud</th><th class="ms">första ljud / totalt</th></tr>')
+  for (const voice of voices) {
+    const r = groups.get(voice).find((x) => x.answerId === answer.id)
+    if (!r) continue
+    const src = r.error ? '' : `tts/${escapeHtml(r.name ?? r.file.split(/[\\/]/).pop().replace(/\.mp3$/, ''))}.mp3`
+    html.push(
+      `<tr><td>${escapeHtml(voice)}</td><td>${r.error ? `<em>FAILED</em> ${escapeHtml(r.error.split('\n')[0].slice(0, 120))}` : `<audio controls preload="none" src="${src}"></audio>`}</td><td class="ms">${r.error ? '' : `${r.firstAudioMs} / ${r.totalMs} ms`}</td></tr>`,
+    )
+  }
+  html.push('</table>')
+}
+html.push('</body></html>')
+console.log('listening set:', writeResult('listen.html', html.join('\n')))

@@ -16,9 +16,9 @@
  * Exit 3: no provider has credentials. Exit 2: nothing recorded.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HERE, RECORDINGS, cell, credentials, loadEnv, median, percent, readJson, termHits, wer, writeResult } from './lib.mjs'
+import { HERE, RECORDINGS, RESULTS, cell, credentials, loadEnv, median, percent, readJson, termHits, wer, writeResult } from './lib.mjs'
 import { providers } from './stt-providers.mjs'
 
 loadEnv()
@@ -75,11 +75,24 @@ for (const [name, provider] of runnable) {
       })
       console.log(`${out.latencyMs} ms · WER ${percent(rate)} · terms ${hits.filter((h) => h.hit).length}/${hits.length}`)
     } catch (error) {
-      results[name].utterances.push({ id: utterance.id, reference: utterance.text, error: String(error.message ?? error) })
-      console.log(`FAILED: ${error.message ?? error}`)
+      const message = String(error.message ?? error)
+      results[name].utterances.push({ id: utterance.id, reference: utterance.text, error: message })
+      console.log(`FAILED: ${message.split('\n')[0]}`)
+      /* A refused key or an exhausted quota will not change on the next file. */
+      if (/\b(401|402|403|429)\b/.test(message)) {
+        console.log(`${provider.label}: stopping after an account-level refusal.`)
+        break
+      }
     }
   }
   writeResult(`stt-${name}.json`, results[name])
+}
+const anySuccess = Object.values(results).some((r) => r.utterances.some((u) => !u.error))
+
+/* The report is cumulative: every provider whose latest run is on disk appears beside this one. */
+for (const file of readdirSync(RESULTS).filter((f) => /^stt-[a-z]+\.json$/.test(f))) {
+  const name = file.slice(4, -5)
+  if (!results[name]) results[name] = readJson(join(RESULTS, file))
 }
 
 /* ------------------------------------------------------------- report */
@@ -124,3 +137,7 @@ lines.push(
   '',
 )
 console.log('report:', writeResult('stt-report.md', lines.join('\n')))
+if (!anySuccess) {
+  console.error('Every transcription failed; the report holds the errors, not results.')
+  process.exit(1)
+}

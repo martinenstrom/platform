@@ -94,10 +94,14 @@ export function wer(reference, hypothesis) {
  * words — "fed" does not hide inside "federal".
  */
 export function termHits(terms, hypothesis) {
-  const text = ` ${normalise(hypothesis)} `
+  /* A hyphen joins Swedish compounds ("CPI-siffran"), so the term is also sought with hyphens as spaces. */
+  const texts = [` ${normalise(hypothesis)} `, ` ${normalise(hypothesis).replace(/-/g, ' ')} `]
   return terms.map(({ term, accept }) => ({
     term,
-    hit: (accept ?? [term]).some((spelling) => text.includes(` ${normalise(spelling)} `)),
+    hit: (accept ?? [term]).some((spelling) => {
+      const wanted = [` ${normalise(spelling)} `, ` ${normalise(spelling).replace(/-/g, ' ')} `]
+      return texts.some((text) => wanted.some((w) => text.includes(w)))
+    }),
   }))
 }
 
