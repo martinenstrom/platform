@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <title>JARVIS · GPT-Live proof</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { font-family: system-ui, sans-serif; margin: 0; color: #e8edf7; background: #060910; }
+      header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.2rem; border-bottom: 1px solid #1a2434; }
+      header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+      header .status { color: #98a3b8; font-size: 0.85rem; }
+      main { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; padding: 1rem 1.2rem; }
+      section { border: 1px solid #1a2434; border-radius: 8px; padding: 0.8rem 1rem; min-height: 6rem; }
+      section h2 { font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: #818da1; margin: 0 0 0.6rem; }
+      button, select, input { font: inherit; padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #26344a; background: #101826; color: #e8edf7; }
+      button:disabled { opacity: 0.4; }
+      button.primary { border-color: #3b82f6; }
+      button[data-live='true'] { border-color: #f2555a; color: #f2555a; }
+      #transcript { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; font-size: 0.95rem; }
+      .turn { padding: 0.4rem 0.7rem; border-radius: 6px; max-width: 92%; }
+      .turn.user { align-self: flex-end; background: #16213a; }
+      .turn.assistant { align-self: flex-start; border: 1px solid #1a2434; }
+      .turn .t { color: #818da1; font-size: 0.72rem; margin-left: 0.5rem; }
+      .turn.overlap { outline: 1px dashed #f2555a; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0; font-size: 0.88rem; }
+      dt { color: #98a3b8; }
+      dd { margin: 0; font-variant-numeric: tabular-nums; }
+      #delegations li { font-size: 0.88rem; margin: 0.2rem 0; }
+      .state { display: inline-block; padding: 0 0.4rem; border-radius: 4px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; background: #1a2434; }
+      .state.working { color: #7cc4ff; } .state.failed { color: #f2555a; } .state.answer-ready { color: #2ecc84; }
+      form.typed { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+      form.typed input { flex: 1; }
+      #events { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #98a3b8; max-height: 22vh; overflow-y: auto; white-space: pre; }
+      .hint { color: #818da1; font-size: 0.8rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>JARVIS · GPT-Live proof</h1>
+      <label>Röst <select id="voice"></select></label>
+      <button id="connect" class="primary">Anslut</button>
+      <button id="mute" disabled>Tysta mikrofonen</button>
+      <button id="disconnect" disabled>Avsluta</button>
+      <span class="status" id="status">Inte ansluten.</span>
+      <audio id="audio" autoplay></audio>
+    </header>
+    <main>
+      <div>
+        <section>
+          <h2>Samtal</h2>
+          <div id="transcript"></div>
+          <form class="typed" id="typed">
+            <input id="typedText" placeholder="Skriv i stället — går samma väg som rösten" autocomplete="off" />
+            <button type="submit">Skicka</button>
+          </form>
+          <p class="hint" id="typedHint">Med en aktiv session skjuts texten in i samtalet; utan session går den till JARVIS textvägen på servern.</p>
+        </section>
+        <section>
+          <h2>Händelser</h2>
+          <div id="events"></div>
+        </section>
+      </div>
+      <div>
+        <section>
+          <h2>Delegeringar (Financial OS-stubb)</h2>
+          <ul id="delegations"><li class="hint">Inga ännu.</li></ul>
+        </section>
+        <section>
+          <h2>Mätt</h2>
+          <dl id="metrics">
+            <dt>Session</dt><dd id="m-session">–</dd>
+            <dt>Röstsekunder</dt><dd id="m-seconds">0</dd>
+            <dt>Röstkostnad</dt><dd id="m-voice">$0.0000</dd>
+            <dt>Backend-tokens (in/cached/out)</dt><dd id="m-tokens">0 / 0 / 0</dd>
+            <dt>Backend-kostnad</dt><dd id="m-backend">$0.0000</dd>
+            <dt>Verktygsanrop</dt><dd id="m-tools">0</dd>
+            <dt>Summa</dt><dd id="m-total">$0.0000</dd>
+            <dt>Turlatens (senaste / median)</dt><dd id="m-latency">– / –</dd>
+            <dt>Avbrott upptäckta</dt><dd id="m-interrupts">0</dd>
+          </dl>
+        </section>
+      </div>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const log = (line) => {
+        const el = $('events')
+        el.textContent += `${new Date().toISOString().slice(11, 23)} ${line}\n`
+        el.scrollTop = el.scrollHeight
+      }
+
+      let config = null
+      let pc = null
+      let channel = null
+      let sessionId = null
+      let stream = null
+      let muted = false
+      let poll = null
+
+      /* ------------------------------------------------- transcript model */
+      /* Fragments arrive per speaker with a session-time range; turns are grouped by gaps. */
+      const fragments = { user: [], assistant: [] }
+      const turns = [] // { who, text, startMs, endMs, el }
+      const latencies = []
+      let interrupts = 0
+      let lastUserTurn = null
+
+      function addFragment(who, delta, startMs, endMs) {
+        const last = turns[turns.length - 1]
+        const sameTurn = last && last.who === who && startMs - last.endMs < 1200
+        if (sameTurn) {
+          last.text += delta
+          last.endMs = Math.max(last.endMs, endMs)
+          last.el.querySelector('span.text').textContent = last.text
+          last.el.querySelector('span.t').textContent = `${(last.startMs / 1000).toFixed(1)}–${(last.endMs / 1000).toFixed(1)} s`
+        } else {
+          const el = document.createElement('div')
+          el.className = `turn ${who}`
+          el.innerHTML = `<span class="text"></span><span class="t"></span>`
+          el.querySelector('span.text').textContent = delta
+          el.querySelector('span.t').textContent = `${(startMs / 1000).toFixed(1)}–${(endMs / 1000).toFixed(1)} s`
+          $('transcript').append(el)
+          const turn = { who, text: delta, startMs, endMs, el }
+          turns.push(turn)
+          if (who === 'assistant' && lastUserTurn) {
+            const latency = startMs - lastUserTurn.endMs
+            if (latency >= 0 && latency < 20000) {
+              latencies.push(latency)
+              const sorted = [...latencies].sort((a, b) => a - b)
+              $('m-latency').textContent = `${latency} ms / ${sorted[Math.floor(sorted.length / 2)]} ms`
+              log(`turn latency ${latency} ms (user ended ${lastUserTurn.endMs} ms, assistant began ${startMs} ms)`)
+            }
+          }
+          if (who === 'user') {
+            lastUserTurn = turn
+            /* Speaking while the assistant's last fragment is still in flight: an interruption. */
+            const speaking = [...turns].reverse().find((t) => t.who === 'assistant')
+            if (speaking && speaking.endMs > startMs - 300) {
+              interrupts += 1
+              $('m-interrupts').textContent = String(interrupts)
+              el.classList.add('overlap')
+              log(`interruption: user began at ${startMs} ms while assistant ran to ${speaking.endMs} ms`)
+            }
+          }
+        }
+        if (who === 'user') lastUserTurn = turns[turns.length - 1]
+        $('transcript').scrollTop = $('transcript').scrollHeight
+      }
+
+      /* ------------------------------------------------------- telemetry */
+      function renderTelemetry(t) {
+        $('m-seconds').textContent = String(t.voiceSeconds)
+        $('m-voice').textContent = `$${t.voiceCostUsd.toFixed(4)}`
+        $('m-tokens').textContent = `${t.backend.inputTokens} / ${t.backend.cachedTokens} / ${t.backend.outputTokens}`
+        $('m-backend').textContent = `$${t.backend.costUsd.toFixed(4)}`
+        $('m-tools').textContent = String(t.toolCalls)
+        $('m-total').textContent = `$${(t.voiceCostUsd + t.backend.costUsd).toFixed(4)}`
+      }
+      function renderDelegations(list) {
+        const ul = $('delegations')
+        ul.innerHTML = ''
+        if (list.length === 0) ul.innerHTML = '<li class="hint">Inga ännu.</li>'
+        for (const d of list) {
+          const li = document.createElement('li')
+          li.innerHTML = `<span class="state ${d.state}">${d.state}</span> <strong></strong> <span class="hint"></span>`
+          li.querySelector('strong').textContent = d.subject
+          li.querySelector('span.hint').textContent = `${d.question} · ${d.reference.id}${d.notes.length ? ' · +' + d.notes.length + ' tillägg' : ''}`
+          ul.append(li)
+        }
+      }
+      async function refreshState() {
+        if (!sessionId) return
+        const r = await fetch(`/session/${sessionId}/state`)
+        if (!r.ok) return
+        const state = await r.json()
+        renderTelemetry(state.telemetry)
+        renderDelegations(state.delegations)
+      }
+
+      /* ------------------------------------------------------- connect */
+      async function connect() {
+        $('connect').disabled = true
+        $('status').textContent = 'Begär mikrofon…'
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } catch (error) {
+          $('status').textContent = `Ingen mikrofon (${error.name}). Skriv i stället.`
+          log(`getUserMedia failed: ${error.name}`)
+          $('connect').disabled = false
+          return
+        }
+        pc = new RTCPeerConnection()
+        pc.addEventListener('track', (event) => {
+          $('audio').srcObject = new MediaStream([event.track])
+          $('audio').play().catch(() => log('autoplay blocked — press play on the audio element'))
+        })
+        for (const track of stream.getAudioTracks()) pc.addTrack(track, stream)
+        channel = pc.createDataChannel('oai-events')
+        channel.addEventListener('message', ({ data }) => onEvent(JSON.parse(data)))
+        channel.addEventListener('close', () => log('data channel closed'))
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        await new Promise((resolve) => {
+          if (pc.iceGatheringState === 'complete') return resolve()
+          pc.addEventListener('icegatheringstatechange', () => pc.iceGatheringState === 'complete' && resolve())
+          setTimeout(resolve, 2000)
+        })
+        $('status').textContent = 'Förhandlar med servern…'
+        const started = performance.now()
+        const r = await fetch('/session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sdp: pc.localDescription.sdp, voice: $('voice').value }),
+        })
+        if (!r.ok) {
+          const text = await r.text()
+          $('status').textContent = `Sessionen kunde inte skapas (${r.status}). Skriv i stället.`
+          log(`POST /session ${r.status}: ${text.slice(0, 200)}`)
+          teardown()
+          return
+        }
+        const { sessionId: id, sdp } = await r.json()
+        sessionId = id
+        await pc.setRemoteDescription({ type: 'answer', sdp })
+        log(`session ${id} negotiated in ${Math.round(performance.now() - started)} ms`)
+        $('m-session').textContent = id
+        $('status').textContent = 'Ansluten — väntar på session.started…'
+        $('disconnect').disabled = false
+        $('mute').disabled = false
+        $('connect').dataset.live = 'true'
+        poll = setInterval(refreshState, 1000)
+      }
+
+      function teardown() {
+        clearInterval(poll)
+        poll = null
+        if (channel) channel.close()
+        if (pc) pc.close()
+        if (stream) for (const track of stream.getTracks()) track.stop()
+        pc = channel = stream = null
+        $('connect').disabled = false
+        $('connect').dataset.live = 'false'
+        $('disconnect').disabled = true
+        $('mute').disabled = true
+      }
+
+      async function disconnect() {
+        if (sessionId) {
+          const r = await fetch(`/session/${sessionId}/close`, { method: 'POST' })
+          if (r.ok) {
+            const final = await r.json()
+            renderTelemetry(final.telemetry)
+            log(`closed: ${final.reason ?? '?'} · ${final.telemetry.voiceSeconds} s · projection/h $${final.telemetry.projectedPerHourUsd.toFixed(3)}`)
+          }
+        }
+        $('status').textContent = 'Avslutad.'
+        teardown()
+        sessionId = null
+      }
+
+      /* -------------------------------------------------------- events */
+      const seen = new Set()
+      function onEvent(event) {
+        switch (event.type) {
+          case 'session.started':
+            $('status').textContent = `Live · ${event.session?.id ?? sessionId} · säg något`
+            log('session.started')
+            break
+          case 'session.input_transcript.delta':
+            addFragment('user', event.delta, event.start_ms, event.end_ms)
+            break
+          case 'session.output_transcript.delta':
+            addFragment('assistant', event.delta, event.start_ms, event.end_ms)
+            break
+          case 'session.usage.updated':
+            $('m-seconds').textContent = String(event.usage?.seconds ?? '?')
+            break
+          case 'session.delegation.created':
+            log(`delegation ${event.delegation?.id} → ${event.delegation?.target}`)
+            break
+          case 'response.event': {
+            const inner = event.event?.type
+            if (inner === 'response.output_item.done' && event.event.item?.type === 'function_call')
+              log(`backend calls ${event.event.item.name}(${event.event.item.arguments})`)
+            else if (inner === 'response.completed') log('backend response completed')
+            else if (inner && !seen.has(inner)) {
+              seen.add(inner)
+              log(`backend event ${inner}`)
+            }
+            break
+          }
+          case 'session.closed':
+            log(`session.closed (${event.reason ?? '?'}) · ${event.usage?.seconds ?? '?'} s`)
+            break
+          case 'error':
+            log(`error: ${JSON.stringify(event.error ?? event).slice(0, 200)}`)
+            break
+          case 'session.output_audio.delta':
+            break
+          default:
+            if (!seen.has(event.type)) {
+              seen.add(event.type)
+              log(`event ${event.type}`)
+            }
+        }
+      }
+
+      /* ---------------------------------------------------- typed input */
+      $('typed').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const text = $('typedText').value.trim()
+        if (!text) return
+        $('typedText').value = ''
+        if (sessionId) {
+          const r = await fetch(`/session/${sessionId}/text`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text }),
+          })
+          log(`typed → live session: ${r.status}`)
+          const el = document.createElement('div')
+          el.className = 'turn user'
+          el.innerHTML = '<span class="text"></span><span class="t">skrivet</span>'
+          el.querySelector('span.text').textContent = text
+          $('transcript').append(el)
+        } else {
+          const el = document.createElement('div')
+          el.className = 'turn user'
+          el.innerHTML = '<span class="text"></span><span class="t">skrivet · textväg</span>'
+          el.querySelector('span.text').textContent = text
+          $('transcript').append(el)
+          const r = await fetch('/text', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text }),
+          })
+          const body = await r.json()
+          const a = document.createElement('div')
+          a.className = 'turn assistant'
+          a.innerHTML = '<span class="text"></span><span class="t">textväg</span>'
+          a.querySelector('span.text').textContent = body.answer ?? body.error ?? '?'
+          $('transcript').append(a)
+          log(`typed → text path: ${r.status} · ${body.usage ? `${body.usage.input_tokens}/${body.usage.output_tokens} tokens` : ''}`)
+          if (body.delegations) renderDelegations(body.delegations)
+        }
+      })
+
+      /* ---------------------------------------------------------- wiring */
+      $('connect').addEventListener('click', connect)
+      $('disconnect').addEventListener('click', disconnect)
+      $('mute').addEventListener('click', () => {
+        muted = !muted
+        channel?.send(JSON.stringify({ type: muted ? 'session.input_audio.mute' : 'session.input_audio.unmute', event_id: `mute_${Date.now()}` }))
+        $('mute').textContent = muted ? 'Slå på mikrofonen' : 'Tysta mikrofonen'
+      })
+      fetch('/config')
+        .then((r) => r.json())
+        .then((c) => {
+          config = c
+          for (const v of c.voices) {
+            const o = document.createElement('option')
+            o.value = v
+            o.textContent = v + (v === c.defaultVoice ? ' (standard)' : '')
+            if (v === c.defaultVoice) o.selected = true
+            $('voice').append(o)
+          }
+          log(`config: ${c.model} · backend ${c.backendModel} · $${c.prices.voicePerMinute}/min`)
+        })
+      window.__proof = { turns, latencies, get interrupts() { return interrupts }, get sessionId() { return sessionId } }
+    </script>
+  </body>
+</html>

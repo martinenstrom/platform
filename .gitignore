@@ -16,3 +16,7 @@ scripts/voice-bakeoff/results/
 
 # Live-probe screenshots (scripts/probe-*.mjs)
 .probe/
+
+# GPT-Live proof: telemetry and derived audio never enter the repository
+scripts/voice-live/results/
+scripts/voice-live/audio/
