@@ -30,6 +30,12 @@ export interface PresenceTurn {
   state?: HostResult['state']
 }
 
+/**
+ * The firm's deeper surfaces, opened beside the conversation on request.
+ * `boardroom` is how the committee got there; `underlag` is the record.
+ */
+export type ContextualSurface = 'boardroom' | 'underlag'
+
 export interface PresenceState {
   open: boolean
   /** The institutional work this conversation is bound to. A pointer, never a copy. */
@@ -37,6 +43,8 @@ export interface PresenceState {
   subject: string | null
   question: string | null
   turns: readonly PresenceTurn[]
+  /** Which deeper surface stands open beside the conversation, if any. */
+  surface: ContextualSurface | null
 }
 
 export const EMPTY_PRESENCE: PresenceState = Object.freeze({
@@ -45,6 +53,7 @@ export const EMPTY_PRESENCE: PresenceState = Object.freeze({
   subject: null,
   question: null,
   turns: Object.freeze([]) as readonly PresenceTurn[],
+  surface: null,
 })
 
 const KEY = 'jarvis:presence'
@@ -58,12 +67,20 @@ function load(): PresenceState {
     const raw = window.sessionStorage.getItem(KEY)
     if (!raw) return EMPTY_PRESENCE
     const parsed = JSON.parse(raw) as Partial<PresenceState>
+    /*
+     * Every field is checked for shape, not just presence. The store is
+     * mounted from the root, so a stale or hand-edited entry that put an
+     * object where a sentence belongs would take the whole page down with
+     * it — measured once, with a probe that seeded a typed subject.
+     */
     return {
       open: parsed.open === true,
       reference: parsed.reference ?? null,
-      subject: parsed.subject ?? null,
-      question: parsed.question ?? null,
+      subject: typeof parsed.subject === 'string' ? parsed.subject : null,
+      question: typeof parsed.question === 'string' ? parsed.question : null,
       turns: Array.isArray(parsed.turns) ? parsed.turns : [],
+      surface:
+        parsed.surface === 'boardroom' || parsed.surface === 'underlag' ? parsed.surface : null,
     }
   } catch {
     return EMPTY_PRESENCE

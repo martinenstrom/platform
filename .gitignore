@@ -13,3 +13,6 @@ dist
 # Voice bake-off: the person's own recordings and provider outputs never enter the repository
 scripts/voice-bakeoff/recordings/
 scripts/voice-bakeoff/results/
+
+# Live-probe screenshots (scripts/probe-*.mjs)
+.probe/

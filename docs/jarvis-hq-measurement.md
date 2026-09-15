@@ -346,6 +346,65 @@ Financial OS. Continuity is `sessionStorage` (`presenceStore.ts`): open or
 collapsed, the turns, and the reference — a pointer, never the thesis; every
 follow-up asks the firm again.
 
+## 15. Slice F — the Boardroom and the record, beside the conversation
+
+The two doors in the active-case section — _Visa hur ni kom fram till det_
+and _Visa underlaget_ — are buttons now, not links. They open
+`src/components/jarvis/ContextualSurface.tsx`: a surface fixed over the
+routed page from x = 306 px (the engaged panel's right edge) to the window's
+right edge, z-35 — above the top bar, below the presence — with a header
+that names the surface (_Styrelserummet_ / _Underlaget_), the case, the
+canonical link _Öppna som sida_, and a close button. Inside it is the
+canonical page and nothing else.
+
+**One implementation, two doors.** `CaseOverviewPage` moved from
+`routes/cases.$caseId.tsx` to `components/boardroom/CaseOverviewPage.tsx`,
+and `CaseRecord` from `routes/cases.$caseId_.underlag.tsx` to
+`components/headquarters/CaseRecord.tsx`; both route files import and
+re-export them unchanged, and the surface imports the same two modules.
+The presence suite scans for it: the route files must import from those
+modules and must not define the components; the surface must import them.
+`headquartersBoundary.test.ts` holds the moved pages and the surface to the
+`serverFns` door with the rest of Headquarters.
+
+**The same read model.** Opening calls `getCaseOverviewFn` with the
+reference's case id, exactly as the route loaders do; a resume from the
+contextual Boardroom calls `resumeConveningFn` and re-reads, as the route
+does through `router.invalidate()`. Nothing is copied from the conversation
+into the surface.
+
+**Closing returns to the same HQ by construction.** The page beneath is
+never unmounted: the surface is a sibling of the presence under the root,
+positioned over the page. Escape inside the surface closes it and only it
+(scoped, as the presence's own Escape is); the close button does the same;
+collapsing the presence closes whatever surface stood beside it. Which
+surface is open is remembered in `sessionStorage` with the conversation
+(`surface: 'boardroom' | 'underlag' | null`) and survives a reload and a
+navigation beneath it.
+
+**Measured, 2026-09-15**, `scripts/probe-jarvis-surfaces.mjs` over the
+dev firm's first case (`dev-1789157716935`, _"Vad sager den amerikanska
+rantekurvan om regimen?"_), conversation seeded into the store as the
+product stores it because the dev server has no operator to bind one:
+the room at x = 306, 1 294 px wide beside a 306 px panel; the committee
+table present; the case question as the room's `h1`; _Öppna som sida_ →
+`/cases/dev-1789157716935`; the HQ's own `h1` (_God kväll_) still beneath at
+`/`; two turns intact; Escape → room gone, panel open, turns 2, `surface`
+null; the record at x = 306 with its own sections (_Beslutsunderlagets
+status_, _Beslut_, _Ärendets ställning_, _Tes (2)_, …) and its canonical
+link; the room still open after a navigation to `/headquarters`; both
+canonical routes rendering their own `h1`; no browser errors. Screenshots
+in `.probe/surfaces-*.png`.
+
+Two things the probe taught. A stored `subject` that is an object rather
+than a sentence took the whole root down on reload (the probe's first seed
+used the case's typed subject); the store now checks that `subject` and
+`question` are strings. And the canonical pages keep their own links —
+_← Tillbaka till styrelserummet_ in the record, _Öppna underlag →_ in the
+room — which navigate the page beneath the surface rather than switching
+the surface; accepted for now, because the alternative is a second
+Boardroom, and noted for the router slice.
+
 ---
 
 ## What this measurement recommends, for ruling

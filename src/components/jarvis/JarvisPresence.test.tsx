@@ -21,21 +21,46 @@ import {
 } from '@tanstack/react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HostResult } from '~/application/analysis/hostContract'
+import type { CaseOverview } from '~/application/analysis/caseOverview'
+import { boardroomSeating } from '~/application/analysis/boardroomSeating'
+import { boardroomTimeline } from '~/application/analysis/boardroomTimeline'
 import { AppLayout } from '~/components/layout/AppLayout'
 import {
   financialOsHostFn,
+  getCaseOverviewFn,
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
+import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
+import decided from '~/test/fixtures/caseOverview.decided.json'
 import { JarvisPresence } from './JarvisPresence'
 import { resetPresence } from './presenceStore'
 
 vi.mock('~/infrastructure/analysis/serverFns', () => ({
   financialOsHostFn: vi.fn(),
   getCurrentOperatorFn: vi.fn(),
+  getCaseOverviewFn: vi.fn(),
+  resumeConveningFn: vi.fn(),
 }))
 
 const host = vi.mocked(financialOsHostFn)
 const operator = vi.mocked(getCurrentOperatorFn)
+const overview = vi.mocked(getCaseOverviewFn)
+
+/**
+ * The record the surfaces render, as the boundary actually assembles it —
+ * a case the institution produced, projected by the same functions the
+ * server function calls. The room and the record are asserted in depth by
+ * their own route tests; here they only have to be recognisably themselves.
+ */
+const decidedCase: CaseOverviewResponse = (() => {
+  const record = decided as unknown as CaseOverview
+  const timeline = boardroomTimeline(record)
+  return {
+    ok: true,
+    overview: record,
+    boardroom: { timeline, seats: boardroomSeating(record, timeline) },
+  }
+})()
 
 const reference = {
   system: 'financial-os',
@@ -113,6 +138,8 @@ beforeEach(() => {
   host.mockReset()
   operator.mockReset()
   operator.mockResolvedValue({ ok: false, code: 'NOT_CONFIGURED' })
+  overview.mockReset()
+  overview.mockResolvedValue(decidedCase)
 })
 
 /* -------------------------------------------------------------- at rest */
@@ -180,12 +207,11 @@ describe('engaged', () => {
     const active = within(presence()).getByRole('region', { name: 'Aktivt ärende' })
     expect(within(active).getByText('Nvidia')).toBeInTheDocument()
     expect(
-      within(active).getByRole('link', { name: /Visa hur ni kom fram till det/ }),
-    ).toHaveAttribute('href', '/cases/case-1')
-    expect(within(active).getByRole('link', { name: /Visa underlaget/ })).toHaveAttribute(
-      'href',
-      '/cases/case-1/underlag',
-    )
+      within(active).getByRole('button', { name: /Visa hur ni kom fram till det/ }),
+    ).toBeInTheDocument()
+    expect(
+      within(active).getByRole('button', { name: /Visa underlaget/ }),
+    ).toBeInTheDocument()
     /* The pointer, in the tab's own memory. Not the thesis. */
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"id":"case-1"')
     expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain('thesis')
@@ -320,6 +346,120 @@ describe('engaged', () => {
   })
 })
 
+/* ------------------------------------------------ the deeper surfaces */
+
+describe('the deeper surfaces, opened beside the conversation', () => {
+  const surface = (name: 'Styrelserummet' | 'Underlaget') =>
+    screen.getByRole('region', { name })
+
+  it('opens the Boardroom over the page, asks the firm for the case, and keeps the HQ beneath', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+
+    /* The canonical room: the fixture's investment question is its heading. */
+    const room = surface('Styrelserummet')
+    expect(
+      await within(room).findByRole('heading', { name: /Does the ECB cut before Q2\?/ }),
+    ).toBeInTheDocument()
+    expect(overview).toHaveBeenCalledWith({ data: 'case-1' })
+    /* Its own door out to the page as a page. */
+    expect(within(room).getByRole('link', { name: /Öppna som sida/ })).toHaveAttribute(
+      'href',
+      '/cases/case-1',
+    )
+    /* The page beneath is still there, and so is the conversation. */
+    expect(screen.getByText('/')).toBeInTheDocument()
+    expect(within(presence()).getByRole('list', { name: 'Samtal' })).toBeInTheDocument()
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"surface":"boardroom"')
+  })
+
+  it('opens the record the same way', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa underlaget/ }))
+
+    const record = surface('Underlaget')
+    expect(
+      await within(record).findByRole('heading', { name: 'Underlag' }),
+    ).toBeInTheDocument()
+    expect(within(record).getByRole('heading', { name: /Händelseförlopp/ })).toBeInTheDocument()
+    expect(within(record).getByRole('link', { name: /Öppna som sida/ })).toHaveAttribute(
+      'href',
+      '/cases/case-1/underlag',
+    )
+  })
+
+  it('closes on its own Escape and on its close button, leaving the conversation and the panel', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await within(surface('Styrelserummet')).findByRole('heading', {
+      name: /Does the ECB cut before Q2\?/,
+    })
+
+    /* The close button took focus on opening, so Escape lands in the surface. */
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('region', { name: 'Styrelserummet' })).toBeNull()
+    expect(screen.getByLabelText('Fråga')).toBeInTheDocument()
+    expect(
+      within(presence()).getByText('Jag behöver ditt beslut på en sak.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Visa underlaget/ }))
+    await within(surface('Underlaget')).findByRole('heading', { name: 'Underlag' })
+    await user.click(screen.getByRole('button', { name: 'Stäng underlaget' }))
+    expect(screen.queryByRole('region', { name: 'Underlaget' })).toBeNull()
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"surface":null')
+  })
+
+  it('goes with the panel when the panel collapses', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await within(surface('Styrelserummet')).findByRole('heading', {
+      name: /Does the ECB cut before Q2\?/,
+    })
+    await user.click(screen.getByRole('button', { name: 'Fäll ihop JARVIS' }))
+    expect(screen.queryByRole('region', { name: 'Styrelserummet' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Öppna JARVIS' })).toBeInTheDocument()
+  })
+
+  it('says what the route would say when the case cannot be read', async () => {
+    host.mockResolvedValue(td88)
+    overview.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    expect(
+      await within(surface('Styrelserummet')).findByText('Ärendet finns inte.'),
+    ).toBeInTheDocument()
+  })
+
+  it('survives a navigation beneath it', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    const router = await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: /Visa underlaget/ }))
+    await within(surface('Underlaget')).findByRole('heading', { name: 'Underlag' })
+    await act(async () => {
+      await router.navigate({ to: '/evidence' })
+    })
+    expect(screen.getByRole('region', { name: 'Underlaget' })).toBeInTheDocument()
+    expect(screen.getByText('/evidence')).toBeInTheDocument()
+  })
+})
+
 /* --------------------------------------------------- across navigation */
 
 describe('across navigation', () => {
@@ -408,6 +548,14 @@ describe('it talks to one thing', () => {
       /^~\/infrastructure\/analysis\/serverFns$/,
       /^~\/application\/analysis\/hostContract$/,
       /^~\/application\/analysis\/domainSystem$/,
+      /*
+       * Slice F: the two canonical pages, and only those, so the contextual
+       * surfaces are the Boardroom and the record rather than a rendering of
+       * their parts. Nothing beneath a page — no DebateFloor, no card, no
+       * presentation text — is reachable from here.
+       */
+      /^~\/components\/boardroom\/CaseOverviewPage$/,
+      /^~\/components\/headquarters\/CaseRecord$/,
       /^\.\//,
     ]
     const offenders: string[] = []
@@ -432,5 +580,24 @@ describe('it talks to one thing', () => {
     expect(source).not.toMatch(
       /getUserMedia|SpeechRecognition|speechSynthesis|MediaRecorder|AudioContext/,
     )
+  })
+
+  it('opens the one Boardroom and the one record the routes render', () => {
+    /*
+     * The ruling for slice F: no second Boardroom, no second Underlag. The
+     * page components live in one module each; the route files re-export
+     * them, and the surface imports the same modules. A `function
+     * CaseOverviewPage` appearing anywhere else is a second implementation.
+     */
+    const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
+    const room = read('src/routes/cases.$caseId.tsx')
+    const record = read('src/routes/cases.$caseId_.underlag.tsx')
+    const surface = read('src/components/jarvis/ContextualSurface.tsx')
+    expect(room).toContain("from '~/components/boardroom/CaseOverviewPage'")
+    expect(room).not.toMatch(/function CaseOverviewPage/)
+    expect(record).toContain("from '~/components/headquarters/CaseRecord'")
+    expect(record).not.toMatch(/function CaseRecord\b/)
+    expect(surface).toContain("from '~/components/boardroom/CaseOverviewPage'")
+    expect(surface).toContain("from '~/components/headquarters/CaseRecord'")
   })
 })

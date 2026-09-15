@@ -27,6 +27,15 @@
  * three the person must never confuse — work, no way forward, your decision —
  * are three different sentences.
  *
+ * ## The deeper surfaces open beside it
+ *
+ * "Visa hur ni kom fram till det" and "Visa underlaget" open the Boardroom and
+ * the record as contextual surfaces over the page, to the right of the
+ * conversation (`ContextualSurface`). They are the canonical pages, not
+ * copies; the routes stay where they were; closing the surface leaves the HQ
+ * beneath exactly as it was. Which surface is open is remembered with the
+ * conversation, and collapsing the presence closes it.
+ *
  * ## What it does not do yet
  *
  * It does not route. Every question typed here goes to the firm, because the
@@ -48,10 +57,12 @@ import {
 } from '~/infrastructure/analysis/serverFns'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
 import { answerLines, inspectionLines, phrase } from '~/presentation/jarvis/hostStateText'
+import { ContextualSurface, SURFACE_TEXT } from './ContextualSurface'
 import {
   resetPresence,
   updatePresence,
   usePresence,
+  type ContextualSurface as SurfaceKind,
   type PresenceTurn,
 } from './presenceStore'
 
@@ -132,8 +143,16 @@ export function JarvisPresence() {
     .reverse()
     .find((entry) => entry.by === 'jarvis')
 
+  /* Collapsing the presence closes whatever surface stood beside it. */
   const setOpen = (value: boolean) =>
-    updatePresence((state) => ({ ...state, open: value }))
+    updatePresence((state) => ({
+      ...state,
+      open: value,
+      surface: value ? state.surface : null,
+    }))
+
+  const setSurface = (surface: SurfaceKind | null) =>
+    updatePresence((state) => ({ ...state, surface }))
 
   /** One exchange with the firm: what was said, and what the firm answered. */
   async function consult(request: HostRequest, said?: string) {
@@ -195,33 +214,50 @@ export function JarvisPresence() {
   }
 
   return (
-    <aside
-      ref={asideRef}
-      aria-label="JARVIS"
-      onKeyDown={onKeyDown}
-      className={cn(
-        'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-line bg-[#070c14]/95 backdrop-blur-md transition-[width] duration-200',
-        /*
-         * Engaged, the presence fills the column the rail left — the landing
-         * page reserves exactly this — and no more. Measured: a wider panel
-         * ran over the column and clipped the greeting beside it.
-         */
-        open ? 'w-[306px]' : PRESENCE_STRIP_WIDTH,
-      )}
-    >
-      {open ? (
-        <ExpandedPanel
-          presence={presence}
-          busy={busy}
-          operator={operator}
-          mood={moodOf(busy, lastFromJarvis)}
-          onCollapse={() => setOpen(false)}
-          onConsult={consult}
+    <>
+      <aside
+        ref={asideRef}
+        aria-label="JARVIS"
+        onKeyDown={onKeyDown}
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-line bg-[#070c14]/95 backdrop-blur-md transition-[width] duration-200',
+          /*
+           * Engaged, the presence fills the column the rail left — the landing
+           * page reserves exactly this — and no more. Measured: a wider panel
+           * ran over the column and clipped the greeting beside it.
+           */
+          open ? 'w-[306px]' : PRESENCE_STRIP_WIDTH,
+        )}
+      >
+        {open ? (
+          <ExpandedPanel
+            presence={presence}
+            busy={busy}
+            operator={operator}
+            mood={moodOf(busy, lastFromJarvis)}
+            onCollapse={() => setOpen(false)}
+            onConsult={consult}
+            onOpenSurface={setSurface}
+          />
+        ) : (
+          <RestingStrip mood={moodOf(busy, lastFromJarvis)} onOpen={() => setOpen(true)} />
+        )}
+      </aside>
+      {/*
+       * A sibling of the presence, never a child: the surface stands over the
+       * page to the right of the engaged panel, and the panel keeps its own
+       * width, scroll and Escape.
+       */}
+      {open && presence.surface && presence.reference && (
+        <ContextualSurface
+          kind={presence.surface}
+          reference={presence.reference}
+          subject={presence.subject}
+          question={presence.question}
+          onClose={() => setSurface(null)}
         />
-      ) : (
-        <RestingStrip mood={moodOf(busy, lastFromJarvis)} onOpen={() => setOpen(true)} />
       )}
-    </aside>
+    </>
   )
 }
 
@@ -308,6 +344,7 @@ function ExpandedPanel({
   mood,
   onCollapse,
   onConsult,
+  onOpenSurface,
 }: {
   presence: ReturnType<typeof usePresence>
   busy: boolean
@@ -315,6 +352,7 @@ function ExpandedPanel({
   mood: Mood
   onCollapse: () => void
   onConsult: (request: HostRequest, said?: string) => Promise<void>
+  onOpenSurface: (surface: SurfaceKind) => void
 }) {
   const [question, setQuestion] = useState('')
   const [subject, setSubject] = useState('')
@@ -438,21 +476,27 @@ function ExpandedPanel({
               Hur gick debatten?
             </FollowUp>
           </div>
-          <div className="mt-2 flex gap-3">
-            <Link
-              to="/cases/$caseId"
-              params={{ caseId: reference.id }}
-              className="brd-console-link"
-            >
-              Visa hur ni kom fram till det →
-            </Link>
-            <Link
-              to="/cases/$caseId/underlag"
-              params={{ caseId: reference.id }}
-              className="brd-console-link"
-            >
-              Visa underlaget →
-            </Link>
+          {/*
+           * The doors to the deeper surfaces. Buttons, not links: they open
+           * the canonical page beside the conversation and leave the HQ where
+           * it is. The page as a page is one click further, in the surface's
+           * own header.
+           */}
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            {(['boardroom', 'underlag'] as const).map((surface) => (
+              <button
+                key={surface}
+                type="button"
+                onClick={() => onOpenSurface(surface)}
+                aria-pressed={presence.surface === surface}
+                className={cn(
+                  'brd-console-link',
+                  presence.surface === surface && 'text-content',
+                )}
+              >
+                {SURFACE_TEXT[surface].open} →
+              </button>
+            ))}
           </div>
         </section>
       )}

@@ -35,6 +35,16 @@ const TREE = loadTree()
  */
 const HEADQUARTERS = [
   'routes/cases.$caseId.tsx',
+  /*
+   * Slice F — the same Boardroom and record, opened beside JARVIS. The page
+   * components moved out of their route files so one implementation could be
+   * rendered from two doors; the boundary follows them, and the contextual
+   * surface that opens them is held to it too.
+   */
+  'components/boardroom/CaseOverviewPage.tsx',
+  'routes/cases.$caseId_.underlag.tsx',
+  'components/headquarters/CaseRecord.tsx',
+  'components/jarvis/ContextualSurface.tsx',
   'components/headquarters/CaseStandingPanel.tsx',
   'presentation/analysis/caseStandingText.ts',
   'routes/agents.index.tsx',
