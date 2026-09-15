@@ -91,6 +91,8 @@ const under =
  * credential handling apply to every outbound call rather than to most of them.
  */
 const HTTP_CLIENT = 'infrastructure/marketData/providers/httpClient.ts'
+/** The live-voice provider: an SDP exchange and a sideband socket, the one other network boundary. */
+const LIVE_VOICE_PROVIDER = 'infrastructure/jarvis/openaiLive.ts'
 
 /**
  * Same-origin static assets, frozen.
@@ -111,12 +113,15 @@ const HTTP_PACKAGES =
 
 const noOutboundNetwork: FitnessRule = {
   id: 'no-outbound-network-outside-http-client',
-  states: 'Only the shared http client performs an outbound network call.',
+  states: 'Only the shared http client and the live-voice provider perform an outbound network call.',
   because:
     'A direct call bypasses the network-disabled guard, the timeout and the ' +
     'provenance stamp, so a request nobody can see becomes a source nobody ' +
-    'can trace.',
-  selects: (file) => !file.isTest && file.path !== HTTP_CLIENT,
+    'can trace. The live-voice provider is the one other boundary: a WebRTC ' +
+    'SDP exchange and a sideband WebSocket, which no http client models. It ' +
+    'honours the same network-disabled guard and a timeout of its own, and ' +
+    'it ingests nothing into the record, so there is nothing to stamp.',
+  selects: (file) => !file.isTest && file.path !== HTTP_CLIENT && file.path !== LIVE_VOICE_PROVIDER,
   detect(file) {
     const allowedVia = FROZEN_STATIC_ASSET_FETCHES[file.path]
     const found: string[] = []

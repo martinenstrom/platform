@@ -338,6 +338,151 @@ still leave it under a tenth of the voice line. The budget of SEK 100–400 is
 roughly 3–12 open hours a month; closing idle sessions is the whole cost
 discipline.
 
+## 8. The architecture ruling of 2026-09-15, executed to the stop line
+
+GPT-Live-1 over WebRTC is JARVIS Voice v1's architecture. What the ruling
+ordered, and what each order measured.
+
+### 8.1 The six voices, for the ear
+
+```
+node scripts/voice-live/listen.mjs          # builds scripts/voice-live/results/listen.html
+```
+
+Open that file in a browser (or `http://localhost:4175/listen` while the
+proof server runs). One table per conversation; one row per voice with
+JARVIS's audio and the words beside it. The recordings are JARVIS's side of
+each session, captured in the browser with `?record=1`; nothing is ranked.
+
+### 8.2 Barge-in, measured against a speaking JARVIS
+
+Client mechanism: an energy detector on the microphone in `live.html`; when
+the person begins while JARVIS is speaking, the speaker is muted in the same
+animation frame and stays muted until JARVIS begins a new turn after the
+person's. The model hears everything; only the audible playback is cut.
+
+Two runs, JARVIS mid-sentence when the person began (the model kept its
+answers to ~4 s despite an instruction to speak for 20–30 s, so the
+interruption landed inside a short explanation, not a monologue):
+
+| Run | Person begins → playback cut | JARVIS's old turn ran on to | Person ends → backend | Person ends → new JARVIS turn |
+| --- | --- | --- | --- | --- |
+| 1 | 0 ms (same frame) | +1.4 s after onset | +0.8 s | +1.0 s |
+| 2 | 0 ms (same frame) | +1.0 s after onset | +0.8 s | +1.0 s |
+
+So: audible interruption is immediate on the client; the model itself
+stops within 1.0–1.4 s of the onset (its transcript shows _"och"_, _"…"_
+and silence); the new turn begins one second after the person stops. What
+the ear will judge is the second of near-silence between the cut and the
+new turn.
+
+### 8.3 English in → English out, retested
+
+Instruction tightened to name the acknowledgements (_"One moment."_) and to
+switch back only when the person does. Three runs of the all-English
+question: **3 of 3** answered in English (_"One moment." / "I'll look into
+it and get back to you."_), and the earlier slip did not recur. Backchannel
+fillers (_"Ehm"_) did not appear in the runs after the instruction to stay
+silent while the person continues; one run is not proof, and the ear on the
+listening set is.
+
+### 8.4 The real host boundary, instead of the stub
+
+The product now has its own door for a live session, and every delegation
+goes through the host gateway `financialOsHostFn` uses:
+
+```
+browser (mic, speaker, WebRTC, data channel)
+   → openLiveSessionFn { sdp, voice }            src/infrastructure/jarvis/serverFns.ts
+   → POST /v1/live/sessions with the server key  src/infrastructure/jarvis/openaiLive.ts
+   → sideband socket, held by the server         src/infrastructure/jarvis/liveSession.ts
+   → backend function call
+   → interpretToolCall → HostRequest             src/application/jarvis/liveTools.ts
+   → productHostGateway()                        src/infrastructure/analysis/runtime.ts (shared with financialOsHostFn)
+   → HostResult → toolSpeech                     src/presentation/jarvis/liveSpeech.ts
+   → response.item.create + response.create      back on the sideband
+```
+
+The browser sends an SDP offer and at most a voice name; `parseLiveOpen`
+refuses any other field by name. Measured on the dev server: an open request
+carrying `actorEmployeeId` came back `INVALID_REQUEST · actorEmployeeId`.
+The operator is the server-resolved one, JARVIS the initiator; the voice
+model sees four functions — delegate, check, result, add — and no command,
+run, playbook or actor.
+
+Measured on the product's door, the person's own recording as the microphone:
+
+| Dev server | The voice delegated, the firm answered | JARVIS said |
+| --- | --- | --- |
+| no operator configured | `ask` → `failed · operator-unresolved` | _"Det gick tyvärr inte att genomföra den här bedömningen nu eftersom ingen operatör är konfigurerad."_ — no promise |
+| `FINANCIAL_OS_OPERATOR_EMPLOYEE_ID` set to the dev research director | `ask` → a real case opened → `needs-decision` (TD-88) | _"Jag behöver ditt beslut på en sak: kommittén är sammankallad men saknar en utgångstes…"_ — a decision asked for, not work promised |
+
+The case the second run opened is in the dev firm's record with JARVIS as
+initiator and the research director as actor, through the same command and
+provenance path as a typed ask.
+
+**The temporary boundary, stated:** the execution-depth decision is made
+by the two models' instructions (the voice answers the easy, the backend
+reasons, only a judgement becomes a tool call) and by the tool boundary
+itself; the adaptive router of the addendum is not built, and no second
+router was invented inside GPT-Live. `add_to_delegation` has no host
+request to become and is refused honestly (TD-94).
+
+### 8.5 Reference before acknowledgement — structural
+
+- The sentence _"Jag kollar på det och återkommer"_ is produced in one place,
+  `toolSpeech` in `presentation/jarvis/liveSpeech.ts`, for one product state,
+  `working`; `acknowledgeWork` is false for every other state, and
+  `liveSpeech.test.ts` proves it for all six.
+- The voice model is told never to say it itself; the backend is told the
+  flag means what it says.
+- The session runtime watches the voice's own transcript and counts every
+  promise of work spoken while the firm has never reported `working`
+  (`ackWithoutReference`); `liveSession.test.ts` proves the count. Every
+  live run in this document since the strict instruction: **0**.
+- On the product door there was no `working` case to test the true
+  acknowledgement against — the dev firm's asks land in TD-88 — so the
+  positive sentence has been exercised through the unit table and the
+  proof-server stub, not yet through a live case that is actually running.
+
+### 8.6 Open-session cost protection
+
+The server closes a session after `JARVIS_LIVE_IDLE_SECONDS` (default 90)
+without user speech, and no session outlives `JARVIS_LIVE_MAX_SECONDS`
+(default 1 200). Measured on the proof server with a 30-second policy: the
+session closed itself 30 s after the last word, reason recorded as
+`idle 30 s`, final usage read from `session.closed`. Sessions start and stop
+only on the person's explicit action; there is no always-on path.
+Telemetry per session and in total (`liveTelemetryFn`): voice seconds,
+voice cost, backend tokens and cost, tool calls, delegations, typed
+injections, invariant violations, close reason. No transcript.
+
+### 8.7 Tests and probes
+
+- `src/application/jarvis/liveTools.test.ts` — the four functions, the
+  actor stripped, the note refused.
+- `src/presentation/jarvis/liveSpeech.test.ts` — the invariant table.
+- `src/infrastructure/jarvis/liveSession.test.ts` — the runtime against a
+  fake sideband and a fake firm: delegation, states, reference memory,
+  the watcher, cost, idle close, typed text, provider refusal.
+- `src/test/fitness` — the network rule now names the live-voice provider
+  as the second boundary and checks it honours the network-disabled guard
+  and a timeout; a planted `fetch` in another jarvis file failed the rule
+  before the allowance was trusted.
+- `scripts/probe-jarvis-live.mjs` — the product door, live, both operator
+  states above.
+- `scripts/voice-live/probe-live.mjs` — the proof server: barge-in,
+  English, idle.
+
+### 8.8 Still open before "production-complete"
+
+- The person's choice of voice.
+- Wiring the presence's microphone button to `openLiveSessionFn` — the UI
+  is deliberately untouched; the door exists, the button does not.
+- A live `working` case on the product door, once the dev firm has one.
+- Barge-in judged by ear on the second of near-silence.
+- TD-93 (one process holds the sideband) before a second server instance.
+
 ### 7.9 What this proof did not settle
 
 - How the voices _sound_ in Swedish — the recordings are there; the ear is

@@ -74,6 +74,18 @@ const CONVERSATIONS = {
    * question with one short sentence. A conceptual question earns a longer
    * answer; the follow-up lands 2.5 s into it.
    */
+  /*
+   * The ruling's barge-in proof: the session is told (by the probe, through
+   * session.instructions.append) to answer at length; the follow-up lands
+   * about four seconds into that answer, which begins ≈4 s after the
+   * question ends.
+   */
+  'c8-bargein': [
+    { id: '02', silenceBefore: 3.0 },
+    { id: 'silence', seconds: 8.0 },
+    { id: '09', silenceBefore: 0 },
+    { id: 'silence', seconds: 15 },
+  ],
   'c7-interrupt': [
     { id: '02', silenceBefore: 3.0 },
     /*

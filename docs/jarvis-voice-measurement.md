@@ -323,6 +323,11 @@ optionally `OPENAI_API_KEY`. Plus the person's own twelve recordings.
 **Run on 2026-09-15** → [`jarvis-voice-bakeoff.md`](./jarvis-voice-bakeoff.md):
 the results, what could not be measured and why, and the recommendation.
 
+**Superseded the same day for the primary path** by the revised cost
+ruling: GPT-Live-1 over WebRTC is JARVIS Voice v1 →
+[`jarvis-voice-live-proof.md`](./jarvis-voice-live-proof.md). The chained
+STT/TTS evidence above remains the benchmark and fallback research.
+
 ## 10. Data and retention
 
 - **Raw audio is never persisted by JARVIS.** It exists as a stream from

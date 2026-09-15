@@ -2530,3 +2530,44 @@ what authority, with what ledger entry); safe retry and resume; and
 exactly-once / idempotent continuation. Until then the gateway's behaviour is
 an accepted mitigation, not orchestration semantics — and the orphan above is
 left in the dev firm as the specimen.
+
+## TD-93 · a live voice session's sideband lives in one process · open
+
+**Opened 2026-09-15**, with the JARVIS live-voice integration
+(`infrastructure/jarvis/liveSession.ts`).
+
+A GPT-Live session is created by the server process that received the
+browser's SDP offer, and that process attaches the sideband socket through
+which every delegation call is executed and every usage event is read. The
+session registry is in-memory in that process. A deployment with more than
+one server instance would route `liveSessionStateFn`, `typeIntoLiveSessionFn`
+and `closeLiveSessionFn` to whichever instance answered, which may not be the
+one holding the sideband — and a restart drops every open session's
+telemetry with it.
+
+**Until then:** one server instance, which is the dev and current shape. The
+debt is to decide, when a second instance exists, whether sessions are pinned
+to an instance, the sideband is held by a dedicated process, or the registry
+is externalised; none of it changes the host boundary.
+
+## TD-94 · a spoken addition to an open case has no door in the host contract · open
+
+**Opened 2026-09-15**, measured in the GPT-Live proof
+(`docs/jarvis-voice-live-proof.md` §7.5): the person continues talking while a
+case is open — _"ta hänsyn till dollarn också"_ — and the voice model calls
+`add_to_delegation`.
+
+The host contract (`application/analysis/hostContract.ts`) carries
+`ask`, `resume`, `status`, `result` and `inspect`. Nothing attaches context to
+a case after it is opened, and the institution has no act for it: an addition
+to a question is either a new question, or evidence, or a revision of the
+thesis, and which of those it is would be a decision the voice layer is not
+allowed to make. `interpretToolCall` therefore refuses the tool as
+`context-not-supported` and JARVIS says so — the remark stays in the session's
+own conversation, which is conversational data and not the institutional
+record.
+
+**The debt.** Rule on what a spoken addition is institutionally, give it an
+act with provenance if it deserves one, and only then a host request. Not
+before: a "note" that silently entered a case would be authority inferred
+from a transcript the ruling of 2026-09-15 explicitly denies that standing.

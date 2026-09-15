@@ -59,6 +59,11 @@ async function runOne(conversation, voice) {
   try {
     await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Live'), null, { timeout: 30_000 })
     startedMs = Date.now() - clicked
+    /* Optional: a trusted instruction for this session, e.g. to answer at length for the barge-in proof. */
+    if (process.env.LIVE_INSTRUCT) {
+      const id = await page.evaluate(() => window.__proof.sessionId)
+      await fetch(`${base}/session/${id}/instructions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: process.env.LIVE_INSTRUCT }) })
+    }
   } catch {
     const status = await page.textContent('#status')
     const events = await page.textContent('#events')
@@ -88,11 +93,32 @@ async function runOne(conversation, voice) {
     turns: window.__proof.turns.map((t) => ({ who: t.who, text: t.text, startMs: t.startMs, endMs: t.endMs })),
     latencies: window.__proof.latencies,
     interrupts: window.__proof.interrupts,
+    bargeIns: window.__proof.bargeIns,
     sessionId: window.__proof.sessionId,
     events: document.getElementById('events').textContent,
   }))
-  await page.click('#disconnect')
-  await page.waitForTimeout(2500)
+  /*
+   * Optional: do not disconnect; let the server's idle policy close the
+   * session, and measure how long that took from the last user speech.
+   */
+  let idle = null
+  if (process.env.LIVE_IDLE_WAIT === '1') {
+    const started = Date.now()
+    let closed = false
+    while (Date.now() - started < 180_000) {
+      await page.waitForTimeout(1000)
+      const s = await (await fetch(`${base}/session/${snapshot.sessionId}/state`)).json()
+      if (s.closed) {
+        closed = true
+        idle = { closedBy: s.telemetry.reason, idleClosed: s.telemetry.idleClosed, voiceSeconds: s.telemetry.voiceSeconds, waitedMs: Date.now() - started }
+        break
+      }
+    }
+    if (!closed) idle = { closedBy: null, waitedMs: Date.now() - started }
+  } else {
+    await page.click('#disconnect')
+    await page.waitForTimeout(2500)
+  }
   const final = await (await fetch(`${base}/session/${snapshot.sessionId}/state`)).json()
   let recording = null
   if (process.env.LIVE_RECORD === '1') {
@@ -143,7 +169,11 @@ async function runOne(conversation, voice) {
     latenciesMs: snapshot.latencies,
     responseLatenciesMs: responseLatencies,
     interruptions,
+    bargeIns: snapshot.bargeIns,
     ackBeforeReference,
+    ackWithoutReference: final.telemetry.ackWithoutReference ?? 0,
+    instruct: process.env.LIVE_INSTRUCT ?? null,
+    idle,
     interrupts: snapshot.interrupts,
     delegations: final.delegations,
     telemetry: final.telemetry,
@@ -153,7 +183,6 @@ async function runOne(conversation, voice) {
     browserErrors: errors,
     events: snapshot.events,
   }
-  writeFileSync(join(RESULTS, `probe-${conversation.name}-${voice}.json`), JSON.stringify(result, null, 2))
   return result
 }
 
@@ -168,7 +197,7 @@ for (const conversation of conversations) {
       if (r.failed) console.log(`FAILED ${r.failed}`)
       else
         console.log(
-          `started ${r.startedAfterMs} ms · turns ${r.turns.length} · response ${r.responseLatenciesMs.map((x) => x ?? '–').join('/')} ms · interruptions ${r.interruptions.length}${r.interruptions.length ? ' (stop ' + r.interruptions.map((i) => i.stopLatencyMs).join('/') + ' ms)' : ''} · delegations ${r.delegations.length} · tools ${JSON.stringify(r.telemetry.toolCallsByName)} · ${r.telemetry.voiceSeconds} s · $${(r.telemetry.voiceCostUsd + r.telemetry.backend.costUsd).toFixed(4)}${r.recording ? ' · recording saved' : ''}`,
+          `started ${r.startedAfterMs} ms · turns ${r.turns.length} · response ${r.responseLatenciesMs.map((x) => x ?? '–').join('/')} ms · barge-ins ${r.bargeIns.length}${r.bargeIns.length ? ' ' + JSON.stringify(r.bargeIns) : ''} · ack-without-ref ${r.ackWithoutReference} · delegations ${r.delegations.length} · tools ${JSON.stringify(r.telemetry.toolCallsByName)} · ${r.telemetry.voiceSeconds} s · $${(r.telemetry.voiceCostUsd + r.telemetry.backend.costUsd).toFixed(4)}${r.recording ? ' · recording saved' : ''}`,
         )
     } catch (error) {
       console.log(`ERROR ${error.message}`)
@@ -179,11 +208,18 @@ for (const conversation of conversations) {
 
 /* ------------------------------------------------------------- report */
 
-/* Every result on disk, not just this run's, so the report is the whole picture. */
+/* Every result on disk, not just this run's, so the report is the whole picture — one row per session. */
+const seenSessions = new Set()
 const all = readdirSync(RESULTS)
   .filter((f) => /^probe-.*\.json$/.test(f))
   .sort()
   .map((f) => JSON.parse(readFileSync(join(RESULTS, f), 'utf8')))
+  .filter((r) => {
+    if (!r.sessionId) return true
+    if (seenSessions.has(r.sessionId)) return false
+    seenSessions.add(r.sessionId)
+    return true
+  })
 
 const lines = [
   '# GPT-Live probe — what JARVIS heard, said and did',
@@ -220,7 +256,10 @@ for (const r of all) {
     '| --- | --- | --- |',
   )
   for (const t of r.turns) lines.push(`| ${t.who} | ${(t.startMs / 1000).toFixed(1)}–${(t.endMs / 1000).toFixed(1)} s | ${t.text.replace(/\|/g, '\\|')} |`)
-  lines.push('', `Assistant audio segments: ${(r.telemetry.timeline?.outputAudio ?? []).map((s) => `${(s.startMs / 1000).toFixed(1)}–${(s.endMs / 1000).toFixed(1)} s`).join(', ') || '–'}`, '')
+  if ((r.bargeIns ?? []).length)
+    lines.push('', `Barge-ins (client cut): ${r.bargeIns.map((b) => `onset ${b.onsetSessionMs} ms → muted in ${b.mutedAfterMs} ms; user ended ${b.userEndSessionMs} ms; JARVIS's old turn ran to ${b.assistantRanToSessionMs ?? '?'} ms; new turn at ${b.newTurnSessionMs ?? '?'} ms`).join('; ')}`, '')
+  if (r.instruct) lines.push(`Session instruction: ${r.instruct}`, '')
+  lines.push('', `Acknowledgement without reference (invariant violations): ${r.ackWithoutReference ?? 0}`, '')
   if (r.delegations.length) lines.push(`Delegations: ${r.delegations.map((d) => `${d.reference.id} (${d.state}, notes ${d.notes.length}) — ${d.subject}: ${d.question}`).join('; ')}`, '')
   if (r.browserErrors.length) lines.push(`Browser errors: ${r.browserErrors.join(' | ')}`, '')
 }

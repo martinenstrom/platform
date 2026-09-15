@@ -49,12 +49,26 @@ describe('the exceptions the rules grant', () => {
     }
   })
 
-  it('keeps the http client the only module that needs the exception', () => {
-    // The allowance is a single path. If the client is ever split or renamed,
-    // the rule's own selector stops excluding anything and this fails first.
-    const client = TREE.find(
-      (file) => file.path === 'infrastructure/marketData/providers/httpClient.ts',
-    )
-    expect(client, 'the approved http client has moved').toBeDefined()
+  it('keeps the two network boundaries the only modules that need the exception', () => {
+    // The allowance is two named paths. If either is split or renamed, the
+    // rule's own selector stops excluding it and this fails first.
+    for (const path of [
+      'infrastructure/marketData/providers/httpClient.ts',
+      'infrastructure/jarvis/openaiLive.ts',
+    ]) {
+      expect(
+        TREE.find((file) => file.path === path),
+        `an approved network boundary has moved: ${path}`,
+      ).toBeDefined()
+    }
+    /*
+     * The live-voice provider earns its exception by honouring the same
+     * network-disabled guard the http client does, and by bounding its one
+     * HTTP call with a timeout. Checked on the source, so the allowance
+     * cannot outlive the reason for it.
+     */
+    const live = TREE.find((file) => file.path === 'infrastructure/jarvis/openaiLive.ts')!
+    expect(live.code).toContain('networkDisabled')
+    expect(live.code).toContain('AbortSignal.timeout')
   })
 })

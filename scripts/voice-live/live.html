@@ -99,6 +99,92 @@
       let recorder = null
       let recorded = []
 
+      /* ---------------------------------------------- barge-in, client side */
+      /*
+       * GPT-Live keeps talking for a while after the person starts (measured:
+       * it finished a short sentence, 2.8 s). The audible cut is made here:
+       * a local energy detector on the microphone; when the person begins
+       * while JARVIS is speaking, playback is muted at once and stays muted
+       * until JARVIS begins a new turn after the person's. The model still
+       * hears everything; only the speaker is cut.
+       */
+      const VAD_THRESHOLD = Number(new URLSearchParams(location.search).get('vad') ?? 0.02)
+      const VAD_HOLD_MS = 600
+      let startedWall = null // wall clock at session.started ≈ session clock zero
+      let assistantLastFragmentWall = 0
+      let userSpeaking = false
+      let userLastAboveWall = 0
+      let userSpeechEndSessionMs = null
+      let bargeIn = null // the one in flight
+      const bargeIns = []
+      const sessionMs = (wall) => (startedWall === null ? null : Math.round(wall - startedWall))
+
+      function watchMicrophone(mediaStream) {
+        const ctx = new AudioContext()
+        const source = ctx.createMediaStreamSource(mediaStream)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 1024
+        source.connect(analyser)
+        const data = new Float32Array(analyser.fftSize)
+        const tick = () => {
+          if (!pc) return
+          analyser.getFloatTimeDomainData(data)
+          let sum = 0
+          for (const v of data) sum += v * v
+          const rms = Math.sqrt(sum / data.length)
+          const now = performance.now()
+          if (rms > VAD_THRESHOLD) {
+            userLastAboveWall = now
+            if (!userSpeaking) {
+              userSpeaking = true
+              onUserSpeechStart(now)
+            }
+          } else if (userSpeaking && now - userLastAboveWall > VAD_HOLD_MS) {
+            userSpeaking = false
+            onUserSpeechEnd(now - VAD_HOLD_MS)
+          }
+          requestAnimationFrame(tick)
+        }
+        ctx.resume().then(tick)
+      }
+
+      function assistantIsSpeaking(now) {
+        return now - assistantLastFragmentWall < 900
+      }
+
+      function onUserSpeechStart(now) {
+        if (!assistantIsSpeaking(now)) return
+        $('audio').muted = true
+        bargeIn = { onsetSessionMs: sessionMs(now), onsetWall: now, mutedAfterMs: Math.round(performance.now() - now), userEndSessionMs: null, assistantRanToSessionMs: null, newTurnSessionMs: null, firstBackendEventAfterMs: null }
+        bargeIns.push(bargeIn)
+        log(`barge-in: user began at ${bargeIn.onsetSessionMs} ms while JARVIS spoke — playback muted in ${bargeIn.mutedAfterMs} ms`)
+      }
+
+      function onUserSpeechEnd(endWall) {
+        userSpeechEndSessionMs = sessionMs(endWall)
+        if (bargeIn && bargeIn.userEndSessionMs === null) {
+          bargeIn.userEndSessionMs = userSpeechEndSessionMs
+          log(`barge-in: user ended at ${bargeIn.userEndSessionMs} ms`)
+        }
+      }
+
+      function onAssistantFragment(startMs, endMs) {
+        const now = performance.now()
+        assistantLastFragmentWall = now
+        if (!bargeIn) return
+        /* The old turn running on after the onset: measured from the transcript. */
+        if (startMs < (bargeIn.userEndSessionMs ?? Infinity) + 200 && bargeIn.newTurnSessionMs === null) {
+          bargeIn.assistantRanToSessionMs = Math.max(bargeIn.assistantRanToSessionMs ?? 0, endMs)
+        }
+        /* The new turn: a fragment beginning after the person finished. Unmute. */
+        if (bargeIn.userEndSessionMs !== null && startMs >= bargeIn.userEndSessionMs - 200 && bargeIn.newTurnSessionMs === null) {
+          bargeIn.newTurnSessionMs = startMs
+          $('audio').muted = false
+          log(`barge-in: new JARVIS turn at ${startMs} ms — playback unmuted; JARVIS had run on to ${bargeIn.assistantRanToSessionMs ?? '?'} ms`)
+          bargeIn = null
+        }
+      }
+
       /* ------------------------------------------------- transcript model */
       /* Fragments arrive per speaker with a session-time range; turns are grouped by gaps. */
       const fragments = { user: [], assistant: [] }
@@ -205,6 +291,7 @@
           }
         })
         for (const track of stream.getAudioTracks()) pc.addTrack(track, stream)
+        watchMicrophone(stream)
         channel = pc.createDataChannel('oai-events')
         channel.addEventListener('message', ({ data }) => onEvent(JSON.parse(data)))
         channel.addEventListener('close', () => log('data channel closed'))
@@ -285,6 +372,7 @@
       function onEvent(event) {
         switch (event.type) {
           case 'session.started':
+            startedWall = performance.now()
             $('status').textContent = `Live · ${event.session?.id ?? sessionId} · säg något`
             log('session.started')
             break
@@ -292,13 +380,15 @@
             addFragment('user', event.delta, event.start_ms, event.end_ms)
             break
           case 'session.output_transcript.delta':
+            onAssistantFragment(event.start_ms, event.end_ms)
             addFragment('assistant', event.delta, event.start_ms, event.end_ms)
+            break
+          case 'session.delegation.created':
+            if (bargeIn && bargeIn.userEndSessionMs !== null && bargeIn.firstBackendEventAfterMs === null) bargeIn.firstBackendEventAfterMs = event.offset_ms ?? sessionMs(performance.now())
+            log(`delegation ${event.delegation?.id} → ${event.delegation?.target}`)
             break
           case 'session.usage.updated':
             $('m-seconds').textContent = String(event.usage?.seconds ?? '?')
-            break
-          case 'session.delegation.created':
-            log(`delegation ${event.delegation?.id} → ${event.delegation?.target}`)
             break
           case 'response.event': {
             const inner = event.event?.type
@@ -388,7 +478,7 @@
           }
           log(`config: ${c.model} · backend ${c.backendModel} · $${c.prices.voicePerMinute}/min`)
         })
-      window.__proof = { turns, latencies, get interrupts() { return interrupts }, get sessionId() { return sessionId } }
+      window.__proof = { turns, latencies, bargeIns, get interrupts() { return interrupts }, get sessionId() { return sessionId } }
     </script>
   </body>
 </html>

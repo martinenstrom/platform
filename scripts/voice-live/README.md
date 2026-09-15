@@ -41,6 +41,21 @@ LIVE_RECORD=1 node scripts/voice-live/probe-live.mjs c4-terms          # keep JA
 LIVE_TYPED="Vad är term premium?" node scripts/voice-live/probe-live.mjs c5-english   # then type into the live session
 ```
 
+```
+node scripts/voice-live/listen.mjs           # results/listen.html: the six voices, JARVIS's audio beside the words
+LIVE_INSTRUCT="Svara utförligt i 20–30 sekunder." node scripts/voice-live/probe-live.mjs c8-bargein   # the barge-in proof
+LIVE_IDLE_WAIT=1 node scripts/voice-live/probe-live.mjs c1-nvidia-cpi                                   # let the idle policy close it
+```
+
+The page cuts audible playback the moment the person begins speaking while
+JARVIS is speaking (`?vad=0.02` sets the microphone energy threshold), and
+unmutes when JARVIS's next turn begins; `__proof.bargeIns` carries the
+timings. With `?record=1` JARVIS's audio is kept locally per session.
+
+The product's own door — `openLiveSessionFn` and the session runtime in
+`src/infrastructure/jarvis/` — is probed by `scripts/probe-jarvis-live.mjs`
+against the dev server; this proof server remains the standalone bench.
+
 Server options: `LIVE_ACK_MODE=strict` (recommended; measured to keep
 "Jag kollar på det och återkommer" after the reference exists — see the
 proof document), `LIVE_BACKEND_MODEL`, `LIVE_VOICE`, `LIVE_PRICE_PER_MINUTE`,

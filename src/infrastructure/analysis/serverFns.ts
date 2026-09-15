@@ -103,17 +103,13 @@ import {
   type StartInvestmentCaseResult,
 } from '~/application/analysis/startInvestmentCase'
 import { parseHostRequest, type HostResult } from '~/application/analysis/hostContract'
-import {
-  createHostGateway,
-  HOST_ORCHESTRATOR_ID,
-} from '~/application/analysis/hostGateway'
 import type { RejectionCode } from '~/application/analysis/commandLog'
 import {
   CONTRIBUTION_REJECTION_CODES,
   type ContributionRejectionCode,
   type RunState,
 } from '~/domain/analysis'
-import { createAnalysisContainer, type AnalysisContainer } from './container'
+import { NotConfiguredError, productHostGateway, runtime } from './runtime'
 import { systemClock } from '~/domain/shared/clock'
 
 /** Bounded. Never free text, and never anything read out of the failure. */
@@ -229,46 +225,12 @@ export type ActResponse =
   | { ok: false; outcome: 'refused'; code: RejectionCode }
   | { ok: false; outcome: 'failed'; code: AnalysisReadFailure }
 
-let container: Promise<AnalysisContainer> | null = null
-
-/**
- * The runtime connects as the application role, never as the schema owner.
- *
- * A separate variable from `DATABASE_URL` on purpose: that one is the owner
- * connection the migrations run under, and it can drop tables. Reusing it here
- * would hand the request path a privilege the request path must never hold.
+/*
+ * The runtime — one container per process, and the `NotConfiguredError` every
+ * handler below translates into `NOT_CONFIGURED` — lives in `./runtime` now,
+ * so the JARVIS live-voice session reaches the same pool and the same host
+ * gateway from outside a request. Nothing about it changed in the move.
  */
-function connectionString(): string | null {
-  return process.env.ANALYSIS_DATABASE_URL ?? null
-}
-
-async function runtime(): Promise<AnalysisContainer> {
-  if (!container) {
-    const url = connectionString()
-    if (!url) throw new NotConfiguredError()
-    container = createAnalysisContainer({
-      connectionString: url,
-      buildId: process.env.BUILD_ID ?? 'dev',
-      clock: systemClock,
-    })
-    /*
-     * A failed start must not be cached as a permanent failure. Without this a
-     * database that was briefly unreachable at boot would keep the process
-     * refusing until it was restarted.
-     */
-    container.catch(() => {
-      container = null
-    })
-  }
-  return container
-}
-
-class NotConfiguredError extends Error {
-  constructor() {
-    super('The analysis runtime has no database configured.')
-    this.name = 'NotConfiguredError'
-  }
-}
 
 /**
  * One case, in full, as the institution holding it.
@@ -1144,20 +1106,7 @@ export const financialOsHostFn = createServerFn({ method: 'POST' })
       return { state: 'failed', reason: 'invalid-request', field: parsed.field }
 
     try {
-      const analysis = await runtime()
-      const gateway = createHostGateway({
-        system: analysis.domainSystem(),
-        operator: async () => {
-          const deps = await analysis.commandDeps()
-          return resolveCurrentOperator(process.env[OPERATOR_ENV], deps.organization)
-        },
-        surfaces: (caseId) => ({
-          boardroom: `/cases/${caseId}`,
-          record: `/cases/${caseId}/underlag`,
-        }),
-        orchestratorId: HOST_ORCHESTRATOR_ID,
-        now: () => systemClock.isoNow(),
-      })
+      const gateway = await productHostGateway()
       return await gateway(parsed.request)
     } catch (error) {
       if (error instanceof NotConfiguredError) {

@@ -32,7 +32,7 @@
  */
 
 import { createServer } from 'node:http'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadEnv } from '../voice-bakeoff/lib.mjs'
@@ -80,6 +80,13 @@ export const CONFIG = {
    * ruling's sentence for the tool's confirmation.
    */
   ackMode: process.env.LIVE_ACK_MODE ?? 'natural',
+  /*
+   * Open session time is the cost. A session with no user speech for
+   * LIVE_IDLE_SECONDS is closed by the server, and no session outlives
+   * LIVE_MAX_SECONDS, whatever the browser does.
+   */
+  idleSeconds: Number(process.env.LIVE_IDLE_SECONDS ?? 90),
+  maxSeconds: Number(process.env.LIVE_MAX_SECONDS ?? 1200),
 }
 
 /* ---------------------------------------------------------- instructions */
@@ -96,7 +103,8 @@ ${
 }
 Påstå aldrig att kommittén är klar eller vad den kom fram till förrän ett resultat faktiskt finns.
 Fortsätter användaren tala medan ett ärende pågår, till exempel "ta hänsyn till dollarn också", ska det läggas till i det pågående ärendet via backend; bekräfta kort, en gång.
-Tala alltid samtalets språk: det backend ber dig förmedla säger du på det språk användaren just använde, översatt om det behövs.
+Språkregel, utan undantag: talar användaren engelska svarar du på engelska — även "One moment." och "I'll look into it and get back to you." — och byter tillbaka till svenska först när användaren gör det. Det backend ber dig förmedla säger du på det språk användaren senast använde, översatt om det behövs.
+Medan användaren tydligt fortsätter tala: var tyst. Inga "ehm", inga fyllnadsord. När turen verkligen är slut: svara snabbt och säkert.
 Läs aldrig upp tekniska id:n, referenser eller verktygsnamn.`
 
 const BACKEND_INSTRUCTIONS = `Du är JARVIS resonerande lager bakom rösten. Du får samtalets kontext från röstlagret. Svara alltid på svenska med engelska finanstermer oförändrade, i kort talat format: inga listor, inga id:n.
@@ -234,6 +242,9 @@ function newTelemetry(sessionId) {
     toolCallsByName: {},
     delegationsCreated: 0,
     typedInjections: 0,
+    /* The invariant, watched: the acknowledgement sentence spoken while no reference existed. */
+    ackWithoutReference: 0,
+    idleClosed: false,
     eventCounts: {},
     firstStartedMs: null,
     projectedPerHourUsd: 0,
@@ -350,6 +361,21 @@ async function attachSideband(record) {
     socket.addEventListener('error', (event) => reject(new Error(event.message ?? 'websocket error')), { once: true })
   })
   console.log(`[${record.id}] sideband attached`)
+  /* Idle and maximum-length policy: the server closes what the browser forgot. */
+  record.lastUserSpeechWallMs = Date.now()
+  record.openedWallMs = Date.now()
+  record.watchdog = setInterval(() => {
+    if (record.closed) return clearInterval(record.watchdog)
+    const idle = (Date.now() - record.lastUserSpeechWallMs) / 1000
+    const age = (Date.now() - record.openedWallMs) / 1000
+    if (idle >= CONFIG.idleSeconds || age >= CONFIG.maxSeconds) {
+      t.idleClosed = true
+      t.reason = idle >= CONFIG.idleSeconds ? `idle ${Math.round(idle)} s` : `max ${Math.round(age)} s`
+      console.log(`[${record.id}] closing: ${t.reason}`)
+      send(record, { type: 'session.close', event_id: `watchdog_${Date.now()}` })
+      clearInterval(record.watchdog)
+    }
+  }, 1000)
   socket.addEventListener('message', ({ data }) => {
     let event
     try {
@@ -371,8 +397,23 @@ async function attachSideband(record) {
         noteOutputAudio(t, event.start_ms, event.end_ms)
         break
       case 'session.output_transcript.delta':
+        if (typeof event.end_ms === 'number') t.timeline.lastAudioMs = Math.max(t.timeline.lastAudioMs, event.end_ms)
+        /*
+         * The invariant, watched at the only place it can be seen: if the
+         * sentence that claims delegated work is spoken and no reference
+         * exists in this session, count it. Nothing here can stop the
+         * model mid-word; what it can do is make a violation measurable.
+         */
+        record.spokenTail = (record.spokenTail ?? '').slice(-160) + (event.delta ?? '')
+        if (/kollar på det och återkommer|get back to you/i.test(record.spokenTail) && record.stub.delegations.length === 0) {
+          t.ackWithoutReference += 1
+          record.spokenTail = ''
+          console.error(`[${record.id}] INVARIANT: acknowledgement spoken with no reference`)
+        }
+        break
       case 'session.input_transcript.delta':
         if (typeof event.end_ms === 'number') t.timeline.lastAudioMs = Math.max(t.timeline.lastAudioMs, event.end_ms)
+        record.lastUserSpeechWallMs = Date.now()
         break
       case 'session.delegation.created':
         t.delegationsCreated += 1
@@ -389,7 +430,8 @@ async function attachSideband(record) {
       }
       case 'session.closed':
         t.voiceSeconds = event.usage?.seconds ?? t.voiceSeconds
-        t.reason = event.reason ?? null
+        t.reason = t.idleClosed ? t.reason : (event.reason ?? null)
+        clearInterval(record.watchdog)
         t.closedAt = new Date().toISOString()
         project(t)
         record.closed = event
@@ -548,10 +590,17 @@ createServer(async (request, response) => {
       const record = await createSession(sdp, voice)
       return json(response, 200, { sessionId: record.id, sdp: (await sessionAnswer(record)) })
     }
-    const match = /^\/session\/([^/]+)\/(state|text|close|recording|audio)$/.exec(path)
+    const match = /^\/session\/([^/]+)\/(state|text|close|recording|audio|instructions)$/.exec(path)
     if (match) {
       const record = sessions.get(match[1])
       if (!record) return json(response, 404, { error: 'no such session' })
+      if (match[2] === 'instructions' && request.method === 'POST') {
+        /* Trusted application instructions mid-session — the probe uses it to ask for a deliberately long answer. */
+        const { content } = await readBody(request)
+        if (!content) return json(response, 400, { error: 'content required' })
+        send(record, { type: 'session.instructions.append', event_id: `instr_${Date.now()}`, delegation_id: null, content: String(content).slice(0, 1500) })
+        return json(response, 202, { injected: 'session.instructions.append' })
+      }
       if (match[2] === 'audio' && request.method === 'POST') {
         /*
          * JARVIS's side of the conversation, captured by the browser from
@@ -616,6 +665,19 @@ createServer(async (request, response) => {
     }
     if (request.method === 'GET' && path === '/telemetry') {
       return json(response, 200, { sessions: [...sessions.values()].map((r) => r.telemetry), textPath: textTelemetry })
+    }
+    if (request.method === 'GET' && path === '/listen') {
+      const file = join(RESULTS, 'listen.html')
+      if (!existsSync(file)) return json(response, 404, { error: 'run node scripts/voice-live/listen.mjs first' })
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      return response.end(readFileSync(file))
+    }
+    const asset = /^\/(?:results\/)?(live-[\w.-]+\.webm)$/.exec(path)
+    if (request.method === 'GET' && asset) {
+      const file = join(RESULTS, asset[1])
+      if (!existsSync(file)) return json(response, 404, { error: 'no such recording' })
+      response.writeHead(200, { 'content-type': 'audio/webm' })
+      return response.end(readFileSync(file))
     }
     response.writeHead(404).end()
   } catch (error) {
