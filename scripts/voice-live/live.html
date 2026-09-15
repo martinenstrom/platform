@@ -96,6 +96,8 @@
       let stream = null
       let muted = false
       let poll = null
+      let recorder = null
+      let recorded = []
 
       /* ------------------------------------------------- transcript model */
       /* Fragments arrive per speaker with a session-time range; turns are grouped by gaps. */
@@ -191,8 +193,16 @@
         }
         pc = new RTCPeerConnection()
         pc.addEventListener('track', (event) => {
-          $('audio').srcObject = new MediaStream([event.track])
+          const remote = new MediaStream([event.track])
+          $('audio').srcObject = remote
           $('audio').play().catch(() => log('autoplay blocked — press play on the audio element'))
+          /* Opt-in: keep JARVIS's side locally so a voice can be listened to again. Never the microphone. */
+          if (new URLSearchParams(location.search).get('record') === '1') {
+            recorder = new MediaRecorder(remote, { mimeType: 'audio/webm;codecs=opus' })
+            recorder.ondataavailable = (e) => recorded.push(e.data)
+            recorder.start(1000)
+            log('recording JARVIS’s audio locally (record=1)')
+          }
         })
         for (const track of stream.getAudioTracks()) pc.addTrack(track, stream)
         channel = pc.createDataChannel('oai-events')
@@ -245,6 +255,18 @@
       }
 
       async function disconnect() {
+        if (recorder && recorder.state !== 'inactive') {
+          await new Promise((resolve) => {
+            recorder.onstop = resolve
+            recorder.stop()
+          })
+          const blob = new Blob(recorded, { type: 'audio/webm;codecs=opus' })
+          const r = await fetch(`/session/${sessionId}/audio`, { method: 'POST', body: blob })
+          log(`saved JARVIS audio: ${r.status} · ${Math.round(blob.size / 1024)} kB`)
+          window.__proof.audioSaved = r.ok
+          recorder = null
+          recorded = []
+        }
         if (sessionId) {
           const r = await fetch(`/session/${sessionId}/close`, { method: 'POST' })
           if (r.ok) {

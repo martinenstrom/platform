@@ -64,6 +64,22 @@ export const CONFIG = {
     },
   },
   port: Number(process.env.LIVE_PORT ?? 4175),
+  /*
+   * `store: true` would keep a recording at OpenAI (30 days). Measured
+   * 2026-09-15: this project refuses it — "Stored sessions require a
+   * project that permits data persistence" — which is the retention
+   * posture the ruling wants. Left as an option, off; the listening set
+   * is captured in the browser instead (live.html?record=1 → /audio).
+   */
+  store: process.env.LIVE_STORE === '1',
+  /*
+   * How the voice may acknowledge a handoff. `natural`: as written for the
+   * first runs. `strict`: measured on 2026-09-15 that the voice said "Jag
+   * kollar på det och återkommer" ~1.8 s BEFORE the backend had created the
+   * reference; strict makes the handoff phrase neutral and reserves the
+   * ruling's sentence for the tool's confirmation.
+   */
+  ackMode: process.env.LIVE_ACK_MODE ?? 'natural',
 }
 
 /* ---------------------------------------------------------- instructions */
@@ -73,8 +89,14 @@ Språk: svenska in → svenska ut. Engelska in → engelska. Blandat → svenska
 Karaktär: lugn, intelligent, självsäker, varm men återhållsam, mänsklig, närvarande, lite levande. Inte teatralisk, inte radioröst, inte kundtjänst, ingen överdriven entusiasm, aldrig mångordig. Korta svar på enkla frågor.
 Svara själv, direkt, på enkla frågor, definitioner, uppföljningar och småprat.
 Delegera till backend när frågan kräver djupare resonemang, och ALLTID när det är en investeringsbedömning: köpa, sälja, minska, öka, en position, ett bolag eller en fond givet makro. Sådant avgörs av investeringskommittén i Financial OS, aldrig av dig.
-Säg "Jag kollar på det och återkommer." ENDAST när backend bekräftat att ett ärende faktiskt skapats. Påstå aldrig att kommittén är klar eller vad den kom fram till förrän ett resultat faktiskt finns. Gick något inte, säg det rakt.
-Fortsätter användaren tala medan ett ärende pågår, till exempel "ta hänsyn till dollarn också", ska det läggas till i det pågående ärendet via backend; bekräfta kort.
+${
+  CONFIG.ackMode === 'strict'
+    ? `När du lämnar över till backend: säg högst "Ett ögonblick." eller ingenting, och vänta. Säg ALDRIG själv "Jag kollar på det och återkommer" — den meningen får bara komma från backend, som säger den när ett ärende faktiskt skapats hos kommittén; då förmedlar du den en gång. Svarar backend självt på frågan finns inget ärende, och då säger du inte att du återkommer.`
+    : `Säg "Jag kollar på det och återkommer." ENDAST när backend bekräftat att ett ärende faktiskt skapats. Påstå aldrig att kommittén är klar eller vad den kom fram till förrän ett resultat faktiskt finns. Gick något inte, säg det rakt.`
+}
+Påstå aldrig att kommittén är klar eller vad den kom fram till förrän ett resultat faktiskt finns.
+Fortsätter användaren tala medan ett ärende pågår, till exempel "ta hänsyn till dollarn också", ska det läggas till i det pågående ärendet via backend; bekräfta kort, en gång.
+Tala alltid samtalets språk: det backend ber dig förmedla säger du på det språk användaren just använde, översatt om det behövs.
 Läs aldrig upp tekniska id:n, referenser eller verktygsnamn.`
 
 const BACKEND_INSTRUCTIONS = `Du är JARVIS resonerande lager bakom rösten. Du får samtalets kontext från röstlagret. Svara alltid på svenska med engelska finanstermer oförändrade, i kort talat format: inga listor, inga id:n.
@@ -82,7 +104,8 @@ Regler:
 1. Investeringsbedömningar (köp/sälj/minska/öka, positioner, bolag eller fond givet makro) delegeras ALLTID med delegate_to_financial_os. Ge aldrig en egen slutsats om sådant.
 2. Följdfrågor eller tillägg om ett pågående ärende: add_to_delegation. Frågor om läget: check_delegation.
 3. Allmänna finansfrågor (vad är term premium, hur påverkar duration en obligation) besvarar du själv, kort och korrekt.
-4. Verktygssvar innehåller fältet "say": förmedla det, gärna med egna ord, men hitta aldrig på ett resultat som verktyget inte gav.`
+4. Verktygssvar innehåller fältet "say" med en svensk och en engelsk version: förmedla den som matchar språket användaren just talade, gärna med egna ord, men hitta aldrig på ett resultat som verktyget inte gav.
+5. Svarar du själv (regel 3) så svarar du på användarens språk och säger inte att du återkommer.`
 
 const TOOLS = [
   {
@@ -161,31 +184,35 @@ class DelegationStub {
           ok: true,
           state: 'working',
           reference: delegation.reference,
-          say: 'Jag kollar på det och återkommer.',
-          rule: 'Ett ärende finns nu. Säg exakt att du kollar på det och återkommer; påstå inget om resultatet.',
+          say: { sv: 'Jag kollar på det och återkommer.', en: "I'll look into it and get back to you." },
+          rule: 'Ett ärende finns nu. Säg exakt att du kollar på det och återkommer, en gång; påstå inget om resultatet.',
         }
       }
       case 'add_to_delegation': {
         const delegation = this.find(args.reference_id)
-        if (!delegation) return { ok: false, say: 'Det finns inget pågående ärende att lägga det till.' }
+        if (!delegation) return { ok: false, say: { sv: 'Det finns inget pågående ärende att lägga det till.', en: 'There is no open case to add that to.' } }
         delegation.notes.push({ note: String(args.note ?? ''), at: new Date().toISOString() })
-        return { ok: true, reference: delegation.reference, say: 'Noterat, det tas med i ärendet.' }
+        return { ok: true, reference: delegation.reference, say: { sv: 'Noterat, det tas med i ärendet.', en: 'Noted, that goes into the case.' } }
       }
       case 'check_delegation': {
         const delegation = this.find(args.reference_id)
-        if (!delegation) return { ok: false, say: 'Det finns inget pågående ärende.' }
+        if (!delegation) return { ok: false, say: { sv: 'Det finns inget pågående ärende.', en: 'There is no open case.' } }
         const seconds = Math.round((Date.now() - Date.parse(delegation.createdAt)) / 1000)
+        const withNotes = delegation.notes.length > 0
         return {
           ok: true,
           state: delegation.state,
           reference: delegation.reference,
           workingForSeconds: seconds,
           notes: delegation.notes.length,
-          say: `Kommittén arbetar fortfarande med det${delegation.notes.length ? ', med dina tillägg' : ''}. Jag återkommer när det finns ett resultat.`,
+          say: {
+            sv: `Kommittén arbetar fortfarande med det${withNotes ? ', med dina tillägg' : ''}. Jag återkommer när det finns ett resultat.`,
+            en: `The committee is still working on it${withNotes ? ', with your additions' : ''}. I'll get back to you when there is a result.`,
+          },
         }
       }
       default:
-        return { ok: false, say: 'Det verktyget finns inte.' }
+        return { ok: false, say: { sv: 'Det verktyget finns inte.', en: 'That tool does not exist.' } }
     }
   }
 }
@@ -210,7 +237,23 @@ function newTelemetry(sessionId) {
     eventCounts: {},
     firstStartedMs: null,
     projectedPerHourUsd: 0,
+    /*
+     * The session clock, as far as the sideband can see it: assistant audio
+     * segments (merged when contiguous), delegations with their offset, and
+     * tool executions stamped with the latest audio position seen. Counts
+     * and milliseconds only.
+     */
+    timeline: { outputAudio: [], delegations: [], tools: [], lastAudioMs: 0 },
   }
+}
+
+function noteOutputAudio(t, startMs, endMs) {
+  if (typeof startMs !== 'number' || typeof endMs !== 'number') return
+  const segments = t.timeline.outputAudio
+  const last = segments[segments.length - 1]
+  if (last && startMs - last.endMs <= 250) last.endMs = Math.max(last.endMs, endMs)
+  else segments.push({ startMs, endMs })
+  t.timeline.lastAudioMs = Math.max(t.timeline.lastAudioMs, endMs)
 }
 
 function backendCost(usage) {
@@ -256,6 +299,7 @@ async function createSession(sdp, voice) {
           parallel_tool_calls: false,
         },
       },
+      ...(CONFIG.store ? { store: true } : {}),
     },
     transport: { type: 'webrtc', sdp },
   }
@@ -317,13 +361,22 @@ async function attachSideband(record) {
     switch (event.type) {
       case 'session.started':
         t.firstStartedMs = Date.now()
+        record.startedWallMs = Date.now()
         break
       case 'session.usage.updated':
         t.voiceSeconds = event.usage?.seconds ?? t.voiceSeconds
         project(t)
         break
+      case 'session.output_audio.delta':
+        noteOutputAudio(t, event.start_ms, event.end_ms)
+        break
+      case 'session.output_transcript.delta':
+      case 'session.input_transcript.delta':
+        if (typeof event.end_ms === 'number') t.timeline.lastAudioMs = Math.max(t.timeline.lastAudioMs, event.end_ms)
+        break
       case 'session.delegation.created':
         t.delegationsCreated += 1
+        t.timeline.delegations.push({ id: event.delegation?.id ?? null, target: event.delegation?.target ?? null, offsetMs: event.offset_ms ?? null, wallMs: Date.now() })
         break
       case 'response.event': {
         const inner = event.event ?? {}
@@ -369,7 +422,8 @@ async function handleFunctionCall(record, item) {
   t.toolCalls += 1
   t.toolCallsByName[item.name] = (t.toolCallsByName[item.name] ?? 0) + 1
   const output = record.stub.call(item.name, args)
-  console.log(`[${record.id}] ${item.name} → ${output.state ?? (output.ok ? 'ok' : 'refused')}`)
+  t.timeline.tools.push({ name: item.name, atAudioMs: t.timeline.lastAudioMs, wallMs: Date.now(), reference: output.reference?.id ?? null })
+  console.log(`[${record.id}] ${item.name} → ${output.state ?? (output.ok ? 'ok' : 'refused')} · at ≈${t.timeline.lastAudioMs} ms of session audio`)
   send(record, {
     type: 'response.item.create',
     event_id: `out_${item.call_id}`,
@@ -483,6 +537,8 @@ createServer(async (request, response) => {
         backendModel: CONFIG.backendModel,
         voices: CONFIG.voices,
         defaultVoice: CONFIG.defaultVoice,
+        store: CONFIG.store,
+        ackMode: CONFIG.ackMode,
         prices: { voicePerMinute: CONFIG.prices.voicePerMinute, backend: CONFIG.prices.backend[CONFIG.backendModel] ?? null },
       })
     }
@@ -492,10 +548,31 @@ createServer(async (request, response) => {
       const record = await createSession(sdp, voice)
       return json(response, 200, { sessionId: record.id, sdp: (await sessionAnswer(record)) })
     }
-    const match = /^\/session\/([^/]+)\/(state|text|close)$/.exec(path)
+    const match = /^\/session\/([^/]+)\/(state|text|close|recording|audio)$/.exec(path)
     if (match) {
       const record = sessions.get(match[1])
       if (!record) return json(response, 404, { error: 'no such session' })
+      if (match[2] === 'audio' && request.method === 'POST') {
+        /*
+         * JARVIS's side of the conversation, captured by the browser from
+         * the remote track — opt-in (live.html?record=1), local, git-ignored.
+         * The person's own microphone is never uploaded here.
+         */
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        const file = join(RESULTS, `live-${record.voice}-${record.id}.webm`)
+        writeFileSync(file, Buffer.concat(chunks))
+        return json(response, 200, { file, bytes: Buffer.concat(chunks).length })
+      }
+      if (match[2] === 'recording' && request.method === 'POST') {
+        /* Only with store: the stereo WAV (input left, output right) OpenAI kept, saved beside the telemetry. */
+        const r = await fetch(`https://api.openai.com/v1/live/sessions/${record.id}/content`, { headers: { authorization: `Bearer ${KEY}` } })
+        if (!r.ok) return json(response, r.status, { error: (await r.text()).slice(0, 300) })
+        const bytes = Buffer.from(await r.arrayBuffer())
+        const file = join(RESULTS, `recording-${record.voice}-${record.id}.wav`)
+        writeFileSync(file, bytes)
+        return json(response, 200, { file, bytes: bytes.length })
+      }
       if (match[2] === 'state' && request.method === 'GET') {
         return json(response, 200, { telemetry: record.telemetry, delegations: record.stub.delegations, closed: Boolean(record.closed), negotiationMs: record.negotiationMs })
       }

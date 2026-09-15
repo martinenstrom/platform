@@ -1,12 +1,12 @@
 # JARVIS voice — the GPT-Live proof (revised cost ruling, 2026-09-15)
 
-**Status: proof built and committed; blocked at the OpenAI credit boundary;
-nothing implemented in the product; no subscription bought.** The revised
-ruling accepts SEK 100–400 a month in OpenAI credits and asks whether
-GPT-Live-1 gives the Swedish JARVIS experience before any chained
-STT/TTS provider is paid for. This document records what was measured on
-2026-09-15, exactly what the proof is, and what it will measure the moment
-the account has credits.
+**Status: proof built, run against 24 live sessions on 2026-09-15 once
+credits existed; measured results in §7; nothing implemented in the
+product; no subscription bought.** The revised ruling accepts SEK 100–400
+a month in OpenAI credits and asks whether GPT-Live-1 gives the Swedish
+JARVIS experience before any chained STT/TTS provider is paid for. §0–§6
+record the proof as built (and the credit boundary it first met); §7 is
+what it measured.
 
 ---
 
@@ -174,9 +174,177 @@ for all of it.
 ## 6. To run it
 
 ```
-node scripts/voice-live/server.mjs           # then open http://localhost:4175/ and talk
-node scripts/voice-live/probe-live.mjs       # the five conversations, voice marin
-PROBE_VOICES=marin,cedar,ash,sage node scripts/voice-live/probe-live.mjs c1-nvidia-cpi
+LIVE_ACK_MODE=strict node scripts/voice-live/server.mjs     # then open http://localhost:4175/ and talk (add ?record=1 to keep JARVIS's audio locally)
+node scripts/voice-live/probe-live.mjs                       # the seven conversations, voice marin
+PROBE_VOICES=marin,cedar,ash,sage node scripts/voice-live/probe-live.mjs c4-terms
+LIVE_TYPED="Vad är term premium?" node scripts/voice-live/probe-live.mjs c5-english
 ```
 
-Needed first: OpenAI credits on the project the key belongs to.
+## 7. Measured — 24 live sessions, 2026-09-15
+
+Every number below comes from `scripts/voice-live/results/` (git-ignored):
+per-session telemetry, per-run transcripts, and JARVIS's own audio captured
+in the browser. Transcript times are the session clock in 200 ms buckets.
+The person's microphone was headless Chromium playing their own bake-off
+recordings, so what GPT-Live heard is the same Swedish voice Scribe heard.
+
+### 7.1 Transport and account facts
+
+- `POST /v1/live/sessions` with the server key returned a session and an SDP
+  answer in **0.3–1.5 s**; `session.started` arrived **1.4–2.8 s** after the
+  Connect click, negotiation included. Node 24's built-in WebSocket carried
+  the `Authorization` header to the sideband: every backend function call
+  in the test was executed through it.
+- `store: true` is **refused for this project** — _"Stored sessions require
+  a project that permits data persistence."_ OpenAI keeps no recording;
+  the listening set was captured from the browser's remote track instead,
+  opt-in, locally.
+- Backend delegation ran on `gpt-5.6-luna`. Input context per delegated
+  response was 1–10 k tokens, a third of it cached.
+
+### 7.2 Latency
+
+| What | Measured |
+| --- | --- |
+| Acknowledgement after the person stops (_"Ett ögonblick."_, _"Mm."_) | **same 200 ms bucket** in 22 of 31 turns; 200–600 ms in 7; 1.0 s once (ballad); 2.2–2.4 s twice, both after the one utterance GPT-Live's own transcript garbled |
+| Delegated answer spoken after the question ends (backend reasoning, luna) | **3.6–4.4 s** (c2 8.2 s tool → 9.4 s speech for a 5.8 s question end; c6 9.6 s → 13.8 s) |
+| Direct answer (no tool) spoken after the question ends | 3.2–4.2 s |
+| Typed text injected into a live session → spoken answer | ≈ 1.5 s |
+
+So the shape the routing addendum asks for is what GPT-Live does by itself:
+an immediate human acknowledgement, then the answer when the backend has
+it. The acknowledgement is not a canned clip — _"Ett ögonblick."_, _"En
+sekund."_, _"Ehm, en sekund."_, _"Hmm. Ja."_, _"Jag lägger till det."_ —
+which is the "slightly alive" the previous ruling asked for.
+
+### 7.3 Full duplex and interruption
+
+- **Backchannels while the person is still talking**: during the 15-second
+  question (u12) JARVIS said _"Mm."_ at 8.2 s, mid-sentence, and let the
+  person finish. Listening and speaking overlap in the transcript feed
+  exactly as the docs describe.
+- **Interruption, measured once with true overlap** (c7, second run):
+  JARVIS was asking a clarifying question from 12.8 s; the person began
+  _"Okej, men ska jag faktiskt köpa den nu…"_ at 16.2 s; JARVIS **finished
+  his own short sentence (2.8 s more, to 19.0 s) rather than stopping
+  mid-word**, then answered the new input (_"Ett ögonblick."_ at 20.4 s,
+  then _"Vad syftar du på med 'den'…"_). Nothing was lost on either side.
+  Whether a long monologue is cut off sooner was not observed: in every
+  other run JARVIS's turn had already ended when the follow-up came,
+  because his turns are short. The interactive page is where the person
+  can push on this.
+
+### 7.4 Swedish, English, and the finance vocabulary
+
+What GPT-Live heard (its own input transcript), across six voices and
+eleven runs of the terminology conversation and the others:
+
+- Right every time: _Fed_, _earnings yield_, _equity risk premium_, _yield
+  curve_, _inverterad_, _tvååringen_/_tioåringen_, _term premium_,
+  _Treasuries_/_Treasury_, _higher for longer_, _Handelsbanken Hållbar
+  Energi_, _Nvidia_, _CPI-siffra_, _tioårsräntan_, _4,5 %_, _fyrtio gånger
+  vinsten_, _investeringskommittén_, _tekniksektorn_, _ECB_, _realräntan_.
+- Wrong every time: the opening of u02, _"Vad händer med durationen om US
+  10-year går upp 50 basispunkter"_, came back as _"Ben de med
+  durationen…"_, _"Ben de moderasyonen…"_, _"US tenyar grup 5"_ in all four
+  runs — Scribe v2 had it verbatim. **The model still answered the
+  duration question correctly in three of the four runs** (price falls by
+  roughly duration × the yield change; a duration of eight …) and asked a
+  sensible clarifying question in the fourth. The transcript is a
+  by-product; understanding held.
+
+What JARVIS said, as text: concise, correct, Swedish with the English
+terms left as English — _"Om yielden på US 10-year går upp 50 baspunkter,
+faller obligationspriset ungefär med durationen gånger den
+förändringen"_; _"Higher for longer betyder att styrräntorna väntas ligga
+kvar högre längre, så längre duration, alltså räntekänslighet, blir mer
+sårbar"_; _"Realräntan är ungefär nominell ränta minus förväntad
+inflation."_ How the terms _sound_ inside the Swedish is on the recordings.
+
+Language rule: Swedish in → Swedish out, every run. Mixed in → Swedish with
+the terms intact, every run. English in → English out in one of the two
+strict runs (_"One moment." / "I'll look into it and get back to you."_)
+and Swedish in the other (the acknowledgement slipped to _"Ett
+ögonblick."_ and the Swedish phrase). Typed Swedish into an English
+session → a Swedish answer, which is right.
+
+### 7.5 Delegation and the acknowledgement rule
+
+Across the runs, **every investment judgement became a delegation tool
+call** — a view on Nvidia after CPI, Hållbar Energi under higher for
+longer, _"ska jag köpa den nu eller vänta"_, cutting the tech sector, what
+an ECB cut means for Swedish real rates — and **every conceptual question
+was answered directly** (duration arithmetic, term premium, higher for
+longer). Follow-ups while a case was open (_"Är yield curve fortfarande
+inverterad…"_, _"Har term premium … stigit…"_) went to `add_to_delegation`
+and the reference collected them: _"Noterat, det tas med i ärendet."_ No
+transcript contains an invented result; `check_delegation` was never needed
+because nothing ever completed, and JARVIS never claimed it had.
+
+The sentence _"Jag kollar på det och återkommer"_ needed two iterations of
+instruction:
+
+| Instruction | Observed |
+| --- | --- |
+| natural — _"say it only when backend confirms a case"_ | spoken **1.5–2.0 s before** the reference existed (c1: said at 5.2 s, reference at 7.2 s), and often twice |
+| strict v1 — _"say at most 'Ett ögonblick', the sentence only after confirmation"_ | after the reference for real delegations, but still spoken for a direct-answer handoff where no reference was ever created (c6) |
+| **strict v2 — _"never say it yourself; only backend says it, when a case exists"_** | **13 of 13 sessions**: _"Ett ögonblick."_ on handoff, the sentence 1.0–1.2 s **after** the reference, once, and never on the direct path |
+
+That is the ruling's rule, enforced where it can be enforced: the sentence
+lives in the tool result, not in the voice model's licence.
+
+### 7.6 Typed input and degradation
+
+- Session refused (the credit boundary, earlier in the day): the page said
+  _"Sessionen kunde inte skapas (500). Skriv i stället."_ and typing went
+  to the Responses path.
+- Responses path with credits: _"Vad är term premium, kort?"_ → a two-sentence
+  definition, no delegation, 1 050 / 63 tokens; _"Borde jag minska Hållbar
+  Energi givet långräntorna?"_ → a reference created and _"Jag kollar på det
+  och återkommer."_
+- Typed into a live session (`session.instructions.append`, since GPT-Live
+  has no user-text event): answered aloud about 1.5 s later.
+
+### 7.7 Voices
+
+Six of the ten accepted voices were heard on the terminology conversation
+— **marin, cedar, ash, sage, echo, ballad** — with identical behaviour
+(the same delegations, the same acknowledgement timing within a bucket).
+JARVIS's side of each is in `results/live-<voice>-<session>.webm`, plus
+marin on the delegation, direct, English and interruption conversations.
+The choice between them is the ear's; this document ranks none of them.
+Marin is OpenAI's default and the one heard most here.
+
+### 7.8 Cost, measured
+
+| | Measured over 24 sessions |
+| --- | --- |
+| Voice time | 14.4 min (sessions 20–47 s each; connect-to-close) |
+| Voice cost | $0.72 at $0.05/min billed per second |
+| Backend (gpt-5.6-luna) | 90 responses, ≈140 k input tokens (a third cached), ≈7 k output → **$0.04** |
+| Tool calls | 40, no charge of their own |
+| Total | **≈ $0.76**, of which backend ≈ 5 % |
+| All-in per open hour | **$3.15** ($3.00 voice + $0.15 backend) |
+
+| Hours / month | Voice | Backend | Total | ≈ SEK at 10.5 |
+| --- | --- | --- | --- | --- |
+| 1 | $3.00 | $0.15 | $3.15 | 33 |
+| 3 | $9.00 | $0.46 | $9.46 | 99 |
+| 5 | $15.00 | $0.77 | $15.77 | 166 |
+| 10 | $30.00 | $1.53 | $31.53 | 331 |
+
+Terra instead of luna would multiply the backend line by about ten and
+still leave it under a tenth of the voice line. The budget of SEK 100–400 is
+roughly 3–12 open hours a month; closing idle sessions is the whole cost
+discipline.
+
+### 7.9 What this proof did not settle
+
+- How the voices _sound_ in Swedish — the recordings are there; the ear is
+  not.
+- Whether a long JARVIS monologue is cut off promptly on interruption; the
+  one overlap observed was a short sentence, finished.
+- The English-in → English-out rule holds most but not all of the time;
+  one instruction pass on it is likely enough, and it was not done here.
+- The delegation stub is not `financialOsHostFn`; wiring it is a small,
+  deliberate, ruled step.

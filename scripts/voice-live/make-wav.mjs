@@ -57,6 +57,34 @@ const CONVERSATIONS = {
     { id: '10', silenceBefore: 3.0 },
     { id: 'silence', seconds: 10 },
   ],
+  /*
+   * Measured 2026-09-15: every question above was delegated, because each
+   * asked for a judgement or a current market fact. These two ask for
+   * understanding — duration arithmetic, what an ECB cut means for real
+   * rates — which JARVIS should answer itself (the fast/reasoning path).
+   */
+  'c6-direct': [
+    { id: '02', silenceBefore: 3.0 },
+    { id: 'silence', seconds: 14 },
+    { id: '07', silenceBefore: 0 },
+    { id: 'silence', seconds: 14 },
+  ],
+  /*
+   * The first interruption test never overlapped: JARVIS answered the long
+   * question with one short sentence. A conceptual question earns a longer
+   * answer; the follow-up lands 2.5 s into it.
+   */
+  'c7-interrupt': [
+    { id: '02', silenceBefore: 3.0 },
+    /*
+     * Measured: the backend answer to u02 begins ≈5 s after the question
+     * ends, so 2.5 s of silence put the follow-up into JARVIS's silence,
+     * not his speech. Seven seconds lands it two seconds into the answer.
+     */
+    { id: 'silence', seconds: 5.5 },
+    { id: '09', silenceBefore: 0 },
+    { id: 'silence', seconds: 12 },
+  ],
 }
 
 const browser = await chromium.launch()

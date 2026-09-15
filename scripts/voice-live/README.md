@@ -33,11 +33,20 @@ same backend and tools over the Responses API.
 ## Measure without a person
 
 ```
-node scripts/voice-live/make-wav.mjs                        # recordings → WAV + five composed conversations
+node scripts/voice-live/make-wav.mjs                        # recordings → WAV + seven composed conversations
 node scripts/voice-live/probe-live.mjs                      # every conversation, voice marin
 node scripts/voice-live/probe-live.mjs c3-interrupt cedar   # one conversation, one voice
-PROBE_VOICES=marin,cedar,ash node scripts/voice-live/probe-live.mjs c1-nvidia-cpi
+PROBE_VOICES=marin,cedar,ash node scripts/voice-live/probe-live.mjs c4-terms
+LIVE_RECORD=1 node scripts/voice-live/probe-live.mjs c4-terms          # keep JARVIS's audio (results/live-<voice>-<id>.webm)
+LIVE_TYPED="Vad är term premium?" node scripts/voice-live/probe-live.mjs c5-english   # then type into the live session
 ```
+
+Server options: `LIVE_ACK_MODE=strict` (recommended; measured to keep
+"Jag kollar på det och återkommer" after the reference exists — see the
+proof document), `LIVE_BACKEND_MODEL`, `LIVE_VOICE`, `LIVE_PRICE_PER_MINUTE`,
+`LIVE_STORE=1` (refused by projects without data persistence — this one).
+The probe labels its result files with `LIVE_ACK_MODE` so runs under
+different instructions sit side by side in `results/probe-report.md`.
 
 `make-wav.mjs` decodes the bake-off recordings (the person's own voice) in
 headless Chromium and composes conversations — utterance, silence,
