@@ -39,7 +39,20 @@ the scripts stop and say so.
 node scripts/voice-bakeoff/stt.mjs              # results/stt-report.md, results/stt-<provider>.json
 node scripts/voice-bakeoff/tts.mjs              # results/tts-report.md, results/listen.html, results/tts/*.mp3
 node scripts/voice-bakeoff/roundtrip.mjs        # results/tts-roundtrip.md: every mp3 back through the STT finalists
+node scripts/voice-bakeoff/variants.mjs         # A/B/C expressiveness variants of the frontrunner voice, same seed
 ```
+
+`variants.mjs` renders four fixed texts (a01, a02, a05, a10) three ways on
+`nPczCjzI2devNBz1zQrb` / `eleven_v3` with one seed per text: **A** the
+documented default voice settings stated explicitly; **B** the same
+settings with the text prefixed by the v3 audio tag `[warm, engaged]`;
+**C** the same tag with stability 0.0 ("Creative"). It first probes, on the
+shortest text, which settings v3 honours (stability 0.3, style, speed,
+similarity): same sha1 as the baseline means the knob did nothing, a 4xx
+means the value is refused. Every row keeps the exact request body minus
+the text and the sha1 of the audio, and `listen.html` puts A, B and C side
+by side above the provider comparison. It needs ElevenLabs credits (about
+3 200) and stops with exit 3 at the quota boundary.
 
 `STT_PROVIDERS` and `TTS_PROVIDERS` (comma-separated) narrow a run; a
 provider that refuses the key or has no quota is skipped after its first

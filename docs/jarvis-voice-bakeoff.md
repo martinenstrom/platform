@@ -314,7 +314,7 @@ Swedish-accented library voice, needs a paid plan to be heard at all).
 Both providers sit behind the `Synthesizer` port from the measurement doc;
 switching or reordering them touches configuration, never the UI.
 
-### 4.3 What the ruling is asked to decide
+### 4.3 What the ruling was asked to decide (ruled 2026-09-15, see §5)
 
 1. Scribe v2 as primary STT, and a paid ElevenLabs plan with a
    speech-to-text-scoped key and confirmed retention.
@@ -328,3 +328,58 @@ switching or reordering them touches configuration, never the UI.
 5. S0 for the Azure Speech resource before production.
 
 Then slice F.
+
+## 5. The ruling of 2026-09-15, and the variants it asked for
+
+The listening decision: **ElevenLabs `nPczCjzI2devNBz1zQrb` on `eleven_v3`**
+is the current frontrunner — "it sounds good, I just want it slightly more
+alive" — calm, intelligent, confident, human, engaged, slightly more
+present; not excited, theatrical, radio, sales, customer-service or
+enthusiastic. Scribe v2 is the decided primary STT. Azure STT is not the
+fallback. AssemblyAI stays unmeasured until a real key exists (the
+configured value is still ten characters and refused by both regions on
+2026-09-15); until then the fallback is typed text. The OpenAI baseline is
+no longer required. Azure TTS (Hillevi, Andrew HD) stays a fallback
+candidate, not the primary. Production voice waits for the final choice.
+
+### 5.1 Three controlled variants — prepared, not yet rendered
+
+`scripts/voice-bakeoff/variants.mjs` renders four fixed texts — a01 _"Jag
+kollar på det och återkommer."_, a02 _"Jag är klar. Kommitténs slutsats är
+behåll."_, a05 (Nvidia, equity risk premium) and a10 (the ≈40-second macro
+answer with Fed, ECB, CPI, yield curve, Handelsbanken Hållbar Energi,
+higher for longer) — three ways, with **one seed per text shared across the
+variants**, so a difference between two files is the instruction and not
+the sampling. The exact request bodies (everything but the text):
+
+| Variant | `voice_settings` | Text | Anything else |
+| --- | --- | --- | --- |
+| **A baseline** | `{ stability: 0.5, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: 1.0 }` — the documented defaults, which the bake-off used implicitly by sending none | as-is | `model_id: eleven_v3`, `apply_text_normalization: auto`, `seed` = 100 000 + text number |
+| **B slightly more alive** | identical to A | prefixed with the v3 audio tag `[warm, engaged] ` — a delivery direction, not spoken | as A |
+| **C upper bound** | as A but `stability: 0.0` (v3 "Creative": _"more emotional and expressive, but prone to hallucinations"_) | prefixed as B | as A |
+
+Why the tag and not a slider: v3's stability is three-valued — Creative,
+Natural, Robust — and the only documented expressiveness controls beyond it
+are audio tags in the text and punctuation. Punctuation would change the
+text the ruling asked to keep fixed; a leading tag does not change a spoken
+word, and the round trip (Azure ear) will show whether it was spoken. Before
+the variants, the script probes on the shortest text whether v3 honours
+intermediate stability (0.3), `style`, `speed` and `similarity_boost` at
+all: an identical sha1 to the baseline means the knob did nothing, a 4xx
+means it is refused. Those facts go into `results/variants-knobs.json` and
+decide whether B and C are later re-tuned on a slider instead of a tag.
+
+Each rendered row records the request body, the prefix, the sha1, first
+audio and total latency, and `listen.html` shows A · B · C side by side per
+text with the differences printed under each column.
+
+**Boundary, measured 2026-09-15:** the ElevenLabs account has **0 credits
+remaining** of its free-tier 10 000 (`401 quota_exceeded` on a 33-credit
+request), so nothing could be rendered. The variants need about 3 200
+credits; the knob probe about 200. A paid plan is in any case a condition
+of production use (§4.1). The moment credits exist:
+
+```
+node scripts/voice-bakeoff/variants.mjs
+node scripts/voice-bakeoff/roundtrip.mjs      # STT_PROVIDERS=azure — confirms the tag is not spoken
+```
