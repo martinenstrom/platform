@@ -1,7 +1,11 @@
 /**
  * The scorer's own check, so a bake-off number means what it says.
  *
- *   node --test scripts/voice-bakeoff/lib.test.mjs
+ *   node --test scripts/voice-bakeoff/lib.check.mjs
+ *
+ * Named `.check.`, not `.test.`: this runs under node:test with no
+ * dependency, and vitest — which collects every `*.test.*` in the
+ * repository — would otherwise pick it up and find no suite in it.
  */
 
 import assert from 'node:assert/strict'

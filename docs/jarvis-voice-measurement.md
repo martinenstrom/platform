@@ -301,7 +301,9 @@ product, with no SDK and no dependency added. What is measured about it:
   `gpt-transcribe` optional baseline with `languages[]` and a vocabulary
   prompt. Same hints for all. Output: transcript beside reference, detected
   language, term hits, WER, latency to final transcript, and a markdown
-  report. The scorer has its own check (`lib.test.mjs`, 4 passing).
+  report. The scorer has its own check (`lib.check.mjs` under node:test, 4
+  passing; named so that vitest does not collect a file with no vitest suite
+  in it — it did, once, and failed the stage-closing run).
 - **TTS** (`tts.mjs`): every Swedish-capable Azure voice the region lists
   (HD included, narrowable by `AZURE_TTS_VOICES`), synthesised twice per
   answer — English spans wrapped in `<lang xml:lang="en-US">` and untagged —
