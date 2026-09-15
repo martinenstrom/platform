@@ -36,13 +36,23 @@
  * beneath exactly as it was. Which surface is open is remembered with the
  * conversation, and collapsing the presence closes it.
  *
+ * ## It listens, when asked
+ *
+ * The microphone is the one visible here, and pressing it opens a live voice
+ * session through the product's door — `openLiveSessionFn`, GPT-Live over
+ * WebRTC, the server's sideband, the same host gateway as a typed question
+ * (`voiceSession.ts`). What is said, by either side, lands in this same
+ * conversation; a typed line while the session is live goes into the
+ * session and is answered aloud. Pressing the microphone again, collapsing
+ * the presence, or forgetting the conversation ends the paid session.
+ * Voice is never on until asked, and never a second conversation.
+ *
  * ## What it does not do yet
  *
- * It does not route. Every question typed here goes to the firm, because the
- * layer that decides whether a question needs the firm at all is later work;
- * this is the institutional branch made callable, not the router. It does not
- * listen: the microphone is drawn muted and labelled so, and no audio API is
- * touched. Voice is its own slice.
+ * It does not route. Every question typed without a live session goes to
+ * the firm, because the layer that decides whether a question needs the
+ * firm at all is later work; with a live session, the voice backend makes
+ * that call inside the tool boundary. Neither is the router.
  */
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
@@ -65,6 +75,10 @@ import {
   type ContextualSurface as SurfaceKind,
   type PresenceTurn,
 } from './presenceStore'
+import { VoiceSession, VOICE_STATUS_TEXT, type VoiceFragment, type VoiceSnapshot } from './voiceSession'
+
+const IDLE_VOICE: VoiceSnapshot = { status: 'idle', sessionId: null, notice: null, seconds: 0, costUsd: 0 }
+const voiceActive = (voice: VoiceSnapshot) => voice.status !== 'idle' && voice.status !== 'unavailable'
 
 /** The strip's width at rest; `AppLayout` reserves the same on every shell route. */
 export const PRESENCE_STRIP_WIDTH = 'w-16'
@@ -114,8 +128,69 @@ export function JarvisPresence() {
   const [busy, setBusy] = useState(false)
   const [operator, setOperator] = useState<string | null>(null)
   const asideRef = useRef<HTMLElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const voiceRef = useRef<VoiceSession | null>(null)
+  const [voice, setVoice] = useState<VoiceSnapshot>(IDLE_VOICE)
+  /* Where each voice turn's last fragment ended, so the next fragment knows whether it continues it. */
+  const voiceTurnEnds = useRef(new Map<string, number>())
 
   useEffect(() => setMounted(true), [])
+
+  /*
+   * One voice session for the life of the presence. Its fragments become
+   * turns in the one conversation; the case it binds becomes the one
+   * reference; unmounting ends it.
+   */
+  useEffect(() => {
+    if (!audioRef.current) return
+    const session = new VoiceSession(
+      {
+        onFragment: (fragment: VoiceFragment) => {
+          const by = fragment.who === 'user' ? 'user' : 'jarvis'
+          updatePresence((state) => {
+            const last = state.turns[state.turns.length - 1]
+            const lastEnd = last ? voiceTurnEnds.current.get(last.id) : undefined
+            if (last && last.by === by && last.via === 'voice' && lastEnd !== undefined && fragment.startMs - lastEnd < 1200) {
+              voiceTurnEnds.current.set(last.id, Math.max(lastEnd, fragment.endMs))
+              return { ...state, turns: [...state.turns.slice(0, -1), { ...last, text: last.text + fragment.delta }] }
+            }
+            /* A stray full stop or a breath is not a turn of its own. */
+            if (!/[\p{L}\p{N}]/u.test(fragment.delta)) return state
+            const next = turn(by, fragment.delta.trimStart(), { via: 'voice' })
+            voiceTurnEnds.current.set(next.id, fragment.endMs)
+            return { ...state, turns: [...state.turns, next] }
+          })
+        },
+        onReference: (reference, ask) => {
+          updatePresence((state) =>
+            state.reference?.id === reference.id
+              ? state
+              : { ...state, reference, subject: ask?.subject ?? state.subject, question: ask?.question ?? state.question },
+          )
+        },
+      },
+      audioRef.current,
+    )
+    voiceRef.current = session
+    const unsubscribe = session.subscribe(() => setVoice(session.getSnapshot()))
+    return () => {
+      unsubscribe()
+      void session.stop()
+      voiceRef.current = null
+    }
+  }, [])
+
+  /** The microphone: start a session bound to the conversation's case, or end the one running. */
+  async function toggleVoice() {
+    const session = voiceRef.current
+    if (!session) return
+    if (session.active) {
+      await session.stop()
+      return
+    }
+    if (!presence.open) updatePresence((state) => ({ ...state, open: true }))
+    await session.start(presence.reference)
+  }
 
   /* Who JARVIS is talking to, as the server resolves it. Read once per opening. */
   useEffect(() => {
@@ -143,13 +218,33 @@ export function JarvisPresence() {
     .reverse()
     .find((entry) => entry.by === 'jarvis')
 
-  /* Collapsing the presence closes whatever surface stood beside it. */
-  const setOpen = (value: boolean) =>
+  /* Collapsing the presence closes whatever surface stood beside it, and the paid voice session with it. */
+  const setOpen = (value: boolean) => {
+    if (!value) void voiceRef.current?.stop()
     updatePresence((state) => ({
       ...state,
       open: value,
       surface: value ? state.surface : null,
     }))
+  }
+
+  /** Forgetting the conversation ends the session that was part of it. */
+  const forget = () => {
+    void voiceRef.current?.stop()
+    voiceTurnEnds.current.clear()
+    resetPresence()
+  }
+
+  /** A typed line while the session is live: into the same session, answered aloud. */
+  async function say(text: string) {
+    updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
+    const accepted = await voiceRef.current?.type(text)
+    if (!accepted)
+      updatePresence((state) => ({
+        ...state,
+        turns: [...state.turns, turn('jarvis', 'Röstsessionen tog inte emot det. Skriv igen när rösten är av.', { tone: 'warning' })],
+      }))
+  }
 
   const setSurface = (surface: SurfaceKind | null) =>
     updatePresence((state) => ({ ...state, surface }))
@@ -235,13 +330,19 @@ export function JarvisPresence() {
             busy={busy}
             operator={operator}
             mood={moodOf(busy, lastFromJarvis)}
+            voice={voice}
             onCollapse={() => setOpen(false)}
             onConsult={consult}
+            onSay={say}
             onOpenSurface={setSurface}
+            onToggleVoice={toggleVoice}
+            onForget={forget}
           />
         ) : (
-          <RestingStrip mood={moodOf(busy, lastFromJarvis)} onOpen={() => setOpen(true)} />
+          <RestingStrip mood={moodOf(busy, lastFromJarvis)} voice={voice} onOpen={() => setOpen(true)} onToggleVoice={toggleVoice} />
         )}
+        {/* JARVIS's voice plays here; the element is the session's speaker and nothing else. */}
+        <audio ref={audioRef} autoPlay aria-hidden="true" className="hidden" />
       </aside>
       {/*
        * A sibling of the presence, never a child: the surface stands over the
@@ -288,34 +389,61 @@ function Mark({ mood, className }: { mood: Mood; className?: string }) {
 }
 
 /**
- * The microphone, drawn muted and named so. It listens to nothing: no audio
- * API is touched anywhere in this component, and until the voice slice makes
- * it real the control must not look as though pressing it would.
+ * The microphone. Pressing it starts a live session; pressing it while one
+ * runs ends it. Its word is the session's truthful state — Röst, Ansluter…,
+ * Lyssnar, Tänker, Talar — and its ring says at a glance whether JARVIS is
+ * listening. Never on by itself.
  */
-function InertMicrophone({ compact = false }: { compact?: boolean }) {
+function MicrophoneButton({
+  voice,
+  onToggle,
+  compact = false,
+}: {
+  voice: VoiceSnapshot
+  onToggle: () => void
+  compact?: boolean
+}) {
+  const active = voiceActive(voice)
+  const label = active ? 'Avsluta röst' : 'Starta röst'
   return (
-    <span
-      role="img"
-      aria-label="Röst kommer i en senare version"
-      title="Röst kommer i en senare version"
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      data-voice={voice.status}
       className={cn(
-        'inline-flex flex-col items-center gap-1 text-content-subtle opacity-50',
-        compact ? '' : 'flex-row gap-2',
+        'inline-flex items-center gap-1 rounded-lg transition-colors',
+        compact ? 'flex-col' : 'flex-row gap-2',
+        active ? 'text-accent' : 'text-content-muted hover:text-content',
       )}
     >
-      <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-line">
+      <span
+        className={cn(
+          'relative inline-flex h-8 w-8 items-center justify-center rounded-full border',
+          active ? 'border-accent' : 'border-line',
+          voice.status === 'listening' && 'animate-pulse',
+        )}
+      >
         <Mic className="h-3.5 w-3.5" aria-hidden="true" />
-        <span
-          aria-hidden="true"
-          className="absolute h-[2px] w-6 rotate-45 rounded-full bg-content-subtle"
-        />
       </span>
-      <span className="type-machine">{compact ? 'Röst' : 'Röst kommer'}</span>
-    </span>
+      <span className="type-machine">{VOICE_STATUS_TEXT[voice.status]}</span>
+    </button>
   )
 }
 
-function RestingStrip({ mood, onOpen }: { mood: Mood; onOpen: () => void }) {
+function RestingStrip({
+  mood,
+  voice,
+  onOpen,
+  onToggleVoice,
+}: {
+  mood: Mood
+  voice: VoiceSnapshot
+  onOpen: () => void
+  onToggleVoice: () => void
+}) {
   return (
     <div className="flex flex-1 flex-col items-center py-4">
       <button
@@ -329,7 +457,7 @@ function RestingStrip({ mood, onOpen }: { mood: Mood; onOpen: () => void }) {
       </button>
       <span className="type-machine mt-2 text-content-muted">JARVIS</span>
       <div className="mt-auto">
-        <InertMicrophone compact />
+        <MicrophoneButton compact voice={voice} onToggle={onToggleVoice} />
       </div>
     </div>
   )
@@ -342,26 +470,35 @@ function ExpandedPanel({
   busy,
   operator,
   mood,
+  voice,
   onCollapse,
   onConsult,
+  onSay,
   onOpenSurface,
+  onToggleVoice,
+  onForget,
 }: {
   presence: ReturnType<typeof usePresence>
   busy: boolean
   operator: string | null
   mood: Mood
+  voice: VoiceSnapshot
   onCollapse: () => void
   onConsult: (request: HostRequest, said?: string) => Promise<void>
+  onSay: (text: string) => Promise<void>
   onOpenSurface: (surface: SurfaceKind) => void
+  onToggleVoice: () => void
+  onForget: () => void
 }) {
   const [question, setQuestion] = useState('')
   const [subject, setSubject] = useState('')
   const logRef = useRef<HTMLOListElement>(null)
+  const live = voiceActive(voice) && voice.sessionId !== null
 
   useEffect(() => {
     /* Assigned rather than `scrollTo`, which jsdom does not implement. */
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [presence.turns.length, busy])
+  }, [presence.turns.length, presence.turns[presence.turns.length - 1]?.text, busy])
 
   const reference = presence.reference
 
@@ -369,7 +506,14 @@ function ExpandedPanel({
     event.preventDefault()
     const asked = question.trim()
     const about = subject.trim()
-    if (!asked || !about || busy) return
+    if (!asked || busy) return
+    /* With the session live, the line joins the spoken conversation; without one, it is an ask of the firm. */
+    if (live) {
+      setQuestion('')
+      await onSay(asked)
+      return
+    }
+    if (!about) return
     setQuestion('')
     setSubject('')
     await onConsult(
@@ -424,6 +568,11 @@ function ExpandedPanel({
           >
             <p className={cn('font-medium', entry.tone ? toneText[entry.tone] : '')}>
               {entry.text}
+              {entry.via === 'voice' && (
+                <span className="type-machine ml-1.5 text-content-subtle" aria-label="sagt">
+                  röst
+                </span>
+              )}
             </p>
             {entry.detail && (
               <p className="mt-1 whitespace-pre-line text-content-muted">
@@ -435,6 +584,11 @@ function ExpandedPanel({
         {busy && (
           <li className="type-metadata self-start" aria-live="polite">
             Frågar investeringsteamet…
+          </li>
+        )}
+        {voice.status === 'thinking' && (
+          <li className="type-metadata self-start" aria-live="polite">
+            Tänker…
           </li>
         )}
       </ol>
@@ -511,32 +665,49 @@ function ExpandedPanel({
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Är Nvidia köpvärd på 12–24 månaders sikt?"
+            placeholder={live ? 'Skriv in i samtalet — JARVIS svarar med rösten' : 'Är Nvidia köpvärd på 12–24 månaders sikt?'}
             rows={2}
             className="hq-field resize-none"
           />
         </label>
         <div className="flex items-end gap-2">
-          <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="type-section">Om</span>
-            <input
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="Nvidia"
-              className="hq-field"
-            />
-          </label>
+          {!live && (
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="type-section">Om</span>
+              <input
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                placeholder="Nvidia"
+                className="hq-field"
+              />
+            </label>
+          )}
           <button
             type="submit"
-            disabled={busy || !question.trim() || !subject.trim()}
-            aria-label="Ställ frågan"
-            title="Ställ frågan"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-content transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40"
+            disabled={busy || !question.trim() || (!live && !subject.trim())}
+            aria-label={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
+            title={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
+            className={cn(
+              'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-content transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40',
+              live && 'ml-auto',
+            )}
           >
             <Send className="h-4 w-4" aria-hidden="true" />
           </button>
-          <InertMicrophone />
+          <MicrophoneButton voice={voice} onToggle={onToggleVoice} />
         </div>
+        {/* What the voice is doing, or why it is not: a sentence, never a code. */}
+        {voice.notice && (
+          <p role="status" className="type-metadata text-warning">
+            {voice.notice}
+          </p>
+        )}
+        {live && (
+          <p className="type-metadata" aria-label="Röstsession">
+            Röst · {Math.floor(voice.seconds / 60)}:{String(voice.seconds % 60).padStart(2, '0')} · $
+            {voice.costUsd.toFixed(3)}
+          </p>
+        )}
       </form>
 
       {/* -------------------------------------------------------- doors */}
@@ -551,7 +722,7 @@ function ExpandedPanel({
         ))}
         <button
           type="button"
-          onClick={resetPresence}
+          onClick={onForget}
           className="type-machine ml-auto hover:text-content"
         >
           Glöm samtalet

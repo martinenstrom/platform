@@ -117,11 +117,14 @@ export interface LiveSessionState {
   telemetry: LiveTelemetry
   /** The case this conversation is bound to, if the firm gave it one. A pointer. */
   reference: DomainReference | null
+  /** What was last delegated, so the presence can name the case the way the typed path does. */
+  lastAsk: { question: string; subject: string } | null
   closed: boolean
 }
 
 export interface LiveRuntime {
-  open(input: { sdp: string; voice?: string }): Promise<{ sessionId: string; sdp: string }>
+  /** `reference`: the case the conversation is already bound to, so spoken follow-ups read it. */
+  open(input: { sdp: string; voice?: string; reference?: DomainReference }): Promise<{ sessionId: string; sdp: string }>
   state(sessionId: string): LiveSessionState | null
   /** Trusted application text into the session — the typed fallback while live. */
   type(sessionId: string, text: string): boolean
@@ -136,6 +139,7 @@ interface Session {
   sideband: LiveSideband | null
   telemetry: LiveTelemetry
   reference: DomainReference | null
+  lastAsk: { question: string; subject: string } | null
   /** True once the firm has reported delegated work under way; the claim is truthful after that. */
   everWorking: boolean
   spokenTail: string
@@ -237,6 +241,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       const result = await host(interpreted.request)
       speech = toolSpeech(result)
       if (speech.reference) session.reference = speech.reference
+      if (interpreted.request.kind === 'ask' && speech.reference)
+        session.lastAsk = { question: interpreted.request.question, subject: interpreted.request.subject }
       if (result.state === 'working') session.everWorking = true
       log(`[${session.id}] ${item.name} → ${interpreted.request.kind} → ${result.state}`)
     } else {
@@ -331,7 +337,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
   }
 
   return {
-    async open({ sdp, voice }) {
+    async open({ sdp, voice, reference }) {
       const chosen = voice && config.voices.includes(voice) ? voice : config.defaultVoice
       const created = await provider.createSession({ session: sessionConfig(chosen), sdp })
       const session: Session = {
@@ -357,7 +363,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           closedByPolicy: false,
           eventCounts: {},
         },
-        reference: null,
+        reference: reference ?? null,
+        lastAsk: null,
         everWorking: false,
         spokenTail: '',
         lastUserSpeechAt: now(),
@@ -382,7 +389,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     state(sessionId) {
       const session = sessions.get(sessionId)
       if (!session) return null
-      return { telemetry: session.telemetry, reference: session.reference, closed: session.closed }
+      return { telemetry: session.telemetry, reference: session.reference, lastAsk: session.lastAsk, closed: session.closed }
     },
 
     type(sessionId, text) {
@@ -417,7 +424,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         finish(session, 'close-requested', false)
         session.sideband?.close()
       }
-      return { telemetry: session.telemetry, reference: session.reference, closed: true }
+      return { telemetry: session.telemetry, reference: session.reference, lastAsk: session.lastAsk, closed: true }
     },
 
     telemetry() {

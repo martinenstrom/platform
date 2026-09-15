@@ -17,6 +17,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { NotConfiguredError, productHostGateway } from '~/infrastructure/analysis/runtime'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
+import { parseLiveOpenRequest } from '~/application/jarvis/liveOpen'
 import { createLiveRuntime, type LiveConfig, type LiveRuntime, type LiveSessionState, type LiveTelemetry } from './liveSession'
 import { createOpenAiLiveProvider, LiveProviderRefusal } from './openaiLive'
 
@@ -86,29 +87,14 @@ function runtime(): LiveRuntime | null {
 
 /* -------------------------------------------------------- the requests */
 
-export type LiveOpenRequest = { sdp: string; voice?: string }
-
 export type LiveOpenResponse =
   | { ok: true; sessionId: string; sdp: string }
   | { ok: false; code: 'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'; field?: string }
 
-/**
- * The open request, checked field by field. A field the contract does not
- * name — an actor, an operator, a case — is refused by name, not ignored.
- */
-export function parseLiveOpen(input: unknown): { ok: true; request: LiveOpenRequest } | { ok: false; field: string } {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return { ok: false, field: '' }
-  const record = input as Record<string, unknown>
-  for (const key of Object.keys(record)) if (key !== 'sdp' && key !== 'voice') return { ok: false, field: key }
-  if (typeof record.sdp !== 'string' || record.sdp.trim().length === 0) return { ok: false, field: 'sdp' }
-  if (record.voice !== undefined && typeof record.voice !== 'string') return { ok: false, field: 'voice' }
-  return { ok: true, request: { sdp: record.sdp, ...(record.voice ? { voice: record.voice } : {}) } }
-}
-
 export const openLiveSessionFn = createServerFn({ method: 'POST' })
   .validator((input: unknown) => input)
   .handler(async ({ data }): Promise<LiveOpenResponse> => {
-    const parsed = parseLiveOpen(data)
+    const parsed = parseLiveOpenRequest(data)
     if (!parsed.ok) return { ok: false, code: 'INVALID_REQUEST', field: parsed.field }
     const rt = runtime()
     if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }

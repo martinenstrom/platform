@@ -483,6 +483,102 @@ injections, invariant violations, close reason. No transcript.
 - Barge-in judged by ear on the second of near-silence.
 - TD-93 (one process holds the sideband) before a second server instance.
 
+## 9. The HQ microphone — wired and measured, 2026-09-15
+
+The last gap the ruling named: the microphone on screen in the real
+presence did nothing. Now it does the one thing — presses to a live
+session through the product's door, presses again to end it.
+
+### 9.1 What changed in the presence
+
+- `src/components/jarvis/voiceSession.ts` — the browser's side of a
+  session: microphone, speaker, WebRTC track, data channel, the offer to
+  `openLiveSessionFn` with the conversation's case pointer and nothing
+  else; transcript fragments to the presence; the state word; barge-in
+  mute in the same frame; `pagehide` closes the peer connection; failures
+  become Swedish sentences.
+- `JarvisPresence.tsx` — `InertMicrophone` (_"Röst kommer"_) is gone.
+  `MicrophoneButton` stands in both the resting strip and the panel, with
+  `aria-pressed`, the label _Starta röst_ / _Avsluta röst_, and the state
+  word Röst · Ansluter… · Lyssnar · Tänker · Talar · Röst otillgänglig.
+  Pressing it from the strip opens the panel and starts the session.
+  Fragments become turns in the one conversation, marked _röst_; a spoken
+  delegation's case becomes the one reference (`Aktivt ärende`, the same
+  follow-ups and doors); the compose sends a typed line into the live
+  session while one runs (_Skicka in i samtalet_) and asks the firm when
+  none does; collapsing, forgetting and unmounting end the session; a
+  notice line and a cost line (_Röst · 0:43 · $0.038_) sit under the
+  compose.
+- `presenceStore.ts` — a turn may carry `via: 'voice'`. Nothing else in
+  the store changed: one history, one reference, one open flag.
+- The door grew one field: `openLiveSessionFn` accepts the case
+  `reference` the conversation is already bound to (parsed field by field
+  in `application/jarvis/liveOpen.ts`, still refusing anything else by
+  name), and `liveSessionStateFn` reports `lastAsk` so the presence can
+  name the case the way the typed path does.
+
+Voice is configuration: `JARVIS_LIVE_VOICE` on the server, `marin` until
+the person chooses from the listening page; the browser never names one.
+
+### 9.2 Measured on the real HQ, the person's recording as the microphone
+
+`scripts/probe-jarvis-hq-voice.mjs` opens `/`, presses the microphone the
+presence shows, and reads the presence — not a proof page. Two runs, dev
+server with the dev research director configured:
+
+| Step | Observed |
+| --- | --- |
+| The strip | mic _Röst_, `aria-pressed=false`, no _Röst kommer_ anywhere |
+| Press | panel opens, _Ansluter…_ → _Lyssnar_ after 3.2 s and 5.0 s |
+| Spoken question | in the conversation, marked _röst_, within a second of being said |
+| Investment question (Nvidia after CPI) | _Ett ögonblick._ → the firm opened a real case → _"Jag behöver ditt beslut på en sak. Kommittén är sammankallad men saknar en utgångstes…"_ → the presence shows the case as _Aktivt ärende_ with its follow-ups and both doors |
+| Conceptual question (ECB and Swedish real rates) | answered directly, aloud, in Swedish |
+| Promise of work | none spoken in either run; invariant counter 0 |
+| Cost line | _Röst · 0:15 · $0.013_ and _Röst · 0:43 · $0.038_ |
+| Typed while live (_"Men vad är största risken?"_) | in the conversation as typed, answered aloud (_"Det beror på sammanhanget. Vad handlar det om?"_ — continuity of the channel, if not a sharp answer) |
+| Press again | mic back to _Röst_; the server's telemetry closed the session (reason `connection_lost`, the peer connection going down ahead of the close request) |
+| Reload | mic off, the conversation still there (4 and 9 turns), no session open on the server |
+| Browser errors | none |
+
+Screenshots in `.probe/hq-voice-*.png`.
+
+### 9.3 The manual acceptance test, for the person
+
+Start the dev server with an operator and open HQ:
+
+```
+FINANCIAL_OS_OPERATOR_EMPLOYEE_ID=<a seeded employee id> npm run dev
+```
+
+Then, in the browser: press the microphone in the strip; allow the
+microphone; wait for _Lyssnar_; ask something simple in Swedish; hear the
+answer and see both lines in the conversation; ask a mixed Swedish/English
+finance question; ask an investment judgement and hear the firm's real
+state; interrupt while JARVIS speaks and hear the speaker cut; type a
+follow-up and hear it answered; speak a follow-up; press the microphone
+again and see _Röst_; collapse, reload, and see the conversation kept and
+typed JARVIS working. Steps 1–7, 9–10 and 12–15 are what the probe above
+measured; 8 (mixed terminology, heard) and 11 (the cut, heard) are the
+ear's.
+
+### 9.4 Tests
+
+Nine presence tests drive the wiring with a stand-in WebRTC and microphone:
+the offer and nothing else, the states, the one conversation, typed while
+live and after, opening bound to a typed case, binding to a spoken case,
+ending on press / collapse / forget, a blocked microphone, a refused door,
+an idle close. The import scan admits `~/infrastructure/jarvis/serverFns`;
+the audio-API guard now names `voiceSession.ts` as the one place the
+microphone may be opened and forbids recognition, synthesis and recording
+in the browser. `liveOpen.test.ts` covers the reference field.
+
+### 9.5 Still not production-complete
+
+- The voice: the person's choice from the listening page.
+- A live `working` case heard through HQ, once the dev firm has one.
+- Barge-in and mixed-term pronunciation judged by ear.
+- TD-93 before a second server instance; TD-94 for spoken additions.
+
 ### 7.9 What this proof did not settle
 
 - How the voices _sound_ in Swedish — the recordings are there; the ear is

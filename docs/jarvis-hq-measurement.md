@@ -405,6 +405,14 @@ room — which navigate the page beneath the surface rather than switching
 the surface; accepted for now, because the alternative is a second
 Boardroom, and noted for the router slice.
 
+## 16. The microphone — wired, 2026-09-15
+
+The microphone the presence has shown since slice C, muted and labelled
+_Röst kommer_, now opens a live voice session through the product's door and
+ends it on the next press. What changed, how it was measured on the real
+HQ, and what remains before Voice v1 is production-complete:
+[`jarvis-voice-live-proof.md`](./jarvis-voice-live-proof.md) §9.
+
 ---
 
 ## What this measurement recommends, for ruling

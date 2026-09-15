@@ -121,6 +121,7 @@ describe('a live session', () => {
     expect(parsed.say).toContain('Jag kollar på det och återkommer.')
     expect(cont?.type).toBe('response.create')
     expect(rt.state('live-1')?.reference).toEqual(reference)
+    expect(rt.state('live-1')?.lastAsk).toEqual({ question: 'Borde jag minska Hållbar Energi?', subject: 'Hållbar Energi' })
   })
 
   it('never promises work for a case that needs the person, is blocked, or failed', async () => {
@@ -139,6 +140,16 @@ describe('a live session', () => {
       expect(parsed.acknowledgeWork, result.state).toBe(false)
       expect(parsed.say, result.state).not.toMatch(/återkommer/)
     }
+  })
+
+  it('opens already bound to the conversation’s case, so a spoken follow-up reads it', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer', reference })
+    answer = () => ({ ...bound, state: 'blocked', block: { reason: 'verification-required', owner: null } })
+    sideband.emit(functionCall('check_delegation', {}, 'c1'))
+    await flush()
+    expect(asked).toEqual([{ kind: 'status', reference }])
+    expect(rt.state('live-1')?.lastAsk).toBeNull()
   })
 
   it('remembers the case the firm bound and reads its status with it; a note has no door and says so', async () => {

@@ -19,7 +19,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HostResult } from '~/application/analysis/hostContract'
 import type { CaseOverview } from '~/application/analysis/caseOverview'
 import { boardroomSeating } from '~/application/analysis/boardroomSeating'
@@ -30,6 +30,12 @@ import {
   getCaseOverviewFn,
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
+import {
+  closeLiveSessionFn,
+  liveSessionStateFn,
+  openLiveSessionFn,
+  typeIntoLiveSessionFn,
+} from '~/infrastructure/jarvis/serverFns'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 import decided from '~/test/fixtures/caseOverview.decided.json'
 import { JarvisPresence } from './JarvisPresence'
@@ -42,9 +48,81 @@ vi.mock('~/infrastructure/analysis/serverFns', () => ({
   resumeConveningFn: vi.fn(),
 }))
 
+/* The voice door, mocked at the one module the presence may use for it. */
+vi.mock('~/infrastructure/jarvis/serverFns', () => ({
+  openLiveSessionFn: vi.fn(),
+  liveSessionStateFn: vi.fn(),
+  typeIntoLiveSessionFn: vi.fn(),
+  closeLiveSessionFn: vi.fn(),
+}))
+
 const host = vi.mocked(financialOsHostFn)
 const operator = vi.mocked(getCurrentOperatorFn)
 const overview = vi.mocked(getCaseOverviewFn)
+const openLive = vi.mocked(openLiveSessionFn)
+const liveState = vi.mocked(liveSessionStateFn)
+const typeLive = vi.mocked(typeIntoLiveSessionFn)
+const closeLive = vi.mocked(closeLiveSessionFn)
+
+/*
+ * jsdom has no WebRTC and no microphone. These stand-ins hold the shape the
+ * voice client needs and let a test speak down the data channel as the
+ * provider would. What is proved is the wiring: the presence's button, the
+ * door it calls, the conversation the words land in, and what ends a session.
+ */
+class FakeDataChannel extends EventTarget {
+  readyState = 'open'
+  send = vi.fn()
+  close = vi.fn(() => {
+    this.readyState = 'closed'
+  })
+  emit(event: Record<string, unknown>) {
+    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(event) }))
+  }
+}
+class FakePeerConnection extends EventTarget {
+  static last: FakePeerConnection | null = null
+  iceGatheringState = 'complete'
+  connectionState = 'connected'
+  localDescription: { type: string; sdp: string } | null = null
+  channel: FakeDataChannel | null = null
+  addTrack = vi.fn()
+  close = vi.fn()
+  setRemoteDescription = vi.fn(async () => {})
+  constructor() {
+    super()
+    FakePeerConnection.last = this
+  }
+  async createOffer() {
+    return { type: 'offer', sdp: 'v=0 offer' }
+  }
+  async setLocalDescription(description: { type: string; sdp: string }) {
+    this.localDescription = description
+  }
+  createDataChannel() {
+    this.channel = new FakeDataChannel()
+    return this.channel
+  }
+}
+const track = { kind: 'audio', stop: vi.fn() }
+const getUserMedia = vi.fn(async () => ({ getAudioTracks: () => [track], getTracks: () => [track] }))
+
+beforeAll(() => {
+  Object.defineProperty(globalThis, 'RTCPeerConnection', { value: FakePeerConnection, configurable: true })
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true })
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', { value: vi.fn(async () => {}), configurable: true })
+})
+
+const channel = () => FakePeerConnection.last!.channel!
+const micButton = () => screen.getByRole('button', { name: /Starta röst|Avsluta röst/ })
+
+/** Presses the microphone and takes the session to `session.started`. */
+async function goLive(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+  await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+  await screen.findByRole('button', { name: 'Avsluta röst' })
+  await act(async () => channel().emit({ type: 'session.started', session: { id: 'live-1' } }))
+}
 
 /**
  * The record the surfaces render, as the boundary actually assembles it —
@@ -140,21 +218,34 @@ beforeEach(() => {
   operator.mockResolvedValue({ ok: false, code: 'NOT_CONFIGURED' })
   overview.mockReset()
   overview.mockResolvedValue(decidedCase)
+  openLive.mockReset()
+  openLive.mockResolvedValue({ ok: true, sessionId: 'live-1', sdp: 'v=0 answer' })
+  liveState.mockReset()
+  liveState.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
+  typeLive.mockReset()
+  typeLive.mockResolvedValue({ ok: true })
+  closeLive.mockReset()
+  closeLive.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
+  getUserMedia.mockClear()
+  getUserMedia.mockResolvedValue({ getAudioTracks: () => [track], getTracks: () => [track] })
+  track.stop.mockClear()
+  FakePeerConnection.last = null
 })
 
 /* -------------------------------------------------------------- at rest */
 
 describe('at rest', () => {
-  it('is a narrow strip with a mark, a name and a microphone that says it does not listen', async () => {
+  it('is a narrow strip with a mark, a name and a microphone that is off until pressed', async () => {
     await mountApp()
     const strip = presence()
     expect(
       within(strip).getByRole('button', { name: 'Öppna JARVIS' }),
     ).toBeInTheDocument()
     expect(within(strip).getByText('JARVIS')).toBeInTheDocument()
-    expect(
-      within(strip).getByRole('img', { name: 'Röst kommer i en senare version' }),
-    ).toBeInTheDocument()
+    const mic = within(strip).getByRole('button', { name: 'Starta röst' })
+    expect(mic).toHaveAttribute('aria-pressed', 'false')
+    expect(mic).toHaveTextContent('Röst')
+    expect(getUserMedia).not.toHaveBeenCalled()
     expect(within(strip).queryByLabelText('Fråga')).toBeNull()
   })
 
@@ -460,6 +551,163 @@ describe('the deeper surfaces, opened beside the conversation', () => {
   })
 })
 
+/* ------------------------------------------------------------- voice */
+
+describe('the microphone', () => {
+  it('starts a real session through the door — an offer and nothing else — and shows its states', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true })
+    const mic = await screen.findByRole('button', { name: 'Avsluta röst' })
+    expect(mic).toHaveAttribute('aria-pressed', 'true')
+    expect(openLive).toHaveBeenCalledTimes(1)
+    const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+    expect(Object.keys(sent)).toEqual(['sdp'])
+    expect(sent.sdp).toBe('v=0 offer')
+    expect(FakePeerConnection.last!.setRemoteDescription).toHaveBeenCalledWith({ type: 'answer', sdp: 'v=0 answer' })
+    expect(mic).toHaveTextContent('Ansluter…')
+
+    await act(async () => channel().emit({ type: 'session.started', session: { id: 'live-1' } }))
+    expect(micButton()).toHaveTextContent('Lyssnar')
+    await act(async () => channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 3000, end_ms: 3600 }))
+    expect(micButton()).toHaveTextContent('Talar')
+  })
+
+  it('puts what is said, by either side, into the one conversation', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await act(async () => {
+      channel().emit({ type: 'session.input_transcript.delta', delta: ' Jarvis, hur ser du', start_ms: 1000, end_ms: 1600 })
+      channel().emit({ type: 'session.input_transcript.delta', delta: ' på Nvidia?', start_ms: 1600, end_ms: 2400 })
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 2400, end_ms: 3000 })
+    })
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    const items = within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by'))
+    expect(items.map((item) => item.getAttribute('data-by'))).toEqual(['user', 'jarvis'])
+    expect(items[0]).toHaveTextContent('Jarvis, hur ser du på Nvidia?')
+    expect(items[1]).toHaveTextContent('Ett ögonblick.')
+    expect(within(items[0]!).getByLabelText('sagt')).toBeInTheDocument()
+    /* And it is the same memory the typed path uses. */
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain('Ett ögonblick.')
+  })
+
+  it('sends a typed line into the live session rather than to the firm, and back again once the session ends', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await user.type(screen.getByLabelText('Fråga'), 'Men vad är största risken?')
+    await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
+    expect(typeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1', text: 'Men vad är största risken?' } })
+    expect(host).not.toHaveBeenCalled()
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(within(log).getByText('Men vad är största risken?')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Avsluta röst' }))
+    await screen.findByRole('button', { name: 'Starta röst' })
+    await user.type(screen.getByLabelText('Fråga'), 'Är Nvidia köpvärd?')
+    await user.type(screen.getByLabelText('Om'), 'Nvidia')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+    expect(host).toHaveBeenCalledTimes(1)
+    expect(within(log).getByText('Men vad är största risken?')).toBeInTheDocument()
+  })
+
+  it('opens bound to the case a typed question already gave the conversation', async () => {
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+    await screen.findByRole('button', { name: 'Avsluta röst' })
+    const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+    expect(Object.keys(sent).sort()).toEqual(['reference', 'sdp'])
+    expect(sent.reference).toEqual(reference)
+  })
+
+  it('binds the conversation to the case a spoken delegation opened', async () => {
+    liveState.mockResolvedValue({
+      ok: true,
+      closed: false,
+      reference,
+      lastAsk: { question: 'Hur ser du på Nvidia?', subject: 'Nvidia' },
+      telemetry: { voiceSeconds: 12, voiceCostUsd: 0.01, backend: { costUsd: 0.001 }, reason: null } as never,
+    })
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await act(async () => channel().emit({ type: 'session.delegation.created', delegation: { id: 'd1', target: 'responses' } }))
+    const active = await within(presence()).findByRole('region', { name: 'Aktivt ärende' })
+    expect(within(active).getByText('Nvidia')).toBeInTheDocument()
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"id":"case-1"')
+  })
+
+  it('ends the paid session when pressed again, when the presence collapses, and when the conversation is forgotten', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await user.click(screen.getByRole('button', { name: 'Avsluta röst' }))
+    expect(closeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1' } })
+    expect(track.stop).toHaveBeenCalled()
+    expect(FakePeerConnection.last!.close).toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Starta röst' })).toHaveAttribute('aria-pressed', 'false')
+
+    closeLive.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+    await screen.findByRole('button', { name: 'Avsluta röst' })
+    await user.click(screen.getByRole('button', { name: 'Fäll ihop JARVIS' }))
+    expect(closeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1' } })
+
+    closeLive.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+    await screen.findByRole('button', { name: 'Avsluta röst' })
+    await user.click(screen.getByRole('button', { name: 'Glöm samtalet' }))
+    expect(closeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1' } })
+  })
+
+  it('leaves JARVIS usable when the microphone is blocked', async () => {
+    getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+    host.mockResolvedValue(td88)
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Mikrofonen är blockerad i webbläsaren. Skriv i stället.')
+    expect(openLive).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Fråga'), 'Är Nvidia köpvärd?')
+    await user.type(screen.getByLabelText('Om'), 'Nvidia')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+    expect(host).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so, in a sentence, when the door refuses, and lets the microphone go', async () => {
+    openLive.mockResolvedValueOnce({ ok: false, code: 'PROVIDER_REFUSED' })
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.click(screen.getByRole('button', { name: 'Starta röst' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Rösttjänsten avböjde just nu. Skriv i stället.')
+    expect(track.stop).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
+    expect(within(presence()).getByRole('list', { name: 'Samtal' })).toBeInTheDocument()
+  })
+
+  it('reports the server closing an idle session, and is ready to start again', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await act(async () => channel().emit({ type: 'session.closed', reason: 'idle 90 s', usage: { seconds: 95 } }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Röstsessionen stängdes efter tystnad.')
+    expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
+    expect(track.stop).toHaveBeenCalled()
+  })
+})
+
 /* --------------------------------------------------- across navigation */
 
 describe('across navigation', () => {
@@ -546,6 +794,8 @@ describe('it talks to one thing', () => {
       /^~\/types$/,
       /^~\/presentation\/jarvis\//,
       /^~\/infrastructure\/analysis\/serverFns$/,
+      /* The voice door: the same kind of boundary, for the live session. */
+      /^~\/infrastructure\/jarvis\/serverFns$/,
       /^~\/application\/analysis\/hostContract$/,
       /^~\/application\/analysis\/domainSystem$/,
       /*
@@ -572,14 +822,21 @@ describe('it talks to one thing', () => {
     expect(offenders).toEqual([])
   })
 
-  it('touches no audio API', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/components/jarvis/JarvisPresence.tsx'),
-      'utf8',
-    )
-    expect(source).not.toMatch(
+  it('keeps the audio APIs in the voice client, and never recognises, synthesises or records in the browser', () => {
+    /*
+     * The microphone and the speaker are the browser's; the ears and the
+     * voice are the server's. `voiceSession.ts` may open the microphone and
+     * read its energy for barge-in. Nothing in this directory may transcribe,
+     * speak, or record — those would be a second voice stack, or a recording
+     * nobody asked for.
+     */
+    const read = (file: string) => readFileSync(resolve(process.cwd(), 'src/components/jarvis', file), 'utf8')
+    expect(read('JarvisPresence.tsx')).not.toMatch(
       /getUserMedia|SpeechRecognition|speechSynthesis|MediaRecorder|AudioContext/,
     )
+    const client = read('voiceSession.ts')
+    expect(client).toMatch(/getUserMedia/)
+    expect(client).not.toMatch(/SpeechRecognition|speechSynthesis|MediaRecorder/)
   })
 
   it('opens the one Boardroom and the one record the routes render', () => {

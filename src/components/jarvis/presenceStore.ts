@@ -28,6 +28,8 @@ export interface PresenceTurn {
   tone?: Tone
   /** The product state this turn reported, where it reported one. */
   state?: HostResult['state']
+  /** Spoken rather than typed. One conversation either way. */
+  via?: 'voice'
 }
 
 /**
