@@ -205,6 +205,62 @@ export interface InvestmentCase {
 }
 
 /**
+ * Something the person added to an open case after it was opened.
+ *
+ * "Ta hänsyn till dollarn också." "Lägg till att värderingen är huvudskälet."
+ * The question a case was opened to answer is immutable — it is what the case
+ * IS — so an addition is its own append-only record beside it: who added
+ * what, when, and at which version of the case, so a reader can tell which
+ * work was done before it and which after. It changes no stage and starts
+ * no work by itself; whether the desks must look again is a later act.
+ */
+export interface CaseAmendment {
+  id: string
+  caseId: CaseId
+  /** The person's words, as given. */
+  text: string
+  /** Who added it. A department acts through an employee. */
+  byEmployeeId: EmployeeId
+  byDepartmentId: DepartmentId
+  at: string
+  /** The case aggregate version when it was recorded. */
+  caseVersion: number
+}
+
+/**
+ * How a withdrawn case was closed, read off its own history.
+ *
+ * One terminal stage, two meanings a person can tell apart: work that was
+ * under way was **cancelled**; a case nothing had been done on was
+ * **abandoned**. The distinction is derived, never stored — the transition
+ * carries the reason and the actor, and whether the firm had started is a
+ * fact of the record. `null` for a case that is not withdrawn.
+ */
+export interface CaseClosure {
+  kind: 'cancelled' | 'abandoned'
+  reason: string | null
+  at: string
+  byEmployeeId: EmployeeId
+  byDepartmentId: DepartmentId
+}
+
+export function closureOf(
+  investmentCase: InvestmentCase,
+  workHadStarted: boolean,
+): CaseClosure | null {
+  if (investmentCase.stage !== 'withdrawn') return null
+  const closing = [...investmentCase.transitions].reverse().find((t) => t.to === 'withdrawn')
+  if (!closing) return null
+  return {
+    kind: workHadStarted ? 'cancelled' : 'abandoned',
+    reason: closing.reason ?? null,
+    at: closing.at,
+    byEmployeeId: closing.byEmployeeId,
+    byDepartmentId: closing.byDepartmentId,
+  }
+}
+
+/**
  * Binds a case to the workflow version that will produce its assignments.
  *
  * Refuses a second pin rather than accepting the latest one. Re-pinning would

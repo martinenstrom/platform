@@ -25,7 +25,8 @@ const config: LiveConfig = {
 
 const reference = { system: 'financial-os', kind: 'case', id: 'case-9', provenanceId: 'p' } as const
 const activity = { stage: 'research' as const, desks: [{ id: 'rates', name: 'Rates', isGovernance: false }], outstanding: [], inFlight: 1, expired: 0, awaitingAdoption: 0 }
-const bound = { reference, question: 'q', subject: 's', surfaces: { boardroom: '/cases/case-9', record: '/cases/case-9/underlag' }, activity }
+const amendments = { count: 0, latestAt: null, workPredates: false }
+const bound = { reference, question: 'q', subject: 's', surfaces: { boardroom: '/cases/case-9', record: '/cases/case-9/underlag' }, activity, amendments }
 
 /** A sideband the test can speak through. */
 function fakeSideband() {
@@ -152,7 +153,7 @@ describe('a live session', () => {
     expect(rt.state('live-1')?.lastAsk).toBeNull()
   })
 
-  it('remembers the case the firm bound and reads its status with it; a note has no door and says so', async () => {
+  it('remembers the case the firm bound, reads its status with it, and adds to it in the person’s words', async () => {
     const rt = runtime()
     await rt.open({ sdp: 'offer' })
     sideband.emit(functionCall('delegate_to_financial_os', { question: 'q', subject: 's' }, 'c1'))
@@ -161,12 +162,83 @@ describe('a live session', () => {
     sideband.emit(functionCall('check_delegation', {}, 'c2'))
     await flush()
     expect(asked[1]).toEqual({ kind: 'status', reference })
-    sideband.emit(functionCall('add_to_delegation', { note: 'ta hänsyn till dollarn' }, 'c3'))
+    answer = () => ({
+      ...bound,
+      state: 'blocked',
+      block: { reason: 'verification-required', owner: null },
+      amendments: { count: 1, latestAt: '2026-09-16T08:00:00.000Z', workPredates: true },
+    })
+    sideband.emit(functionCall('add_to_delegation', { note: ' ta hänsyn till dollarn ', actorEmployeeId: 'cio' }, 'c3'))
     await flush()
-    expect(asked).toHaveLength(2)
-    const note = JSON.parse((sideband.sent[4]?.item as { output: string }).output)
-    expect(note.state).toBe('unsupported')
-    expect(note.say).toContain('inte att lägga till i ärendet ännu')
+    expect(asked[2]).toEqual({ kind: 'amend', reference, requestId: 'req-1', text: 'ta hänsyn till dollarn' })
+    const added = JSON.parse((sideband.sent[4]?.item as { output: string }).output)
+    expect(added.state).toBe('blocked')
+    expect(added.say).toBe('Tillagt i ärendet. Det arbete som redan gjorts tar inte hänsyn till det.')
+    expect(added.acknowledgeWork).toBe(false)
+  })
+
+  it('closes the bound case on instruction, and confirms it only from what the firm read back', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer', reference })
+    answer = () => ({
+      ...bound,
+      state: 'closed',
+      closure: { kind: 'abandoned', reason: 'På användarens begäran i samtalet.', at: '2026-09-16T08:00:00.000Z', byDesk: null },
+    })
+    sideband.emit(functionCall('close_case', {}, 'c1'))
+    await flush()
+    expect(asked).toEqual([{ kind: 'close', reference, reason: 'På användarens begäran i samtalet.' }])
+    const closed = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    expect(closed.state).toBe('closed')
+    expect(closed.say).toBe('Ärendet är stängt. Lades ner innan något arbete gjorts — På användarens begäran i samtalet.')
+    expect(closed.acknowledgeWork).toBe(false)
+    expect(closed.decisionRequired).toBe(false)
+  })
+
+  it('lets neither act reach the firm while no case is bound', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer' })
+    sideband.emit(functionCall('close_case', { reason: 'x' }, 'c1'))
+    await flush()
+    sideband.emit(functionCall('add_to_delegation', { note: 'x' }, 'c2'))
+    await flush()
+    expect(asked).toEqual([])
+    for (const index of [0, 2]) {
+      const out = JSON.parse((sideband.sent[index]?.item as { output: string }).output)
+      expect(out.state).toBe('unsupported')
+      expect(out.say).toContain('inget pågående ärende')
+      expect(out.acknowledgeWork).toBe(false)
+    }
+  })
+
+  it('keeps where the time went per turn, in milliseconds and never in words', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer' })
+    sideband.emit({ type: 'session.started', session: { id: 'live-1' } })
+    sideband.emit({ type: 'session.input_transcript.delta', delta: 'Hur ser du på Nvidia?', start_ms: 6000, end_ms: 8000 })
+    sideband.emit({ type: 'session.delegation.created', delegation: { id: 'd-1' }, offset_ms: 7800 })
+    sideband.emit({ type: 'response.event', delegation_id: 'd-1', event: { type: 'response.created' } })
+    sideband.emit(functionCall('delegate_to_financial_os', { question: 'Hur ser du på Nvidia?', subject: 'Nvidia' }, 'c1'))
+    await flush()
+    sideband.emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 8200, end_ms: 8900 })
+    sideband.emit({ type: 'session.output_transcript.delta', delta: 'Jag kollar på det och återkommer.', start_ms: 11000, end_ms: 12500 })
+    sideband.emit({ type: 'response.event', delegation_id: 'd-1', event: { type: 'response.completed', response: {} } })
+    /* The person speaking again opens the next turn's timing. */
+    sideband.emit({ type: 'session.input_transcript.delta', delta: 'Okej.', start_ms: 14000, end_ms: 14400 })
+    sideband.emit({ type: 'session.output_transcript.delta', delta: 'Bra.', start_ms: 14600, end_ms: 14900 })
+    /* A typed line is a turn too. */
+    rt.type('live-1', 'Ta hänsyn till dollarn också.')
+
+    const turns = rt.state('live-1')!.telemetry.turns
+    expect(turns).toHaveLength(3)
+    expect(turns[0]).toMatchObject({ userEndMs: 8000, delegationMs: 7800, firstSpeechMs: 8200, speechStartsMs: [8200, 11000], typed: false })
+    expect(turns[0]!.backendStartMs).not.toBeNull()
+    expect(turns[0]!.backendEndMs).not.toBeNull()
+    expect(turns[0]!.hostCallMs).not.toBeNull()
+    expect(turns[0]!.hostDurationMs).not.toBeNull()
+    expect(turns[1]).toMatchObject({ userEndMs: 14400, delegationMs: null, firstSpeechMs: 14600, speechStartsMs: [14600], typed: false })
+    expect(turns[2]).toMatchObject({ typed: true, firstSpeechMs: null, speechStartsMs: [] })
+    expect(JSON.stringify(turns)).not.toMatch(/Nvidia|dollarn|ögonblick|återkommer/)
   })
 
   it('counts a spoken promise of work while the firm has none', async () => {

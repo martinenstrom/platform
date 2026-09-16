@@ -29,8 +29,10 @@ import {
 } from '~/application/analysis/storageObservability'
 import { noopMetrics } from '~/application/shared/metrics'
 import {
+  AMENDMENT_SQL,
   CASE_SQL,
   THESIS_SQL,
+  createCaseAmendmentRepository,
   createCaseRepository,
   createThesisRepository,
 } from './caseRepositories'
@@ -144,6 +146,7 @@ const CATALOGS = registerCatalogues([
   { name: 'provenance', statements: PROVENANCE_SQL },
   { name: 'organization', statements: ORGANIZATION_SQL },
   { name: 'case', statements: CASE_SQL },
+  { name: 'amendment', statements: AMENDMENT_SQL },
   { name: 'thesis', statements: THESIS_SQL },
   { name: 'assignment', statements: ASSIGNMENT_SQL },
   { name: 'run', statements: RUN_SQL },
@@ -243,6 +246,7 @@ export async function createPostgresRepositories(
 
   const repositoriesFor = (scope: Scope): TransactionalAnalysisRepositories => ({
     cases: createCaseRepository(scope, context, tenantId),
+    amendments: createCaseAmendmentRepository(scope, context, tenantId),
     theses: createThesisRepository(scope, context),
     assignments: createAssignmentRepository(scope, context, tenantId),
     runs: createRunRepository(scope, context, tenantId),

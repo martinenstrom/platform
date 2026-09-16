@@ -1,8 +1,10 @@
-# JARVIS → Financial OS — the host contract (slice B, refined by B.1)
+# JARVIS → Financial OS — the host contract (slice B, refined by B.1, extended for the open case)
 
-**Status: implemented and verified; contract version 2.** Written 2026-09-14
-under the Slice B ruling and refined the same day under the B.1 review. The
-contract is the deliverable; the endpoint is how it is reached.
+**Status: implemented and verified; contract version 3.** Written 2026-09-14
+under the Slice B ruling, refined the same day under the B.1 review, and
+extended on 2026-09-16 with the two acts a person performs on their own open
+case — `amend` and `close` (§10, TD-94). The contract is the deliverable; the
+endpoint is how it is reached.
 
 ```
 JARVIS decides: "does this need Financial OS?"
@@ -13,11 +15,11 @@ parseHostRequest             the door: exact shapes, unknown fields refused by n
         ↓
 createHostGateway            application layer, on FinancialOsSystem
         ↓
-FinancialOsSystem            ask / resume / overview / reference — nothing else
+FinancialOsSystem            ask / resume / amend / close / overview / reference — nothing else
         ↓
 persisted institutional state
         ↓
-HostResult                   working · answer-ready · blocked · needs-decision · unsupported · failed
+HostResult                   working · answer-ready · blocked · needs-decision · closed · unsupported · failed
 ```
 
 Files: [`src/application/analysis/hostContract.ts`](../src/application/analysis/hostContract.ts)
@@ -36,6 +38,7 @@ Files: [`src/application/analysis/hostContract.ts`](../src/application/analysis/
 | has work in progress | `working`        | "Jag kollar på det."                   |
 | cannot proceed alone | `blocked`        | "Analysen kan inte fortsätta just nu." |
 | needs the person     | `needs-decision` | "Jag behöver ditt beslut på en sak."   |
+| was told to stop     | `closed`         | "Ärendet är stängt."                   |
 
 Financial OS provides the state and its typed reason. JARVIS owns the
 sentence; none of these strings live in Financial OS.
@@ -49,6 +52,8 @@ type HostRequest =
   | { kind: 'status'; reference: DomainReference }
   | { kind: 'result'; reference: DomainReference }
   | { kind: 'inspect'; reference: DomainReference; view: InspectView }
+  | { kind: 'amend'; reference: DomainReference; requestId: string; text: string }   // v3, §10
+  | { kind: 'close'; reference: DomainReference; reason: string }                    // v3, §10
 
 type InspectView =
   { kind: 'debate' } | { kind: 'desk'; departmentId: string } | { kind: 'objections' }
@@ -76,11 +81,14 @@ type HostResult =
   | (Context & { state: 'answer-ready'; kind: 'committee-conclusion' | 'cio-decision'; answer?; inspection? })
   | (Context & { state: 'blocked'; block: HostBlock; inspection? })
   | (Context & { state: 'needs-decision'; decision: HostDecision; inspection? })
+  | (Context & { state: 'closed'; closure: HostClosure; inspection? })              // v3, §10
   | { state: 'unsupported'; reason: UnsupportedReason; reference? }
   | { state: 'failed'; reason: FailureReason; code?; field?; reference?; resumable? }
 
-Context      = { reference; question; subject; surfaces: { boardroom; record }; activity }
+Context      = { reference; question; subject; surfaces: { boardroom; record }; activity; amendments }
 HostActivity = { stage; desks: HostDesk[]; outstanding: CaseStep[]; inFlight; expired; awaitingAdoption }
+HostAmendments = { count; latestAt; workPredates }                          // counted, never copied (v3)
+HostClosure    = { kind: 'cancelled' | 'abandoned'; reason; at; byDesk }     // read off the record (v3)
 
 HostDecision =
   | { reason: 'institutional-initialization-required' }   // TD-88
@@ -95,7 +103,7 @@ BlockedReason =
 
 UnsupportedReason = 'unknown-reference' | 'not-routable' | 'unknown-desk' | 'no-institutional-conclusion'
 FailureReason     = 'invalid-request' | 'operator-unresolved' | 'convening-incomplete'
-                  | 'not-configured' | 'service-unavailable' | 'refused'
+                  | 'not-configured' | 'service-unavailable' | 'case-settled' | 'refused'
 ```
 
 `answer` travels only with `result`; `status` states the fact — and its
@@ -114,6 +122,8 @@ named only from the firm's governance table, never from array order (TD-91).
 | `status`  | `system.overview(id)`, `system.reference(id)`   | derive the product state                                                                     |
 | `result`  | same                                            | derive; on `answer-ready`, read the answer off the record                                    |
 | `inspect` | same                                            | derive; attach the projection                                                                |
+| `amend`   | `system.amend(delegation, id, text)`            | `done` → read the case; `not-found` → `unsupported`; `illegal-prior-state` → `failed / case-settled`; other refusals → `failed / refused` |
+| `close`   | `system.close(delegation, id, reason)`          | same                                                                                         |
 
 Nothing else on the port is reachable through the gateway.
 
@@ -123,6 +133,11 @@ Nothing else on the port is reachable through the gateway.
 Huvudkontoret and the Boardroom render. There is no host-side state machine.
 Precedence, top to bottom:
 
+0. **`closed`** ⇔ the case is `withdrawn` (v3, §10). Precedes everything, a
+   run inside its window included: the person ended the case, and work the
+   firm will not adopt is not "in progress" to them — it is still counted in
+   `activity.inFlight`. `closure.kind` is derived, never stored: `cancelled`
+   when a run, a claim or a revision exists, else `abandoned`.
 1. **`working`** ⇔ some run is inside its **active execution window**:
    `running` and `startedAt + budget.deadline.deadlineMs > now`. This is the
    firm's own view of the run — every live run records that deadline because
@@ -240,3 +255,79 @@ loads HQ, imports the client-transformed `serverFns` and calls the function
 through the production RPC path (`x-tsr-serverFn: true`, seroval framing)
 against every case the dev firm holds. The orphan run is the specimen for
 TD-92.
+
+## 10. The two acts on the open case — `amend` and `close` (contract v3, 2026-09-16)
+
+The two things a person says most while a case is open, measured in the
+voice proof: _"Ta hänsyn till dollarn också"_ and _"Stäng ner det pågående
+ärendet."_ Before v3 the first had no door (TD-94) and the second had a
+stage (`withdrawn`) but no act — and the voice, asked to do either, said it
+had. Both are now real institutional acts with provenance, reached through
+the same door as everything else, with the same identity rule: the request
+names no actor; the server-resolved operator is the actor and the host is
+the initiator.
+
+```ts
+| { kind: 'amend'; reference: DomainReference; requestId: string; text: string }
+| { kind: 'close'; reference: DomainReference; reason: string }
+
+HostResult adds
+  | (Context & { state: 'closed'; closure: HostClosure; inspection? })
+Context adds
+  amendments: { count: number; latestAt: string | null; workPredates: boolean }
+HostClosure = { kind: 'cancelled' | 'abandoned'; reason: string | null; at: string; byDesk: HostDesk | null }
+FailureReason adds 'case-settled'
+```
+
+**`amend`** → `AmendCase`. The person's words are appended beside the
+question — never folded into it; the question is the one column the
+application may not update — with who, when, and the case version at the
+time. It moves no stage and starts no work. `requestId` is the idempotency
+key, as on `ask`: a retry lands on the same record. The result is the case
+re-read, so the host learns what the firm recorded and nothing else; the
+words themselves are not repeated in the contract (`amendments` counts them).
+`workPredates` is the one fact a host must say beside an addition: some run
+started before the latest addition, so work already done did not take it
+into account. Whether the desks must look again is a later act with its own
+mandate; nothing here promises it.
+
+**`close`** → `CloseCase`. The case becomes `withdrawn` with the person's
+reason, the actor and one movement event; history stands. **`closed`** is
+derived, never stored, and precedes every other product state — a run
+inside its window on a closed case is still counted in `activity.inFlight`
+(it is true and it costs money) but the person is not told the firm is
+working for them. `closure.kind` is read off the record: `cancelled` when a
+run, a claim or a revision existed; `abandoned` when nothing had been done.
+There is no reopening from the contract; `ReopenCase` is unwritten.
+
+**Refusals.** Either act on a case the firm has settled or the person has
+closed → `failed / case-settled`. Unknown case → `unsupported /
+unknown-reference`. Any other institutional refusal → `failed / refused`
+with the institution's own code. No operator → `failed /
+operator-unresolved`, and nothing is written.
+
+**Verification.** `hostContract.test.ts`: closed never for a case that is
+not withdrawn · wins over a run in its window and reads cancelled · past
+the window still closed, never blocked on recovery · abandoned when nothing
+started, missing reason kept missing · a claim alone is work · additions
+counted, `workPredates` only when a run started before the latest · the
+words never copied · parser accepts both acts in their exact shapes,
+refuses empty words, a missing request id, a missing reason, and an actor,
+version, stage or department by name. `hostGateway.test.ts` (in-memory
+firm): an addition lands as the operator's act with the host as initiator
+beside an unchanged question · a retry lands once, a second addition beside
+the first · `workPredates` after a run started earlier · close carries the
+reason into the transition and the ledger, reads back closed, and refuses
+both acts afterwards as `case-settled` · cancelled with work in flight, and
+still counted · no operator, nothing changes · a foreign reference refused
+for both · no command name, version or stage in any result.
+`caseCommands.test.ts`: both commands against the in-memory reference
+(mandate, owner check, blank words, closed case, reason and version
+policies, replay, second addition as a second record; withdraw with reason
+and event, cancelled/abandoned derived, from a working stage, never twice,
+stale version). `repositoryContract.ts`: the addition store, both adapters
+(empty list, round trip, idempotent append that never rewords, ordering by
+time then id, frozen reads). `permissions.pg.test.ts`: `finos_app` may add
+and may not reword or remove. `liveTools.test.ts`, `liveSession.test.ts`,
+`liveSpeech.test.ts`: the voice's two tools, bound-case only, the spoken
+sentence produced from the read-back.

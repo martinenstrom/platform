@@ -28,10 +28,18 @@ const context = {
     expired: 0,
     awaitingAdoption: 0,
   },
+  amendments: { count: 0, latestAt: null, workPredates: false },
 }
+const AT = '2026-09-16T08:00:00.000Z'
 
 const results: Record<string, HostResult> = {
   working: { ...context, state: 'working' },
+  closed: {
+    ...context,
+    state: 'closed',
+    closure: { kind: 'cancelled', reason: 'På användarens begäran i samtalet.', at: AT, byDesk: null },
+  },
+  settled: { state: 'failed', reason: 'case-settled', reference },
   needsDecision: {
     ...context,
     state: 'needs-decision',
@@ -112,13 +120,73 @@ describe('the acknowledgement of delegated work', () => {
     expect(speech.say).toContain('Ingen materiell invändning kvarstår.')
   })
 
-  it('refuses a note on an open case honestly, with no promise in it', () => {
-    for (const reason of ['context-not-supported', 'no-open-case', 'unknown-tool', 'invalid-arguments'] as const) {
+  it('refuses what it cannot do honestly, with no promise in it', () => {
+    for (const reason of ['no-open-case', 'unknown-tool', 'invalid-arguments'] as const) {
       const speech = unsupportedSpeech(reason)
       expect(speech.acknowledgeWork).toBe(false)
+      expect(speech.reference).toBeNull()
       expect(ACKNOWLEDGEMENT_PATTERN.test(speech.say)).toBe(false)
     }
-    expect(unsupportedSpeech('context-not-supported').say).toContain('inte att lägga till i ärendet ännu')
+    expect(unsupportedSpeech('no-open-case').say).toContain('inget pågående ärende')
+  })
+})
+
+describe('the two acts on the open case', () => {
+  const withAdditions = (result: HostResult, count: number, workPredates: boolean): HostResult =>
+    ({ ...result, amendments: { count, latestAt: AT, workPredates } }) as HostResult
+
+  it('leads with the addition having landed, and asks for the decision the case still needs', () => {
+    const speech = toolSpeech(withAdditions(results.needsDecision!, 1, false), 'amend')
+    expect(speech.say.startsWith('Tillagt i ärendet.')).toBe(true)
+    expect(speech.say).not.toContain('tar inte hänsyn')
+    expect(speech.say).toContain('Jag behöver ditt beslut på en sak.')
+    expect(speech.decisionRequired).toBe(true)
+    expect(speech.acknowledgeWork).toBe(false)
+    expect(speech.reference).toEqual(reference)
+  })
+
+  it('says when work already done predates the addition, and promises work only while the firm works', () => {
+    const working = toolSpeech(withAdditions(results.working!, 2, true), 'amend')
+    expect(working.say).toBe(
+      `Tillagt i ärendet. Det arbete som redan gjorts tar inte hänsyn till det. ${WORKING_ACKNOWLEDGEMENT}`,
+    )
+    expect(working.acknowledgeWork).toBe(true)
+    const blocked = toolSpeech(withAdditions(results.blocked!, 1, true), 'amend')
+    expect(blocked.say).toBe('Tillagt i ärendet. Det arbete som redan gjorts tar inte hänsyn till det.')
+    expect(blocked.acknowledgeWork).toBe(false)
+    expect(ACKNOWLEDGEMENT_PATTERN.test(blocked.say)).toBe(false)
+  })
+
+  it('reads the additions beside the state when the person only asks', () => {
+    const working = toolSpeech(withAdditions(results.working!, 1, true), 'status')
+    expect(working.say.startsWith(WORKING_ACKNOWLEDGEMENT)).toBe(true)
+    expect(working.say).toContain(
+      'Ett tillägg sedan ärendet öppnades; det arbete som redan gjorts tar inte hänsyn till det senaste.',
+    )
+    const blocked = toolSpeech(withAdditions(results.blocked!, 1, false), 'status')
+    expect(blocked.say).toContain('Ett tillägg sedan ärendet öppnades.')
+    expect(blocked.acknowledgeWork).toBe(false)
+  })
+
+  it('confirms a closure only from the closed state the firm read back, and says how it was closed', () => {
+    const afterClose = toolSpeech(results.closed!, 'close')
+    expect(afterClose.say).toBe(
+      'Ärendet är stängt. Pågående arbete avbröts — På användarens begäran i samtalet.',
+    )
+    expect(afterClose.acknowledgeWork).toBe(false)
+    expect(afterClose.decisionRequired).toBe(false)
+    expect(afterClose.reference).toEqual(reference)
+    /* Asked about later, a closed case reads the same. */
+    expect(toolSpeech(results.closed!, 'status').say).toBe(afterClose.say)
+  })
+
+  it('says a settled case cannot be changed, and promises nothing', () => {
+    for (const act of ['amend', 'close'] as const) {
+      const speech = toolSpeech(results.settled!, act)
+      expect(speech.say).toContain('Ärendet är redan avslutat')
+      expect(speech.acknowledgeWork).toBe(false)
+      expect(speech.decisionRequired).toBe(false)
+    }
   })
 })
 
@@ -129,6 +197,14 @@ describe('the instructions', () => {
     expect(LIVE_VOICE_INSTRUCTIONS).toContain('Inga "ehm"')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Är acknowledgeWork false får du inte säga att du återkommer')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('delegate_to_financial_os')
+  })
+
+  it('forbid a claimed act the firm did not confirm, and an acknowledgement said out of habit', () => {
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('Påstå aldrig att du gjort något som backend inte bekräftat')
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('säg INTE "Ett ögonblick" av vana')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('add_to_delegation')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('close_case')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Påstå aldrig att något lagts till, stängts eller gjorts om verktyget inte bekräftade det')
   })
 
   it('name no command, no actor and no playbook the voice could reach for', () => {

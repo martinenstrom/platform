@@ -41,9 +41,12 @@
  * autonomously against a decision gate is a ruling this port waits for.
  */
 
-import type { CaseStanding } from '~/domain/analysis'
+import type { CaseAmendment, CaseStanding, InvestmentCase } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
-import type { CommandDeps } from './commands/runCommand'
+import { runCommand, type CommandDeps } from './commands/runCommand'
+import type { CommandResult } from './commands/envelope'
+import { amendCase } from './commands/amendCase'
+import { closeCase } from './commands/closeCase'
 import {
   caseIdFor,
   resumeConvening,
@@ -95,6 +98,20 @@ export interface DomainReference {
   provenanceId: string
 }
 
+/**
+ * What an act on an open case came back with.
+ *
+ * `refused` carries the institution's own code — `not-authorised`,
+ * `illegal-prior-state`, `not-found` — never a driver message. `unresolved`
+ * is a commit that cannot be proven either way, and is not reported as done.
+ */
+export type CaseActResult<T> =
+  | { state: 'done'; value: T }
+  | { state: 'refused'; code: string }
+  /** Storage failed before or during the commit; nothing is claimed. */
+  | { state: 'failed' }
+  | { state: 'unresolved' }
+
 export interface FinancialOsSystem {
   readonly id: typeof FINANCIAL_OS_SYSTEM_ID
 
@@ -120,6 +137,32 @@ export interface FinancialOsSystem {
   /** Convene the committee on a case whose first commit landed and second did not. */
   resume(delegation: Delegation, caseId: string): Promise<StartInvestmentCaseResult>
 
+  /* ------------------------------------------------- the open case, acted on */
+
+  /**
+   * The person adds to their open case — "ta hänsyn till dollarn också".
+   *
+   * Recorded beside the question with who, when and at which version; it
+   * moves no stage and starts no work. `requestId` is the host's idempotency
+   * key for this addition, as it is for `ask`: the same key lands on the same
+   * record rather than adding it twice.
+   */
+  amend(
+    delegation: Delegation,
+    caseId: string,
+    text: string,
+  ): Promise<CaseActResult<CaseAmendment>>
+  /**
+   * The person closes their case on explicit instruction, with the reason
+   * they gave. The case becomes `withdrawn`; its history stays. Whether that
+   * reads as cancelled or abandoned is derived from the record afterwards.
+   */
+  close(
+    delegation: Delegation,
+    caseId: string,
+    reason: string,
+  ): Promise<CaseActResult<InvestmentCase>>
+
   /* ------------------------------------------------------------- results */
 
   /** Every case the firm holds, outstanding first. */
@@ -144,6 +187,42 @@ export function createFinancialOsSystem(input: {
   /** The initiator every delegated act is recorded under. */
   const initiatedBy = (delegation: Delegation) =>
     ({ kind: 'orchestrator', orchestratorId: delegation.orchestratorId }) as const
+
+  /**
+   * The desk a case belongs to, read from its owner — the department the
+   * convenor mandate is about. Resolved here, never named by a host: a host
+   * that could name the department could name one it happens to be allowed
+   * to act for.
+   */
+  async function owningDepartmentOf(
+    caseId: string,
+    deps: CommandDeps,
+  ): Promise<
+    | { ok: true; departmentId: string; version: number }
+    | { ok: false; result: { state: 'refused'; code: string } }
+  > {
+    const current = await repositories.cases.get(caseId)
+    if (!current) return { ok: false, result: { state: 'refused', code: 'not-found' } }
+    const owner = deps.organization.employees.find(
+      (employee) => employee.id === current.ownerEmployeeId,
+    )
+    if (!owner) return { ok: false, result: { state: 'refused', code: 'not-authorised' } }
+    return { ok: true, departmentId: owner.departmentId, version: current.version }
+  }
+
+  /** A command's outcome, in the port's words. */
+  const settled = <T>(result: CommandResult<T>): CaseActResult<T> => {
+    switch (result.outcome) {
+      case 'committed':
+        return { state: 'done', value: result.value }
+      case 'rejected':
+        return { state: 'refused', code: result.rejection.code }
+      case 'failed':
+        return { state: 'failed' }
+      case 'unresolved':
+        return { state: 'unresolved' }
+    }
+  }
 
   return {
     id: FINANCIAL_OS_SYSTEM_ID,
@@ -182,6 +261,57 @@ export function createFinancialOsSystem(input: {
         initiator: initiatedBy(delegation),
         now,
       })
+    },
+
+    async amend(delegation, caseId, text) {
+      const deps = await commandDeps()
+      const owning = await owningDepartmentOf(caseId, deps)
+      if (!owning.ok) return owning.result
+      const result = await runCommand(
+        amendCase(deps.organization),
+        {
+          caseId,
+          amendmentId: `${caseId}-amend-${delegation.requestId}`,
+          text,
+          onBehalfOfDepartmentId: owning.departmentId,
+        },
+        {
+          commandId: `${caseId}-amend-${delegation.requestId}`,
+          correlationId: caseId,
+          actor: { kind: 'employee', employeeId: delegation.actingEmployeeId },
+          initiator: initiatedBy(delegation),
+          occurredAt: now(),
+        },
+        deps,
+      )
+      return settled(result)
+    },
+
+    async close(delegation, caseId, reason) {
+      const deps = await commandDeps()
+      const owning = await owningDepartmentOf(caseId, deps)
+      if (!owning.ok) return owning.result
+      const result = await runCommand(
+        closeCase(deps.organization),
+        { caseId, onBehalfOfDepartmentId: owning.departmentId },
+        {
+          /*
+           * One closure per case, whatever asked for it: a retry of the same
+           * instruction replays; a second instruction after a reopening — an
+           * act the firm has not written — would be a different case version
+           * and a different command id then.
+           */
+          commandId: `${caseId}-close-v${owning.version}`,
+          correlationId: caseId,
+          actor: { kind: 'employee', employeeId: delegation.actingEmployeeId },
+          initiator: initiatedBy(delegation),
+          occurredAt: now(),
+          expectedVersion: owning.version,
+          reason,
+        },
+        deps,
+      )
+      return settled(result)
     },
 
     async queue() {

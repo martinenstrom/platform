@@ -3,17 +3,21 @@
  * the firm answers in.
  *
  * JARVIS decides that a request needs the firm. This is what it then says, and
- * what it gets back. Five operations in, six product states out, and nothing
- * in either direction that names a command, an actor, a playbook entry, a
- * candidate or a run state.
+ * what it gets back. Seven operations in, seven product states out, and
+ * nothing in either direction that names a command, an actor, a playbook
+ * entry, a candidate or a run state.
  *
  * ## The request side is narrow on purpose
  *
  * `ask` delegates a question. `resume` retries a convening that landed half
- * way. `status`, `result` and `inspect` read. There is no `advance`: the firm
- * does not yet have the deterministic execution path that would make
- * "carry this as far as policy permits" a truthful promise, and a gateway that
- * offered it would be a hand-written runner in disguise. The concept is
+ * way. `status`, `result` and `inspect` read. `amend` adds the person's words
+ * to their open case; `close` ends it on their instruction. Both are the
+ * person's own acts on the person's own case — the two things a person
+ * says most while a case is open — and each is a real institutional act
+ * with provenance, not a note in a transcript. There is no `advance`: the
+ * firm does not yet have the deterministic execution path that would make
+ * "carry this as far as policy permits" a truthful promise, and a gateway
+ * that offered it would be a hand-written runner in disguise. The concept is
  * reserved, not implemented.
  *
  * A request carries **no actor**. Who is asking is resolved by the server from
@@ -37,6 +41,8 @@
  *
  * `answer-ready` means the institution stands behind a current result — the
  * committee's conclusion, or a CIO decision above it — and says which.
+ * `closed` means the person ended the case; it says whether work under way
+ * was cancelled or nothing had started, and why, from the record.
  *
  * ## No model in the contract
  *
@@ -62,7 +68,7 @@ import type { BoardroomEntry, BoardroomObjection } from './boardroomTimeline'
 import type { BoardroomSeat, SeatParticipation } from './boardroomSeating'
 
 /** Bumped when the shape or meaning of a request or result changes. */
-export const HOST_CONTRACT_VERSION = '2'
+export const HOST_CONTRACT_VERSION = '3'
 
 /* ------------------------------------------------------------- requests */
 
@@ -91,6 +97,13 @@ export type HostRequest =
   | { kind: 'result'; reference: DomainReference }
   /** Deeper material for a follow-up, or for a contextual surface. */
   | { kind: 'inspect'; reference: DomainReference; view: InspectView }
+  /**
+   * The person adds to their open case — "ta hänsyn till dollarn också".
+   * `requestId` is the host's idempotency key for this addition, as on `ask`.
+   */
+  | { kind: 'amend'; reference: DomainReference; requestId: string; text: string }
+  /** The person closes their case, with the reason they gave. */
+  | { kind: 'close'; reference: DomainReference; reason: string }
 
 /* -------------------------------------------------------------- results */
 
@@ -305,6 +318,35 @@ export type HostInspection =
     }
   | { view: 'objections'; objections: readonly HostObjection[] }
 
+/**
+ * What the person added after opening, as a host may repeat it.
+ *
+ * Counted, not copied: the words are the firm's record and are read there.
+ * `workPredates` is the one fact a host must say beside an addition — that
+ * work already done did not take it into account — read off the record, so
+ * a host never has to guess whether the desks saw it.
+ */
+export interface HostAmendments {
+  count: number
+  latestAt: string | null
+  /** True when any of the firm's work on the case started before the latest addition. */
+  workPredates: boolean
+}
+
+/**
+ * How a closed case was closed, read off its own history.
+ *
+ * `cancelled` when work was under way; `abandoned` when nothing had started.
+ * The reason is the person's, as given; `byDesk` is the desk that acted, as
+ * the organisation names it.
+ */
+export interface HostClosure {
+  kind: 'cancelled' | 'abandoned'
+  reason: string | null
+  at: string
+  byDesk: HostDesk | null
+}
+
 /** What every positive answer carries: enough to bind the next turn back here. */
 interface HostCaseContext {
   reference: DomainReference
@@ -312,6 +354,7 @@ interface HostCaseContext {
   subject: string
   surfaces: HostSurfaces
   activity: HostActivity
+  amendments: HostAmendments
 }
 
 export type UnsupportedReason =
@@ -331,6 +374,8 @@ export type FailureReason =
   | 'convening-incomplete'
   | 'not-configured'
   | 'service-unavailable'
+  /** An `amend` or `close` on a case the firm has already settled or closed. */
+  | 'case-settled'
   /** The institution declined, with its own bounded code beside. */
   | 'refused'
 
@@ -359,6 +404,8 @@ export type HostResult =
       decision: HostDecision
       inspection?: HostInspection
     })
+  /** The person closed it. Terminal; the history stands. Never reopened from here. */
+  | (HostCaseContext & { state: 'closed'; closure: HostClosure; inspection?: HostInspection })
   | { state: 'unsupported'; reason: UnsupportedReason; reference?: DomainReference }
   | {
       state: 'failed'
@@ -377,7 +424,15 @@ export type HostResult =
 export type ParsedHostRequest =
   { ok: true; request: HostRequest } | { ok: false; field: string }
 
-const REQUEST_KINDS = new Set(['ask', 'resume', 'status', 'result', 'inspect'])
+const REQUEST_KINDS = new Set([
+  'ask',
+  'resume',
+  'status',
+  'result',
+  'inspect',
+  'amend',
+  'close',
+])
 const INSPECT_KINDS = new Set(['debate', 'desk', 'objections'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -465,7 +520,13 @@ export function parseHostRequest(input: unknown): ParsedHostRequest {
   }
 
   const allowed =
-    input.kind === 'inspect' ? ['kind', 'reference', 'view'] : ['kind', 'reference']
+    input.kind === 'inspect'
+      ? ['kind', 'reference', 'view']
+      : input.kind === 'amend'
+        ? ['kind', 'reference', 'requestId', 'text']
+        : input.kind === 'close'
+          ? ['kind', 'reference', 'reason']
+          : ['kind', 'reference']
   const stray = onlyKeys(input, allowed)
   if (stray) return { ok: false, field: stray }
 
@@ -476,6 +537,27 @@ export function parseHostRequest(input: unknown): ParsedHostRequest {
     const view = parseView(input.view)
     if (typeof view === 'string') return { ok: false, field: view }
     return { ok: true, request: { kind: 'inspect', reference, view } }
+  }
+
+  if (input.kind === 'amend') {
+    for (const key of ['requestId', 'text'] as const) {
+      if (!nonEmptyString(input[key])) return { ok: false, field: key }
+    }
+    return {
+      ok: true,
+      request: {
+        kind: 'amend',
+        reference,
+        requestId: input.requestId as string,
+        text: input.text as string,
+      },
+    }
+  }
+
+  if (input.kind === 'close') {
+    /* A closure without a reason cannot answer "varför stängde vi det?". */
+    if (!nonEmptyString(input.reason)) return { ok: false, field: 'reason' }
+    return { ok: true, request: { kind: 'close', reference, reason: input.reason } }
   }
 
   return {

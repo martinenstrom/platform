@@ -34,6 +34,7 @@ import {
   type AgentClaim,
   type AgentRunRecord,
   type Assignment,
+  type CaseAmendment,
   type CaseDecision,
   type CaseStanding,
   type CaseReconsideration,
@@ -82,6 +83,15 @@ export interface CaseOverview {
   /** The six answers, first because they are what a reader needs first. */
   standing: CaseStanding
   investmentCase: InvestmentCase
+  /**
+   * What the person added after opening, oldest first.
+   *
+   * Beside the question, never folded into it: the question is what the case
+   * was opened to answer, and an addition is what the person said later —
+   * with the case version at the time, so a reader can tell which work
+   * predates it.
+   */
+  amendments: readonly CaseAmendment[]
   revisions: readonly InvestmentThesis[]
   aggregations: readonly ManagerAggregation[]
   claims: readonly AgentClaim[]
@@ -186,6 +196,7 @@ export async function caseOverview(input: {
   if (!investmentCase) return null
 
   const [
+    amendments,
     revisions,
     claims,
     runs,
@@ -198,6 +209,7 @@ export async function caseOverview(input: {
     returns,
     reconsiderations,
   ] = await Promise.all([
+    repositories.amendments.listForCase(caseId),
     repositories.theses.listForCase(caseId),
     repositories.claims.listForCase(caseId),
     repositories.runs.listForCase(caseId),
@@ -295,6 +307,7 @@ export async function caseOverview(input: {
       },
     }),
     investmentCase,
+    amendments,
     revisions,
     aggregations,
     claims,

@@ -96,6 +96,7 @@
     "playbookId": "macro-regime",
     "playbookVersion": "1"
   },
+  "amendments": [],
   "revisions": [
     {
       "thesisId": "hq-fixture-norisk-thesis",

@@ -160,6 +160,7 @@ const context = {
     expired: 0,
     awaitingAdoption: 0,
   },
+  amendments: { count: 0, latestAt: null, workPredates: false },
 }
 
 const td88: HostResult = {
@@ -287,6 +288,46 @@ describe('engaged', () => {
       within(log).getByText('Jag behöver ditt beslut på en sak.'),
     ).toBeInTheDocument()
     expect(within(log).getByText(/saknar en utgångstes/)).toBeInTheDocument()
+  })
+
+  it('says beside any state what the person added, and whether the work already done saw it', async () => {
+    host.mockResolvedValue({
+      ...td88,
+      amendments: { count: 1, latestAt: '2026-09-16T08:00:00.000Z', workPredates: true },
+    })
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(
+      within(log).getByText(
+        /Ett tillägg sedan ärendet öppnades; det arbete som redan gjorts tar inte hänsyn till det senaste\./,
+      ),
+    ).toBeInTheDocument()
+    expect(within(log).getByText('Jag behöver ditt beslut på en sak.')).toBeInTheDocument()
+  })
+
+  it('says a closed case is closed, and how, when asked where it stands', async () => {
+    host.mockResolvedValueOnce(td88).mockResolvedValueOnce({
+      ...context,
+      state: 'closed',
+      closure: {
+        kind: 'cancelled',
+        reason: 'Behövs inte längre.',
+        at: '2026-09-16T08:00:00.000Z',
+        byDesk: { id: 'research-office', name: 'Research Office', isGovernance: false },
+      },
+    })
+    const user = userEvent.setup()
+    await mountApp()
+    await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: 'Var står det?' }))
+
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(within(log).getByText('Ärendet är stängt.')).toBeInTheDocument()
+    expect(within(log).getByText(/Pågående arbete avbröts — Behövs inte längre\./)).toBeInTheDocument()
+    expect(within(log).queryByText(/återkommer/)).not.toBeInTheDocument()
   })
 
   it('binds the conversation to the reference and offers the deeper surfaces', async () => {
@@ -593,6 +634,27 @@ describe('the microphone', () => {
     expect(within(items[0]!).getByLabelText('sagt')).toBeInTheDocument()
     /* And it is the same memory the typed path uses. */
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain('Ett ögonblick.')
+  })
+
+  it('keeps everything JARVIS says until the person speaks again in one bubble', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    await act(async () => {
+      channel().emit({ type: 'session.input_transcript.delta', delta: ' Hur ser du på Nvidia?', start_ms: 1000, end_ms: 2400 })
+      /* An acknowledgement, a pause of seconds, then the answer: one reply. */
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 2400, end_ms: 3000 })
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'Jag behöver ditt beslut först.', start_ms: 6500, end_ms: 8000 })
+      /* The person speaks again: what follows is a new reply. */
+      channel().emit({ type: 'session.input_transcript.delta', delta: ' Okej.', start_ms: 9000, end_ms: 9400 })
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'Bra.', start_ms: 9600, end_ms: 9900 })
+    })
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    const items = within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by'))
+    expect(items.map((item) => item.getAttribute('data-by'))).toEqual(['user', 'jarvis', 'user', 'jarvis'])
+    expect(items[1]).toHaveTextContent('Ett ögonblick. Jag behöver ditt beslut först.')
+    expect(items[3]).toHaveTextContent('Bra.')
+    expect(items[3]).not.toHaveTextContent('Ett ögonblick.')
   })
 
   it('sends a typed line into the live session rather than to the firm, and back again once the session ends', async () => {

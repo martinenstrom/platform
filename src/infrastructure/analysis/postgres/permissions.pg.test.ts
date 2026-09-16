@@ -218,6 +218,27 @@ describe('append-only tables', () => {
     await expectDenied(app, 'DELETE FROM analysis.transition_events')
   })
 
+  it('accepts an addition to a case, and refuses to reword or remove one', async () => {
+    /*
+     * The person's words, beside the question. Appended by the application,
+     * never edited by it: a case whose additions could be tidied could not
+     * answer what the person actually said, or when.
+     */
+    const caseId = await appCase()
+    await expect(
+      app.query(
+        `INSERT INTO analysis.case_amendments
+           (id, tenant_id, case_id, text, by_employee_id, by_department_id,
+            case_version, recorded_at)
+         VALUES ($1, 'system', $2, 'Ta hänsyn till dollarn också.', 'research-director',
+                 'research-office', 1, now())`,
+        [id('amend'), caseId],
+      ),
+    ).resolves.toBeDefined()
+    await expectDenied(app, `UPDATE analysis.case_amendments SET text = 'reworded'`)
+    await expectDenied(app, 'DELETE FROM analysis.case_amendments')
+  })
+
   it('refuses to update or delete a run event', async () => {
     await expectDenied(app, `UPDATE analysis.run_events SET reason = 'x'`)
     await expectDenied(app, 'DELETE FROM analysis.run_events')

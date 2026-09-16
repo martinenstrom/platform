@@ -118,6 +118,8 @@ describe('a clean database reaches the expected schema', () => {
       '0048',
       /* The review natural key names the principal, agent or employee. */
       '0049',
+      /* What the person added to an open case: append-only, beside the question. */
+      '0050',
     ])
   })
 
@@ -140,6 +142,8 @@ describe('a clean database reaches the expected schema', () => {
       'aggregation_optional_inputs',
       'aggregations',
       'assignments',
+      /* The person's additions to an open case, with who, when and at which version. */
+      'case_amendments',
       'case_decisions',
       'case_participants',
       'case_reconsideration_fired_triggers',

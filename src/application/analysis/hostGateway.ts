@@ -56,6 +56,7 @@
  */
 
 import {
+  closureOf,
   dissentRequiresAcknowledgement,
   type AgentRunRecord,
   type Blocker,
@@ -70,14 +71,21 @@ import {
 } from './boardroomTimeline'
 import { boardroomSeating } from './boardroomSeating'
 import type { CurrentOperatorResult } from './currentOperator'
-import type { Delegation, DomainReference, FinancialOsSystem } from './domainSystem'
+import type {
+  CaseActResult,
+  Delegation,
+  DomainReference,
+  FinancialOsSystem,
+} from './domainSystem'
 import type { StartInvestmentCaseResult } from './startInvestmentCase'
 import { FINANCIAL_OS_SYSTEM_ID } from './domainSystem'
 import type {
   AnswerThesis,
   BlockedReason,
   HostActivity,
+  HostAmendments,
   HostBlock,
+  HostClosure,
   HostDecision,
   HostDesk,
   HostInspection,
@@ -100,6 +108,7 @@ export type ProductState =
   | { state: 'answer-ready'; kind: InstitutionalAnswer['kind'] }
   | { state: 'blocked'; block: HostBlock }
   | { state: 'needs-decision'; decision: HostDecision }
+  | { state: 'closed'; closure: HostClosure }
   | { state: 'unsupported'; reason: 'no-institutional-conclusion' }
 
 const deskOf = (overview: CaseOverview, departmentId: string | null): HostDesk | null => {
@@ -208,7 +217,35 @@ function blockedBy(overview: CaseOverview, blockers: readonly Blocker[]): HostBl
   }
 }
 
+/**
+ * Whether the firm had started on the case: a run, a claim or a thesis
+ * exists. Decides `cancelled` against `abandoned`; never stored.
+ */
+const workHadStarted = (overview: CaseOverview): boolean =>
+  overview.runs.length > 0 || overview.claims.length > 0 || overview.revisions.length > 0
+
+/** How a withdrawn case was closed, as a host may say it. `null` unless withdrawn. */
+export function closureFor(overview: CaseOverview): HostClosure | null {
+  const closure = closureOf(overview.investmentCase, workHadStarted(overview))
+  if (!closure) return null
+  return {
+    kind: closure.kind,
+    reason: closure.reason,
+    at: closure.at,
+    byDesk: deskOf(overview, closure.byDepartmentId),
+  }
+}
+
 export function productStateFor(overview: CaseOverview, now: string): ProductState {
+  /*
+   * Closed wins over everything, including a run still inside its window:
+   * the person ended the case, and work the firm will not adopt is not
+   * "work in progress" to them. What is in flight is still counted in
+   * `activity`, because it is true and it costs money.
+   */
+  const closure = closureFor(overview)
+  if (closure) return { state: 'closed', closure }
+
   /* In flight wins. A run inside its window is work the firm is doing now. */
   if (overview.runs.some((run) => withinExecutionWindow(run, now)))
     return { state: 'working' }
@@ -320,6 +357,20 @@ export function productStateFor(overview: CaseOverview, now: string): ProductSta
 /** An institutional act the contract has not mapped cannot reach a host unnamed. */
 function exhaustive(act: never): never {
   throw new Error(`Unmapped institutional act: ${String(act)}`)
+}
+
+/**
+ * The person's additions, counted, with the one fact a host must say beside
+ * them: whether work already done predates the latest.
+ */
+export function amendmentsFor(overview: CaseOverview): HostAmendments {
+  const latest = overview.amendments[overview.amendments.length - 1] ?? null
+  return {
+    count: overview.amendments.length,
+    latestAt: latest?.at ?? null,
+    workPredates:
+      latest !== null && overview.runs.some((run) => run.startedAt < latest.at),
+  }
 }
 
 export function activityFor(overview: CaseOverview, now: string): HostActivity {
@@ -545,12 +596,16 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     if (!overview) return { state: 'unsupported', reason: 'unknown-reference' }
     const reference = await system.reference(caseId)
 
+    const at = now()
+    const product = productStateFor(overview, at)
+
     /*
      * The first commit landed and the second did not. Not a state of the
      * committee's work, because there is no committee yet; the remedy is the
-     * host's `resume`, and the result says so.
+     * host's `resume`, and the result says so. A case closed before it was
+     * ever convened is closed, not resumable.
      */
-    if (!overview.investmentCase.playbookId) {
+    if (!overview.investmentCase.playbookId && product.state !== 'closed') {
       return {
         state: 'failed',
         reason: 'convening-incomplete',
@@ -558,9 +613,6 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
         resumable: true,
       }
     }
-
-    const at = now()
-    const product = productStateFor(overview, at)
     if (product.state === 'unsupported') {
       return { state: 'unsupported', reason: product.reason, reference }
     }
@@ -578,10 +630,13 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       subject: overview.investmentCase.subject.displayName,
       surfaces: surfaces(caseId),
       activity: activityFor(overview, at),
+      amendments: amendmentsFor(overview),
       ...(inspection ? { inspection } : {}),
     }
 
     switch (product.state) {
+      case 'closed':
+        return { ...context, state: 'closed', closure: product.closure }
       case 'working':
         return { ...context, state: 'working' }
       case 'answer-ready': {
@@ -629,6 +684,33 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
         return { state: 'failed', reason: 'service-unavailable' }
       default:
         return { state: 'failed', reason: 'refused', code: outcome.code }
+    }
+  }
+
+  /**
+   * What an act on the open case came back with, in product terms. Done is
+   * the case re-read — an addition shows in `amendments`, a closure as
+   * `closed` — so the host never holds a claim the record does not make.
+   */
+  async function afterAct(
+    outcome: CaseActResult<unknown>,
+    reference: DomainReference,
+  ): Promise<HostResult> {
+    switch (outcome.state) {
+      case 'done':
+        return present(reference.id)
+      case 'refused':
+        switch (outcome.code) {
+          case 'not-found':
+            return { state: 'unsupported', reason: 'unknown-reference', reference }
+          case 'illegal-prior-state':
+            return { state: 'failed', reason: 'case-settled', reference }
+          default:
+            return { state: 'failed', reason: 'refused', code: outcome.code, reference }
+        }
+      case 'failed':
+      case 'unresolved':
+        return { state: 'failed', reason: 'service-unavailable', reference }
     }
   }
 
@@ -688,6 +770,26 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
         if (!ours(request.reference))
           return { state: 'unsupported', reason: 'unknown-reference' }
         return present(request.reference.id, { view: request.view })
+      case 'amend': {
+        if (!ours(request.reference))
+          return { state: 'unsupported', reason: 'unknown-reference' }
+        const who = await delegationFor(request.requestId)
+        if (!who.ok) return who.result
+        return afterAct(
+          await system.amend(who.delegation, request.reference.id, request.text),
+          request.reference,
+        )
+      }
+      case 'close': {
+        if (!ours(request.reference))
+          return { state: 'unsupported', reason: 'unknown-reference' }
+        const who = await delegationFor(`${request.reference.id}-close`)
+        if (!who.ok) return who.result
+        return afterAct(
+          await system.close(who.delegation, request.reference.id, request.reason),
+          request.reference,
+        )
+      }
       default:
         return unreachable(request)
     }

@@ -932,7 +932,11 @@ describe('Phase C1A — the command foundation', () => {
     expect(handlers?.sort()).toEqual([
       'acceptContribution.ts',
       'aggregateManagerConclusion.ts',
+      /* The person adds to their own open case. TD-94's door. */
+      'amendCase.ts',
       'assembleEvidenceSet.ts',
+      /* The person closes their own case on instruction; history kept. */
+      'closeCase.ts',
       'definition.ts',
       'envelope.ts',
       'eventIdentity.ts',

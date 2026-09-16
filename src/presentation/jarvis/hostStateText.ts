@@ -24,6 +24,7 @@
 import type {
   BlockedReason,
   FailureReason,
+  HostClosure,
   HostDecision,
   HostInspection,
   HostResult,
@@ -74,7 +75,13 @@ const FAILURE: Record<FailureReason, string> = {
   'convening-incomplete': 'Frågan är registrerad, men kommittén kunde inte sammankallas.',
   'not-configured': 'Analysmiljön saknar databaskonfiguration.',
   'service-unavailable': 'Analysmiljön svarar inte just nu.',
+  'case-settled': 'Ärendet är redan avslutat, så det går inte att ändra.',
   refused: 'Firman avböjde.',
+}
+
+const CLOSURE: Record<HostClosure['kind'], string> = {
+  cancelled: 'Pågående arbete avbröts',
+  abandoned: 'Lades ner innan något arbete gjorts',
 }
 
 const OUTCOME: Record<'selected' | 'deferred' | 'declined', string> = {
@@ -119,6 +126,15 @@ export function phrase(result: HostResult): Phrasing {
         detail: DECISION[result.decision.reason],
         tone: 'warning',
       }
+    case 'closed': {
+      const reason = result.closure.reason ? ` — ${result.closure.reason}` : ''
+      const by = result.closure.byDesk ? ` (${result.closure.byDesk.name})` : ''
+      return {
+        headline: 'Ärendet är stängt.',
+        detail: `${CLOSURE[result.closure.kind]}${reason}${by}`,
+        tone: 'neutral',
+      }
+    }
     case 'unsupported':
       return {
         headline: 'Det kan jag inte låta investeringsteamet ta just nu.',
@@ -137,6 +153,21 @@ export function phrase(result: HostResult): Phrasing {
       }
     }
   }
+}
+
+/**
+ * The person's additions, as one line — or nothing, where there are none.
+ *
+ * Said beside any state, because the one thing a person must hear about an
+ * addition is whether the work already done took it into account.
+ */
+export function amendmentLine(result: HostResult): string | null {
+  if (!('amendments' in result) || result.amendments.count === 0) return null
+  const count =
+    result.amendments.count === 1 ? 'Ett tillägg' : `${result.amendments.count} tillägg`
+  return result.amendments.workPredates
+    ? `${count} sedan ärendet öppnades; det arbete som redan gjorts tar inte hänsyn till det senaste.`
+    : `${count} sedan ärendet öppnades.`
 }
 
 /**

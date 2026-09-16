@@ -34,6 +34,16 @@ export interface CaseParticipantRow {
   department_id: string
 }
 
+export interface CaseAmendmentRow {
+  id: string
+  case_id: string
+  text: string
+  by_employee_id: string
+  by_department_id: string
+  case_version: number
+  recorded_at: string
+}
+
 export interface ThesisRevisionRow {
   revision_id: string
   thesis_id: string

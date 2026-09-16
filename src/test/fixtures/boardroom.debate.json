@@ -105,6 +105,7 @@
     "playbookId": "macro-regime",
     "playbookVersion": "5"
   },
+  "amendments": [],
   "revisions": [
     {
       "thesisId": "boardroom-debate-thesis",
@@ -1036,12 +1037,12 @@
           }
         ],
         "evidenceSetIds": [],
-        "storageProvenanceId": "d57b43d75ca6705a75df340028ab7eeaa86ee4401ce807eee49daca06606290e",
+        "storageProvenanceId": "864d1b49cc862b574fd745cc9f481950ac82d5f56569ed22ca48395c08ba48a9",
         "evaluatedAt": "<scrubbed>",
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "ccd9f760ae43368f364a4e2c1355b2c90e0f65e91a2da9cb58311e78c7c6b986"
+          "digest": "4f76502477f550ff81c838ba2c54d63ea24c57adc7f1438284f90c124051da82"
         }
       }
     }

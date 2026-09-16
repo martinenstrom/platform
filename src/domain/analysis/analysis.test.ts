@@ -22,6 +22,7 @@ import {
   type ExecutionBudget,
   buildVerificationFinding,
   canTransition,
+  closureOf,
   challengeBlocks,
   DISAGREEMENT_MATERIALITIES,
   eligibilityPolicy,
@@ -383,6 +384,39 @@ describe('cases move through the firm', () => {
     expect(blocked.transitions[blocked.transitions.length - 1]?.reason).toBe(
       'awaiting Q2 filing',
     )
+  })
+})
+
+describe('how a withdrawn case was closed is read, not stored', () => {
+  const closing = { ...mover, at: '2026-07-27T10:00:00.000Z', reason: 'Frågan är inte längre aktuell.' }
+
+  it('is nothing for a case that is not withdrawn', () => {
+    expect(closureOf(baseCase, true)).toBeNull()
+    expect(closureOf(transitionCase(baseCase, 'research', mover), false)).toBeNull()
+  })
+
+  it('tells cancelled from abandoned by whether the firm had started, never by what was stored', () => {
+    const closed = transitionCase(transitionCase(baseCase, 'research', mover), 'withdrawn', closing)
+    expect(closureOf(closed, false)).toEqual({
+      kind: 'abandoned',
+      reason: 'Frågan är inte längre aktuell.',
+      at: closing.at,
+      byEmployeeId: 'macro-head',
+      byDepartmentId: 'macro',
+    })
+    expect(closureOf(closed, true)?.kind).toBe('cancelled')
+  })
+
+  it('keeps a missing reason missing', () => {
+    const closed = transitionCase(baseCase, 'withdrawn', mover)
+    expect(closureOf(closed, false)?.reason).toBeNull()
+  })
+
+  it('can be withdrawn from every stage that is not settled, and from none that is', () => {
+    for (const from of ['intake', 'research', 'aggregation', 'review', 'returned', 'blocked', 'decision', 'decided', 'deferred'] as const) {
+      expect(canTransition(from, 'withdrawn'), from).toBe(true)
+    }
+    expect(canTransition('withdrawn', 'withdrawn')).toBe(false)
   })
 })
 

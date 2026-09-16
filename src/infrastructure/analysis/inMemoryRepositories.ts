@@ -58,6 +58,7 @@ import {
   type DurableObservation,
   type EvidenceAssembly,
   type EvidenceSet,
+  type CaseAmendment,
   type InvestmentCase,
   type InvestmentThesis,
   isRunTerminal,
@@ -87,6 +88,7 @@ import {
   type AggregationRepository,
   type AnalysisRepositories,
   type AssignmentRepository,
+  type CaseAmendmentRepository,
   type CaseRepository,
   type ClaimRepository,
   type ProducedClaimRepository,
@@ -137,6 +139,8 @@ import { seal } from './seal'
  */
 interface Store {
   cases: Map<string, InvestmentCase>
+  /** What the person added after opening. Append-only, like the events. */
+  amendments: Map<string, CaseAmendment>
   theses: Map<string, InvestmentThesis>
   assignments: Map<string, Assignment>
   runs: Map<string, AgentRunRecord>
@@ -191,6 +195,7 @@ interface Store {
 function emptyStore(): Store {
   return {
     cases: new Map(),
+    amendments: new Map(),
     theses: new Map(),
     assignments: new Map(),
     runs: new Map(),
@@ -238,6 +243,7 @@ function emptyStore(): Store {
 function snapshot(store: Store): Store {
   return {
     cases: new Map(store.cases),
+    amendments: new Map(store.amendments),
     theses: new Map(store.theses),
     assignments: new Map(store.assignments),
     runs: new Map(store.runs),
@@ -272,6 +278,7 @@ function snapshot(store: Store): Store {
 
 function restore(target: Store, from: Store): void {
   target.cases = from.cases
+  target.amendments = from.amendments
   target.theses = from.theses
   target.assignments = from.assignments
   target.runs = from.runs
@@ -417,6 +424,30 @@ function caseRepository(store: Store, scope: Scope): CaseRepository {
       }
       store.cases.set(investmentCase.id, investmentCase)
       return investmentCase
+    },
+  }
+}
+
+function amendmentRepository(store: Store, scope: Scope): CaseAmendmentRepository {
+  return {
+    async append(amendment) {
+      guard(scope, 'amendments.append')
+      seal(amendment, 'amendments')
+      /* Idempotent on id, as `cases.create` is: a replay returns what was stored. */
+      const existing = store.amendments.get(amendment.id)
+      if (existing) return existing
+      store.amendments.set(amendment.id, amendment)
+      return amendment
+    },
+    async get(amendmentId) {
+      guard(scope, 'amendments.get')
+      return store.amendments.get(amendmentId) ?? null
+    },
+    async listForCase(caseId) {
+      guard(scope, 'amendments.listForCase')
+      return [...store.amendments.values()]
+        .filter((amendment) => amendment.caseId === caseId)
+        .sort((a, b) => byString(a.at, b.at) || byString(a.id, b.id))
     },
   }
 }
@@ -1396,6 +1427,7 @@ function requirementRepository(store: Store, scope: Scope): RequirementRepositor
 function repositoriesFor(store: Store, scope: Scope): TransactionalAnalysisRepositories {
   return {
     cases: caseRepository(store, scope),
+    amendments: amendmentRepository(store, scope),
     theses: thesisRepository(store, scope),
     assignments: assignmentRepository(store, scope),
     runs: runRepository(store, scope),

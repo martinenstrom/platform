@@ -64,6 +64,10 @@ export interface LiveProvider {
 export interface LiveConfig {
   model: string
   backendModel: string
+  /** Responses `service_tier` for the backend: auto, default, flex or priority. Latency is measured, not assumed. */
+  backendServiceTier?: 'auto' | 'default' | 'flex' | 'priority'
+  /** Responses `reasoning.effort` for the backend, where the model takes one. */
+  backendReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
   voices: readonly string[]
   defaultVoice: string
   /** A session with no user speech for this long is closed by the server. */
@@ -111,6 +115,37 @@ export interface LiveTelemetry {
   ackWithoutReference: number
   closedByPolicy: boolean
   eventCounts: Record<string, number>
+  /**
+   * Where the time went, per user turn, on the session clock in ms: when
+   * the person stopped, when the model handed off, when the backend's
+   * response began and ended, when the host was called and answered, and
+   * when the first spoken reply began. Milliseconds only; no words.
+   */
+  turns: TurnTiming[]
+}
+
+export interface TurnTiming {
+  userEndMs: number
+  /** `session.delegation.created` — the model chose to hand off. Null when it answered itself. */
+  delegationMs: number | null
+  /** The backend's `response.created`, estimated on the session clock. */
+  backendStartMs: number | null
+  /** The host gateway call, if the backend made one: start and duration in wall-clock ms. */
+  hostCallMs: number | null
+  hostDurationMs: number | null
+  /** The backend's final `response.completed`, estimated on the session clock. */
+  backendEndMs: number | null
+  /** The first assistant transcript fragment after the person stopped. */
+  firstSpeechMs: number | null
+  /**
+   * Where each spoken reply began: a fragment more than 1.2 s after the
+   * previous one opens a new reply. The presence shows one bubble per reply,
+   * so a probe can pair these with what was said and tell an acknowledgement
+   * from an answer without a word being kept here.
+   */
+  speechStartsMs: number[]
+  /** Typed into the live session rather than spoken. */
+  typed: boolean
 }
 
 export interface LiveSessionState {
@@ -138,11 +173,19 @@ interface Session {
   voice: string
   sideband: LiveSideband | null
   telemetry: LiveTelemetry
+  /** The session clock's zero, on the wall clock: `session.started`. */
+  startedWallMs: number | null
+  /** The user's last transcript end; a new assistant fragment after it opens a turn's timing. */
+  lastUserEndMs: number | null
+  /** The turn timing being filled in, until its first answer arrives. */
+  openTurn: TurnTiming | null
   reference: DomainReference | null
   lastAsk: { question: string; subject: string } | null
   /** True once the firm has reported delegated work under way; the claim is truthful after that. */
   everWorking: boolean
   spokenTail: string
+  /** The end of the last assistant fragment, to tell a new reply from a continuing one. */
+  lastAssistantEndMs: number | null
   lastUserSpeechAt: number
   openedAt: number
   closed: boolean
@@ -173,6 +216,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           tools: LIVE_TOOL_DEFINITIONS,
           tool_choice: 'auto',
           parallel_tool_calls: false,
+          ...(config.backendServiceTier ? { service_tier: config.backendServiceTier } : {}),
+          ...(config.backendReasoningEffort ? { reasoning: { effort: config.backendReasoningEffort } } : {}),
         },
       },
     }
@@ -238,8 +283,11 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     })
     let speech
     if (interpreted.kind === 'host') {
+      const hostStarted = now()
+      if (session.openTurn && session.openTurn.hostCallMs === null) session.openTurn.hostCallMs = sessionMs(session, hostStarted)
       const result = await host(interpreted.request)
-      speech = toolSpeech(result)
+      if (session.openTurn && session.openTurn.hostDurationMs === null) session.openTurn.hostDurationMs = now() - hostStarted
+      speech = toolSpeech(result, interpreted.request.kind)
       if (speech.reference) session.reference = speech.reference
       if (interpreted.request.kind === 'ask' && speech.reference)
         session.lastAsk = { question: interpreted.request.question, subject: interpreted.request.subject }
@@ -266,36 +314,70 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     send(session, { type: 'response.create', event_id: `continue_${item.call_id}` })
   }
 
+  /** Wall-clock time as the session clock would read it, once `session.started` has anchored it. */
+  function sessionMs(session: Session, wallMs: number): number | null {
+    return session.startedWallMs === null ? null : wallMs - session.startedWallMs
+  }
+
+  function openTurn(session: Session, userEndMs: number, typed: boolean) {
+    session.openTurn = { userEndMs, delegationMs: null, backendStartMs: null, hostCallMs: null, hostDurationMs: null, backendEndMs: null, firstSpeechMs: null, speechStartsMs: [], typed }
+    session.telemetry.turns.push(session.openTurn)
+  }
+
   function onEvent(session: Session, event: Record<string, unknown>) {
     const t = session.telemetry
     const type = String(event.type ?? '')
     count(t, type)
     switch (type) {
+      case 'session.started':
+        session.startedWallMs = now()
+        break
       case 'session.usage.updated': {
         const usage = event.usage as { seconds?: number } | undefined
         if (typeof usage?.seconds === 'number') t.voiceSeconds = usage.seconds
         project(t)
         break
       }
-      case 'session.input_transcript.delta':
+      case 'session.input_transcript.delta': {
         session.lastUserSpeechAt = now()
+        const endMs = Number(event.end_ms ?? 0)
+        /* The person speaking again after a reply began opens a new turn's timing. */
+        if (session.openTurn && session.openTurn.firstSpeechMs !== null) session.openTurn = null
+        if (!session.openTurn) openTurn(session, endMs, false)
+        else session.openTurn.userEndMs = endMs
+        session.lastUserEndMs = endMs
         break
+      }
       case 'session.output_transcript.delta': {
-        session.spokenTail = (session.spokenTail + String(event.delta ?? '')).slice(-200)
+        const delta = String(event.delta ?? '')
+        const startMs = Number(event.start_ms ?? 0)
+        const endMs = Number(event.end_ms ?? startMs)
+        session.spokenTail = (session.spokenTail + delta).slice(-200)
         if (ACKNOWLEDGEMENT_PATTERN.test(session.spokenTail) && !session.everWorking) {
           t.ackWithoutReference += 1
           session.spokenTail = ''
           log(`[${session.id}] INVARIANT: delegated work claimed while the firm has none`)
         }
+        const turn = session.openTurn
+        if (turn && startMs >= turn.userEndMs - 400) {
+          if (turn.firstSpeechMs === null) turn.firstSpeechMs = startMs
+          if (session.lastAssistantEndMs === null || startMs - session.lastAssistantEndMs > 1200) turn.speechStartsMs.push(startMs)
+        }
+        session.lastAssistantEndMs = Math.max(session.lastAssistantEndMs ?? 0, endMs)
         break
       }
-      case 'session.delegation.created':
+      case 'session.delegation.created': {
         t.delegationsCreated += 1
+        const offset = typeof event.offset_ms === 'number' ? event.offset_ms : sessionMs(session, now())
+        if (session.openTurn && session.openTurn.delegationMs === null) session.openTurn.delegationMs = offset
         break
+      }
       case 'response.event': {
         const inner = (event.event ?? {}) as Record<string, unknown>
         const innerType = String(inner.type ?? '')
         count(t, `response.event/${innerType}`)
+        if (innerType === 'response.created' && session.openTurn && session.openTurn.backendStartMs === null)
+          session.openTurn.backendStartMs = sessionMs(session, now())
         const item = inner.item as { type?: string; call_id?: string; name?: string; arguments?: string } | undefined
         if (innerType === 'response.output_item.done' && item?.type === 'function_call' && item.call_id && item.name) {
           void executeToolCall(session, { call_id: item.call_id, name: item.name, arguments: item.arguments }).catch(
@@ -303,7 +385,10 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           )
         }
         const response = inner.response as { usage?: Record<string, unknown> } | undefined
-        if (innerType === 'response.completed' && response?.usage) accumulate(t, response.usage)
+        if (innerType === 'response.completed') {
+          if (response?.usage) accumulate(t, response.usage)
+          if (session.openTurn) session.openTurn.backendEndMs = sessionMs(session, now())
+        }
         break
       }
       case 'session.closed': {
@@ -362,11 +447,16 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           ackWithoutReference: 0,
           closedByPolicy: false,
           eventCounts: {},
+          turns: [],
         },
+        startedWallMs: null,
+        lastUserEndMs: null,
+        openTurn: null,
         reference: reference ?? null,
         lastAsk: null,
         everWorking: false,
         spokenTail: '',
+        lastAssistantEndMs: null,
         lastUserSpeechAt: now(),
         openedAt: now(),
         closed: false,
@@ -397,6 +487,9 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       if (!session || session.closed) return false
       session.telemetry.typedInjections += 1
       session.lastUserSpeechAt = now()
+      /* A typed line is a turn too; its "end" is the moment it went in. */
+      const at = sessionMs(session, now())
+      if (at !== null) openTurn(session, at, true)
       send(session, {
         type: 'session.instructions.append',
         event_id: `typed_${now()}`,

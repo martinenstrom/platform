@@ -22,12 +22,14 @@
 
 import { ConcurrencyConflictError } from '~/application/analysis/repositories'
 import type {
+  CaseAmendmentRepository,
   CaseRepository,
   ThesisRepository,
 } from '~/application/analysis/repositories'
 import type { InvestmentCase, InvestmentThesis } from '~/domain/analysis'
-import { toCase, toThesis } from './mapping'
+import { toCase, toCaseAmendment, toThesis } from './mapping'
 import type {
+  CaseAmendmentRow,
   CaseParticipantRow,
   CaseRow,
   ThesisClaimLinkRow,
@@ -243,6 +245,65 @@ export function createCaseRepository(
 
         await writeParticipants(client, investmentCase, 'cases.save')
         return (await readOne(client, investmentCase.id, 'cases.save'))!
+      }),
+  }
+}
+
+/* ------------------------------------------------------------ amendments */
+
+const AMENDMENT_COLUMNS = `
+  id, case_id, text, by_employee_id, by_department_id, case_version,
+  ${ts('recorded_at')}
+`
+
+export const AMENDMENT_SQL = catalog({
+  get: `SELECT ${AMENDMENT_COLUMNS} FROM analysis.case_amendments WHERE id = $1`,
+
+  listForCase: `SELECT ${AMENDMENT_COLUMNS} FROM analysis.case_amendments
+                WHERE case_id = $1
+                ORDER BY recorded_at, id COLLATE "C"`,
+
+  /* Append-only: `finos_app` holds no UPDATE or DELETE on this table (0050). */
+  append: `INSERT INTO analysis.case_amendments
+             (id, tenant_id, case_id, text, by_employee_id, by_department_id,
+              case_version, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO NOTHING`,
+})
+
+export function createCaseAmendmentRepository(
+  scope: Scope,
+  context: SqlContext,
+  tenantId: string,
+): CaseAmendmentRepository {
+  return {
+    append: (amendment) =>
+      unitOfWork(scope, 'amendments.append', async (client) => {
+        await run(client, context, 'amendments.append', AMENDMENT_SQL.append, [
+          amendment.id,
+          tenantId,
+          amendment.caseId,
+          amendment.text,
+          amendment.byEmployeeId,
+          amendment.byDepartmentId,
+          amendment.caseVersion,
+          amendment.at,
+        ])
+        /* Re-read, as `cases.create` does: a replay wrote nothing, and the stored one is the truth. */
+        const row = await one<CaseAmendmentRow>(client, context, 'amendments.append', AMENDMENT_SQL.get, [amendment.id])
+        return toCaseAmendment(row!)
+      }),
+
+    get: (amendmentId) =>
+      unitOfWork(scope, 'amendments.get', async (client) => {
+        const row = await one<CaseAmendmentRow>(client, context, 'amendments.get', AMENDMENT_SQL.get, [amendmentId])
+        return row ? toCaseAmendment(row) : null
+      }),
+
+    listForCase: (caseId) =>
+      unitOfWork(scope, 'amendments.listForCase', async (client) => {
+        const rows = await run<CaseAmendmentRow>(client, context, 'amendments.listForCase', AMENDMENT_SQL.listForCase, [caseId])
+        return rows.map(toCaseAmendment)
       }),
   }
 }

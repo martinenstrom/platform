@@ -86,6 +86,20 @@ const CONVERSATIONS = {
     { id: '09', silenceBefore: 0 },
     { id: 'silence', seconds: 15 },
   ],
+  /*
+   * The fluidity measurement: a conceptual question (A), an investment
+   * question that enters the firm (B), an immediate spoken follow-up (C);
+   * the probe types the addition (D), the close request (E) and a typed
+   * follow-up (F) into the same session afterwards.
+   */
+  'c9-flow': [
+    { id: '02', silenceBefore: 3.0 },
+    { id: 'silence', seconds: 14 },
+    { id: '01', silenceBefore: 0 },
+    { id: 'silence', seconds: 14 },
+    { id: '09', silenceBefore: 0 },
+    { id: 'silence', seconds: 14 },
+  ],
   'c7-interrupt': [
     { id: '02', silenceBefore: 3.0 },
     /*

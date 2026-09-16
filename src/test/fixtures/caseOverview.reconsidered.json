@@ -131,6 +131,7 @@
     "playbookId": "macro-regime",
     "playbookVersion": "1"
   },
+  "amendments": [],
   "revisions": [
     {
       "thesisId": "hq-reconsidered-thesis",
@@ -870,7 +871,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "069aa17b8340d49125b9044d9d5aada8003394a88f1833b83354b3eb3745e461"
+          "digest": "8be4fa57cc42c57494ab2a2ea2c26f440dd7ab85dca234047ec4e8d803c41981"
         }
       }
     },
@@ -922,7 +923,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "b0ae12facb434134f98ad7d5577e03bed37fc952ab10e0b17b59fd595a981fd9"
+          "digest": "6ecec21ef6ecf64d629bbf53f0d5c8c630bcc2f38867b6fcc57f53c91274a3f4"
         }
       }
     }

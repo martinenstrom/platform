@@ -184,4 +184,6 @@ export const REASON_REQUIRED_COMMANDS: readonly string[] = [
   'ResolveConditionalRequirement',
   'OverrideGovernanceBlock',
   'ResolveException',
+  /* Ends work on instruction; "varför stängde vi det?" is answered from it. */
+  'CloseCase',
 ] as const

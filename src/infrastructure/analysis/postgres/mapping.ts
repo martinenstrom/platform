@@ -79,6 +79,7 @@ import {
   type RunFailureCategory,
   type InvestmentCase,
   type InvestmentThesis,
+  type CaseAmendment,
   type ReviewScope,
   type RiskReview,
   type RunEvent,
@@ -98,6 +99,7 @@ import type {
   AggregationOptionalInputRow,
   AggregationRow,
   AssignmentRow,
+  CaseAmendmentRow,
   CaseRow,
   ChallengeEvidenceRow,
   ChallengeRow,
@@ -161,6 +163,22 @@ function expectArray(value: unknown, record: string, field: string): unknown[] {
  * domain had one.
  */
 const KNOWN_CASE_STAGES: ReadonlySet<string> = new Set<string>(CASE_STAGES)
+
+/** What the person added to a case, as stored. */
+export function toCaseAmendment(row: CaseAmendmentRow): CaseAmendment {
+  return seal(
+    {
+      id: row.id,
+      caseId: row.case_id,
+      text: row.text,
+      byEmployeeId: row.by_employee_id,
+      byDepartmentId: row.by_department_id,
+      at: row.recorded_at,
+      caseVersion: row.case_version,
+    },
+    'amendments',
+  )
+}
 
 /**
  * A case, with its participants and its movement history.

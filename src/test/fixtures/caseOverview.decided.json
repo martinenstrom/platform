@@ -114,6 +114,7 @@
     "playbookId": "macro-regime",
     "playbookVersion": "1"
   },
+  "amendments": [],
   "revisions": [
     {
       "thesisId": "hq-fixture-decided-thesis",
@@ -853,7 +854,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "255988d1d3d14abfb2f120feffcc23b88bfdada91be9d26392139eb131ed4434"
+          "digest": "7d088246ff3997119627534cd44af8a98aeb827e67827208adaf66733970d10c"
         }
       }
     }

@@ -2550,7 +2550,7 @@ debt is to decide, when a second instance exists, whether sessions are pinned
 to an instance, the sideband is held by a dedicated process, or the registry
 is externalised; none of it changes the host boundary.
 
-## TD-94 · a spoken addition to an open case has no door in the host contract · open
+## TD-94 · a spoken addition to an open case has no door in the host contract — CLOSED 2026-09-16
 
 **Opened 2026-09-15**, measured in the GPT-Live proof
 (`docs/jarvis-voice-live-proof.md` §7.5): the person continues talking while a
@@ -2571,3 +2571,81 @@ record.
 act with provenance if it deserves one, and only then a host request. Not
 before: a "note" that silently entered a case would be authority inferred
 from a transcript the ruling of 2026-09-15 explicitly denies that standing.
+**Closed 2026-09-16.** The ruling: a spoken addition is the asker's own words
+on the asker's own case — neither a new question, nor evidence, nor a revision
+of the thesis, and none of those may be inferred from a transcript. It became
+an institutional act of its own, and the mirror act came with it, because
+the same measurement (`scripts/probe-jarvis-flow.mjs`, the "before" run)
+found the voice saying _"Okej, jag stänger det pågående ärendet nu"_ with no
+act behind the sentence.
+
+- **`AmendCase`** (`application/analysis/commands/amendCase.ts`) — appends the
+  person's words beside the question in `analysis.case_amendments`
+  (migration 0050: `finos_app` may SELECT and INSERT, never UPDATE or
+  DELETE; the question column stays the one the application may not
+  touch), with who, when and **the case version at the time**, so a reader
+  can tell which work predates the addition. Convenor mandate on the owning
+  desk, checked against the case's actual owner; no reason (the words are
+  the reason) and no expected version (nothing on the aggregate moves). It
+  moves no stage and starts no work — whether the desks must look again is
+  a later act with its own mandate, still unwritten.
+- **`CloseCase`** (`closeCase.ts`) — the stage `withdrawn` had always
+  existed without an act. Convenor mandate, reason required (it is how
+  _"varför stängde vi det?"_ is answered), version-guarded, one movement
+  event. Whether the closure reads as **cancelled** (work had started) or
+  **abandoned** (nothing had) is derived at read time by `closureOf`, never
+  stored. A run inside its window is not killed (TD-92); it is reported as
+  work the firm will not adopt. There is no reopening: `ReopenCase` stays
+  on the guarded list, unwritten.
+- **Host contract v3** — `amend` and `close` requests; `closed` result state
+  with `HostClosure`; every positive result carries `amendments` (count,
+  latest, `workPredates`), never the words; `failed / case-settled` for an
+  act on a settled or closed case. `closed` precedes every other product
+  state, including `working`.
+- **The voice** — `add_to_delegation` → `amend`, the new `close_case` →
+  `close`; both act only on the case the conversation is bound to, and the
+  model never names a target. The spoken confirmation is produced from the
+  case read back after the act, so JARVIS cannot say "tillagt" or "stängt"
+  about something the firm did not record.
+
+What stays open: nothing here re-runs a desk because of an addition, and a
+case closed on instruction stays closed until the firm writes `ReopenCase`.
+
+## TD-95 · a typed line into a live session never reaches the firm · open
+
+**Opened 2026-09-16**, measured by `scripts/probe-jarvis-typed-live.mjs`
+(`docs/jarvis-voice-live-proof.md` §10.5) after the flow probe found three
+typed lines answered by silence.
+
+While a voice session is live, the presence sends a typed line to
+`typeIntoLiveSessionFn`, and the runtime forwards it as
+`session.instructions.append` — GPT-Live has no user-text event. Four typed
+lines in one session, a silent microphone: `session.instructions.appended`
+4, `session.delegation.created` 0, tool calls none. The voice model
+answered two of them itself — _"Absolut, jag väger in dollarn …"_ and
+_"För att vi avslutade det på din begäran …"_ — claiming an addition and
+a closure the firm never recorded, and ignored the other two, an
+investment question among them. The run before the open-case acts existed
+showed the same: its confident typed answers were the voice model's own.
+
+The sequence is structural, not a prompt's:
+
+```
+typed line while live  →  instructions.append  →  voice model  →  answers itself, or not
+                                                 ↛  delegation  ↛  backend  ↛  tools  ↛  firm
+```
+
+**Not mitigated.** The invariant watcher counts a promise of work without a
+reference; it cannot see an act claimed without a reference. Typing without
+a session is still "every text → ask" (slice C, transitional), which would
+open a new case on _"ta hänsyn till dollarn också"_, so there is no correct
+typed path for an addition or a closure today. The acts themselves are
+proven by voice (§10.3, B and C) and at every layer below the contract.
+
+**The debt.** A ruling on the typed-while-live path. The candidate that
+keeps one router: the server sends a typed line to the backend directly —
+the Responses model with the same instructions, the same five tools and the
+same host execution, the proof's `/text` path (§7.6) moved into the product
+— and hands its `say` to the voice to speak and to the presence to show.
+Never a third router; never the voice model answering an investment
+judgement or claiming an act.

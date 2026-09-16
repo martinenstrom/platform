@@ -66,7 +66,12 @@ import {
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
-import { answerLines, inspectionLines, phrase } from '~/presentation/jarvis/hostStateText'
+import {
+  amendmentLine,
+  answerLines,
+  inspectionLines,
+  phrase,
+} from '~/presentation/jarvis/hostStateText'
 import { ContextualSurface, SURFACE_TEXT } from './ContextualSurface'
 import {
   resetPresence,
@@ -150,9 +155,23 @@ export function JarvisPresence() {
           updatePresence((state) => {
             const last = state.turns[state.turns.length - 1]
             const lastEnd = last ? voiceTurnEnds.current.get(last.id) : undefined
-            if (last && last.by === by && last.via === 'voice' && lastEnd !== undefined && fragment.startMs - lastEnd < 1200) {
+            /*
+             * One bubble per side per exchange. The person's fragments join
+             * while they keep talking; everything JARVIS says until the
+             * person speaks again is one reply — an acknowledgement, a wait
+             * and an answer are one response, not three messages.
+             */
+            const continues =
+              last && last.by === by && last.via === 'voice' && lastEnd !== undefined &&
+              (by === 'jarvis' || fragment.startMs - lastEnd < 1200)
+            if (continues) {
               voiceTurnEnds.current.set(last.id, Math.max(lastEnd, fragment.endMs))
-              return { ...state, turns: [...state.turns.slice(0, -1), { ...last, text: last.text + fragment.delta }] }
+              /* Fragments of one utterance join as spoken; a reply resumed after a pause gets one space. */
+              const text =
+                fragment.startMs - lastEnd > 1200
+                  ? `${last.text.trimEnd()} ${fragment.delta.trimStart()}`
+                  : last.text + fragment.delta
+              return { ...state, turns: [...state.turns.slice(0, -1), { ...last, text }] }
             }
             /* A stray full stop or a breath is not a turn of its own. */
             if (!/[\p{L}\p{N}]/u.test(fragment.delta)) return state
@@ -262,6 +281,7 @@ export function JarvisPresence() {
       const spoken = phrase(result)
       const lines = [
         spoken.detail,
+        amendmentLine(result),
         ...(result.state === 'answer-ready' && result.answer
           ? answerLines(result.answer)
           : []),

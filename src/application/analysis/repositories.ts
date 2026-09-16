@@ -31,6 +31,7 @@ import type {
   AgentClaim,
   AgentRunRecord,
   Assignment,
+  CaseAmendment,
   CaseDecision,
   CaseReconsideration,
   CioReturn,
@@ -369,6 +370,19 @@ export interface CaseRepository {
   create(investmentCase: InvestmentCase): Promise<InvestmentCase>
   /** Rejects the write when `expectedVersion` is not the stored version. */
   save(investmentCase: InvestmentCase, expectedVersion: number): Promise<InvestmentCase>
+}
+
+/**
+ * What the person added to a case after it was opened. Append-only, like
+ * the events: an addition is never edited or removed, and the question it
+ * sits beside is never rewritten by it.
+ */
+export interface CaseAmendmentRepository {
+  /** Idempotent on `id`: a replay returns the stored addition. */
+  append(amendment: CaseAmendment): Promise<CaseAmendment>
+  get(amendmentId: string): Promise<CaseAmendment | null>
+  /** Ordered by `at`, then `id`. */
+  listForCase(caseId: string): Promise<CaseAmendment[]>
 }
 
 export interface ThesisRepository {
@@ -936,6 +950,7 @@ export type TransactionalAnalysisRepositories = Omit<
 
 export interface AnalysisRepositories {
   cases: CaseRepository
+  amendments: CaseAmendmentRepository
   theses: ThesisRepository
   assignments: AssignmentRepository
   runs: RunRepository
@@ -1016,6 +1031,7 @@ export interface AnalysisRepositories {
  */
 export const ANALYSIS_REPOSITORY_CAPABILITIES = {
   cases: ['get', 'list', 'create', 'save'],
+  amendments: ['append', 'get', 'listForCase'],
   theses: ['get', 'listForCase', 'save'],
   assignments: ['get', 'listForCase', 'listForDepartment', 'save'],
   runs: ['get', 'listForCase', 'save'],

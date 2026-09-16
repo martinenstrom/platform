@@ -25,6 +25,7 @@ import {
 /** Which interface declares each port. */
 const PORT_INTERFACES: Readonly<Record<string, { file: string; name: string }>> = {
   cases: { file: 'repositories.ts', name: 'CaseRepository' },
+  amendments: { file: 'repositories.ts', name: 'CaseAmendmentRepository' },
   theses: { file: 'repositories.ts', name: 'ThesisRepository' },
   assignments: { file: 'repositories.ts', name: 'AssignmentRepository' },
   runs: { file: 'repositories.ts', name: 'RunRepository' },

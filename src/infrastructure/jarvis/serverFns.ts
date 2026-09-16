@@ -36,9 +36,13 @@ function liveConfig(): LiveConfig {
   const backendModel = process.env.JARVIS_LIVE_BACKEND_MODEL ?? 'gpt-5.6-luna'
   const price = BACKEND_PRICES[backendModel] ?? BACKEND_PRICES['gpt-5.6-terra']!
   const voice = process.env.JARVIS_LIVE_VOICE ?? 'marin'
+  const tier = process.env.JARVIS_LIVE_SERVICE_TIER
+  const effort = process.env.JARVIS_LIVE_REASONING
   return {
     model: process.env.JARVIS_LIVE_MODEL ?? 'gpt-live-1',
     backendModel,
+    ...(tier === 'auto' || tier === 'default' || tier === 'flex' || tier === 'priority' ? { backendServiceTier: tier } : {}),
+    ...(effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' ? { backendReasoningEffort: effort } : {}),
     voices: LIVE_VOICES,
     defaultVoice: (LIVE_VOICES as readonly string[]).includes(voice) ? voice : 'marin',
     idleSeconds: Number(process.env.JARVIS_LIVE_IDLE_SECONDS ?? 90),

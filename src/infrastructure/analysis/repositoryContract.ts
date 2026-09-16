@@ -32,6 +32,7 @@ import {
   modelOf,
   observationRef,
   type AgentClaim,
+  type CaseAmendment,
   type EvidenceSet,
   type InvestmentCase,
   type InvestmentThesis,
@@ -569,6 +570,70 @@ export function describeRepositoryContract(name: string, options: ContractOption
     })
 
     /* -------------------------------------------------------------- order */
+
+    /* ---------------------------------------------------------- amendments */
+
+    describe('what the person added to a case', () => {
+      const amendment = (over: Partial<CaseAmendment> = {}): CaseAmendment => ({
+        id: 'am-1',
+        caseId: 'case-1',
+        text: 'Ta hänsyn till dollarn också.',
+        byEmployeeId: f.ownerEmployeeId,
+        byDepartmentId: f.departmentId,
+        at: AT,
+        caseVersion: 1,
+        ...over,
+      })
+
+      it('returns an empty list, never null, for a case with no additions', async () => {
+        expect(await repos.amendments.listForCase('missing')).toEqual([])
+      })
+
+      it('returns null for an addition that does not exist, and the addition by its id once it does', async () => {
+        expect(await repos.amendments.get('missing')).toBeNull()
+        await repos.cases.create(investmentCase())
+        await repos.amendments.append(amendment())
+        expect(await repos.amendments.get('am-1')).toEqual(amendment())
+      })
+
+      it('round-trips an addition beside the case, leaving the question untouched', async () => {
+        await repos.cases.create(investmentCase())
+        const stored = await repos.amendments.append(amendment())
+        expect(stored).toEqual(amendment())
+        expect(await repos.amendments.listForCase('case-1')).toEqual([amendment()])
+        expect((await repos.cases.get('case-1'))?.question).toBe(
+          'Is the market pricing the policy path correctly?',
+        )
+      })
+
+      it('is idempotent on append — a replay returns what was stored, and never rewords it', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.amendments.append(amendment())
+        const replayed = await repos.amendments.append(amendment({ text: 'reworded' }))
+        expect(replayed.text).toBe('Ta hänsyn till dollarn också.')
+        expect(await repos.amendments.listForCase('case-1')).toHaveLength(1)
+      })
+
+      it('lists additions by when they were made, then id', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.amendments.append(amendment({ id: 'am-b', at: LATER }))
+        await repos.amendments.append(amendment({ id: 'am-c', at: AT }))
+        await repos.amendments.append(amendment({ id: 'am-a', at: AT }))
+        expect((await repos.amendments.listForCase('case-1')).map((a) => a.id)).toEqual([
+          'am-a',
+          'am-c',
+          'am-b',
+        ])
+      })
+
+      it('freezes what it reads', async () => {
+        await repos.cases.create(investmentCase())
+        await repos.amendments.append(amendment())
+        for (const stored of await repos.amendments.listForCase('case-1')) {
+          expect(isDeeplyFrozen(stored)).toBe(true)
+        }
+      })
+    })
 
     describe('deterministic ordering', () => {
       it('lists cases by openedAt descending, then id', async () => {

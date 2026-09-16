@@ -11,10 +11,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { dissentRequiresAcknowledgement, type Blocker } from '~/domain/analysis'
+import {
+  dissentRequiresAcknowledgement,
+  type Blocker,
+  type CaseAmendment,
+} from '~/domain/analysis'
 import type { CaseOverview } from './caseOverview'
 import {
   activityFor,
+  amendmentsFor,
+  closureFor,
   committeeConclusionReady,
   inspectionFor,
   institutionalAnswerFor,
@@ -593,5 +599,168 @@ describe('the request is parsed at the door', () => {
     expect(
       parseHostRequest({ kind: 'ask', requestId: 'r', question: '  ', subject: 's' }),
     ).toEqual({ ok: false, field: 'question' })
+  })
+})
+
+/* ------------------------------------------------------------- closed */
+
+describe('closed is the person’s act, read off the record', () => {
+  const CLOSED_AT = '2026-08-01T09:00:05.000Z'
+
+  /** A fixture's case, withdrawn by its owning desk at `CLOSED_AT`. */
+  const withdrawn = (fixture: CaseOverview, reason: string | null): CaseOverview => ({
+    ...fixture,
+    investmentCase: {
+      ...fixture.investmentCase,
+      stage: 'withdrawn',
+      transitions: [
+        ...fixture.investmentCase.transitions,
+        {
+          caseId: fixture.investmentCase.id,
+          from: fixture.investmentCase.stage,
+          to: 'withdrawn',
+          at: CLOSED_AT,
+          byEmployeeId: 'research-director',
+          byDepartmentId: 'research-office',
+          ...(reason ? { reason } : {}),
+        },
+      ],
+    },
+  })
+
+  it('is never returned for a case that is not withdrawn', () => {
+    for (const fixture of ALL) {
+      expect(closureFor(overview(fixture))).toBeNull()
+      expect(productStateFor(overview(fixture), NOW).state).not.toBe('closed')
+    }
+  })
+
+  it('wins over a run inside its window, and reads as cancelled; the run is still counted', () => {
+    const closed = withRunning(withdrawn(overview(inflight), 'Behövs inte längre.'))
+    expect(productStateFor(closed, NOW)).toEqual({
+      state: 'closed',
+      closure: {
+        kind: 'cancelled',
+        reason: 'Behövs inte längre.',
+        at: CLOSED_AT,
+        byDesk: { id: 'research-office', name: expect.any(String), isGovernance: false },
+      },
+    })
+    expect(activityFor(closed, NOW).inFlight).toBe(1)
+    /* And past the window, still closed — never blocked on recovery. */
+    expect(productStateFor(closed, LATER).state).toBe('closed')
+  })
+
+  it('reads as abandoned when the firm had not started, and keeps a missing reason missing', () => {
+    const base = withdrawn(overview(inflight), null)
+    const untouched: CaseOverview = { ...base, runs: [], claims: [], revisions: [] }
+    expect(productStateFor(untouched, NOW)).toEqual({
+      state: 'closed',
+      closure: {
+        kind: 'abandoned',
+        reason: null,
+        at: CLOSED_AT,
+        byDesk: { id: 'research-office', name: expect.any(String), isGovernance: false },
+      },
+    })
+    /* A claim alone is work: the desks had started. */
+    expect(base.claims.length).toBeGreaterThan(0)
+    expect(closureFor({ ...untouched, claims: base.claims })?.kind).toBe('cancelled')
+  })
+})
+
+/* --------------------------------------------------------- amendments */
+
+describe('additions are counted, and dated against the work', () => {
+  const addition = (at: string): CaseAmendment => ({
+    id: `am-${at}`,
+    caseId: overview(inflight).investmentCase.id,
+    text: 'Ta hänsyn till dollarn också.',
+    byEmployeeId: 'research-director',
+    byDepartmentId: 'research-office',
+    at,
+    caseVersion: 1,
+  })
+  const BEFORE_RUN = '2026-07-31T09:00:00.000Z'
+  const AFTER_RUN = '2026-08-02T09:00:00.000Z'
+
+  it('reports none where the person added nothing', () => {
+    expect(amendmentsFor({ ...overview(inflight), amendments: [] })).toEqual({
+      count: 0,
+      latestAt: null,
+      workPredates: false,
+    })
+  })
+
+  it('says work predates the latest addition only when a run started before it', () => {
+    const base = overview(inflight)
+    const runStart = base.runs[0]!.startedAt
+    expect(runStart > BEFORE_RUN && runStart < AFTER_RUN).toBe(true)
+
+    expect(amendmentsFor({ ...base, amendments: [addition(BEFORE_RUN)] })).toEqual({
+      count: 1,
+      latestAt: BEFORE_RUN,
+      workPredates: false,
+    })
+    expect(
+      amendmentsFor({ ...base, amendments: [addition(BEFORE_RUN), addition(AFTER_RUN)] }),
+    ).toEqual({ count: 2, latestAt: AFTER_RUN, workPredates: true })
+  })
+
+  it('never copies the words: they are read from the record, not repeated by the contract', () => {
+    const counted = amendmentsFor({ ...overview(inflight), amendments: [addition(AFTER_RUN)] })
+    expect(JSON.stringify(counted)).not.toMatch(/dollarn/)
+  })
+})
+
+/* ------------------------------------------------- parsing the two acts */
+
+describe('the two acts on the open case are parsed at the door', () => {
+  const reference = {
+    system: 'financial-os',
+    kind: 'case',
+    id: 'case-1',
+    provenanceId: 'prov-1',
+  }
+
+  it('accepts an addition and a closure in their exact shapes', () => {
+    expect(
+      parseHostRequest({ kind: 'amend', reference, requestId: 'r', text: 'Ta hänsyn till dollarn också.' }),
+    ).toEqual({
+      ok: true,
+      request: { kind: 'amend', reference, requestId: 'r', text: 'Ta hänsyn till dollarn också.' },
+    })
+    expect(parseHostRequest({ kind: 'close', reference, reason: 'Behövs inte längre.' })).toEqual({
+      ok: true,
+      request: { kind: 'close', reference, reason: 'Behövs inte längre.' },
+    })
+  })
+
+  it('refuses an addition without words or a request id, and a closure without a reason', () => {
+    expect(parseHostRequest({ kind: 'amend', reference, requestId: 'r', text: '  ' })).toEqual({
+      ok: false,
+      field: 'text',
+    })
+    expect(parseHostRequest({ kind: 'amend', reference, text: 'x' })).toEqual({
+      ok: false,
+      field: 'requestId',
+    })
+    expect(parseHostRequest({ kind: 'close', reference })).toEqual({ ok: false, field: 'reason' })
+    expect(parseHostRequest({ kind: 'close', reference, reason: '' })).toEqual({
+      ok: false,
+      field: 'reason',
+    })
+  })
+
+  it('refuses an actor, a version, a stage or a department beside either act', () => {
+    for (const field of ['actingEmployeeId', 'expectedVersion', 'stage', 'onBehalfOfDepartmentId']) {
+      expect(
+        parseHostRequest({ kind: 'amend', reference, requestId: 'r', text: 'x', [field]: 'v' }),
+      ).toEqual({ ok: false, field })
+      expect(parseHostRequest({ kind: 'close', reference, reason: 'x', [field]: 'v' })).toEqual({
+        ok: false,
+        field,
+      })
+    }
   })
 })

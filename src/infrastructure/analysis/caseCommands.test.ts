@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   RISK_REVIEW_WHEN_IMPLEMENTABLE,
   buildRole,
+  closureOf,
   evaluateRequirement,
   pinPlaybook,
   requirementStatusFor,
@@ -40,6 +41,8 @@ import { productionCommands } from '~/application/analysis/commands/registry'
 import { openInvestmentCase } from '~/application/analysis/commands/openInvestmentCase'
 import { instantiatePlaybook } from '~/application/analysis/commands/instantiatePlaybook'
 import { proposeThesis } from '~/application/analysis/commands/proposeThesis'
+import { amendCase } from '~/application/analysis/commands/amendCase'
+import { closeCase } from '~/application/analysis/commands/closeCase'
 import { deriveRevisionId } from '~/application/analysis/commands/eventIdentity'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
 import {
@@ -276,7 +279,9 @@ describe('command declarations', () => {
     expect(commands.map((c) => c.type).sort()).toEqual([
       'AcceptContribution',
       'AggregateManagerConclusion',
+      'AmendCase',
       'AssembleEvidenceSet',
+      'CloseCase',
       'FailAgentRun',
       'InstantiatePlaybook',
       'OpenInvestmentCase',
@@ -1206,5 +1211,241 @@ describe('restart durability', () => {
     const fresh = createInMemoryRepositories()
     expect(await fresh.cases.get('case-1')).toBeNull()
     expect(await repositories.cases.get('case-1')).not.toBeNull()
+  })
+})
+
+/* ---------------------------------------------------------------- AmendCase */
+
+describe('AmendCase', () => {
+  const amendInput = (over: Record<string, unknown> = {}) => ({
+    caseId: 'case-1',
+    amendmentId: 'am-1',
+    text: 'Ta hänsyn till dollarn också.',
+    onBehalfOfDepartmentId: 'research-office',
+    ...over,
+  })
+  const amend = (input: Record<string, unknown> = {}, env: Partial<CommandEnvelope> = {}) =>
+    runCommand(
+      amendCase(organization),
+      amendInput(input),
+      envelope({ commandId: 'cmd-amend', ...env }),
+      deps,
+    )
+
+  beforeEach(async () => {
+    await openCase()
+  })
+
+  it('appends the person’s words beside the question, with who, when and the case version', async () => {
+    const result = await amend()
+    expect(result.outcome).toBe('committed')
+    expect(await repositories.amendments.listForCase('case-1')).toEqual([
+      {
+        id: 'am-1',
+        caseId: 'case-1',
+        text: 'Ta hänsyn till dollarn också.',
+        byEmployeeId: 'research-director',
+        byDepartmentId: 'research-office',
+        at: AT,
+        caseVersion: 1,
+      },
+    ])
+    /* The question is what the case is: it neither moved nor changed. */
+    expect(await repositories.cases.get('case-1')).toMatchObject({
+      version: 1,
+      stage: 'intake',
+      question: 'Does the ECB cut before Q2?',
+    })
+    expect(await repositories.events.listForCase('case-1')).toHaveLength(1)
+  })
+
+  it('records the version the case was at, so a reader can tell what predates the addition', async () => {
+    await instantiate()
+    await amend()
+    expect((await repositories.amendments.listForCase('case-1'))[0]!.caseVersion).toBe(2)
+  })
+
+  it('files the act in the ledger as workflow, under the convenor mandate for the owning desk', async () => {
+    await amend()
+    const entry = await repositories.commands.find('cmd-amend')
+    expect(entry?.intent.commandType).toBe('AmendCase')
+    expect(entry?.intent.category).toBe('workflow')
+    expect(entry?.intent.mandate).toEqual({
+      kind: 'investment-committee-convenor',
+      owningDepartmentId: 'research-office',
+    })
+    expect(entry?.intent.caseId).toBe('case-1')
+  })
+
+  it('refuses a manager adding to another department’s case', async () => {
+    const result = await amend(
+      { onBehalfOfDepartmentId: 'global-macro' },
+      {
+        actor: { kind: 'employee', employeeId: 'macro-head' },
+        initiator: { kind: 'employee', employeeId: 'macro-head' },
+      },
+    )
+    expect(result).toMatchObject({ outcome: 'rejected', rejection: { code: 'not-authorised' } })
+    expect(await repositories.amendments.listForCase('case-1')).toEqual([])
+  })
+
+  it('refuses an addition that says nothing', async () => {
+    expect(await amend({ text: '   ' })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+  })
+
+  it('refuses an addition to a case the person has closed', async () => {
+    await runCommand(
+      closeCase(organization),
+      { caseId: 'case-1', onBehalfOfDepartmentId: 'research-office' },
+      envelope({ commandId: 'cmd-close', expectedVersion: 1, reason: 'Behövs inte.' }),
+      deps,
+    )
+    expect(await amend()).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'illegal-prior-state' },
+    })
+  })
+
+  it('refuses a reason and a version: the words are the reason, and nothing on the case moves', async () => {
+    expect(await amend({}, { reason: 'because' })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect(await amend({}, { expectedVersion: 1 })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect(await repositories.amendments.listForCase('case-1')).toEqual([])
+  })
+
+  it('replays to the same addition rather than adding it twice', async () => {
+    await amend()
+    const again = await amend({}, { correlationId: 'corr-2' })
+    expect(again.outcome).toBe('committed')
+    expect(await repositories.amendments.listForCase('case-1')).toHaveLength(1)
+  })
+
+  it('takes a second addition as a second record, never as an edit of the first', async () => {
+    await amend()
+    await amend({ amendmentId: 'am-2', text: 'Och oljan.' }, { commandId: 'cmd-amend-2' })
+    expect((await repositories.amendments.listForCase('case-1')).map((a) => a.text)).toEqual([
+      'Ta hänsyn till dollarn också.',
+      'Och oljan.',
+    ])
+  })
+})
+
+/* ---------------------------------------------------------------- CloseCase */
+
+describe('CloseCase', () => {
+  const close = (env: Partial<CommandEnvelope> = {}, input: Record<string, unknown> = {}) =>
+    runCommand(
+      closeCase(organization),
+      { caseId: 'case-1', onBehalfOfDepartmentId: 'research-office', ...input },
+      envelope({
+        commandId: 'cmd-close',
+        expectedVersion: 1,
+        reason: 'Behövs inte längre.',
+        ...env,
+      }),
+      deps,
+    )
+
+  beforeEach(async () => {
+    await openCase()
+  })
+
+  it('withdraws the case with the reason, the actor and one movement event', async () => {
+    const result = await close()
+    expect(result.outcome).toBe('committed')
+    const investmentCase = (await repositories.cases.get('case-1'))!
+    expect(investmentCase.stage).toBe('withdrawn')
+    expect(investmentCase.version).toBe(2)
+    expect(investmentCase.transitions[investmentCase.transitions.length - 1]).toMatchObject({
+      from: 'intake',
+      to: 'withdrawn',
+      at: AT,
+      byEmployeeId: 'research-director',
+      byDepartmentId: 'research-office',
+      reason: 'Behövs inte längre.',
+    })
+    const movements = (await repositories.events.listForCase('case-1')).filter(
+      (event) => event.toState === 'withdrawn',
+    )
+    expect(movements).toHaveLength(1)
+    expect(movements[0]).toMatchObject({ reason: 'Behövs inte längre.', aggregateVersion: 2 })
+  })
+
+  it('reads as abandoned when nothing had been done, and as cancelled once work had started', async () => {
+    await close()
+    const investmentCase = (await repositories.cases.get('case-1'))!
+    expect(closureOf(investmentCase, false)).toEqual({
+      kind: 'abandoned',
+      reason: 'Behövs inte längre.',
+      at: AT,
+      byEmployeeId: 'research-director',
+      byDepartmentId: 'research-office',
+    })
+    expect(closureOf(investmentCase, true)?.kind).toBe('cancelled')
+  })
+
+  it('closes from a stage with work under way, at the version it read', async () => {
+    await instantiate()
+    expect((await close({ expectedVersion: 2 })).outcome).toBe('committed')
+    expect((await repositories.cases.get('case-1'))!.stage).toBe('withdrawn')
+  })
+
+  it('refuses to close a closed case again', async () => {
+    await close()
+    expect(await close({ commandId: 'cmd-close-2', expectedVersion: 2 })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'illegal-prior-state' },
+    })
+  })
+
+  it('refuses a manager closing another department’s case', async () => {
+    const result = await close(
+      {
+        actor: { kind: 'employee', employeeId: 'macro-head' },
+        initiator: { kind: 'employee', employeeId: 'macro-head' },
+      },
+      { onBehalfOfDepartmentId: 'global-macro' },
+    )
+    expect(result).toMatchObject({ outcome: 'rejected', rejection: { code: 'not-authorised' } })
+    expect((await repositories.cases.get('case-1'))!.stage).toBe('intake')
+  })
+
+  it('requires a reason, because "varför stängde vi det?" is answered from it', async () => {
+    expect(await close({ reason: undefined })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect(await close({ reason: ' \n' })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect((await repositories.cases.get('case-1'))!.stage).toBe('intake')
+  })
+
+  it('requires the version it read, and loses to a stale one', async () => {
+    expect(await close({ expectedVersion: undefined })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'invariant-violated' },
+    })
+    expect(await close({ expectedVersion: 99 })).toMatchObject({
+      outcome: 'rejected',
+      rejection: { code: 'aggregate-conflict' },
+    })
+    expect((await repositories.cases.get('case-1'))!.stage).toBe('intake')
+  })
+
+  it('replays to the same closure', async () => {
+    await close()
+    const again = await close({ correlationId: 'corr-2' })
+    expect(again.outcome).toBe('committed')
+    expect((await repositories.cases.get('case-1'))!.version).toBe(2)
   })
 })

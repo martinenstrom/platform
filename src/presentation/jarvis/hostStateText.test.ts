@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { HostResult, InstitutionalAnswer } from '~/application/analysis/hostContract'
-import { answerLines, phrase } from './hostStateText'
+import { amendmentLine, answerLines, phrase } from './hostStateText'
 
 const context = {
   reference: {
@@ -27,6 +27,7 @@ const context = {
     expired: 0,
     awaitingAdoption: 0,
   },
+  amendments: { count: 0, latestAt: null, workPredates: false },
 }
 
 describe('work, no way forward, and your decision are three sentences', () => {
@@ -170,5 +171,63 @@ describe('the answer keeps its dissent', () => {
     expect(lines[0]).toContain('Vi väntar in nästa FOMC.')
     expect(lines.join('\n')).toContain('Ingen materiell invändning kvarstår.')
     expect(lines.join('\n')).toContain('1 villkor')
+  })
+})
+
+describe('a closed case, and what the person added', () => {
+  const AT = '2026-09-16T08:00:00.000Z'
+  const closed = (kind: 'cancelled' | 'abandoned', reason: string | null): HostResult => ({
+    ...context,
+    state: 'closed',
+    closure: {
+      kind,
+      reason,
+      at: AT,
+      byDesk: { id: 'research-office', name: 'Research Office', isGovernance: false },
+    },
+  })
+
+  it('says the case is closed, and whether work was cut short or never begun', () => {
+    expect(phrase(closed('cancelled', 'Behövs inte längre.')).headline).toBe('Ärendet är stängt.')
+    expect(phrase(closed('cancelled', 'Behövs inte längre.')).detail).toBe(
+      'Pågående arbete avbröts — Behövs inte längre. (Research Office)',
+    )
+    expect(phrase(closed('abandoned', null)).detail).toBe(
+      'Lades ner innan något arbete gjorts (Research Office)',
+    )
+    /* Closed is a fourth sentence, not one of the three. */
+    const working: HostResult = { ...context, state: 'working' }
+    expect(phrase(closed('abandoned', null)).headline).not.toBe(phrase(working).headline)
+    expect(phrase(closed('abandoned', null)).headline).not.toMatch(/återkommer|kollar/)
+  })
+
+  it('says nothing about additions where there are none, and the one fact where there are', () => {
+    expect(amendmentLine({ ...context, state: 'working' })).toBeNull()
+    expect(amendmentLine({ state: 'failed', reason: 'service-unavailable' })).toBeNull()
+    const one: HostResult = {
+      ...context,
+      state: 'working',
+      amendments: { count: 1, latestAt: AT, workPredates: false },
+    }
+    expect(amendmentLine(one)).toBe('Ett tillägg sedan ärendet öppnades.')
+    const predated: HostResult = {
+      ...context,
+      state: 'blocked',
+      block: { reason: 'verification-required', owner: null },
+      amendments: { count: 2, latestAt: AT, workPredates: true },
+    }
+    expect(amendmentLine(predated)).toBe(
+      '2 tillägg sedan ärendet öppnades; det arbete som redan gjorts tar inte hänsyn till det senaste.',
+    )
+  })
+
+  it('says a settled case cannot be changed, and offers nothing', () => {
+    const settled: HostResult = {
+      state: 'failed',
+      reason: 'case-settled',
+      reference: context.reference,
+    }
+    expect(phrase(settled).detail).toBe('Ärendet är redan avslutat, så det går inte att ändra.')
+    expect(phrase(settled).detail).not.toMatch(/återuppta|återkommer/)
   })
 })
