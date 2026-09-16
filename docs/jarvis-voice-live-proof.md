@@ -8,7 +8,9 @@ JARVIS experience before any chained STT/TTS provider is paid for. §0–§6
 record the proof as built (and the credit boundary it first met); §7 is
 what it measured; §8–§9 take it into the product; §10 (2026-09-16) measures
 how the conversation flows, before and after the person's two acts on an
-open case were given real doors.
+open case were given real doors; §11 (2026-09-16) draws the line between
+what the market is doing and what to do with capital, and measures it by
+text and by voice.
 
 ---
 
@@ -733,9 +735,144 @@ _"ta hänsyn till dollarn också"_. There is no correct typed path for an
 addition today. Recorded as TD-95; the invariant watcher cannot see it,
 because the voice model claims acts rather than work.
 
-**For the ruling, not done here:** typed-while-live should go from the
-server to the backend directly — the Responses model with the same
-instructions, the same five tools and the same host execution, exactly the
-proof's `/text` path (§7.6) moved into the product — with its `say` spoken
-by the voice and shown by the presence. The same router for voice and text,
-as ruled; never a third one.
+**Ruled and done the same day (§11, TD-95 closed):** typed-while-live goes
+from the server to the backend directly — the Responses model with the same
+instructions, the same tools and the same host execution, the proof's
+`/text` path (§7.6) moved into the product — with its `say` spoken by the
+voice and shown by the presence. The same router for voice and text; never
+a third one. Re-measured with the same probe: four typed lines reached the
+firm as `ask`, `amend`, `close` and `status`, each answered in 2.2–4.8 s
+and confirmed from the record.
+
+## 11. Routing by consequence — the market without a committee, 2026-09-16
+
+**The finding, in the real HQ.** The person asked _"Hur ser amerikanska
+börsen ut idag?"_ and JARVIS sent it to the firm: a case was opened and
+the reply asked whether they wanted a positive, neutral or negative
+scenario. Then _"S&P 500"_, typed only because JARVIS had failed to infer
+an ordinary market proxy. The ruling that followed: a question about what
+is happening is an observation, answered by JARVIS from fresh data; only a
+question about what to do with capital goes to the firm.
+
+### 11.1 The doctrine, as the instructions now state it
+
+| The person asks… | Depth | Who answers |
+| --- | --- | --- |
+| what is happening — _"hur går USA idag?", "vad gör tioåringen?", "hur är VIX?"_ | FAST | JARVIS, from `get_market_snapshot` |
+| why — _"varför faller Nasdaq?"_ | mostly FAST | JARVIS, in the same market context |
+| what it means in general — _"vad betyder högre tioårsränta för tech?"_ | REASONING | JARVIS |
+| what to do with capital — _"borde jag minska USA?", "ska jag sälja Nvidia?"_ | INSTITUTIONAL | the firm, through `delegate_to_financial_os` |
+
+A finance question is not automatically a case. A thesis or scenario is
+asked for only when a case the firm actually opened requires it. Levels
+from memory are forbidden; a missing number is said to be missing.
+
+### 11.2 The market brief
+
+`application/jarvis/marketBrief.ts` composes the answer's raw material
+from the same envelopes the Overview renders — indices, US sectors, the
+2- and 10-year with the curve slope, EUR/USD and USD/SEK, Brent and gold,
+VIX from the sentiment composite, four headlines — each number with its
+observation time, source, quality, freshness (the observation's, by the
+instrument's horizon) and delivery (the cache's). Fetched with the
+Overview's own symbol lists, so the resolver's cache is shared and a
+question inside the page's TTL costs no provider call; none of these
+categories is quota-metered. A fixture is never quoted; what a source did
+not serve is listed under `unavailable`; what the platform cannot serve
+at all — Dow, Russell, DXY, breadth, intraday series — under `notServed`.
+
+`get_market_snapshot(scope)` is the backend's sixth tool, interpreted as
+its own kind — never a host request — and executed on the same tool
+boundary as the firm's tools; a missing scope is the widest view, never a
+question back. The typed path (§10.5, TD-95) now goes through the same
+backend and the same tools, with nothing stored at the provider; while a
+session is live the routed answer is handed to the voice to say.
+
+### 11.3 Measured by text (`scripts/probe-jarvis-routing.mjs`)
+
+Six lines typed into the presence with no voice session, the firm's case
+count read from the dev database before and after each. Run 4,
+`.probe/routing-text-4.json`: 10 backend responses, $0.0025; tools
+`get_market_snapshot` × 3, `delegate_to_financial_os` × 1.
+
+| Line | Answer after | Cases | What JARVIS answered |
+| --- | --- | --- | --- |
+| _"Hur ser amerikanska börsen ut idag?"_ | 5.1 s | +0 | _"Den amerikanska börsen stängde svagt ned idag: S&P 500 föll 0,45 procent till 7 551,81. Tekniksektorn steg marginellt, medan energi föll 2,97 procent och finans 1,62 procent; Nasdaq 100 saknas i datan. Räntorna steg, med USA:s tioåring på 5,01 procent och tvååringen på 4,74 procent. Plattformens riskaptitindex ligger på 66, vilket fortfarande signalerar risk-on."_ |
+| _"Varför?"_ | 13.1 s | +0 | _"Främst på grund av stigande räntor, som pressar värderingar och finansieringskostnader. Nedgången i energi och finans vägde tungt på S&P 500, medan tech höll emot bättre. Det pekar på en sektorrotation snarare än bred panik …"_ |
+| _"Hur går tech?"_ | 4.7 s | +0 | _"Tech höll emot och Information Technology steg 0,10 procent till 6 867,57, medan S&P 500 föll 0,45 procent. … Data är fördröjd och avser den stängda handeln, observerad 16 september kl. 20:20 från Yahoo Finance; Nasdaq 100 saknas."_ |
+| _"Vad gör tioåringen?"_ | 3.8 s | +0 | _"USA:s tioårsränta ligger på 5,01 procent, upp 1 baspunkt. Tvååringen stiger mer, 7 baspunkter till 4,74 procent, så hela räntekurvan rör sig uppåt. Observationen är dagens officiella nivå från U.S. Department of the Treasury …"_ |
+| _"Vad betyder högre tioårsränta för tech?"_ | 3.4 s | +0 | _"En högre tioårsränta höjer den diskonteringsränta som används för framtida vinster. Det pressar särskilt högt värderade techbolag …"_ — no tool, reasoning |
+| _"Borde jag minska min USA-exponering?"_ | 4.6 s | **+1**, bound | _"Kommittén behöver en utgångstes innan den kan bedöma saken. Vill du minska USA-exponeringen främst på grund av höga värderingar, stigande räntor, svagare dollar eller någon annan risk?"_ |
+
+Before the ruling, the first line went to the firm and came back asking
+for a positive, neutral or negative scenario. Two earlier runs the same
+evening (runs 1–2) passed the same six on routing; their answers said
+_"S&P 500 saknas i datan"_ and quoted a _"VIX"_ — both wrong, both fixed
+before this record (§11.5). Run 3 was interrupted after its first line by
+a page reload that a document edit during the run set off; nothing in it
+contradicts run 4.
+
+### 11.4 Measured by voice (`scripts/probe-jarvis-routing-voice.mjs`)
+
+The six lines synthesized with Azure Speech (`sv-SE-SofieNeural`,
+`scripts/voice-live/synth-utterances.mjs`) as the fake microphone, 22 s
+apart. A synthetic voice is a fair stand-in for a routing test; it is not
+the ear's test.
+
+Run 3, `.probe/routing-voice-voice-3.json`: session 148 s, $0.126; tools
+`get_market_snapshot` × 1, `delegate_to_financial_os` × 1; invariant
+counter 0; the firm's cases 36 → 37, the one opened by the sixth line.
+Times from the moment the person stopped, on the session clock; "market"
+and "host" are the calls' own durations.
+
+| Line | First speech | Handoff | Market | Host | Backend span | Cases | What JARVIS said |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| _"Hur ser amerikanska börsen ut idag?"_ | 0 ms | −200 ms | 170 ms | – | 3.9 s | +0 | _"Mm. Jag kollar på det. Amerikanska börsen stängde svagt ned idag med S&P 500 ner ungefär en halv procent. Teknologi höll emot lite, men energi och finans var klart svagare. Tioårsräntan steg marginellt och ligger strax över fem procent. För Nasdaq 100 har vi tyvärr inte dagens siffra."_ |
+| _"Varför?"_ | +200 ms | none | – | – | – | +0 | _"Mycket handlar om räntorna. När en USA:s tioårsränta tickar upp, pressas bolag med högre värderingar, samtidigt som energi och finans kan tyngas … en liten avvaktande stämning …"_ — answered by the voice model from the exchange before |
+| _"Hur går tech?"_ | +200 ms | 0 ms | – | – | 6.4 s | +0 | _"Ja, jag kikar på det. Tech höll emot bra och var marginellt upp idag, runt en tiondels procent, alltså bättre än marknaden som helhet …"_ |
+| _"Vad gör tioåringen?"_ | 0 ms | none | – | – | – | +0 | _"Den steg lite idag och ligger strax över fem procent."_ — from context |
+| _"Vad betyder högre tioårsränta för tech?"_ | −200 ms | none | – | – | – | +0 | _"Ofta innebär det högre diskonteringsränta på framtida vinster, så värderingarna pressas lättare … starka bolag med robusta kassaflöden stå emot bättre."_ — reasoning, by the voice model |
+| _"Borde jag minska min USA-exponering?"_ | 0 ms | −200 ms | – | 678 ms | 13.9 s | **+1** | _"Ja, jag tar med det. Kommittén behöver en utgångstes från dig först. Vad är ditt huvudskäl till att överväga en minskning — till exempel högre räntor, värderingar eller koncentrationsrisk?"_ |
+
+An earlier run the same evening (run 2, before the brief's fixture rule was
+made per value) handed off three of the five market lines and read the
+market in 81–220 ms each time; the routing was the same, the answers named
+a "VIX" that was the risk-appetite score, which is what the fix removed.
+
+
+### 11.5 What this measured, and what it did not
+
+- **The acceptance holds on both channels.** By text and by voice the first
+  five lines opened no case and bound the conversation to nothing; the
+  sixth opened one and asked for the thesis — where the workflow actually
+  requires it, and nowhere else. No _"menar du S&P 500?"_; no scenario
+  question around a market question.
+- **Where the time goes.** The market itself is milliseconds (33–220 ms
+  on a warm cache; the categories are the Overview's). The backend model is
+  the cost: 3–4 s per handoff by voice, 4–7.5 s per typed line, 14 s on the
+  one delegation whose backend span ran long. The voice's first word comes
+  0–0.6 s after the person stops. The ruling's "very fast" is not met by
+  the backend at default settings; `JARVIS_LIVE_REASONING` and
+  `JARVIS_LIVE_SERVICE_TIER` are the knobs, measured next, not the door.
+- **Fresh, and honest about what is not.** The answers carry levels with
+  their date and source, say _"Nasdaq 100 saknas i datan"_ while Avanza's
+  circuit is open, and say there are no headlines in the dev source (the
+  news category is fixture without a Marketaux key, and a fixture is never
+  quoted). Two fabrications were caught by the measurement itself and
+  removed before this record: a `fixture` index envelope that hid a real
+  S&P 500, and a risk-appetite percentile read out as a VIX level.
+- **Follow-ups keep their context.** Typed lines now travel with the last
+  turns, so _"Varför?"_ was answered about the market just described; by
+  voice the model answered _"Varför?"_, _"Vad gör tioåringen?"_ and the
+  reasoning question itself from the exchange before, without a fetch,
+  and correctly.
+- **The bridging word is still there.** _"Mm. Jag kollar på det."_,
+  _"Ja, jag kikar på det."_, _"Ja, jag tar med det."_ opened four of six
+  voice replies. The instruction permits a short, true, varied word when
+  the wait is noticeable; the wait is the backend's, and the word is
+  filler by another name until the backend is faster.
+- **Not measured here:** the person's own voice on these lines (the
+  microphone was Sofie, synthesized); how the answers sound; a market
+  question while a case is open, and _"och Europa?"_ / _"hur ser
+  värderingen ut?"_ from the ruling's follow-up list.
+

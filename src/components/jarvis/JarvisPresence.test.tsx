@@ -31,6 +31,7 @@ import {
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
 import {
+  askJarvisFn,
   closeLiveSessionFn,
   liveSessionStateFn,
   openLiveSessionFn,
@@ -50,6 +51,7 @@ vi.mock('~/infrastructure/analysis/serverFns', () => ({
 
 /* The voice door, mocked at the one module the presence may use for it. */
 vi.mock('~/infrastructure/jarvis/serverFns', () => ({
+  askJarvisFn: vi.fn(),
   openLiveSessionFn: vi.fn(),
   liveSessionStateFn: vi.fn(),
   typeIntoLiveSessionFn: vi.fn(),
@@ -59,6 +61,8 @@ vi.mock('~/infrastructure/jarvis/serverFns', () => ({
 const host = vi.mocked(financialOsHostFn)
 const operator = vi.mocked(getCurrentOperatorFn)
 const overview = vi.mocked(getCaseOverviewFn)
+/* The typed door: one router for voice and text. A typed question goes here, never straight to the firm. */
+const askJarvis = vi.mocked(askJarvisFn)
 const openLive = vi.mocked(openLiveSessionFn)
 const liveState = vi.mocked(liveSessionStateFn)
 const typeLive = vi.mocked(typeIntoLiveSessionFn)
@@ -169,6 +173,30 @@ const td88: HostResult = {
   decision: { reason: 'institutional-initialization-required' },
 }
 
+/** What the router answers a typed Nvidia question with: a delegation the firm bound, relayed in words. */
+const delegated = {
+  ok: true as const,
+  say: 'Kommittén är sammankallad men saknar en utgångstes.',
+  reference,
+  lastAsk: { question: 'Är Nvidia köpvärd?', subject: 'Nvidia' },
+  state: 'needs-decision',
+  toolCalls: ['delegate_to_financial_os'],
+  backendMs: 12,
+  spoken: false,
+}
+
+/** A market answer: no case, no reference, words from fresh data. */
+const marketAnswer = {
+  ok: true as const,
+  say: 'S&P 500 är upp 0,4 procent och Nasdaq 100 0,7. Tech leder; tioåringen ligger kring 4,1 procent.',
+  reference: null,
+  lastAsk: null,
+  state: 'market-snapshot',
+  toolCalls: ['get_market_snapshot'],
+  backendMs: 9,
+  spoken: false,
+}
+
 async function mountApp(initial = '/') {
   const rootRoute = createRootRoute({
     component: () => (
@@ -219,12 +247,14 @@ beforeEach(() => {
   operator.mockResolvedValue({ ok: false, code: 'NOT_CONFIGURED' })
   overview.mockReset()
   overview.mockResolvedValue(decidedCase)
+  askJarvis.mockReset()
+  askJarvis.mockResolvedValue(delegated)
   openLive.mockReset()
   openLive.mockResolvedValue({ ok: true, sessionId: 'live-1', sdp: 'v=0 answer' })
   liveState.mockReset()
   liveState.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
   typeLive.mockReset()
-  typeLive.mockResolvedValue({ ok: true })
+  typeLive.mockResolvedValue({ ...marketAnswer, spoken: true })
   closeLive.mockReset()
   closeLive.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
   getUserMedia.mockClear()
@@ -261,43 +291,88 @@ describe('at rest', () => {
 /* ------------------------------------------------------------- engaged */
 
 describe('engaged', () => {
-  it('asks the firm and says what the firm answered, in its own words', async () => {
-    host.mockResolvedValue(td88)
+  it('routes a typed question through JARVIS, never straight to the firm, and shows what came back', async () => {
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
 
-    expect(host).toHaveBeenCalledTimes(1)
-    const sent = host.mock.calls[0]![0] as { data: Record<string, unknown> }
-    expect(sent.data).toMatchObject({
-      kind: 'ask',
-      question: 'Är Nvidia köpvärd?',
-      subject: 'Nvidia',
-    })
+    expect(askJarvis).toHaveBeenCalledTimes(1)
+    expect(host).not.toHaveBeenCalled()
+    const sent = askJarvis.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(sent.data).toEqual({ text: 'Är Nvidia köpvärd?', subject: 'Nvidia' })
     /* No actor of any name crosses the door. */
-    expect(Object.keys(sent.data).sort()).toEqual([
-      'kind',
-      'question',
-      'requestId',
-      'subject',
-    ])
+    expect(Object.keys(sent.data).sort()).toEqual(['subject', 'text'])
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText('Är Nvidia köpvärd?')).toBeInTheDocument()
-    expect(
-      within(log).getByText('Jag behöver ditt beslut på en sak.'),
-    ).toBeInTheDocument()
-    expect(within(log).getByText(/saknar en utgångstes/)).toBeInTheDocument()
+    expect(within(log).getByText('Kommittén är sammankallad men saknar en utgångstes.')).toBeInTheDocument()
+  })
+
+  it('answers a market question with fresh words and opens no case', async () => {
+    askJarvis.mockResolvedValue(marketAnswer)
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    /* No subject is needed for a question about the market. */
+    await user.type(screen.getByLabelText('Fråga'), 'Hur ser amerikanska börsen ut idag?')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+
+    expect(askJarvis).toHaveBeenCalledTimes(1)
+    expect((askJarvis.mock.calls[0]![0] as { data: unknown }).data).toEqual({
+      text: 'Hur ser amerikanska börsen ut idag?',
+    })
+    expect(host).not.toHaveBeenCalled()
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(within(log).getByText(/S&P 500 är upp 0,4 procent/)).toBeInTheDocument()
+    expect(within(presence()).queryByRole('region', { name: 'Aktivt ärende' })).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain('"id":"case-1"')
+  })
+
+  it('sends the conversation so far with a follow-up, so "varför?" is about something', async () => {
+    askJarvis.mockResolvedValueOnce(marketAnswer).mockResolvedValueOnce({ ...marketAnswer, say: 'För att räntan steg.' })
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.type(screen.getByLabelText('Fråga'), 'Hur ser amerikanska börsen ut idag?')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+    await user.type(screen.getByLabelText('Fråga'), 'Varför?')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+
+    expect(askJarvis).toHaveBeenCalledTimes(2)
+    const first = (askJarvis.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+    expect(first).toEqual({ text: 'Hur ser amerikanska börsen ut idag?' })
+    const second = (askJarvis.mock.calls[1]![0] as { data: Record<string, unknown> }).data
+    expect(second).toEqual({
+      text: 'Varför?',
+      history: [
+        { by: 'user', text: 'Hur ser amerikanska börsen ut idag?' },
+        { by: 'jarvis', text: marketAnswer.say },
+      ],
+    })
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(within(log).getByText('För att räntan steg.')).toBeInTheDocument()
+  })
+
+  it('says so, in a sentence, when JARVIS cannot answer', async () => {
+    askJarvis.mockResolvedValue({ ok: false, code: 'NOT_CONFIGURED' })
+    const user = userEvent.setup()
+    await mountApp()
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.type(screen.getByLabelText('Fråga'), 'Hur går börsen?')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(within(log).getByText('JARVIS kunde inte svara just nu.')).toBeInTheDocument()
   })
 
   it('says beside any state what the person added, and whether the work already done saw it', async () => {
-    host.mockResolvedValue({
+    host.mockResolvedValueOnce({
       ...td88,
       amendments: { count: 1, latestAt: '2026-09-16T08:00:00.000Z', workPredates: true },
     })
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
+    await user.click(screen.getByRole('button', { name: 'Var står det?' }))
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(
@@ -309,7 +384,7 @@ describe('engaged', () => {
   })
 
   it('says a closed case is closed, and how, when asked where it stands', async () => {
-    host.mockResolvedValueOnce(td88).mockResolvedValueOnce({
+    host.mockResolvedValueOnce({
       ...context,
       state: 'closed',
       closure: {
@@ -331,7 +406,6 @@ describe('engaged', () => {
   })
 
   it('binds the conversation to the reference and offers the deeper surfaces', async () => {
-    host.mockResolvedValue(td88)
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
@@ -350,7 +424,7 @@ describe('engaged', () => {
   })
 
   it('asks the firm again for a follow-up rather than answering from memory', async () => {
-    host.mockResolvedValueOnce(td88).mockResolvedValueOnce({
+    host.mockResolvedValueOnce({
       ...context,
       state: 'blocked',
       block: {
@@ -363,8 +437,8 @@ describe('engaged', () => {
     await askNvidia(user)
     await user.click(screen.getByRole('button', { name: 'Var står det?' }))
 
-    expect(host).toHaveBeenCalledTimes(2)
-    expect((host.mock.calls[1]![0] as { data: unknown }).data).toEqual({
+    expect(host).toHaveBeenCalledTimes(1)
+    expect((host.mock.calls[0]![0] as { data: unknown }).data).toEqual({
       kind: 'status',
       reference,
     })
@@ -389,6 +463,7 @@ describe('engaged', () => {
     await askNvidia(user)
     await user.click(screen.getByRole('button', { name: 'Var står det?' }))
     await user.click(screen.getByRole('button', { name: 'Var står det?' }))
+    await user.click(screen.getByRole('button', { name: 'Var står det?' }))
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     const said = within(log)
@@ -396,6 +471,7 @@ describe('engaged', () => {
       .filter((item) => item.getAttribute('data-by') === 'jarvis')
       .map((item) => item.querySelector('p')?.textContent)
     expect(said).toEqual([
+      'Kommittén är sammankallad men saknar en utgångstes.',
       'Jag kollar på det.',
       'Analysen kan inte fortsätta just nu.',
       'Jag behöver ditt beslut på en sak.',
@@ -403,7 +479,7 @@ describe('engaged', () => {
   })
 
   it('reads the committee’s conclusion from the result, with its dissent', async () => {
-    host.mockResolvedValueOnce(td88).mockResolvedValueOnce({
+    host.mockResolvedValueOnce({
       ...context,
       state: 'answer-ready',
       kind: 'committee-conclusion',
@@ -442,19 +518,25 @@ describe('engaged', () => {
   })
 
   it('tells the truth when no operator is configured, and binds to nothing', async () => {
-    host.mockResolvedValue({
+    /* The firm refused the delegation; the router relays that, and nothing was opened. */
+    askJarvis.mockResolvedValue({
+      ok: true,
+      say: 'Det gick inte igenom: ingen operatör är konfigurerad (NOT_CONFIGURED).',
+      reference: null,
+      lastAsk: null,
       state: 'failed',
-      reason: 'operator-unresolved',
-      code: 'NOT_CONFIGURED',
+      toolCalls: ['delegate_to_financial_os'],
+      backendMs: 7,
+      spoken: false,
     })
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
-    expect(within(log).getByText('Något gick inte igenom.')).toBeInTheDocument()
-    expect(within(log).getByText(/Ingen operatör är konfigurerad/)).toBeInTheDocument()
+    expect(within(log).getByText(/ingen operatör är konfigurerad/)).toBeInTheDocument()
     expect(within(presence()).queryByRole('region', { name: 'Aktivt ärende' })).toBeNull()
+    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain('"id":"case-1"')
   })
 
   it('collapses on Escape inside the panel, and only inside it', async () => {
@@ -541,7 +623,7 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     expect(screen.queryByRole('region', { name: 'Styrelserummet' })).toBeNull()
     expect(screen.getByLabelText('Fråga')).toBeInTheDocument()
     expect(
-      within(presence()).getByText('Jag behöver ditt beslut på en sak.'),
+      within(presence()).getByText('Kommittén är sammankallad men saknar en utgångstes.'),
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Visa underlaget/ }))
@@ -657,29 +739,45 @@ describe('the microphone', () => {
     expect(items[3]).not.toHaveTextContent('Ett ögonblick.')
   })
 
-  it('sends a typed line into the live session rather than to the firm, and back again once the session ends', async () => {
-    host.mockResolvedValue(td88)
+  it('sends a typed line into the live session, shows the routed answer once, and routes again as text once the session ends', async () => {
     const user = userEvent.setup()
     await mountApp()
     await goLive(user)
-    await user.type(screen.getByLabelText('Fråga'), 'Men vad är största risken?')
+    await user.type(screen.getByLabelText('Fråga'), 'Hur går börsen?')
     await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
-    expect(typeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1', text: 'Men vad är största risken?' } })
+    expect(typeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1', text: 'Hur går börsen?' } })
     expect(host).not.toHaveBeenCalled()
+    expect(askJarvis).not.toHaveBeenCalled()
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
-    expect(within(log).getByText('Men vad är största risken?')).toBeInTheDocument()
+    expect(within(log).getByText('Hur går börsen?')).toBeInTheDocument()
+    /* The routed answer, as text, at once. */
+    expect(within(log).getByText(/S&P 500 är upp 0,4 procent/)).toBeInTheDocument()
+    /* The voice then says the same answer; its transcript is not a second bubble. */
+    await act(async () => {
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'S&P 500 är upp', start_ms: 5000, end_ms: 5600 })
+      channel().emit({ type: 'session.output_transcript.delta', delta: ' 0,4 procent.', start_ms: 5600, end_ms: 6200 })
+    })
+    const jarvisBubbles = () =>
+      within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by') === 'jarvis')
+    expect(jarvisBubbles()).toHaveLength(1)
+    /* The person speaking again ends the echo: the next reply is shown. */
+    await act(async () => {
+      channel().emit({ type: 'session.input_transcript.delta', delta: ' Och tech?', start_ms: 9000, end_ms: 9500 })
+      channel().emit({ type: 'session.output_transcript.delta', delta: 'Tech leder.', start_ms: 9700, end_ms: 10200 })
+    })
+    expect(jarvisBubbles()).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: 'Avsluta röst' }))
     await screen.findByRole('button', { name: 'Starta röst' })
     await user.type(screen.getByLabelText('Fråga'), 'Är Nvidia köpvärd?')
     await user.type(screen.getByLabelText('Om'), 'Nvidia')
     await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
-    expect(host).toHaveBeenCalledTimes(1)
-    expect(within(log).getByText('Men vad är största risken?')).toBeInTheDocument()
+    expect(askJarvis).toHaveBeenCalledTimes(1)
+    expect(host).not.toHaveBeenCalled()
+    expect(within(log).getByText('Hur går börsen?')).toBeInTheDocument()
   })
 
   it('opens bound to the case a typed question already gave the conversation', async () => {
-    host.mockResolvedValue(td88)
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
@@ -733,7 +831,6 @@ describe('the microphone', () => {
 
   it('leaves JARVIS usable when the microphone is blocked', async () => {
     getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
-    host.mockResolvedValue(td88)
     const user = userEvent.setup()
     await mountApp()
     await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
@@ -744,7 +841,7 @@ describe('the microphone', () => {
     await user.type(screen.getByLabelText('Fråga'), 'Är Nvidia köpvärd?')
     await user.type(screen.getByLabelText('Om'), 'Nvidia')
     await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
-    expect(host).toHaveBeenCalledTimes(1)
+    expect(askJarvis).toHaveBeenCalledTimes(1)
   })
 
   it('says so, in a sentence, when the door refuses, and lets the microphone go', async () => {
@@ -788,7 +885,7 @@ describe('across navigation', () => {
     ).toBeInTheDocument()
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(
-      within(log).getByText('Jag behöver ditt beslut på en sak.'),
+      within(log).getByText('Kommittén är sammankallad men saknar en utgångstes.'),
     ).toBeInTheDocument()
     expect(
       within(presence()).getByRole('region', { name: 'Aktivt ärende' }),

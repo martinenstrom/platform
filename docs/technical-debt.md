@@ -2611,7 +2611,7 @@ act behind the sentence.
 What stays open: nothing here re-runs a desk because of an addition, and a
 case closed on instruction stays closed until the firm writes `ReopenCase`.
 
-## TD-95 · a typed line into a live session never reaches the firm · open
+## TD-95 · a typed line into a live session never reaches the firm — CLOSED 2026-09-16
 
 **Opened 2026-09-16**, measured by `scripts/probe-jarvis-typed-live.mjs`
 (`docs/jarvis-voice-live-proof.md` §10.5) after the flow probe found three
@@ -2649,3 +2649,24 @@ same host execution, the proof's `/text` path (§7.6) moved into the product
 — and hands its `say` to the voice to speak and to the presence to show.
 Never a third router; never the voice model answering an investment
 judgement or claiming an act.
+
+**Closed 2026-09-16, the same day**, by the routing ruling: a typed line —
+with or without a live session — now goes from the server to the backend
+model directly (`LiveRuntime.respond`: the Responses API with the same
+instructions, the same tools and the same tool execution the voice
+delegates to; `store: false`, the conversation and every tool result
+carried in the request). While a session is live the routed answer is
+handed to the voice to say, with the instruction never to answer the
+question itself; the voice model no longer sees a typed line on its own.
+The presence shows the answer as text at once and does not show the spoken
+echo as a second bubble. The last turns travel with the line as context,
+bounded, so _"varför?"_ is about something.
+
+Measured (`scripts/probe-jarvis-typed-live.mjs`, run 2, `.probe/typed-typed-2.json`):
+four typed lines into a live session — the Nvidia question, the addition,
+the closure, the why — reached the firm as `ask`, `amend`, `close` and
+`status`, each answered as text in 2.2–4.8 s and spoken, and each
+confirmation read off the record: _"Dollarn är tillagd i ärendet"_,
+_"Ärendet är stängt och lades ner innan något arbete hade gjorts"_,
+_"Det lades ner på din begäran"_. Before: four lines, zero delegations,
+two fabricated confirmations.

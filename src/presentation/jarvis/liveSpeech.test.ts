@@ -8,7 +8,9 @@ import type { HostResult } from '~/application/analysis/hostContract'
 import {
   ACKNOWLEDGEMENT_PATTERN,
   LIVE_BACKEND_INSTRUCTIONS,
+  LIVE_TYPED_CONTEXT,
   LIVE_VOICE_INSTRUCTIONS,
+  MARKET_UNAVAILABLE,
   toolSpeech,
   unsupportedSpeech,
   WORKING_ACKNOWLEDGEMENT,
@@ -197,6 +199,31 @@ describe('the instructions', () => {
     expect(LIVE_VOICE_INSTRUCTIONS).toContain('Inga "ehm"')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Är acknowledgeWork false får du inte säga att du återkommer')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('delegate_to_financial_os')
+  })
+
+  it('route by consequence: what is happening is JARVIS from fresh data, what to do with capital is the firm', () => {
+    /* The voice hands market questions to the backend and never quotes a level from memory. */
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('Säg ALDRIG nivåer eller dagsrörelser ur minnet')
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('"Amerikanska börsen" betyder S&P 500 och Nasdaq 100')
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('Be ALDRIG om en tes, ett scenario eller ett förtydligande kring en vanlig fråga om marknaden')
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('en finansfråga är inte automatiskt ett ärende')
+    /* The backend reads the snapshot first, answers in two to five sentences, and opens no case for it. */
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('get_market_snapshot FÖRST')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('två till fem meningar')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Inget ärende, ingen kommitté, ingen tes, inget scenario')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Nivåer ur minnet är förbjudna')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('kalla det aldrig VIX')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('En fråga om vad som händer är inte en investeringsbedömning')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('VAD SKA JAG GÖRA MED KAPITAL? — investeringskommittén')
+  })
+
+  it('tell the voice to say a routed typed answer, and never to answer the question itself', () => {
+    const content = LIVE_TYPED_CONTEXT.speak('Hur går börsen?', 'S&P 500 är upp 0,4 procent.')
+    expect(content).toContain('«Hur går börsen?»')
+    expect(content).toContain('«S&P 500 är upp 0,4 procent.»')
+    expect(content).toContain('Svara inte på frågan själv.')
+    expect(LIVE_TYPED_CONTEXT.channel).toContain('Kanalen är text')
+    expect(MARKET_UNAVAILABLE).not.toMatch(/återkommer/)
   })
 
   it('forbid a claimed act the firm did not confirm, and an acknowledgement said out of habit', () => {

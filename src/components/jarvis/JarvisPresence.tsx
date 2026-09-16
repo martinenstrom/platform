@@ -66,6 +66,8 @@ import {
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
+/* The typed door: one line through the same router the voice delegates to. */
+import { askJarvisFn } from '~/infrastructure/jarvis/serverFns'
 import {
   amendmentLine,
   answerLines,
@@ -138,6 +140,12 @@ export function JarvisPresence() {
   const [voice, setVoice] = useState<VoiceSnapshot>(IDLE_VOICE)
   /* Where each voice turn's last fragment ended, so the next fragment knows whether it continues it. */
   const voiceTurnEnds = useRef(new Map<string, number>())
+  /*
+   * A typed line while live is answered as text first and then spoken; the
+   * spoken echo is the same answer, so its transcript is not shown as a
+   * second bubble. Until this moment, or until the person speaks again.
+   */
+  const echoUntil = useRef(0)
 
   useEffect(() => setMounted(true), [])
 
@@ -152,6 +160,8 @@ export function JarvisPresence() {
       {
         onFragment: (fragment: VoiceFragment) => {
           const by = fragment.who === 'user' ? 'user' : 'jarvis'
+          if (by === 'user') echoUntil.current = 0
+          else if (echoUntil.current > Date.now()) return
           updatePresence((state) => {
             const last = state.turns[state.turns.length - 1]
             const lastEnd = last ? voiceTurnEnds.current.get(last.id) : undefined
@@ -255,14 +265,79 @@ export function JarvisPresence() {
   }
 
   /** A typed line while the session is live: into the same session, answered aloud. */
+  /** The last few turns, as context for a typed line. Conversational data; the record is the firm's. */
+  const recentHistory = () =>
+    presence.turns.slice(-10).map((entry) => ({ by: entry.by, text: entry.text }))
+
+  /** A typed line while live: routed by the server, answered here as text, then spoken by the voice. */
   async function say(text: string) {
+    const history = recentHistory()
     updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
-    const accepted = await voiceRef.current?.type(text)
-    if (!accepted)
+    setBusy(true)
+    try {
+      const reply = await voiceRef.current?.type(text, history)
+      if (!reply?.ok) {
+        updatePresence((state) => ({
+          ...state,
+          turns: [...state.turns, turn('jarvis', 'Röstsessionen tog inte emot det. Skriv igen när rösten är av.', { tone: 'warning' })],
+        }))
+        return
+      }
+      if (reply.say) echoUntil.current = Date.now() + 30_000
       updatePresence((state) => ({
         ...state,
-        turns: [...state.turns, turn('jarvis', 'Röstsessionen tog inte emot det. Skriv igen när rösten är av.', { tone: 'warning' })],
+        reference: reply.reference ?? state.reference,
+        subject: reply.lastAsk?.subject ?? state.subject,
+        question: reply.lastAsk?.question ?? state.question,
+        turns: [...state.turns, turn('jarvis', reply.say || 'JARVIS svarade inte på det.')],
       }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * A typed line with no session: the same router as the voice — the
+   * backend model with the firm's tools and the market's — never a case by
+   * default. What comes back is what JARVIS answered, and the case the line
+   * bound if it warranted one.
+   */
+  async function ask(text: string, subject: string) {
+    const history = recentHistory()
+    updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
+    setBusy(true)
+    try {
+      const reference = presence.reference
+      const result = await askJarvisFn({
+        data: {
+          text,
+          ...(subject ? { subject } : {}),
+          ...(reference ? { reference } : {}),
+          ...(history.length > 0 ? { history } : {}),
+        },
+      })
+      if (!result.ok) {
+        updatePresence((state) => ({
+          ...state,
+          turns: [...state.turns, turn('jarvis', 'JARVIS kunde inte svara just nu.', { tone: 'warning' })],
+        }))
+        return
+      }
+      updatePresence((state) => ({
+        ...state,
+        reference: result.reference ?? state.reference,
+        subject: result.lastAsk?.subject ?? state.subject,
+        question: result.lastAsk?.question ?? state.question,
+        turns: [...state.turns, turn('jarvis', result.say || 'JARVIS svarade inte på det.')],
+      }))
+    } catch {
+      updatePresence((state) => ({
+        ...state,
+        turns: [...state.turns, turn('jarvis', 'Jag fick inte kontakt med JARVIS.', { tone: 'warning' })],
+      }))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const setSurface = (surface: SurfaceKind | null) =>
@@ -354,6 +429,7 @@ export function JarvisPresence() {
             onCollapse={() => setOpen(false)}
             onConsult={consult}
             onSay={say}
+            onAsk={ask}
             onOpenSurface={setSurface}
             onToggleVoice={toggleVoice}
             onForget={forget}
@@ -494,6 +570,7 @@ function ExpandedPanel({
   onCollapse,
   onConsult,
   onSay,
+  onAsk,
   onOpenSurface,
   onToggleVoice,
   onForget,
@@ -506,6 +583,7 @@ function ExpandedPanel({
   onCollapse: () => void
   onConsult: (request: HostRequest, said?: string) => Promise<void>
   onSay: (text: string) => Promise<void>
+  onAsk: (text: string, subject: string) => Promise<void>
   onOpenSurface: (surface: SurfaceKind) => void
   onToggleVoice: () => void
   onForget: () => void
@@ -527,19 +605,15 @@ function ExpandedPanel({
     const asked = question.trim()
     const about = subject.trim()
     if (!asked || busy) return
-    /* With the session live, the line joins the spoken conversation; without one, it is an ask of the firm. */
+    /* With the session live, the line joins the spoken conversation; without one, JARVIS routes it. */
     if (live) {
       setQuestion('')
       await onSay(asked)
       return
     }
-    if (!about) return
     setQuestion('')
     setSubject('')
-    await onConsult(
-      { kind: 'ask', requestId: crypto.randomUUID(), question: asked, subject: about },
-      asked,
-    )
+    await onAsk(asked, about)
   }
 
   const followUp = (request: HostRequest, said: string) => () => onConsult(request, said)
@@ -685,7 +759,7 @@ function ExpandedPanel({
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder={live ? 'Skriv in i samtalet — JARVIS svarar med rösten' : 'Är Nvidia köpvärd på 12–24 månaders sikt?'}
+            placeholder={live ? 'Skriv in i samtalet — JARVIS svarar med rösten' : 'Hur ser amerikanska börsen ut idag?'}
             rows={2}
             className="hq-field resize-none"
           />
@@ -697,14 +771,14 @@ function ExpandedPanel({
               <input
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
-                placeholder="Nvidia"
+                placeholder="Valfritt"
                 className="hq-field"
               />
             </label>
           )}
           <button
             type="submit"
-            disabled={busy || !question.trim() || (!live && !subject.trim())}
+            disabled={busy || !question.trim()}
             aria-label={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
             title={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
             className={cn(

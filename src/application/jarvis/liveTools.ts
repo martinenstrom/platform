@@ -18,10 +18,20 @@
  * case the conversation is bound to; with no case bound there is nothing to
  * act on, and the refusal says so rather than guessing at one. Neither
  * carries a target the model chose: the reference is the session's.
+ *
+ * ## The market, without the firm
+ *
+ * `get_market_snapshot` — "hur ser amerikanska börsen ut idag?" — is not a
+ * host request at all. What is happening in the market is an observation
+ * JARVIS answers from fresh data (`marketBrief.ts`), and the ruling of
+ * 2026-09-16 forbids turning it into a case, a committee or a thesis. It is
+ * interpreted as its own kind, executed against the platform's market data,
+ * and never touches the institutional record.
  */
 
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import type { HostRequest } from '~/application/analysis/hostContract'
+import { isMarketScope, MARKET_SCOPES, type MarketScope } from './marketBrief'
 
 export type LiveToolName =
   | 'delegate_to_financial_os'
@@ -29,6 +39,7 @@ export type LiveToolName =
   | 'get_delegation_result'
   | 'add_to_delegation'
   | 'close_case'
+  | 'get_market_snapshot'
 
 /** The reason recorded for a closure the person asked for without giving one. */
 export const DEFAULT_CLOSE_REASON = 'På användarens begäran i samtalet.'
@@ -92,6 +103,25 @@ export const LIVE_TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    type: 'function',
+    name: 'get_market_snapshot',
+    description:
+      'Färska marknadsdata från plattformens egna källor: index med dagsförändring, sektorer, räntor, valutor, råvaror, plattformens riskaptitindex (0–100, härlett — aldrig en VIX-nivå) och dagens rubriker, var och en med observationstid och källa. Anropas för VARJE fråga om hur marknaden, ett index, en sektor, en ränta, en valuta eller en råvara går, står eller rör sig — "idag", "just nu", "senaste", "hur handlar", "vad händer på börsen" — innan du svarar; nivåer ur minnet är förbjudna. Ingen investeringsbedömning, inget ärende: bara observationen. Det som saknas står under unavailable och notServed och sägs som saknat, aldrig gissat.',
+    parameters: {
+      type: 'object',
+      properties: {
+        scope: {
+          type: 'string',
+          enum: MARKET_SCOPES,
+          description:
+            '"us" för amerikanska börsen (S&P 500 och Nasdaq 100 som standard, plus sektorer, US 10-year, riskaptit), "europe", "sweden" eller "global". Fråga aldrig användaren vilket index som menas när frågan är vanlig; välj standard och säg vad du använde.',
+        },
+      },
+      required: ['scope'],
+      additionalProperties: false,
+    },
+  },
 ] as const
 
 export type UnsupportedToolReason =
@@ -102,6 +132,8 @@ export type UnsupportedToolReason =
 
 export type ToolInterpretation =
   | { kind: 'host'; request: HostRequest }
+  /** An observation of the market, answered by JARVIS from fresh data — never the firm. */
+  | { kind: 'market'; scope: MarketScope }
   | { kind: 'unsupported'; reason: UnsupportedToolReason }
 
 export interface ToolContext {
@@ -155,6 +187,9 @@ export function interpretToolCall(
           text: input.note.trim(),
         },
       }
+    case 'get_market_snapshot':
+      /* A missing or unknown scope is answered with the widest view, never with a question back. */
+      return { kind: 'market', scope: isMarketScope(input.scope) ? input.scope : 'global' }
     case 'close_case':
       if (!context.reference) return { kind: 'unsupported', reason: 'no-open-case' }
       return {

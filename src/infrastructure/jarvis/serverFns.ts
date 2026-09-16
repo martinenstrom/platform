@@ -1,24 +1,43 @@
 /**
- * The browser's door to a live voice session, and nothing lower.
+ * The browser's door to JARVIS, and nothing lower.
  *
- * Four server functions: open (the SDP exchange), state (telemetry and the
- * bound reference, never a transcript), type (text into a live session), and
- * close. The OpenAI key stays on this side; the browser sends an SDP offer
- * and, at most, a voice name. It cannot send an actor, an operator, a case or
- * a command — `parseLiveOpen` refuses any field it does not name, the way
- * `parseHostRequest` does for the typed presence.
+ * Live voice: open (the SDP exchange), state (telemetry and the bound
+ * reference, never a transcript), type (a line into a live session), close.
+ * Typed text: `askJarvisFn`, one line through the same backend model and the
+ * same tools the voice delegates to — the one router (TD-95). The OpenAI key
+ * stays on this side; the browser sends an SDP offer, a voice name, a line
+ * of text, and the case pointer it already holds. It cannot send an actor,
+ * an operator, a case id of its choosing or a command — `parseLiveOpen` and
+ * `parseAskJarvisRequest` refuse any field they do not name, the way
+ * `parseHostRequest` does for the host contract.
  *
- * Every delegation the voice makes is executed by the session runtime through
- * the same host gateway `financialOsHostFn` uses, as the server-resolved
- * operator, with JARVIS as initiator. Voice and text reach the firm through
- * one contract.
+ * Every delegation the backend makes is executed by the session runtime
+ * through the same host gateway `financialOsHostFn` uses, as the
+ * server-resolved operator, with JARVIS as initiator. A market observation
+ * is read from the platform's own market data and never reaches the firm.
  */
 
 import { createServerFn } from '@tanstack/react-start'
 import { NotConfiguredError, productHostGateway } from '~/infrastructure/analysis/runtime'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
 import { parseLiveOpenRequest } from '~/application/jarvis/liveOpen'
-import { createLiveRuntime, type LiveConfig, type LiveRuntime, type LiveSessionState, type LiveTelemetry } from './liveSession'
+import { parseAskJarvisRequest } from '~/application/jarvis/askJarvis'
+import {
+  composeMarketBrief,
+  fetchMarketBriefParts,
+  type MarketBrief,
+  type MarketScope,
+} from '~/application/jarvis/marketBrief'
+import { getContainer } from '~/infrastructure/marketData/serverFns'
+import {
+  createLiveRuntime,
+  type LiveConfig,
+  type LiveRuntime,
+  type LiveSessionState,
+  type LiveTelemetry,
+  type TypedTelemetry,
+  type TypedTurnResult,
+} from './liveSession'
 import { createOpenAiLiveProvider, LiveProviderRefusal } from './openaiLive'
 
 /* ------------------------------------------------------------- config */
@@ -72,6 +91,19 @@ async function host(request: HostRequest): Promise<HostResult> {
   }
 }
 
+/**
+ * Fresh market data for an observation question, from the same container
+ * and the same symbol sets the Overview resolves, so a question inside the
+ * page's cache TTL costs no provider call.
+ */
+async function marketBrief(scope: MarketScope): Promise<MarketBrief> {
+  const container = await getContainer()
+  const { createOverviewDataSource } = await import('~/infrastructure/marketData/overviewDataSource')
+  const source = createOverviewDataSource(container, container.newCorrelationId())
+  const parts = await fetchMarketBriefParts(source, scope)
+  return composeMarketBrief(parts, scope, source.now())
+}
+
 function runtime(): LiveRuntime | null {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return null
@@ -82,6 +114,7 @@ function runtime(): LiveRuntime | null {
         networkDisabled: process.env.JARVIS_LIVE_NETWORK_DISABLED === '1',
       }),
       host,
+      market: marketBrief,
       config: liveConfig(),
       log: (line) => console.log(`[jarvis/live] ${line}`),
     })
@@ -126,13 +159,49 @@ export const liveSessionStateFn = createServerFn({ method: 'POST' })
     return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
   })
 
+/** What a typed line came back with: the answer as text, and the case it may have bound. */
+export type AskJarvisResponse =
+  | ({ ok: true } & TypedTurnResult)
+  | { ok: false; code: 'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'; field?: string }
+
+async function typedTurn(input: unknown): Promise<AskJarvisResponse> {
+  const parsed = parseAskJarvisRequest(input)
+  if (!parsed.ok) return { ok: false, code: 'INVALID_REQUEST', field: parsed.field }
+  const rt = runtime()
+  if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
+  try {
+    return { ok: true, ...(await rt.respond(parsed.request)) }
+  } catch (error) {
+    if (error instanceof LiveProviderRefusal) {
+      console.error('[jarvis/typed] provider refused', error.status)
+      return { ok: false, code: 'PROVIDER_REFUSED' }
+    }
+    console.error('[jarvis/typed] failed', error)
+    return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+  }
+}
+
+/**
+ * A typed line to JARVIS with no voice session: the backend model, the same
+ * tools, the same execution. The answer comes back as text; a delegation,
+ * if the line warranted one, binds the conversation to the case it opened.
+ */
+export const askJarvisFn = createServerFn({ method: 'POST' })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }): Promise<AskJarvisResponse> => typedTurn(data))
+
+/**
+ * A typed line while a session is live: the same router, and the answer is
+ * then handed to the voice to say. The voice model never sees the question
+ * on its own, so it cannot answer it on its own.
+ */
 export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
-  .validator((input: { sessionId: string; text: string }) => ({ sessionId: String(input.sessionId), text: String(input.text) }))
-  .handler(async ({ data }): Promise<{ ok: boolean }> => {
-    const rt = runtime()
-    if (!rt || !data.text.trim()) return { ok: false }
-    return { ok: rt.type(data.sessionId, data.text) }
-  })
+  .validator((input: { sessionId: string; text: string; history?: unknown }) => ({
+    sessionId: String(input.sessionId),
+    text: String(input.text),
+    ...(input.history !== undefined ? { history: input.history } : {}),
+  }))
+  .handler(async ({ data }): Promise<AskJarvisResponse> => typedTurn(data))
 
 export const closeLiveSessionFn = createServerFn({ method: 'POST' })
   .validator((input: { sessionId: string }) => ({ sessionId: String(input.sessionId) }))
@@ -143,11 +212,13 @@ export const closeLiveSessionFn = createServerFn({ method: 'POST' })
     return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
   })
 
-export type LiveTelemetryResponse = { ok: true; sessions: LiveTelemetry[] } | { ok: false; code: 'NOT_CONFIGURED' }
+export type LiveTelemetryResponse =
+  | { ok: true; sessions: LiveTelemetry[]; typed: TypedTelemetry }
+  | { ok: false; code: 'NOT_CONFIGURED' }
 
-/** Every session's counts and money, for the cost view. Never a word of any conversation. */
+/** Every session's counts and money, and the typed turns outside sessions. Never a word of any conversation. */
 export const liveTelemetryFn = createServerFn({ method: 'POST' }).handler(async (): Promise<LiveTelemetryResponse> => {
   const rt = runtime()
   if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
-  return { ok: true, sessions: rt.telemetry() }
+  return { ok: true, sessions: rt.telemetry(), typed: rt.typedTelemetry() }
 })

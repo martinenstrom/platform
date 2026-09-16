@@ -19,7 +19,7 @@ const context = (bound: boolean) => ({
   requestId: () => 'req-1',
 })
 
-describe('the five functions', () => {
+describe('the six functions', () => {
   it('are the only ones, and each is a function definition the backend can take', () => {
     expect(LIVE_TOOL_DEFINITIONS.map((tool) => tool.name)).toEqual([
       'delegate_to_financial_os',
@@ -27,6 +27,7 @@ describe('the five functions', () => {
       'get_delegation_result',
       'add_to_delegation',
       'close_case',
+      'get_market_snapshot',
     ])
     for (const tool of LIVE_TOOL_DEFINITIONS) {
       expect(tool.type).toBe('function')
@@ -113,6 +114,24 @@ describe('the five functions', () => {
     expect(interpretToolCall('close_case', { reason: 'x' }, context(false))).toEqual({
       kind: 'unsupported',
       reason: 'no-open-case',
+    })
+  })
+
+  it('turns a market question into an observation of the market, never into a host request', () => {
+    expect(interpretToolCall('get_market_snapshot', { scope: 'us' }, context(false))).toEqual({
+      kind: 'market',
+      scope: 'us',
+    })
+    /* No case is needed, and no case is opened: the reference is untouched either way. */
+    expect(interpretToolCall('get_market_snapshot', { scope: 'sweden' }, context(true))).toEqual({
+      kind: 'market',
+      scope: 'sweden',
+    })
+    /* A missing or unknown scope is the widest view, never a question back and never a refusal. */
+    expect(interpretToolCall('get_market_snapshot', {}, context(false))).toEqual({ kind: 'market', scope: 'global' })
+    expect(interpretToolCall('get_market_snapshot', { scope: 'mars' }, context(false))).toEqual({
+      kind: 'market',
+      scope: 'global',
     })
   })
 

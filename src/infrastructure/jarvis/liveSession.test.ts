@@ -11,7 +11,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
-import { createLiveRuntime, type LiveConfig, type LiveProvider, type LiveSideband } from './liveSession'
+import type { MarketBrief, MarketScope } from '~/application/jarvis/marketBrief'
+import {
+  createLiveRuntime,
+  type LiveConfig,
+  type LiveProvider,
+  type LiveSideband,
+  type ResponsesRequest,
+  type ResponsesResult,
+} from './liveSession'
 
 const config: LiveConfig = {
   model: 'gpt-live-1',
@@ -55,11 +63,56 @@ function functionCall(name: string, args: Record<string, unknown>, callId = 'cal
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+/** A market brief with one index in it, as the market dependency answers. */
+const brief = (scope: MarketScope): MarketBrief => ({
+  scope,
+  generatedAt: '2026-09-16T14:00:00.000Z',
+  indices: [
+    {
+      symbol: 'idx:sp500',
+      name: 'S&P 500',
+      observedAt: '2026-09-16T13:59:40.000Z',
+      source: 'Yahoo',
+      quality: 'delayed',
+      session: 'open',
+      freshness: 'current',
+      delivery: 'fresh',
+      level: 6512.3,
+      changePercent: 0.42,
+      changeAbsolute: 27.1,
+      changePeriod: 'intraday',
+    },
+  ],
+  sectors: [],
+  rates: [],
+  curveSlopeBasisPoints: null,
+  fx: [],
+  commodities: [],
+  riskAppetite: null,
+  headlines: [],
+  unavailable: ['riskaptit'],
+  notServed: ['Dow Jones'],
+})
+
+/** A Responses result: a function call, or a spoken answer. */
+const functionCallResult = (name: string, args: Record<string, unknown>, callId = 'fc-1'): ResponsesResult => ({
+  id: `resp-${callId}`,
+  output: [{ type: 'function_call', id: `fc_${callId}`, call_id: callId, name, arguments: JSON.stringify(args) }],
+  usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 0 }, output_tokens: 20 },
+})
+const textResult = (text: string): ResponsesResult => ({
+  id: 'resp-text',
+  output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }],
+  usage: { input_tokens: 200, input_tokens_details: { cached_tokens: 100 }, output_tokens: 40 },
+})
+
 describe('a live session', () => {
   let sideband: ReturnType<typeof fakeSideband>
-  let provider: LiveProvider & { sessions: Record<string, unknown>[] }
+  let provider: LiveProvider & { sessions: Record<string, unknown>[]; responses: ResponsesRequest[] }
   let asked: HostRequest[]
   let answer: (request: HostRequest) => HostResult
+  let marketAsked: MarketScope[]
+  let respondWith: (request: ResponsesRequest) => ResponsesResult
 
   beforeEach(() => {
     /* The watchdog's interval and the clock are faked; setTimeout stays real so `flush` can yield. */
@@ -67,14 +120,21 @@ describe('a live session', () => {
     sideband = fakeSideband()
     provider = {
       sessions: [],
+      responses: [],
       createSession: vi.fn(async ({ session, sdp }) => {
         provider.sessions.push(session)
         return { id: 'live-1', sdp: `answer-for-${sdp}` }
       }),
       attach: vi.fn(async () => sideband),
+      respond: vi.fn(async (request) => {
+        provider.responses.push(request)
+        return respondWith(request)
+      }),
     }
     asked = []
     answer = () => ({ ...bound, state: 'working' })
+    marketAsked = []
+    respondWith = () => textResult('Svar.')
   })
   afterEach(() => vi.useRealTimers())
 
@@ -84,6 +144,10 @@ describe('a live session', () => {
       host: async (request) => {
         asked.push(request)
         return answer(request)
+      },
+      market: async (scope) => {
+        marketAsked.push(scope)
+        return brief(scope)
       },
       config,
       requestId: () => 'req-1',
@@ -227,7 +291,8 @@ describe('a live session', () => {
     sideband.emit({ type: 'session.input_transcript.delta', delta: 'Okej.', start_ms: 14000, end_ms: 14400 })
     sideband.emit({ type: 'session.output_transcript.delta', delta: 'Bra.', start_ms: 14600, end_ms: 14900 })
     /* A typed line is a turn too. */
-    rt.type('live-1', 'Ta hänsyn till dollarn också.')
+    respondWith = () => textResult('Noterat.')
+    await rt.respond({ text: 'Ta hänsyn till dollarn också.', sessionId: 'live-1' })
 
     const turns = rt.state('live-1')!.telemetry.turns
     expect(turns).toHaveLength(3)
@@ -281,16 +346,138 @@ describe('a live session', () => {
     expect(state.telemetry.voiceSeconds).toBe(31)
   })
 
-  it('types into the session as trusted text, and refuses once closed', async () => {
+  it('answers a market question from the market, and the firm is never asked', async () => {
     const rt = runtime()
     await rt.open({ sdp: 'offer' })
-    expect(rt.type('live-1', 'Vad är term premium?')).toBe(true)
+    sideband.emit(functionCall('get_market_snapshot', { scope: 'us' }, 'm1'))
+    await flush()
+    expect(marketAsked).toEqual(['us'])
+    expect(asked).toEqual([])
+    const out = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    expect(out.state).toBe('market-snapshot')
+    expect(out.acknowledgeWork).toBe(false)
+    expect(out.brief.indices[0].name).toBe('S&P 500')
+    expect(out.brief.unavailable).toEqual(['riskaptit'])
+    /* Nothing was bound: the market is not a case. */
+    expect(rt.state('live-1')?.reference).toBeNull()
+    expect(rt.state('live-1')?.telemetry.toolCallsByName).toEqual({ get_market_snapshot: 1 })
+  })
+
+  it('says the market is unavailable rather than guessing when the sources fail', async () => {
+    const failing = createLiveRuntime({
+      provider,
+      host: async () => ({ state: 'failed', reason: 'service-unavailable' }),
+      market: async () => {
+        throw new Error('all providers down')
+      },
+      config,
+      requestId: () => 'req-1',
+    })
+    await failing.open({ sdp: 'offer' })
+    sideband.emit(functionCall('get_market_snapshot', { scope: 'us' }, 'm1'))
+    await flush()
+    const out = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    expect(out.state).toBe('market-unavailable')
+    expect(out.say).toContain('inte åt färska marknadsdata')
+    expect(out.acknowledgeWork).toBe(false)
+  })
+
+  it('answers a typed line through the backend and the same tools, with nothing kept at the provider', async () => {
+    const rt = runtime()
+    let round = 0
+    respondWith = () => (round++ === 0 ? functionCallResult('get_market_snapshot', { scope: 'us' }) : textResult('S&P 500 är upp 0,4 procent.'))
+    const result = await rt.respond({ text: 'Hur ser amerikanska börsen ut idag?' })
+    expect(result.say).toBe('S&P 500 är upp 0,4 procent.')
+    expect(result.toolCalls).toEqual(['get_market_snapshot'])
+    expect(result.state).toBe('market-snapshot')
+    expect(result.reference).toBeNull()
+    expect(result.spoken).toBe(false)
+    expect(marketAsked).toEqual(['us'])
+    expect(asked).toEqual([])
+    /* Two calls: the second carries the call and its output back, in the request. */
+    expect(provider.responses).toHaveLength(2)
+    const second = provider.responses[1]!
+    expect(second.input.map((item) => (item as { type?: string; role?: string }).type ?? (item as { role: string }).role)).toEqual([
+      'user',
+      'function_call',
+      'function_call_output',
+    ])
+    expect(second.instructions).toContain('Kanalen är text')
+    expect(second.tools.map((tool) => (tool as { name: string }).name)).toContain('get_market_snapshot')
+    const t = rt.typedTelemetry()
+    expect(t.turns).toBe(1)
+    expect(t.responses).toBe(2)
+    expect(t.toolCallsByName).toEqual({ get_market_snapshot: 1 })
+    expect(t.costUsd).toBeGreaterThan(0)
+  })
+
+  it('binds a typed delegation to the case the firm opened, with no actor in the request', async () => {
+    const rt = runtime()
+    let round = 0
+    respondWith = () =>
+      round++ === 0
+        ? functionCallResult('delegate_to_financial_os', { question: 'Borde jag minska USA?', subject: 'USA', actorEmployeeId: 'cio' })
+        : textResult('Kommittén behöver din utgångstes.')
+    answer = () => ({ ...bound, state: 'needs-decision', decision: { reason: 'institutional-initialization-required' } })
+    const result = await rt.respond({ text: 'Borde jag minska min USA-exponering?' })
+    expect(asked).toEqual([{ kind: 'ask', requestId: 'req-1', question: 'Borde jag minska USA?', subject: 'USA' }])
+    expect(result.reference).toEqual(reference)
+    expect(result.lastAsk).toEqual({ question: 'Borde jag minska USA?', subject: 'USA' })
+    expect(result.state).toBe('needs-decision')
+    expect(result.say).toBe('Kommittén behöver din utgångstes.')
+  })
+
+  it('carries the bound case into a typed follow-up, and tells the backend the channel is text', async () => {
+    const rt = runtime()
+    respondWith = () => textResult('Ärendet väntar på ditt beslut.')
+    await rt.respond({ text: 'Var står det?', reference })
+    expect(provider.responses[0]!.instructions).toContain('bundet till ett ärende')
+    expect(provider.responses[0]!.input[0]).toEqual({ role: 'user', content: 'Var står det?' })
+    /* The subject hint travels as a hint, on the line itself. */
+    await rt.respond({ text: 'Är Nvidia köpvärd?', subject: 'Nvidia' })
+    expect(provider.responses[1]!.input[0]).toEqual({ role: 'user', content: 'Är Nvidia köpvärd?\n(Ämne: Nvidia)' })
+    /* Earlier turns travel as the messages they were, so "varför?" is about something. */
+    await rt.respond({
+      text: 'Varför?',
+      history: [
+        { by: 'user', text: 'Hur går börsen?' },
+        { by: 'jarvis', text: 'S&P 500 är upp 0,4 procent.' },
+      ],
+    })
+    expect(provider.responses[2]!.input).toEqual([
+      { role: 'user', content: 'Hur går börsen?' },
+      { role: 'assistant', content: 'S&P 500 är upp 0,4 procent.' },
+      { role: 'user', content: 'Varför?' },
+    ])
+  })
+
+  it('speaks a typed line’s routed answer in the live session, and never hands the question to the voice', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer' })
+    sideband.emit({ type: 'session.started', session: { id: 'live-1' } })
+    respondWith = () => textResult('S&P 500 är upp 0,4 procent.')
+    const result = await rt.respond({ text: 'Hur går börsen?', sessionId: 'live-1' })
+    expect(result.spoken).toBe(true)
     const appended = sideband.sent.find((e) => e.type === 'session.instructions.append') as { content: string; delegation_id: null }
-    expect(appended.content).toContain('Vad är term premium?')
+    expect(appended.content).toContain('«S&P 500 är upp 0,4 procent.»')
+    expect(appended.content).toContain('Svara inte på frågan själv.')
     expect(appended.delegation_id).toBeNull()
+    const state = rt.state('live-1')!
+    expect(state.telemetry.typedInjections).toBe(1)
+    expect(state.telemetry.backend.responses).toBe(1)
+    expect(state.telemetry.turns[0]).toMatchObject({ typed: true, delegationMs: null })
+    /* The session's own effects carry: a delegation typed while live binds the session. */
+    let round = 0
+    respondWith = () => (round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: 'q', subject: 's' }) : textResult('Klart.'))
+    answer = () => ({ ...bound, state: 'needs-decision', decision: { reason: 'institutional-initialization-required' } })
+    await rt.respond({ text: 'Ska jag sälja Nvidia?', sessionId: 'live-1' })
+    expect(rt.state('live-1')?.reference).toEqual(reference)
+    /* Once the session is closed, the line is still answered, as text alone. */
     sideband.drop()
-    expect(rt.type('live-1', 'igen')).toBe(false)
-    expect(rt.state('live-1')?.telemetry.reason).toBe('transport-closed')
+    respondWith = () => textResult('Text.')
+    const after = await rt.respond({ text: 'igen', sessionId: 'live-1' })
+    expect(after.say).toBe('Text.')
+    expect(after.spoken).toBe(false)
   })
 
   it('does not exist when the provider refuses', async () => {

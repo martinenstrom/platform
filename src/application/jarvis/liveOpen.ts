@@ -20,7 +20,7 @@ export interface LiveOpenRequest {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-function parseReference(value: unknown): DomainReference | null {
+export function parseReference(value: unknown): DomainReference | null {
   if (!isRecord(value)) return null
   const keys = Object.keys(value).sort()
   if (keys.join(',') !== 'id,kind,provenanceId,system') return null

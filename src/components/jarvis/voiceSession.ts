@@ -41,6 +41,16 @@ import {
 
 export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'unavailable'
 
+/** What a typed line while live came back with. */
+export type TypedReply =
+  | {
+      ok: true
+      say: string
+      reference: DomainReference | null
+      lastAsk: { question: string; subject: string } | null
+    }
+  | { ok: false }
+
 export interface VoiceSnapshot {
   status: VoiceStatus
   sessionId: string | null
@@ -238,11 +248,19 @@ export class VoiceSession {
   /* -------------------------------------------------------------- typed */
 
   /** Text into the live conversation; the answer comes back spoken, and in the transcript. */
-  async type(text: string): Promise<boolean> {
+  /**
+   * A typed line into the live session: routed by the server through the
+   * same backend the voice delegates to, then spoken. What comes back is the
+   * answer as text and the case the line may have bound.
+   */
+  async type(text: string, history: readonly { by: 'user' | 'jarvis'; text: string }[] = []): Promise<TypedReply> {
     const sessionId = this.snapshot.sessionId
-    if (!this.pc || !sessionId) return false
-    const result = await typeIntoLiveSessionFn({ data: { sessionId, text } })
-    return result.ok
+    if (!this.pc || !sessionId) return { ok: false }
+    const result = await typeIntoLiveSessionFn({
+      data: { sessionId, text, ...(history.length > 0 ? { history: [...history] } : {}) },
+    })
+    if (!result.ok) return { ok: false }
+    return { ok: true, say: result.say, reference: result.reference, lastAsk: result.lastAsk }
   }
 
   /* ------------------------------------------------------------ events */

@@ -8,9 +8,16 @@
  * to work on 2026-09-15, every delegation of the proof went through it.
  */
 
-import type { LiveProvider, LiveSideband } from './liveSession'
+import type { LiveProvider, LiveSideband, ResponsesOutputItem } from './liveSession'
 
 export const OPENAI_LIVE_BASE = 'https://api.openai.com/v1/live/sessions'
+/**
+ * The backend model without a voice session: a typed line goes here with the
+ * same instructions and the same tools the voice delegates to. `store: false`
+ * — nothing is kept at the provider; the conversation state a tool loop
+ * needs is carried in the request.
+ */
+export const OPENAI_RESPONSES = 'https://api.openai.com/v1/responses'
 
 export class LiveProviderRefusal extends Error {
   constructor(
@@ -32,13 +39,44 @@ export interface OpenAiLiveOptions {
   networkDisabled?: boolean
   /** Bound on the one HTTP call; the sideband socket has the session's own lifetime. */
   timeoutMs?: number
+  /** Bound on one Responses call; a tool round is one call. */
+  responsesTimeoutMs?: number
 }
 
-export function createOpenAiLiveProvider({ apiKey, networkDisabled = false, timeoutMs = 15_000 }: OpenAiLiveOptions): LiveProvider {
+export function createOpenAiLiveProvider({
+  apiKey,
+  networkDisabled = false,
+  timeoutMs = 15_000,
+  responsesTimeoutMs = 45_000,
+}: OpenAiLiveOptions): LiveProvider {
   const guard = () => {
     if (networkDisabled) throw new LiveProviderRefusal(0, 'NETWORK_DISABLED')
   }
   return {
+    async respond(request) {
+      guard()
+      const response = await fetch(OPENAI_RESPONSES, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: request.model,
+          instructions: request.instructions,
+          tools: request.tools,
+          tool_choice: 'auto',
+          parallel_tool_calls: false,
+          store: false,
+          input: request.input,
+          ...(request.serviceTier ? { service_tier: request.serviceTier } : {}),
+          ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
+        }),
+        signal: AbortSignal.timeout(responsesTimeoutMs),
+      })
+      const text = await response.text()
+      if (!response.ok) throw new LiveProviderRefusal(response.status, text.slice(0, 300))
+      const body = JSON.parse(text) as { id?: string; output?: ResponsesOutputItem[]; usage?: Record<string, unknown> }
+      return { id: body.id ?? '', output: body.output ?? [], ...(body.usage ? { usage: body.usage } : {}) }
+    },
+
     async createSession({ session, sdp }) {
       guard()
       const response = await fetch(OPENAI_LIVE_BASE, {
