@@ -402,7 +402,7 @@ describe('engaged', () => {
         /Ett tillägg sedan ärendet öppnades; det arbete som redan gjorts tar inte hänsyn till det senaste\./,
       ),
     ).toBeInTheDocument()
-    expect(within(log).getByText('Jag behöver ditt beslut på en sak.')).toBeInTheDocument()
+    expect(within(log).getByText('En sak innan de sätter igång.')).toBeInTheDocument()
   })
 
   it('says a closed case is closed, and how, when asked where it stands', async () => {
@@ -496,7 +496,7 @@ describe('engaged', () => {
       'Kommittén är sammankallad men saknar en utgångstes.',
       'Jag kollar på det.',
       'Analysen kan inte fortsätta just nu.',
-      'Jag behöver ditt beslut på en sak.',
+      'En sak innan de sätter igång.',
     ])
   })
 

@@ -19,13 +19,38 @@ const context = (bound: boolean) => ({
   requestId: () => 'req-1',
 })
 
-describe('the six functions', () => {
+describe('the person’s answer to the one question', () => {
+  it('is their words on the bound case, with the focus they named, never a host request the model wrote', () => {
+    expect(
+      interpretToolCall('begin_delegation', { view: '  Pröva den öppet. ', focus: ['makro', ' flöden ', 7, ''] }, context(true)),
+    ).toEqual({ kind: 'begin', reference, words: 'Pröva den öppet.', focus: ['makro', 'flöden'] })
+    expect(interpretToolCall('begin_delegation', {}, context(true))).toEqual({
+      kind: 'begin',
+      reference,
+      words: null,
+      focus: [],
+    })
+    expect(
+      interpretToolCall('begin_delegation', { focus: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] }, context(true)),
+    ).toMatchObject({ focus: ['a', 'b', 'c', 'd', 'e', 'f'] })
+  })
+
+  it('has nothing to answer for without a bound case', () => {
+    expect(interpretToolCall('begin_delegation', { view: 'Kör.' }, context(false))).toEqual({
+      kind: 'unsupported',
+      reason: 'no-open-case',
+    })
+  })
+})
+
+describe('the seven functions', () => {
   it('are the only ones, and each is a function definition the backend can take', () => {
     expect(LIVE_TOOL_DEFINITIONS.map((tool) => tool.name)).toEqual([
       'delegate_to_financial_os',
       'check_delegation',
       'get_delegation_result',
       'add_to_delegation',
+      'begin_delegation',
       'close_case',
       'get_market_snapshot',
     ])

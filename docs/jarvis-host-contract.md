@@ -1,10 +1,12 @@
-# JARVIS → Financial OS — the host contract (slice B, refined by B.1, extended for the open case)
+# JARVIS → Financial OS — the host contract (slice B, refined by B.1, extended for the open case and the opening)
 
-**Status: implemented and verified; contract version 3.** Written 2026-09-14
-under the Slice B ruling, refined the same day under the B.1 review, and
+**Status: implemented and verified; contract version 4.** Written 2026-09-14
+under the Slice B ruling, refined the same day under the B.1 review,
 extended on 2026-09-16 with the two acts a person performs on their own open
-case — `amend` and `close` (§10, TD-94). The contract is the deliverable; the
-endpoint is how it is reached.
+case — `amend` and `close` (§10, TD-94) — and on 2026-09-17 with the
+opening position on the person's behalf and the firm advanced on their word
+— `begin` (§11, TD-88). The contract is the deliverable; the endpoint is how
+it is reached.
 
 ```
 JARVIS decides: "does this need Financial OS?"
@@ -331,3 +333,117 @@ time then id, frozen reads). `permissions.pg.test.ts`: `finos_app` may add
 and may not reword or remove. `liveTools.test.ts`, `liveSession.test.ts`,
 `liveSpeech.test.ts`: the voice's two tools, bound-case only, the spoken
 sentence produced from the read-back.
+
+## 11. The opening, on the person's behalf — `begin` (contract v4, 2026-09-17)
+
+Until v4 `ask` convened the committee and came back `needs-decision /
+institutional-initialization-required`, and nothing in the contract could
+answer it: the opening position could be proposed only by a script at a
+terminal (TD-88), and `amend` moves no stage. Measured on 2026-09-17 in the
+gold conversation: one question, five confirmations filed as amendments,
+five times "needs a thesis", no work — the loop the ruling of that day
+named. The ruling settled the authority: **the person who put the question
+establishes the opening, in their own words, translated by JARVIS and
+confirmed by them.** `begin` is that act, and the firm advanced as far as
+policy permits on it.
+
+```ts
+| { kind: 'begin'; reference: DomainReference; requestId: string; opening: HostOpening }
+
+HostOpening =
+  | { kind: 'explanation'; focus: string[] }
+  | { kind: 'position'; focus: string[]; view: { statement: string; position: string } | null }
+
+Context adds (on the result of begin only)
+  commission: {
+    evidence: { family; from; to; observations } | null
+    started: HostDesk[]
+    withheld: { desk: HostDesk | null; reason: HostWithheldReason }[]
+  }
+HostWithheldReason = 'no-evidence-basis' | 'no-observations' | 'no-provider' | 'no-authorized-budget'
+                   | 'dependencies-not-met' | 'not-assignable' | 'no-principal' | 'declined'
+```
+
+**What the host says, and what it may not.** The host says what the person
+meant: an **explanation** (why, what drives — the firm can open on it at
+once) with the focus they named, or a **position** (what to do with
+capital) with their view in their words and the position word read off it,
+or `view: null` when they said to examine it openly or only said to go
+ahead. The parser refuses a `statement`, `implications`, an
+`invalidationCriteria`, a `proposedByDepartmentId` or an actor beside the
+opening, by name. The firm's record is written by the firm's own
+application (`opening.ts`, `openingProposal`): the statement is the
+question or the view plus "Prövas mot: …"; the position is `explain`,
+`open` or the person's word; the invalidation criterion is stated for the
+shape; implications are `[]` for an explanation and `position-sizing` for a
+position — so a conditional Risk review is decided by what the question is,
+never by how the host phrased it.
+
+**`begin`** → `ProposeThesis` revision 1 as the operator's act with the host
+as initiator, unless the case already holds a revision (then nothing is
+proposed and the standing is re-read); then the firm advanced:
+
+1. the workflow's **standing evidence basis** (`STANDING_EVIDENCE`, a policy
+   per playbook: `macro-regime` → `sovereign-yield-curve@1` /
+   `us-par-curve`, seven days ending on the day of the act — thirty was
+   measured to exhaust the desks' token budget) is assembled
+   by `AssembleEvidenceSet` under the operator's convenor mandate — a
+   workflow without a basis withholds every desk as `no-evidence-basis`; a
+   basis with nothing in the window withholds as `no-observations`;
+2. every entry of the pinned workflow, in its order, is commissioned through
+   `commissionAnalysis` under **the desk's own institutional agent**
+   (`no-principal` where a desk has none), with the mandate, readiness,
+   dependency and budget checks exactly as the product's commission button
+   applies them; the firm's refusals come back as the reasons above;
+3. `begin` waits only until each run is on the record (`startWaitMs`, 3 s),
+   then returns the case re-read with `commission` beside it. **The live
+   run continues in the process**; how it ended is logged by the container
+   (`[analysis] [begin] <case> <entry>: ran awaiting-acceptance`) and read
+   back by the next `status`. A process that dies mid-run leaves what
+   TD-92 describes, and the gateway reports it as `blocked /
+   execution-recovery-required` as before. Without a provider (no model
+   credential) every desk is `no-provider`.
+
+**Derivation refined.** A case whose opening exists and whose desks have
+not contributed reads `blocked / analysis-required` naming the desk (from
+the `missing-required-contribution` blocker), no longer `synthesis-required`
+for a synthesis nobody could have produced. `working` is unchanged: a run
+inside its window.
+
+**The spoken sentence** is produced from the read-back
+(`beginSpeech`): what the desks were asked — "ta reda på vad som driver
+guld idag — makro, flöden, specifika händelser" — which desks started and on
+what basis, and "Jag återkommer när det är klart" only when a run is
+running; when nothing started, why, once, in plain words. Never a thesis, a
+scope or an approval.
+
+**How JARVIS walks through the door** (`application/jarvis/opening.ts`,
+`liveSession.ts`): the case's own question decides explanation or
+position; an explanation is begun by the runtime the moment `ask` comes back
+awaiting an opening, with the person's focus or the standing default; a
+position gets the one human question ("Vill du att de utgår från din egen
+syn — och vad är huvudskälet — eller prövar frågan helt öppet?") and any
+reasonable answer — through `begin_delegation`, or as words added to the
+case — begins it: a view becomes the view, "pröva den öppet", "kör", "de
+kan börja", "ja", "precis" examine openly, a focus alone is a focus.
+
+**Refusals.** Unknown case → `unsupported / unknown-reference`; settled or
+closed → `failed / case-settled`; no operator → `failed /
+operator-unresolved` and nothing written; the institution's own refusal of
+the revision → `failed / refused` with its code.
+
+**Verification.** `hostContract.test.ts`: the opening accepted in its
+three shapes, and refused without a request id, with an unknown kind, an
+unbounded focus, a view without words, a position that is not a word, and
+with the firm's record or an actor beside it. `hostGateway.test.ts`
+(in-memory firm): revision 1 proposed from the person's words as the
+operator's act initiated by the host, position `explain`, no implication;
+a second beginning proposes nothing; a view written with `position-sizing`;
+the standing evidence assembled and `no-observations` reported truthfully
+with no run; foreign reference, no operator, settled case refused.
+`opening.test.ts` (both): the proposal's shapes; the reading of kind, focus,
+confirmation, open examination and view. `liveSession.test.ts`: an
+explanation begun at once with no second question; the one question for a
+capital question and `begin_delegation` on "pröva den öppet"; words added to
+an awaiting case taken as the opening; a bare confirmation and a focus read
+as such; the truthful sentence when no desk could start.

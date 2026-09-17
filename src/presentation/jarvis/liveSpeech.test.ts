@@ -97,11 +97,12 @@ describe('the acknowledgement of delegated work', () => {
     }
   })
 
-  it('asks for the person’s decision rather than promising a return', () => {
+  it('asks the one human question rather than promising a return, and never for a thesis', () => {
     const speech = toolSpeech(results.needsDecision!)
     expect(speech.decisionRequired).toBe(true)
-    expect(speech.say).toContain('Jag behöver ditt beslut på en sak.')
-    expect(speech.say).toContain('saknar en utgångstes')
+    expect(speech.say).toContain('En sak innan de sätter igång.')
+    expect(speech.say).toContain('din egen syn')
+    expect(speech.say.toLowerCase()).not.toContain('utgångstes')
   })
 
   it('says what stopped the firm, and who holds it', () => {
@@ -134,6 +135,76 @@ describe('the acknowledgement of delegated work', () => {
   })
 })
 
+describe('the opening, said aloud (2026-09-17)', () => {
+  const macro = { id: 'global-macro', name: 'Global Macro', isGovernance: false }
+  const rates = { id: 'rates', name: 'Rates', isGovernance: false }
+  const gold = { ...context, question: 'Kolla med kommittén varför guld är upp idag.', subject: 'Guld' }
+
+  it('says what the desks were asked, who started on what, and that JARVIS will return — nothing else', () => {
+    const speech = toolSpeech(
+      {
+        ...gold,
+        state: 'working',
+        commission: {
+          evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
+          started: [macro, rates],
+          withheld: [{ desk: { id: 'quant-technical', name: 'Quant & Technical', isGovernance: false }, reason: 'dependencies-not-met' }],
+        },
+      },
+      'begin',
+      { kind: 'explanation', focus: ['makro', 'flöden', 'specifika händelser'] },
+    )
+    expect(speech.say).toBe(
+      'Absolut. Jag ber dem ta reda på vad som driver guld idag — makro, flöden, specifika händelser. Global Macro och Rates har börjat, med den amerikanska räntekurvan som underlag. Jag återkommer när det är klart.',
+    )
+    expect(speech.acknowledgeWork).toBe(true)
+    expect(speech.decisionRequired).toBe(false)
+    expect(speech.reference).toEqual(reference)
+  })
+
+  it('says plainly, once, why no desk could start, and promises no return', () => {
+    const speech = toolSpeech(
+      {
+        ...gold,
+        state: 'blocked',
+        block: { reason: 'analysis-required', owner: macro },
+        commission: { evidence: null, started: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] },
+      },
+      'begin',
+      { kind: 'explanation', focus: ['makro'] },
+    )
+    expect(speech.say).toBe(
+      'Absolut. Jag ber dem ta reda på vad som driver guld idag — makro. Men borden kan inte börja än — firman har inget registrerat underlag för den här sortens fråga än.',
+    )
+    expect(speech.acknowledgeWork).toBe(false)
+    expect(ACKNOWLEDGEMENT_PATTERN.test(speech.say)).toBe(false)
+  })
+
+  it('words a position from the person’s view, or as an open examination', () => {
+    const usa = { ...context, question: 'Borde jag minska min USA-exponering?', subject: 'USA-exponering' }
+    const commission = { evidence: null, started: [macro], withheld: [] }
+    expect(
+      toolSpeech({ ...usa, state: 'working', commission }, 'begin', {
+        kind: 'position',
+        focus: ['värdering'],
+        view: { statement: 'Jag är negativ till USA.', position: 'reduce' },
+      }).say,
+    ).toContain('Jag ber dem pröva din syn på USA-exponering mot värdering.')
+    expect(toolSpeech({ ...usa, state: 'working', commission }, 'begin', { kind: 'position', focus: [], view: null }).say).toContain(
+      'Jag ber dem pröva frågan om USA-exponering öppet.',
+    )
+  })
+
+  it('never uses the words of a form', () => {
+    for (const text of [LIVE_VOICE_INSTRUCTIONS, LIVE_BACKEND_INSTRUCTIONS]) {
+      expect(text).toContain('klartecken')
+    }
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('begin_delegation')
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('EN kort mänsklig fråga')
+    expect(LIVE_VOICE_INSTRUCTIONS).toContain('Fråga ALDRIG efter en tes')
+  })
+})
+
 describe('the two acts on the open case', () => {
   const withAdditions = (result: HostResult, count: number, workPredates: boolean): HostResult =>
     ({ ...result, amendments: { count, latestAt: AT, workPredates } }) as HostResult
@@ -142,7 +213,7 @@ describe('the two acts on the open case', () => {
     const speech = toolSpeech(withAdditions(results.needsDecision!, 1, false), 'amend')
     expect(speech.say.startsWith('Tillagt i ärendet.')).toBe(true)
     expect(speech.say).not.toContain('tar inte hänsyn')
-    expect(speech.say).toContain('Jag behöver ditt beslut på en sak.')
+    expect(speech.say).toContain('En sak innan de sätter igång.')
     expect(speech.decisionRequired).toBe(true)
     expect(speech.acknowledgeWork).toBe(false)
     expect(speech.reference).toEqual(reference)

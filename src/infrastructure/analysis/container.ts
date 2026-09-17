@@ -18,6 +18,11 @@ import { createOrganizationReader } from './postgres/organizationReader'
 import { ensureProvenance } from './postgres/provenance'
 import { defaultSqlContext } from './postgres/sql'
 import { loadMigrations } from './postgres/migrations'
+import {
+  createLiveContributionProvider,
+  LIVE_MAX_OUTPUT_TOKENS,
+  LIVE_MODEL_ID,
+} from './providers/live'
 import type { OrganizationReader } from '~/application/analysis/organizationReader'
 import type { StorageProvenance } from '~/application/analysis/repositories'
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
@@ -163,6 +168,43 @@ export async function createAnalysisContainer(
           repositories,
           commandDeps,
           now: () => options.clock.isoNow(),
+          /*
+           * The firm may be advanced on the person's word (host `begin`).
+           * The provider is the live one the product commissions with, built
+           * only when a credential exists; without one every desk is withheld
+           * as `no-provider`, and the person is told so rather than promised.
+           */
+          advance: {
+            provider: () => {
+              const apiKey = process.env.ANTHROPIC_API_KEY
+              if (!apiKey) return null
+              const live = createLiveContributionProvider({
+                apiKey,
+                model: LIVE_MODEL_ID,
+                maxTokens: LIVE_MAX_OUTPUT_TOKENS,
+                loadEvidenceSet: (id) => repositories.evidence.get(id),
+              })
+              /*
+               * The orchestrator records an unclassified throw as
+               * `provider-error` and keeps nothing of the message — correct
+               * for the record, blind for whoever must find out why. The
+               * message goes to the server log here, on the way through.
+               */
+              return {
+                ...live,
+                contribute: async (request) => {
+                  try {
+                    return await live.contribute(request)
+                  } catch (error) {
+                    const why = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+                    console.error(`[analysis] [begin] provider failed for ${request.departmentId}: ${why.slice(0, 400)}`)
+                    throw error
+                  }
+                },
+              }
+            },
+            log: (line) => console.log(`[analysis] ${line}`),
+          },
         }),
 
       close: () => repositories.close(),

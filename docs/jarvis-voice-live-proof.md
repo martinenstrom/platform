@@ -12,7 +12,9 @@ open case were given real doors; §11 (2026-09-16) draws the line between
 what the market is doing and what to do with capital, and measures it by
 text and by voice; §12 (2026-09-17) takes the fast path off the model,
 benchmarks the backend's reasoning effort and service tier, and measures
-every latency class by text and by voice.
+every latency class by text and by voice; §13 (2026-09-17) lets the person
+speak human — the firm opens on their word and starts — and measures the
+gold conversation before and after.
 
 ---
 
@@ -1206,3 +1208,282 @@ with the person's real microphone and voice; (2) the market test repeated
 in normal market conditions with the live market-data circuit healthy.
 Neither blocks broader product development unless it exposes a real
 defect.
+## 13. The person speaks human — from intent to real work, 2026-09-17
+
+The gold conversation, in HQ by voice on the evening of 2026-09-17, as the
+record holds it (`scripts/probe-jarvis-intent.mjs --record`):
+
+```
+case-2d82f55b… · opened 20:30:56
+  Q: Kolla varför guld är upp idag och ta fram den konkreta drivkraften bakom rörelsen.
+  + 20:31:24  De kan gå vidare. De ska svara på varför guld är uppe i dag.
+  + 20:31:40  Det är tesen: kommittén ska pröva varför guld är upp idag.
+  + 20:32:22  Kommittén ska förklara varför guld är upp idag genom att pröva om uppgången beror på makrofaktorer, flöden eller någon särskild händelse.
+  + 20:32:51  Utgångstes: Varför är guld upp idag? Den ska prövas mot makrofaktorer, flöden och särskilda händelser.
+  + 20:33:14  Jag ger formellt klartecken att kommittén börjar arbetet.
+  (no opening, no runs: work never started)
+```
+
+Six turns in two minutes and eighteen seconds — the intent, then five
+confirmations in ever more formal language — and the server log for the
+session reads `delegate_to_financial_os → ask → needs-decision` followed by
+`add_to_delegation → amend → needs-decision` five times. The person spoke
+system-language by the fourth turn ("Utgångstes: …") and by the fifth was
+granting formal permission. Nothing started, and nothing could have.
+
+### 13.1 Root cause
+
+Two things, one structural and one of wording, and the structural one is
+the cause.
+
+- **The firm had no door for the opening position.** `ask` convenes the
+  committee and comes back `needs-decision / institutional-initialization-
+  required` (TD-88); the only way to propose revision 1 was
+  `scripts/propose-thesis.ts` at a terminal; `amend` records the person's
+  words and, by design, moves no stage and starts no work. So the model's
+  only tools for the person's confirmations were amendments, and every
+  amendment re-read the same state. The loop was the contract's shape, not
+  the model's manners: an infinitely patient model would have looped
+  exactly the same way.
+- **The state's sentence was a demand for a thesis.** _"Kommittén är
+  sammankallad men saknar en utgångstes, och ingen är bemyndigad att
+  formulera den åt dig"_ plus rule 4 ("say clearly that the person must
+  decide something") produced, faithfully, a thesis requirement, a scope
+  requirement and an approval requirement in the firm's vocabulary. The
+  wording amplified the loop; it did not create it.
+- And beneath both: **no host path started desk work at all.** Even with a
+  thesis, the desks are commissioned from the product's commission button
+  (a case, an evidence set, an entry, an acting employee, a live provider,
+  synchronously). Every JARVIS-opened case in the dev firm — seventeen of
+  twenty-one on 2026-09-14, all of them on 2026-09-17 — sat at the opening
+  with no path to work.
+
+### 13.2 What changed
+
+- **The door: host contract v4 `begin`** (`hostContract.ts`, §11 of the
+  contract document; TD-88 closed). The person's opening position, on their
+  behalf: an **explanation** with the focus they named, or a **position**
+  with their view in their words and the position word read off it, or
+  `view: null` to examine openly. The parser refuses a statement,
+  implications, an invalidation criterion, a department or an actor beside
+  it by name. The firm's record is written by the firm's own application
+  (`application/analysis/opening.ts`): the statement is the question or the
+  view plus "Prövas mot: …", the position `explain` / `open` / the person's
+  word, the invalidation criterion stated for the shape, implications `[]`
+  for an explanation and `position-sizing` for a position — so Risk is
+  decided by what the question is, never by how the host phrased it.
+- **The act: `FinancialOsSystem.begin`** (`domainSystem.ts`). `ProposeThesis`
+  revision 1 as the operator's act with the host as initiator — exactly as
+  the question was booked — unless the case already argues about one. Then
+  the firm advanced as far as policy permits: the workflow's standing
+  evidence basis (`STANDING_EVIDENCE`: macro-regime → the US par curve,
+  seven days, as known at the act) assembled under the convenor mandate,
+  and every entry of the pinned workflow commissioned through
+  `commissionAnalysis` under **the desk's own institutional agent** — the
+  P4 path, with its mandate, readiness, dependency and budget checks
+  untouched. `begin` waits only until each run is on the record (three
+  seconds); the live run continues in the process and its end is logged.
+  What started and what was withheld comes back as `commission` on the
+  result, in the host's words: `no-evidence-basis`, `no-observations`,
+  `no-provider`, `no-authorized-budget`, `dependencies-not-met`,
+  `not-assignable`, `no-principal`, `declined`.
+- **The reading refined.** A case with an opening and no desk work reads
+  `blocked / analysis-required` naming the desk, no longer
+  `synthesis-required` for a synthesis nobody could have produced.
+- **The translation** (`application/jarvis/opening.ts`), deterministic and
+  planted-violation tested: the question's own words decide explanation or
+  position ("varför", "vad driver", "ta reda på" against "borde", "ska
+  jag", "köpa", "minska", "exponering"); the focus is read off what the
+  person said — "makro", "flöden", "händelser", "värdering", "räntor",
+  "dollarn", "geopolitik", "centralbanker" — or is the standing default;
+  "kör", "de kan börja", "ja", "precis", "det är vad jag menar", "go ahead"
+  are confirmations; "pröva den öppet" is leave to examine without a view;
+  a focus alone is a focus; a view's direction is read off its verbs
+  (minska/negativ → `reduce`, köpa → `buy`, sälja → `sell`, behålla →
+  `hold`, öka/positiv → `accumulate`, undvik → `avoid`, else `open`).
+- **The runtime, structurally** (`liveSession.ts`). When `ask` comes back
+  awaiting an opening and the question is an explanation, the runtime
+  begins at once — no question back, the person's focus or the default. A
+  capital question keeps its one human question, said once ("Vill du att de
+  utgår från din egen syn — och vad är huvudskälet — eller prövar frågan
+  helt öppet?"). The answer reaches the door two ways, and both are the
+  runtime's, not the model's: `begin_delegation` reads the case's own
+  question first and builds the opening from it and the words; words added
+  to a case that still awaits its opening (`add_to_delegation`) ARE the
+  opening. The loop of 20:31–20:33 cannot recur: an amendment on an
+  awaiting case is followed by `begin` in the same tool call. Words that
+  arrive once the firm is under way are recorded as an addition; a bare
+  "kör" is not. And a focus alone or a confirmation while a case is bound
+  is an addition to that case whatever tool the model reached for — a
+  second `delegate_to_financial_os` for "Makro, flöden och specifika
+  händelser." becomes `amend`, never a second case.
+- **The words.** The state's sentence is the one human question
+  (`hostStateText.ts`); after `begin` the sentence is produced from the
+  read-back (`beginSpeech`): what the desks were asked, who started on what
+  basis, "Jag återkommer när det är klart" only when a run is running, and
+  when nothing started, why, once, plainly. The backend instructions gained
+  rules 6 and 7 — one question at most, every reasonable answer proceeds,
+  never "systemet kräver", "tesen är inte tillräckligt tydlig", "formellt
+  godkännande" — and rule 2 names the delegation shape and close without
+  ceremony; the voice instructions say the same in their register.
+
+### 13.3 Measured in HQ — the gold example by text
+
+`scripts/probe-jarvis-intent.mjs` (`.probe/intent-text-<n>.json`), typed
+into the presence with no voice session, the firm's record read after
+every line — an opening revision and desk runs on the case are what "work
+started" means here, never the conversation's own claim. Four runs this
+evening; the first is the acceptance, the others found things.
+
+**Run 1 (`text-1`):**
+
+| Line | Visible | Tools | Cases | What JARVIS said | Record after the line |
+| --- | --- | --- | --- | --- | --- |
+| _"Kolla med kommittén och be dem ta reda på varför guld är upp idag."_ | 8.1 s | `delegate_to_financial_os` → ask → needs-decision → **begin (explanation) → working**, one model pass before and one after | +1 | _"Absolut. Jag ber dem ta reda på vad som driver guld idag — makro, flöden och specifika händelser. Global Macro och Rates har börjat, med den amerikanska räntekurvan som underlag."_ | opening r1 `[explain]` by research-director: _"Ta reda på varför guld är upp idag. Prövas mot: makro, flöden, specifika händelser."_ · evidence set of 252 observations assembled · runs `global-macro/macro-analysis` and `rates/rates-analysis` **running**, live, under `global-macro-agent` and `rates-agent` |
+| _"Makro, flöden och specifika händelser."_ | 3.7 s | `begin_delegation` → status → working | +0 | _"Jag kollar på det och återkommer. Investeringskommittén arbetar med makro, flöden och specifika händelser."_ | unchanged; the desks were already on it |
+| _"Stäng ärendet."_ | 3.5 s | `close_case` → close → closed | +0 | _"Ärendet är stängt och det pågående arbetet avbröts."_ | `withdrawn` ten seconds after opening; both runs still inside their windows, counted, not adopted |
+
+Clarification turns before work: **0**. Work on the record at turn **1**,
+eight seconds after the person typed. No line carried a thesis, a scope, a
+formal approval or the word "systemet". The firm's own refusals are in the
+server log, not the conversation: `aggregation` and `peer-examination`
+refused `dependencies-not-met`, as the workflow says they must; the four
+governance entries have no institutional agent in the dev firm and were
+withheld `no-principal` before any commission.
+
+**What the runs did next, and what runs 2–4 found.** The two desk runs of
+run 1 read the whole thirty-day curve — 252 observations, 63,010 input
+tokens each on `claude-opus-5` — and the firm failed both
+`budget-exhausted` against the 24,000 tokens the pinned workflow
+authorises, after paying for the calls: the token budget is checked on
+the answer, not before it. The standing window is now seven days (60
+observations, 15,531 tokens by the v6 measurement table), and run 2
+assembled exactly that set. Run 2's desks then failed within 700 ms,
+`provider-error`, and so did every later run's: a direct call to the
+provider answered **HTTP 400, "Your credit balance is too low to access
+the Anthropic API"** — the two Opus calls of run 1 and the voice run had
+spent what was left. Work therefore **starts** on the record in every run
+and has not yet been seen to **finish** under the seven-day window; that
+is the credit balance, not the door, and it is the first thing to run
+again once credits exist (`node scripts/probe-jarvis-intent.mjs text-5
+--keep-open`).
+
+Run 3 found a conversational defect the tests had not: for the focus line
+the model reached for `delegate_to_financial_os` instead of an addition
+and opened a second case, and its reply parroted the instruction's own
+example sentences, promising a return the tool had not granted. Both are
+closed structurally: a focus alone or a bare confirmation while a case is
+bound is taken as an addition to that case whatever tool the model
+chose (`liveSession.test.ts`, "never lets a focus or a confirmation open a
+second case"), and rule 7 no longer quotes a promise — "jag återkommer"
+is said only when the tool's own `acknowledgeWork` is true in that very
+answer. Run 4 (`text-4`) is the run after those two changes, and it holds:
+_"Kolla med kommittén …"_ opened and began in 4.8 s (_"Jag ber dem ta reda
+på vad som driver guld idag — makro, flöden och specifika händelser. Global
+Macro och Rates har börjat, med den amerikanska räntekurvan som underlag.
+Jag återkommer när det är klart."_ — said while both runs were inside
+their windows); _"Makro, flöden och specifika händelser."_ went to
+`add_to_delegation` and came back _"Tillagt i ärendet. Det arbete som
+redan gjorts tar inte hänsyn till det."_, one case still; _"Stäng
+ärendet."_ closed it. Zero clarification questions, work on the record at
+turn 1, no second case, no promise the tool had not granted.
+
+### 13.4 Measured in HQ — the gold example by voice
+
+`scripts/probe-jarvis-routing-voice.mjs c13-intent` — the three lines
+synthesized (`sv-SE-SofieNeural`, 24 s apart), the record read afterwards
+with `--record`. Two runs: the first before the voice was told that a focus
+alone is a whole answer, the second after.
+
+**Run 2 (`.probe/routing-voice-intent-voice-2.json`):** session 88 s,
+$0.075; tools `delegate_to_financial_os` × 1, `add_to_delegation` × 1,
+`close_case` × 1; cases 53 → 54; invariant counter 0.
+
+| Line | First sound | First useful | Handoff | Host | Backend span | Cases | What JARVIS said |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| _"Kolla med kommittén och be dem ta reda på varför guld är upp idag."_ | 0 ms | 4.2 s | −200 ms | 942 ms (ask + begin) | 2.8 s | **+1** | _"Jag ser på det. Absolut. Jag ber dem ta reda på vad som driver guld idag — makro, flöden och specifika händelser. De har börjat, med den amerikanska räntekurvan som underlag."_ |
+| _"Makro, flöden och specifika händelser."_ | 0 ms | 200 ms | −200 ms | 106 ms | 2.0 s | +0 | _"Ja — jag tar med det. Det är tillagt."_ |
+| _"Stäng ärendet."_ | 0 ms | – | −200 ms | 335 ms | 1.7 s | +0 | _"Jag kollar. Stängt."_ |
+
+The record for that case: the question in the person's words, the opening
+r1 `[explain]` by research-director eleven seconds after the session
+opened, _"Makro, flöden och specifika händelser."_ recorded as an addition
+at +28 s, both desks' runs on the record at +1 s from the opening, the case
+`withdrawn` at +54 s. Zero clarification questions; work on the record at
+turn 1; the first useful spoken word 4.2 s after the person stopped, the
+handoff having cost 0.9 s in the firm and the rest in the backend's two
+passes.
+
+**Run 1** (`.probe/routing-voice-intent-voice-1.json`) had the same first
+line — heard as _"Kommittén och be den ta reda på varför guld är upp idag"_,
+opened, begun, _"Absolut, jag ber dem … De har börjat, jag återkommer när
+det är klart"_ at 1.4 s — and then a silence: the voice model took
+_"Makro, flöden och specifika händelser."_ for an unfinished sentence and
+waited 28 s until _"Stäng ärendet."_ arrived, answering both with _"Ja.
+Stängt."_ One sentence in the voice instructions — a focus alone is a whole
+answer — is the difference between the two runs.
+
+### 13.5 Clarification turns, before and after
+
+| | Turns from intent to work on the record | Clarification questions | Work started | Words of a form |
+| --- | --- | --- | --- | --- |
+| Before, 2026-09-17 20:30 by voice (the record) | never — 6 turns, 2 min 18 s, then the person gave up | 5, the same one five times | no | "utgångstes", "formellt klartecken", said by the person by the fourth turn |
+| After, by text (runs 1–4) | 1 | 0 | yes — opening, evidence, two desk runs on the record within a second | none |
+| After, by voice (runs 1–2) | 1 | 0 | yes — the same record | none |
+
+The one question JARVIS may still ask — for a capital question, "Vill du
+att de utgår från din egen syn, eller prövar frågan helt öppet?" — is
+verified in the runtime tests, not in these runs, because the gold
+instruction is an explanation and needs none.
+
+### 13.6 What this did not do, and what it leaves
+
+- **Institutional correctness held, and the record shows it.** The opening
+  is booked to the operator with the host as initiator, in the person's
+  words with the firm's shape around them; the desks ran under their own
+  principals through the same command path the product's button uses, with
+  the same mandate, readiness, dependency and budget refusals; the
+  evidence set was declared by the convenor mandate; closing cancelled
+  work the firm will not adopt and said so. Nothing was manufactured, and
+  nothing was inferred from a transcript.
+- **What the desks read is a policy, not a judgement.** The standing basis
+  for `macro-regime` is the US par curve over seven days, refreshed to the
+  day through the governed ingestion act before this run
+  (`dev:ingest-yields`, 220 new observations). That is a real macro basis
+  for "why is gold up" and an honest one — rates are a driver of gold —
+  but it is not gold's own price history, flows or events, for which the
+  firm holds no observations and no selection rule. JARVIS says which
+  desks started and on what; it does not claim the desks are reading
+  flows. Choosing evidence by subject is the evidence architecture's next
+  question, and this slice did not open it.
+- **The desks' work has started and has not yet been seen to finish.** The
+  first runs read thirty days of the curve and the firm paid for two Opus
+  calls it then failed on its token budget; the balance ran out; every
+  later run failed at the provider in under a second. The seven-day window
+  is measured by the playbook's own table, not by a completed run. Until
+  credits exist, `begin` records the opening, assembles the evidence and
+  starts the desks truthfully — and the person hears, at the next
+  "var står det?", that a desk's analysis is missing, which is true.
+- **The firm pays before it refuses.** The token budget is enforced on the
+  answer, not on the prompt: a run whose evidence exceeds the budget is
+  refused after the provider has been paid. The v6 note assumed the
+  breaker refuses ahead; measured, it does not. A pre-count against the
+  budget before the call is the firm's next protection, and it is not this
+  slice's.
+- **The next boundary is adoption.** A live desk run ends
+  `awaiting-acceptance`; the Research Office's synthesis waits for both
+  desks' work to be accepted. The person who asks "var står det?" an hour
+  later will be told, truthfully, that work is done and awaits its desk.
+  Whether a desk's own agent adopts its work without a click is the P4
+  `--adopt` path, ruled for the proof and not for the product; it is the
+  next thing a person will run into, and it is not conversational
+  friction — it is the acceptance boundary the institution was built on.
+- **Detached execution.** `begin` returns when the run is on the record and
+  the live call continues in the server process. A process that dies
+  mid-run leaves a `running` row past its window, which the gateway already
+  reports as `execution-recovery-required` (TD-92). Synchronous execution
+  "by ruling" remains the product button's shape; the conversation could
+  not wait a minute for a tool call, and the record is read back the same
+  way either way.
+- **The person's own voice** is still the synthesized Sofie in these runs;
+  the two manual validation items of §12.7 stand.

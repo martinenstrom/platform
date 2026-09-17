@@ -73,6 +73,7 @@ import { boardroomSeating } from './boardroomSeating'
 import type { CurrentOperatorResult } from './currentOperator'
 import type {
   CaseActResult,
+  CaseCommission,
   Delegation,
   DomainReference,
   FinancialOsSystem,
@@ -86,6 +87,7 @@ import type {
   HostAmendments,
   HostBlock,
   HostClosure,
+  HostCommission,
   HostDecision,
   HostDesk,
   HostInspection,
@@ -313,8 +315,26 @@ export function productStateFor(overview: CaseOverview, now: string): ProductSta
      * which is an array order rather than an owner (TD-91), and is not
      * repeated here.
      */
-    case 'aggregate-conclusion':
+    case 'aggregate-conclusion': {
+      /*
+       * The opening exists and the desks owe their analysis before anyone can
+       * synthesise it: the person is told a desk's analysis is missing — and
+       * which desk — not that the Research Office has failed to weigh work
+       * that does not exist yet. Once the contributions are in, it is the
+       * synthesis that is owed.
+       */
+      const missing = overview.standing.blockers.find(
+        (blocker) =>
+          blocker.kind === 'missing-required-contribution' || blocker.kind === 'required-assignment-failed',
+      )
+      if (missing) {
+        return {
+          state: 'blocked',
+          block: { reason: 'analysis-required', owner: deskOf(overview, missing.owningDepartmentId ?? null) },
+        }
+      }
       return { state: 'blocked', block: { reason: 'synthesis-required', owner: null } }
+    }
     case 'submit-for-verification':
       return { state: 'blocked', block: { reason: 'verification-required', owner: null } }
     case 'record-peer-examination':
@@ -587,10 +607,29 @@ export type HostGateway = (request: HostRequest) => Promise<HostResult>
 export function createHostGateway(deps: HostGatewayDeps): HostGateway {
   const { system, operator, surfaces, orchestratorId, now } = deps
 
+  /** What the firm started and withheld, with the desks named as the organisation names them. */
+  const commissionFor = (overview: CaseOverview, commission: CaseCommission): HostCommission => ({
+    evidence: commission.evidence
+      ? {
+          family: commission.evidence.family,
+          from: commission.evidence.from,
+          to: commission.evidence.to,
+          observations: commission.evidence.observations,
+        }
+      : null,
+    started: commission.started
+      .map((entry) => deskOf(overview, entry.departmentId))
+      .filter((desk): desk is HostDesk => desk !== null),
+    withheld: commission.withheld.map((entry) => ({
+      desk: deskOf(overview, entry.departmentId),
+      reason: entry.reason,
+    })),
+  })
+
   /** The case as the host sees it, read now. */
   async function present(
     caseId: string,
-    wants: { answer?: boolean; view?: InspectView } = {},
+    wants: { answer?: boolean; view?: InspectView; commission?: CaseCommission } = {},
   ): Promise<HostResult> {
     const overview = await system.overview(caseId)
     if (!overview) return { state: 'unsupported', reason: 'unknown-reference' }
@@ -632,6 +671,7 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       activity: activityFor(overview, at),
       amendments: amendmentsFor(overview),
       ...(inspection ? { inspection } : {}),
+      ...(wants.commission ? { commission: commissionFor(overview, wants.commission) } : {}),
     }
 
     switch (product.state) {
@@ -789,6 +829,16 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
           await system.close(who.delegation, request.reference.id, request.reason),
           request.reference,
         )
+      }
+      case 'begin': {
+        if (!ours(request.reference))
+          return { state: 'unsupported', reason: 'unknown-reference' }
+        const who = await delegationFor(request.requestId)
+        if (!who.ok) return who.result
+        const outcome = await system.begin(who.delegation, request.reference.id, request.opening)
+        if (outcome.state !== 'done') return afterAct(outcome, request.reference)
+        /* The case re-read, with what the firm started and withheld beside it. */
+        return present(request.reference.id, { commission: outcome.value.commission })
       }
       default:
         return unreachable(request)

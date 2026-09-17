@@ -47,6 +47,13 @@ import { runCommand, type CommandDeps } from './commands/runCommand'
 import type { CommandResult } from './commands/envelope'
 import { amendCase } from './commands/amendCase'
 import { closeCase } from './commands/closeCase'
+import { proposeThesis } from './commands/proposeThesis'
+import { assembleEvidenceSet } from './commands/assembleEvidenceSet'
+import { commissionAnalysis, type CommissionResult } from './commissionAnalysis'
+import type { ContributionProvider } from './contributionPort'
+import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
+import { evidenceWindow, openingProposal, standingEvidenceFor } from './opening'
+import type { HostOpening, HostWithheldReason } from './hostContract'
 import {
   caseIdFor,
   resumeConvening,
@@ -162,6 +169,22 @@ export interface FinancialOsSystem {
     caseId: string,
     reason: string,
   ): Promise<CaseActResult<InvestmentCase>>
+  /**
+   * The person's opening position, on their behalf, and the firm advanced as
+   * far as policy permits (ruled 2026-09-17; closes TD-88).
+   *
+   * Revision 1 is proposed from the person's words — the operator is the
+   * actor, the host the initiator, as for the question itself — unless the
+   * case already holds one. Then the standing evidence basis for the
+   * workflow is assembled and every desk that may start is commissioned
+   * under its own institutional agent. What started and what was withheld
+   * is read off the record and reported; nothing is promised.
+   */
+  begin(
+    delegation: Delegation,
+    caseId: string,
+    opening: HostOpening,
+  ): Promise<CaseActResult<BeginOutcome>>
 
   /* ------------------------------------------------------------- results */
 
@@ -175,14 +198,53 @@ export interface FinancialOsSystem {
   reference(caseId: string): Promise<DomainReference>
 }
 
+/** What the firm did when it was advanced on the person's word. */
+export interface CaseCommission {
+  evidence: {
+    evidenceSetId: string
+    family: string
+    from: string
+    to: string
+    observations: number
+  } | null
+  started: readonly { departmentId: string; runId: string }[]
+  withheld: readonly { departmentId: string | null; reason: HostWithheldReason }[]
+}
+
+export interface BeginOutcome {
+  /** The opening the case now holds: proposed by this act, or the one it already had. */
+  revisionId: string
+  commission: CaseCommission
+}
+
+/**
+ * What advancing a case needs from the world: a provider that executes a
+ * desk's work, and how long to wait for a run to appear on the record
+ * before reporting a desk as not started.
+ *
+ * A live provider runs for minutes; the person is not kept waiting for
+ * that. The commission continues in this process after `begin` returns,
+ * and what the person is told is read off the run record — a run inside
+ * its window is work the firm is doing, and a process that dies mid-run
+ * leaves exactly what TD-92 describes, reported as such.
+ */
+export interface AdvanceDeps {
+  provider: () => ContributionProvider | null
+  startWaitMs?: number
+  /** Where a commission that continues after `begin` reports how it ended. */
+  log?: (line: string) => void
+}
+
 export function createFinancialOsSystem(input: {
   repositories: AnalysisRepositories
   /** Assembled per call, so the organisation read is the current one. */
   commandDeps: () => Promise<CommandDeps>
   /** Domain time, from the clock the container was built with. */
   now: () => string
+  /** Absent in a deployment that may open but not advance: every desk is then withheld. */
+  advance?: AdvanceDeps
 }): FinancialOsSystem {
-  const { repositories, commandDeps, now } = input
+  const { repositories, commandDeps, now, advance } = input
 
   /** The initiator every delegated act is recorded under. */
   const initiatedBy = (delegation: Delegation) =>
@@ -222,6 +284,168 @@ export function createFinancialOsSystem(input: {
       case 'unresolved':
         return { state: 'unresolved' }
     }
+  }
+
+  /** A commission's refusal, in the host's semantic words. */
+  const withheldReason = (result: CommissionResult): HostWithheldReason => {
+    if (result.outcome === 'declined') return 'declined'
+    if (result.outcome === 'ran') return 'declined'
+    switch (result.reason) {
+      case 'dependencies-not-met':
+        return 'dependencies-not-met'
+      case 'no-authorized-budget':
+        return 'no-authorized-budget'
+      case 'evidence-not-found':
+      case 'evidence-has-no-observations':
+        return 'no-observations'
+      default:
+        return 'not-assignable'
+    }
+  }
+
+  /** The next run on the record for this assignment, or null once the wait is over. */
+  async function runAppears(
+    caseId: string,
+    assignmentId: string,
+    known: ReadonlySet<string>,
+    waitMs: number,
+  ): Promise<string | null> {
+    const until = Date.now() + waitMs
+    for (;;) {
+      const runs = await repositories.runs.listForCase(caseId)
+      const fresh = runs.find((run) => run.assignmentId === assignmentId && !known.has(run.id))
+      if (fresh) return fresh.id
+      if (Date.now() >= until) return null
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+
+  /**
+   * The firm advanced as far as policy permits, on the person's word.
+   *
+   * Evidence first, from the workflow's standing basis; then every entry of
+   * the pinned workflow, in its order, under the desk's own institutional
+   * agent. Each commission is started and left to run; `begin` waits only
+   * until the run is on the record. Refusals are the institution's own,
+   * reported in the host's words, and nothing is retried.
+   */
+  async function advanceCase(
+    delegation: Delegation,
+    current: InvestmentCase,
+    owningDepartmentId: string,
+    deps: CommandDeps,
+  ): Promise<CaseCommission> {
+    const none = (reason: HostWithheldReason): CaseCommission => ({
+      evidence: null,
+      started: [],
+      withheld: [{ departmentId: null, reason }],
+    })
+    if (!advance) return none('no-provider')
+    const basis = standingEvidenceFor(current.playbookId)
+    if (!basis || !current.playbookId || !current.playbookVersion) return none('no-evidence-basis')
+
+    const at = now()
+    const window = evidenceWindow(at, basis.windowDays)
+    const assembled = await runCommand(
+      assembleEvidenceSet(deps.organization),
+      {
+        selection: {
+          ruleId: basis.ruleId,
+          subjectFamily: basis.subjectFamily,
+          from: window.from,
+          to: window.to,
+        },
+        onBehalfOfDepartmentId: owningDepartmentId,
+      },
+      {
+        commandId: `${current.id}-begin-${delegation.requestId}-evidence`,
+        correlationId: current.id,
+        actor: { kind: 'employee', employeeId: delegation.actingEmployeeId },
+        initiator: initiatedBy(delegation),
+        occurredAt: at,
+      },
+      deps,
+    )
+    if (assembled.outcome !== 'committed') {
+      /* "The firm holds no observations for …" is the one refusal the person is told in those words. */
+      const why = assembled.outcome === 'rejected' ? JSON.stringify(assembled.rejection) : ''
+      return none(/no observations/i.test(why) ? 'no-observations' : 'declined')
+    }
+    const evidence = {
+      evidenceSetId: assembled.value.evidenceSetId,
+      family: basis.subjectFamily,
+      from: window.from,
+      to: window.to,
+      observations: assembled.value.observationCount,
+    }
+
+    const provider = advance.provider()
+    if (!provider) return { evidence, started: [], withheld: [{ departmentId: null, reason: 'no-provider' }] }
+
+    let playbook
+    try {
+      playbook = requirePlaybook(current.playbookId, current.playbookVersion)
+    } catch (error) {
+      if (error instanceof UnknownPlaybookError)
+        return { evidence, started: [], withheld: [{ departmentId: null, reason: 'not-assignable' }] }
+      throw error
+    }
+
+    const started: { departmentId: string; runId: string }[] = []
+    const withheld: { departmentId: string | null; reason: HostWithheldReason }[] = []
+    const known = new Set((await repositories.runs.listForCase(current.id)).map((run) => run.id))
+    const assignments = await repositories.assignments.listForCase(current.id)
+    for (const entry of playbook.entries) {
+      const assignment = assignments.find(
+        (candidate) => candidate.playbookEntryKey === entry.key && candidate.departmentId === entry.departmentId,
+      )
+      if (!assignment) {
+        withheld.push({ departmentId: entry.departmentId, reason: 'not-assignable' })
+        continue
+      }
+      const principal = deps.organization.agentPrincipals.find(
+        (candidate) => candidate.active && candidate.departmentId === entry.departmentId,
+      )
+      if (!principal) {
+        withheld.push({ departmentId: entry.departmentId, reason: 'no-principal' })
+        continue
+      }
+      const commission = commissionAnalysis({
+        repositories,
+        deps,
+        provider,
+        caseId: current.id,
+        departmentId: entry.departmentId,
+        entryKey: entry.key,
+        evidenceSetId: evidence.evidenceSetId,
+        actingPrincipal: { kind: 'institutional-agent', agentPrincipalId: principal.id },
+        now: () => new Date(now()),
+      })
+      /* Left to run; how it ended is on the record, and in the log for whoever reads it. */
+      commission.then(
+        (result) => advance.log?.(`[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}`),
+        (error: unknown) => advance.log?.(`[begin] ${current.id} ${entry.key}: threw ${String(error)}`),
+      )
+      const outcome = await Promise.race([
+        commission.then((result) => ({ kind: 'settled' as const, result })),
+        runAppears(current.id, assignment.id, known, advance.startWaitMs ?? 3000).then((runId) => ({ kind: 'appeared' as const, runId })),
+      ])
+      if (outcome.kind === 'appeared') {
+        if (outcome.runId) {
+          known.add(outcome.runId)
+          started.push({ departmentId: entry.departmentId, runId: outcome.runId })
+        } else {
+          /* Neither refused nor on the record inside the wait: not started, as far as the person can be told. */
+          withheld.push({ departmentId: entry.departmentId, reason: 'declined' })
+        }
+      } else if (outcome.result.outcome === 'ran') {
+        known.add(outcome.result.runId)
+        started.push({ departmentId: entry.departmentId, runId: outcome.result.runId })
+      } else {
+        withheld.push({ departmentId: entry.departmentId, reason: withheldReason(outcome.result) })
+      }
+    }
+    return { evidence, started, withheld }
   }
 
   return {
@@ -312,6 +536,49 @@ export function createFinancialOsSystem(input: {
         deps,
       )
       return settled(result)
+    },
+
+    async begin(delegation, caseId, opening) {
+      const deps = await commandDeps()
+      const owning = await owningDepartmentOf(caseId, deps)
+      if (!owning.ok) return owning.result
+      const current = await repositories.cases.get(caseId)
+      if (!current) return { state: 'refused', code: 'not-found' }
+
+      /* The opening: proposed from the person's words, unless the case already argues about one. */
+      const revisions = await repositories.theses.listForCase(caseId)
+      let revisionId: string
+      if (revisions.length === 0) {
+        const proposal = openingProposal(current.question, opening)
+        const proposed = await runCommand(
+          proposeThesis(deps.organization),
+          {
+            caseId,
+            thesisId: `${caseId}-opening`,
+            statement: proposal.statement,
+            position: proposal.position,
+            invalidationCriteria: proposal.invalidationCriteria,
+            ...(proposal.horizon ? { horizon: proposal.horizon } : {}),
+            implications: proposal.implications,
+            proposedByDepartmentId: owning.departmentId,
+          },
+          {
+            commandId: `${caseId}-begin-${delegation.requestId}`,
+            correlationId: caseId,
+            actor: { kind: 'employee', employeeId: delegation.actingEmployeeId },
+            initiator: initiatedBy(delegation),
+            occurredAt: now(),
+          },
+          deps,
+        )
+        if (proposed.outcome !== 'committed') return settled(proposed) as CaseActResult<BeginOutcome>
+        revisionId = proposed.value.revisionId
+      } else {
+        revisionId = [...revisions].sort((a, b) => b.revisionNumber - a.revisionNumber)[0]!.revisionId
+      }
+
+      const commission = await advanceCase(delegation, current, owning.departmentId, deps)
+      return { state: 'done', value: { revisionId, commission } }
     },
 
     async queue() {

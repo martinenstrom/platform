@@ -24,7 +24,7 @@
  * language when that language is English.
  */
 
-import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
+import type { HostOpening, HostRequest, HostResult, HostWithheldReason } from '~/application/analysis/hostContract'
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import type { UnsupportedToolReason } from '~/application/jarvis/liveTools'
 import type { MarketBrief } from '~/application/jarvis/marketBrief'
@@ -62,9 +62,13 @@ export interface ToolSpeech {
  * promise (`working`) or a demand (`needs-decision`). After anything else
  * the state is the answer.
  */
-export function toolSpeech(result: HostResult, act?: HostRequest['kind']): ToolSpeech {
+export function toolSpeech(result: HostResult, act?: HostRequest['kind'], opening?: HostOpening): ToolSpeech {
   const spoken = phrase(result)
   const reference = 'reference' in result && result.reference ? result.reference : null
+
+  if (act === 'begin' && opening && 'commission' in result && result.commission) {
+    return beginSpeech(result, result.commission, opening, reference)
+  }
 
   if (act === 'amend' && 'amendments' in result) {
     const predates = result.amendments.workPredates
@@ -146,6 +150,72 @@ const UNSUPPORTED_TOOL: Record<UnsupportedToolReason, string> = {
 }
 
 /** A tool call the firm has no door for, said honestly. */
+/* --------------------------------------------- the opening, said aloud */
+
+/** The evidence a desk was handed, in words a person would use for it. */
+const EVIDENCE_WORDS: Record<string, string> = {
+  'us-par-curve': 'den amerikanska räntekurvan',
+  'nvda-daily-close': 'Nvidias kurshistorik',
+}
+
+/** Why a desk did not start, said plainly and once. */
+const WITHHELD_WORDS: Record<HostWithheldReason, string> = {
+  'no-evidence-basis': 'firman har inget registrerat underlag för den här sortens fråga än',
+  'no-observations': 'firman har inga observationer i underlaget för perioden',
+  'no-provider': 'ingen analysmodell är konfigurerad',
+  'no-authorized-budget': 'ingen budget är godkänd för det arbetet',
+  'dependencies-not-met': 'de väntar på borden före dem',
+  'not-assignable': 'arbetsgången ger dem inget att göra just nu',
+  'no-principal': 'ingen kan utföra arbetet för det bordet',
+  declined: 'firman avböjde',
+}
+
+const joinNames = (names: readonly string[]): string =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} och ${names[names.length - 1]}`
+
+/** The subject as the person said it: lowercase when their question wrote it so, else as the firm names it. */
+const subjectPhrase = (subject: string, question: string): string =>
+  question.includes(subject.toLowerCase()) ? subject.toLowerCase() : subject
+
+/**
+ * What JARVIS says after the firm opened on the person's word: what it asked
+ * the desks to do, which desks started and on what, or — plainly, once — why
+ * none could. "Jag återkommer" only when something is actually running.
+ */
+function beginSpeech(
+  result: Extract<HostResult, { commission?: unknown }>,
+  commission: NonNullable<Extract<HostResult, { commission?: unknown }>['commission']>,
+  opening: HostOpening,
+  reference: DomainReference | null,
+): ToolSpeech {
+  const subject = subjectPhrase(result.subject, result.question)
+  const focus = opening.focus.length > 0 ? opening.focus.join(', ') : null
+  const task =
+    opening.kind === 'explanation'
+      ? `ta reda på vad som driver ${subject} idag${focus ? ` — ${focus}` : ''}`
+      : opening.view
+        ? `pröva din syn på ${subject}${focus ? ` mot ${focus}` : ''}`
+        : `pröva frågan om ${subject} öppet${focus ? `, mot ${focus}` : ''}`
+  const started = commission.started.map((desk) => desk.name)
+  const lines: string[] = [`Absolut. Jag ber dem ${task}.`]
+  if (started.length > 0) {
+    const basis = commission.evidence ? `, med ${EVIDENCE_WORDS[commission.evidence.family] ?? commission.evidence.family} som underlag` : ''
+    lines.push(`${joinNames(started)} har börjat${basis}.`)
+    lines.push('Jag återkommer när det är klart.')
+  } else {
+    const first = commission.withheld[0]
+    const why = first ? WITHHELD_WORDS[first.reason] : 'inget bord kunde börja'
+    lines.push(`Men borden kan inte börja än — ${why}.`)
+  }
+  return {
+    state: result.state,
+    say: lines.join(' '),
+    acknowledgeWork: started.length > 0 && result.state === 'working',
+    decisionRequired: false,
+    reference,
+  }
+}
+
 export function unsupportedSpeech(reason: UnsupportedToolReason): ToolSpeech {
   return {
     state: 'unsupported',
@@ -174,7 +244,7 @@ Tre djup, efter konsekvens — en finansfråga är inte automatiskt ett ärende.
 SNABBT, svara SJÄLV i samma andetag: definitioner, enkla räkneexempel, uppföljningar om något du redan sagt, småprat — durationsräkning, vad term premium är, vad en räntesänkning betyder.
 MARKNADEN JUST NU: står svaret i det senaste MARKNADSLÄGET i dina instruktioner (färska siffror med tid och källa) svarar du direkt ur det — "S&P 500 är ned 0,45 procent" — med siffran först och utan inledning. Annars, eller om det som frågas inte står där, lämna över till backend som har färska siffror: allt om hur börsen, ett index, en sektor, en ränta, en valuta eller en råvara går, står eller rör sig — "idag", "just nu", "senaste", "hur handlar", "vad händer på börsen", "hur går tech", "vad gör tioåringen". Säg ALDRIG nivåer eller dagsrörelser ur minnet — bara ur MARKNADSLÄGET eller från backend. "Amerikanska börsen" betyder S&P 500 och Nasdaq 100 — fråga aldrig vilket index som menas. Saknas rubriker i läget är dagens drivkraft inte verifierad: säg det, hitta inte på en orsak.
 RESONEMANG, svara själv: varför något händer, vad det i allmänhet betyder — "vad betyder högre tioårsränta för tech" — utifrån det som redan sagts i samtalet; behöver du färska siffror, backend.
-INSTITUTIONELLT, lämna över till backend: vad användaren bör göra med kapital — köpa, sälja, minska, öka, positionera portföljen, om något är attraktivt på sikt — och allt som gäller ett ärende hos kommittén: lägga till, fråga om, avsluta. Sådant avgörs av investeringskommittén i Financial OS, aldrig av dig.
+INSTITUTIONELLT, lämna över till backend: vad användaren bör göra med kapital — köpa, sälja, minska, öka, positionera portföljen, om något är attraktivt på sikt — och allt som gäller ett ärende hos kommittén: lägga till, fråga om, avsluta. Sådant avgörs av investeringskommittén i Financial OS, aldrig av dig. Ber användaren kommittén ta reda på något — "kolla med kommittén", "be dem ta reda på varför guld är upp" — lämna över; firman öppnar direkt på deras ord. Säger användaren "kör", "de kan börja", "ja", "precis", "det är vad jag menar" om ett ärende: det är ett klartecken — lämna över, ställ ingen fråga. Vill de stänga, lägga ner eller stoppa ärendet: lämna över och bekräfta sedan med ett ord — "Stängt." Svarar användaren med bara ett fokus — "makro, flöden och specifika händelser" — är det ett fullständigt svar, inte en halv mening: lämna över så att det tas med, och bekräfta kort. Fråga ALDRIG efter en tes, en omfattning, ett scenario eller ett godkännande; användaren talar som en människa och du översätter.
 Be ALDRIG om en tes, ett scenario eller ett förtydligande kring en vanlig fråga om marknaden; det hör bara till ett ärende som kommittén faktiskt öppnat, och då säger backend det.
 Börja med innehållet. Inte "Mm", "Hm", "Ja", "Jag kollar" — första ordet ska vara svaret: "S&P 500 är ned …", "Tioåringen ligger på …". Bekräftelser: säg INTE "Ett ögonblick" av vana. När du lämnar över till backend: var tyst och vänta. Bara om svaret dröjer märkbart — mer än ett par sekunder — säger du en kort, sann, varierad sak: "Jag kollar.", "Jag ser på det.", "Ja — jag tar med det." Aldrig samma fras två gånger i rad, aldrig påhittad väntan.
 Säg ALDRIG själv "Jag kollar på det och återkommer" eller något som lovar att du återkommer — det får bara komma från backend, som säger det när kommittén faktiskt arbetar; då förmedlar du det en gång. Säger backend att ett beslut behövs av användaren, att något hindrar, eller att det inte gick, förmedlar du det rakt och lovar inget.
@@ -191,10 +261,12 @@ VAD HÄNDER? — svara själv, från färska data. VARFÖR? — oftast själv. V
 Regler:
 0. Marknaden just nu: varje fråga om hur marknaden, ett index, en sektor, en ränta, en valuta eller en råvara går, står eller rör sig — "idag", "just nu", "senaste", "hur handlar", "vad händer på börsen", "hur går tech", "vad gör tioåringen", "hur är VIX" — besvaras med get_market_snapshot FÖRST och sedan direkt, i två till fem meningar: nivå och dagsförändring för det som frågades, det som sticker ut (sektorer, räntan, dollarn), och det som framför allt driver dagen om rubrikerna säger det. riskAppetite är plattformens härledda riskaptitindex på skalan 0–100 (50 neutralt) — kalla det aldrig VIX; en VIX-nivå serveras inte, och frågas det om VIX säger du det. "Amerikanska börsen" är S&P 500 och Nasdaq 100 som standard; säg vilket du använde, fråga aldrig vilket index som menas. Nämn observationstid och källa bara kort om data är fördröjd eller inaktuell. Nivåer ur minnet är förbjudna; det som står under unavailable eller notServed säger du saknas — aldrig ett gissat värde. Inget ärende, ingen kommitté, ingen tes, inget scenario. Uppföljningar — "varför?", "och tech?", "vad gör tioåringen?", "och Europa?" — svarar du i samma marknadskontext; finns ett MARKNADSLÄGE i instruktionerna använder du det och hämtar bara det som saknas där. Saknas rubriker är dagens drivkraft inte verifierad: beskriv rörelserna och säg det — hitta aldrig på en orsak som passar kursrörelsen. Inled inte: första meningen bär svaret.
 1. Investeringsbedömningar — vad användaren bör göra med kapital: köpa, sälja, minska, öka, positionera portföljen, om något är attraktivt på sikt — lämnas ALLTID till delegate_to_financial_os. Ge aldrig en egen slutsats om sådant. En fråga om vad som händer är inte en investeringsbedömning.
-2. Frågor om var ett ärende står: check_delegation. Frågor om vad kommittén kom fram till: get_delegation_result. Tillägg till ett pågående ärende — "ta hänsyn till dollarn också", "lägg till att värderingen är huvudskälet" — gäller ärendet i samtalet: add_to_delegation. Vill användaren avsluta, stänga eller lägga ner ärendet: close_case.
+2. Frågor om var ett ärende står: check_delegation. Frågor om vad kommittén kom fram till: get_delegation_result. Tillägg till ett pågående ärende — "ta hänsyn till dollarn också", "lägg till att värderingen är huvudskälet" — gäller ärendet i samtalet: add_to_delegation. Vill användaren avsluta, stänga, lägga ner eller stoppa ärendet — "stäng ärendet", "lägg ner det", "drop it": close_case, utan ceremoni. Ber användaren kommittén ta reda på VARFÖR något händer eller VAD SOM DRIVER det — "kolla med kommittén", "be dem ta reda på varför guld är upp idag", "låt dem undersöka" — är det en delegation: delegate_to_financial_os med frågan i användarens ord, med det fokus de nämnde. Firman öppnar då direkt på användarens fråga och verktygssvaret säger vad som startat; kräv ALDRIG en tes, en omfattning, ett scenario eller ett formellt godkännande.
 3. Allmänna finansfrågor och resonemang (vad är term premium, hur påverkar duration en obligation, vad högre långräntor gör med värderingar) besvarar du själv, kort och korrekt, utan att lova att återkomma. Frågor om värderingsläget — "hur ser värderingen ut?", om marknaden är dyr eller billig — är resonemang du gör själv, inte ett ärende; plattformen serverar inga värderingsmått (P/E, multiplar), så säg det och resonera utifrån räntor och rörelser. Ett ärende öppnas bara när användaren frågar vad de ska göra med kapital.
 4. Verktygssvar från firman innehåller "say" på svenska och två flaggor. Förmedla "say" — översatt till engelska om användaren talar engelska — kort, gärna med egna ord, och lägg inte till något resultat verktyget inte gav. Är acknowledgeWork false får du inte säga att du återkommer. Är decisionRequired true säger du tydligt att användaren behöver besluta något. Be om en tes eller ett scenario ENDAST när ett sådant svar från firman kräver det, aldrig kring en vanlig marknadsfråga.
-5. Påstå aldrig att något lagts till, stängts eller gjorts om verktyget inte bekräftade det. Gick det inte, säg det med vanliga ord och vad som krävs.`
+5. Påstå aldrig att något lagts till, stängts eller gjorts om verktyget inte bekräftade det. Gick det inte, säg det med vanliga ord och vad som krävs.
+6. Säger verktyget att en sak behöver avgöras (decisionRequired) ställer du EN kort mänsklig fråga — den som står i "say" — och aldrig fler. Varje rimligt svar går vidare med begin_delegation: användarens egen syn (view med deras ord), "pröva den öppet", eller ett klartecken — "kör", "de kan börja", "ja", "precis", "det är vad jag menar" — räknas som svar. Upprepa aldrig samma fråga, be aldrig om en omformulering, och fråga aldrig om något användaren redan sagt tidigare i samtalet: sa de "makro, flöden och specifika händelser" är det fokus, färdigt.
+7. Du äger orden; firman äger läget. Säg aldrig "systemet kräver", "tesen är inte tillräckligt tydlig", "formellt godkännande", "utgångstes", "omfattning" eller något annat som låter som ett formulär. Säg vad som händer, som en kollega, med verktygssvarets "say" som innehåll — inte med egna löften: att du återkommer får du säga bara när verktygssvarets acknowledgeWork är true i just det svaret, aldrig för att det var sant tidigare i samtalet. Ett tillägg, ett fokus eller ett "kör" om det pågående ärendet är add_to_delegation eller begin_delegation — aldrig en ny delegate_to_financial_os.`
 
 /** What the market tool answers when the platform's sources cannot be reached. Said, never worked around. */
 export const MARKET_UNAVAILABLE = 'Jag kommer inte åt färska marknadsdata just nu, så jag vill inte gissa om nivåer.'

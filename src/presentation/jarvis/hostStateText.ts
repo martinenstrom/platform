@@ -55,9 +55,17 @@ const BLOCKED: Record<BlockedReason, string> = {
   'institutional-requirement-outstanding': 'Ett institutionellt krav är inte uppfyllt.',
 }
 
+/*
+ * The one question JARVIS may ask before the committee starts on a capital
+ * question — ruled 2026-09-17, after a conversation that asked five times for
+ * a thesis, a scope and a formal approval. An explanation never reaches this
+ * sentence: the firm opens on it at once. A position reaches it once, and any
+ * reasonable answer — the person's own view, or "pröva den öppet", or "kör"
+ * — walks through the door.
+ */
 const DECISION: Record<HostDecision['reason'], string> = {
   'institutional-initialization-required':
-    'Kommittén är sammankallad men saknar en utgångstes, och ingen är bemyndigad att formulera den åt dig.',
+    'Vill du att de utgår från din egen syn — och vad är huvudskälet — eller prövar frågan helt öppet?',
   'cio-decision-required': 'Ärendet ligger hos CIO för beslut.',
 }
 
@@ -122,7 +130,10 @@ export function phrase(result: HostResult): Phrasing {
     }
     case 'needs-decision':
       return {
-        headline: 'Jag behöver ditt beslut på en sak.',
+        headline:
+          result.decision.reason === 'institutional-initialization-required'
+            ? 'En sak innan de sätter igång.'
+            : 'Jag behöver ditt beslut på en sak.',
         detail: DECISION[result.decision.reason],
         tone: 'warning',
       }

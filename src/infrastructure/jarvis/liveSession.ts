@@ -34,11 +34,12 @@
  * as TD-93 rather than solved here.
  */
 
-import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
+import type { HostOpening, HostRequest, HostResult } from '~/application/analysis/hostContract'
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import { interpretToolCall, LIVE_TOOL_DEFINITIONS } from '~/application/jarvis/liveTools'
 import type { MarketBrief, MarketScope } from '~/application/jarvis/marketBrief'
 import { mentionsMarket, recognizeRetrieval, scopeForRetrieval } from '~/application/jarvis/marketIntent'
+import { commissionKind, isConfirmation, isFocusOnly, openingFromWords } from '~/application/jarvis/opening'
 import {
   ACKNOWLEDGEMENT_PATTERN,
   BRIDGING_PATTERN,
@@ -331,6 +332,12 @@ interface ToolEffects {
   everWorking: boolean
 }
 
+/** A case the firm has convened and cannot open on its own: the person's opening is what it waits for. */
+const awaitsOpening = (
+  result: HostResult,
+): result is Extract<HostResult, { state: 'needs-decision' }> =>
+  result.state === 'needs-decision' && result.decision.reason === 'institutional-initialization-required'
+
 const isFunctionCall = (
   item: ResponsesOutputItem,
 ): item is Extract<ResponsesOutputItem, { type: 'function_call' }> =>
@@ -462,17 +469,81 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       args = {}
     }
     const interpreted = interpretToolCall(call.name, args, { reference: effects.reference, requestId })
-    if (interpreted.kind === 'host') {
+    if (interpreted.kind === 'host' || interpreted.kind === 'begin') {
       const started = now()
       if (timing && timing.hostCallMs === null) timing.hostCallMs = clock(started)
-      const result = await host(interpreted.request)
+      const path: string[] = []
+      let request: HostRequest
+      let result: HostResult
+      let opening: HostOpening | undefined
+      if (interpreted.kind === 'begin') {
+        /*
+         * The person's answer to the one question. The case's own question
+         * decides what the words are — a view, a focus, or a confirmation —
+         * so the firm is read first and never asked twice.
+         */
+        const status = await host({ kind: 'status', reference: interpreted.reference })
+        path.push('status', status.state)
+        if (awaitsOpening(status)) {
+          opening = openingFromWords(status.question, interpreted.words, interpreted.focus)
+          request = { kind: 'begin', reference: interpreted.reference, requestId: requestId(), opening }
+          result = await host(request)
+          path.push(`begin (${opening.kind})`, result.state)
+        } else if (interpreted.words && !isConfirmation(interpreted.words)) {
+          /* The firm is already under way; what the person said is still theirs to have on the record. */
+          request = { kind: 'amend', reference: interpreted.reference, requestId: requestId(), text: interpreted.words }
+          result = await host(request)
+          path.push('amend', result.state)
+        } else {
+          request = { kind: 'status', reference: interpreted.reference }
+          result = status
+        }
+      } else if (
+        interpreted.request.kind === 'ask' &&
+        effects.reference &&
+        (isFocusOnly(interpreted.request.question) || isConfirmation(interpreted.request.question))
+      ) {
+        /*
+         * A focus alone, or a bare "kör", while a case is bound is about that
+         * case — never a second question to the firm, whatever tool the model
+         * reached for. Measured 2026-09-17: "Makro, flöden och specifika
+         * händelser." opened a duplicate case once in three runs.
+         */
+        request = { kind: 'amend', reference: effects.reference, requestId: requestId(), text: interpreted.request.question }
+        result = await host(request)
+        path.push('ask taken as addition', 'amend', result.state)
+      } else {
+        request = interpreted.request
+        result = await host(request)
+        path.push(request.kind, result.state)
+      }
+      /*
+       * An explanation the person asked the firm for opens at once, on their
+       * words and their focus. A capital question keeps its one question. Words
+       * added to a case that still awaits its opening ARE the opening — the
+       * loop of 2026-09-17 (five confirmations, five "needs a thesis") cannot
+       * happen here, whatever the model does with them.
+       */
+      if (awaitsOpening(result) && (request.kind === 'ask' || request.kind === 'amend')) {
+        const question = request.kind === 'ask' ? request.question : result.question
+        const words = request.kind === 'amend' ? request.text : null
+        if (request.kind === 'ask' && commissionKind(question) !== 'explanation') {
+          /* The one question, asked once; the answer comes back as begin_delegation or as an addition. */
+        } else {
+          opening = openingFromWords(question, words)
+          const begin: HostRequest = { kind: 'begin', reference: result.reference, requestId: requestId(), opening }
+          result = await host(begin)
+          path.push(`begin (${opening.kind})`, result.state)
+          if (request.kind === 'amend') request = begin
+        }
+      }
       if (timing && timing.hostDurationMs === null) timing.hostDurationMs = now() - started
-      const speech = toolSpeech(result, interpreted.request.kind)
+      const speech = toolSpeech(result, opening ? 'begin' : request.kind, opening)
       if (speech.reference) effects.reference = speech.reference
-      if (interpreted.request.kind === 'ask' && speech.reference)
-        effects.lastAsk = { question: interpreted.request.question, subject: interpreted.request.subject }
+      if (request.kind === 'ask' && speech.reference)
+        effects.lastAsk = { question: request.question, subject: request.subject }
       if (result.state === 'working') effects.everWorking = true
-      log(`[${tag}] ${call.name} → ${interpreted.request.kind} → ${result.state}`)
+      log(`[${tag}] ${call.name} → ${path.join(' → ')}`)
       return {
         state: speech.state,
         output: {

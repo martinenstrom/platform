@@ -2,12 +2,21 @@
  * What the voice may ask the firm, and how that becomes a host request.
  *
  * GPT-Live delegates reasoning to a backend model; that model may call these
- * five functions and nothing else. Each is interpreted here into the host
- * contract — `ask`, `status`, `result`, `amend`, `close` — or refused as
- * unsupported. The voice model never sees a command, a run, a playbook
- * entry or an actor id; the backend model never chooses who acts. That is
- * the same boundary `financialOsHostFn` holds for the typed presence,
- * reached from a sideband socket instead of a request.
+ * seven functions and nothing else. Each is interpreted here into the host
+ * contract — `ask`, `status`, `result`, `amend`, `begin`, `close` — or
+ * refused as unsupported. The voice model never sees a command, a run, a
+ * playbook entry or an actor id; the backend model never chooses who acts.
+ * That is the same boundary `financialOsHostFn` holds for the typed
+ * presence, reached from a sideband socket instead of a request.
+ *
+ * ## The opening, on the person's behalf (2026-09-17)
+ *
+ * `begin_delegation` — the person's answer to the one question JARVIS may
+ * ask before the committee starts on a capital question: their own view,
+ * "pröva den öppet", or a bare "kör". It is interpreted as their words on
+ * the bound case; the runtime reads the case's question and builds the
+ * `begin` request from both (`opening.ts`). An explanation never needs this
+ * tool: the runtime opens on it the moment the firm asks for an opening.
  *
  * ## The two acts on the open case
  *
@@ -38,6 +47,7 @@ export type LiveToolName =
   | 'check_delegation'
   | 'get_delegation_result'
   | 'add_to_delegation'
+  | 'begin_delegation'
   | 'close_case'
   | 'get_market_snapshot'
 
@@ -83,6 +93,28 @@ export const LIVE_TOOL_DEFINITIONS = [
       type: 'object',
       properties: { note: { type: 'string', description: 'Vad som ska tas med, med användarens ord.' } },
       required: ['note'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'begin_delegation',
+    description:
+      'Sätter igång kommitténs arbete på det pågående ärendet efter användarens svar på den enda frågan: deras egen syn med deras ord (view), att frågan ska prövas öppet, eller ett klartecken — "kör", "de kan börja", "ja", "precis". Fokus tas med om användaren nämnde något — "makro, flöden och specifika händelser". Anropas aldrig utan att användaren svarat eller gett klartecken; anropas aldrig två gånger för samma svar.',
+    parameters: {
+      type: 'object',
+      properties: {
+        view: {
+          type: 'string',
+          description: 'Användarens svar med deras egna ord: en syn, "pröva den öppet", eller ett klartecken. Utelämnas om de bara nämnde fokus.',
+        },
+        focus: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Vad borden ska väga, med användarens ord, i deras ordning. Tom om inget nämndes.',
+        },
+      },
+      required: [],
       additionalProperties: false,
     },
   },
@@ -134,7 +166,15 @@ export type ToolInterpretation =
   | { kind: 'host'; request: HostRequest }
   /** An observation of the market, answered by JARVIS from fresh data — never the firm. */
   | { kind: 'market'; scope: MarketScope }
+  /**
+   * The person's answer to the one question, on the bound case. Becomes a
+   * host `begin` once the runtime has read the case's own question, which
+   * decides whether the words are a view or a confirmation of an explanation.
+   */
+  | { kind: 'begin'; reference: DomainReference; words: string | null; focus: readonly string[] }
   | { kind: 'unsupported'; reason: UnsupportedToolReason }
+
+const FOCUS_LIMIT = 6
 
 export interface ToolContext {
   /** The case the conversation is bound to, if any — a pointer the session remembers. */
@@ -187,6 +227,18 @@ export function interpretToolCall(
           text: input.note.trim(),
         },
       }
+    case 'begin_delegation': {
+      if (!context.reference) return { kind: 'unsupported', reason: 'no-open-case' }
+      const focus = Array.isArray(input.focus)
+        ? input.focus.filter(nonEmpty).map((entry) => entry.trim().slice(0, 60)).slice(0, FOCUS_LIMIT)
+        : []
+      return {
+        kind: 'begin',
+        reference: context.reference,
+        words: nonEmpty(input.view) ? input.view.trim().slice(0, 600) : null,
+        focus,
+      }
+    }
     case 'get_market_snapshot':
       /* A missing or unknown scope is answered with the widest view, never with a question back. */
       return { kind: 'market', scope: isMarketScope(input.scope) ? input.scope : 'global' }

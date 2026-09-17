@@ -53,7 +53,14 @@ describe('work, no way forward, and your decision are three sentences', () => {
     expect(new Set(headlines).size).toBe(3)
     expect(phrase(working).headline).toBe('Jag kollar på det.')
     expect(phrase(blocked).headline).toBe('Analysen kan inte fortsätta just nu.')
-    expect(phrase(decision).headline).toBe('Jag behöver ditt beslut på en sak.')
+    /* The opening is the one question JARVIS may ask, in human words; never a thesis, a scope or an approval. */
+    expect(phrase(decision).headline).toBe('En sak innan de sätter igång.')
+    expect(phrase(decision).detail).toBe(
+      'Vill du att de utgår från din egen syn — och vad är huvudskälet — eller prövar frågan helt öppet?',
+    )
+    for (const word of ['tes', 'omfattning', 'godkänn', 'formell', 'systemet']) {
+      expect(`${phrase(decision).headline} ${phrase(decision).detail}`.toLowerCase()).not.toContain(word)
+    }
   })
 
   it('names the desks while working, and the owner while blocked', () => {

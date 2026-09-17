@@ -2337,7 +2337,7 @@ be three migrations and three chances to disagree with itself.
 `evidenceSetId → evidenceSetIds` is folded in with the other two, and the
 contract is opened once, coherently.
 
-## TD-88 · a newly opened case has no production path to its first thesis · open
+## TD-88 · a newly opened case has no production path to its first thesis — CLOSED 2026-09-17
 
 **Opened 2026-09-07**, measured while assembling the starting state the P4.5b
 live proof requires.
@@ -2378,6 +2378,65 @@ boundary exists to prevent.
 synthesis against a valid starting state; establishing that state was performed
 as declared manual human setup, and the manual setup is not part of what the
 stage claims to have automated.
+
+**Closed 2026-09-17.** The authority question was ruled, and it was ruled
+by a conversation: the person said, five different ways, that the committee
+could start on why gold was up, and was asked five times for a thesis, a
+scope and a formal approval — every confirmation filed as an amendment
+(`analysis.case_amendments`, case `case-2d82f55b…`, 18:31–18:33), the
+case never leaving `needs-decision`, no work possible because this door
+did not exist. The ruling: **the person who put the question establishes
+the opening, in their own words, translated by JARVIS and confirmed by
+them**; it is booked to the operator with the host as initiator, exactly
+as the question was. A model drafts the shape, never the words, and the
+person's instruction or confirmation is the adopting act.
+
+- **Host contract v4 `begin`** (`hostContract.ts` §11 of the contract
+  document): `{ reference, requestId, opening }` where the opening is an
+  **explanation** with the focus the person named, or a **position** with
+  the person's view and the position word read off it, or `null` to
+  examine openly. The parser refuses a statement, implications, an
+  invalidation criterion, a department or an actor beside it by name: the
+  host says what the person meant and never writes the firm's record.
+- **`FinancialOsSystem.begin`** (`domainSystem.ts`) → `ProposeThesis`
+  revision 1 from `openingProposal()` (`application/analysis/opening.ts`):
+  the statement is the question or the view, the position `explain`,
+  `open` or the person's word, the invalidation criterion stated for the
+  shape, implications `[]` for an explanation and `position-sizing` for a
+  position — declared by the firm's own application, never by the host, so
+  Risk is not waived by phrasing. Idempotent on the command id; a case that
+  already argues about a revision proposes nothing new.
+- **The firm advanced as far as policy permits, on the person's word.**
+  The workflow's standing evidence basis (`STANDING_EVIDENCE`: macro-regime
+  → the US par curve, seven days, as the firm knew it at the act — thirty
+  days was measured to exhaust the desks' 24,000-token budget) is
+  assembled by the operator's convenor mandate, and every entry of the
+  pinned workflow is commissioned under **the desk's own institutional
+  agent** through `commissionAnalysis` — the P4 path, with its mandate,
+  readiness and budget checks untouched. `begin` waits only until a run is
+  on the record; the live run continues in the process and its end is
+  logged (`[begin] … ran awaiting-acceptance`). What started and what was
+  withheld — `no-evidence-basis`, `no-observations`, `no-provider`,
+  `no-authorized-budget`, `dependencies-not-met`, `not-assignable`,
+  `no-principal`, `declined` — is reported in the host's words and said to
+  the person once, plainly. The gateway now reads a case with an opening
+  and no desk work as `blocked / analysis-required` naming the desk,
+  rather than `synthesis-required` for work nobody has produced.
+- **JARVIS translates** (`application/jarvis/opening.ts`): the question's
+  own words decide explanation or position; the focus is read off what the
+  person said, or the standing default; "kör", "de kan börja", "ja",
+  "precis" count as confirmation; "pröva den öppet" is leave to examine
+  without a view; a focus alone is a focus. The runtime opens an
+  explanation the moment the firm asks for an opening — no question back
+  — and takes words added to a case that still awaits its opening as the
+  opening, so the loop cannot recur whatever the model does with them. A
+  capital question keeps its one human question, asked once.
+
+What stays open: a run that ends `awaiting-acceptance` waits for its desk's
+adoption before the next entry can start (the acceptance boundary, unchanged
+by this); the standing evidence basis is a policy for one workflow, and
+choosing evidence by subject is the evidence architecture's next question;
+a process that dies mid-run leaves what TD-92 describes.
 
 ## TD-89 · `scripts/` is not typechecked, and the bootstrap tooling has rotted · open
 

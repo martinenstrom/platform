@@ -764,3 +764,70 @@ describe('the two acts on the open case are parsed at the door', () => {
     }
   })
 })
+
+describe('the opening is parsed at the door (v4)', () => {
+  const reference = {
+    system: 'financial-os',
+    kind: 'case',
+    id: 'case-1',
+    provenanceId: 'prov-1',
+  }
+
+  it('accepts an explanation with its focus, a position with a view, and a position examined openly', () => {
+    expect(
+      parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: ['makro', ' flöden '] } }),
+    ).toEqual({
+      ok: true,
+      request: { kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: ['makro', 'flöden'] } },
+    })
+    expect(
+      parseHostRequest({
+        kind: 'begin',
+        reference,
+        requestId: 'r',
+        opening: { kind: 'position', focus: [], view: { statement: ' Jag är negativ till USA. ', position: 'reduce' } },
+      }),
+    ).toEqual({
+      ok: true,
+      request: {
+        kind: 'begin',
+        reference,
+        requestId: 'r',
+        opening: { kind: 'position', focus: [], view: { statement: 'Jag är negativ till USA.', position: 'reduce' } },
+      },
+    })
+    expect(
+      parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: ['värdering'], view: null } }),
+    ).toEqual({
+      ok: true,
+      request: { kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: ['värdering'], view: null } },
+    })
+  })
+
+  it('refuses a missing request id, an unknown kind, an unbounded focus, a view without words, and a position that is not a word', () => {
+    expect(parseHostRequest({ kind: 'begin', reference, opening: { kind: 'explanation', focus: [] } })).toEqual({ ok: false, field: 'requestId' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'thesis', focus: [] } })).toEqual({ ok: false, field: 'opening.kind' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } })).toEqual({ ok: false, field: 'opening.focus' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: ['  '] } })).toEqual({ ok: false, field: 'opening.focus' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: [] } })).toEqual({ ok: false, field: 'opening.view' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: [], view: { statement: ' ', position: 'reduce' } } })).toEqual({ ok: false, field: 'opening.view.statement' })
+    expect(parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: [], view: { statement: 'x', position: 'Reduce now!' } } })).toEqual({ ok: false, field: 'opening.view.position' })
+  })
+
+  it('refuses the firm’s own record beside the opening, and an actor by any name', () => {
+    /* The host says what the person meant; it never writes the statement, the implications or the actor. */
+    for (const field of ['statement', 'implications', 'invalidationCriteria', 'proposedByDepartmentId']) {
+      expect(
+        parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: [], [field]: 'v' } }),
+      ).toEqual({ ok: false, field: `opening.${field}` })
+    }
+    expect(
+      parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'position', focus: [], view: { statement: 'x', position: 'buy', actor: 'me' } } }),
+    ).toEqual({ ok: false, field: 'opening.view.actor' })
+    for (const field of ['actingEmployeeId', 'actorId', 'agentPrincipalId']) {
+      expect(
+        parseHostRequest({ kind: 'begin', reference, requestId: 'r', opening: { kind: 'explanation', focus: [] }, [field]: 'v' }),
+      ).toEqual({ ok: false, field })
+    }
+  })
+})

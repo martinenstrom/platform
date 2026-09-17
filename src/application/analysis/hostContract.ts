@@ -68,7 +68,7 @@ import type { BoardroomEntry, BoardroomObjection } from './boardroomTimeline'
 import type { BoardroomSeat, SeatParticipation } from './boardroomSeating'
 
 /** Bumped when the shape or meaning of a request or result changes. */
-export const HOST_CONTRACT_VERSION = '3'
+export const HOST_CONTRACT_VERSION = '4'
 
 /* ------------------------------------------------------------- requests */
 
@@ -104,6 +104,31 @@ export type HostRequest =
   | { kind: 'amend'; reference: DomainReference; requestId: string; text: string }
   /** The person closes their case, with the reason they gave. */
   | { kind: 'close'; reference: DomainReference; reason: string }
+  /**
+   * The person's opening position, on their behalf, and the firm advanced as
+   * far as policy permits (v4, §11). `requestId` is the idempotency key.
+   */
+  | { kind: 'begin'; reference: DomainReference; requestId: string; opening: HostOpening }
+
+/**
+ * What a commission is, read off the person's words by the host.
+ *
+ * An **explanation** asks why or what drives — the firm can open on it at
+ * once, with the focus the person named. A **position** asks what to do
+ * with capital — the firm needs the person's own view, or their word that
+ * the question may be examined openly; that is the one question a host may
+ * ask, and any reasonable answer walks through this door.
+ */
+export type CommissionKind = 'explanation' | 'position'
+
+export type HostOpening =
+  | { kind: 'explanation'; focus: readonly string[] }
+  | {
+      kind: 'position'
+      focus: readonly string[]
+      /** The person's own view in their words, with the position word the host read off it; `null` examines openly. */
+      view: { statement: string; position: string } | null
+    }
 
 /* -------------------------------------------------------------- results */
 
@@ -348,6 +373,39 @@ export interface HostClosure {
 }
 
 /** What every positive answer carries: enough to bind the next turn back here. */
+/**
+ * Why a desk did not start when the firm was advanced (v4, §11). Semantic,
+ * never a command code: a host says "the firm holds no evidence basis for
+ * this workflow", not which check refused.
+ */
+export type HostWithheldReason =
+  /** The workflow has no standing evidence basis, so no desk can read anything. */
+  | 'no-evidence-basis'
+  /** The basis exists and the firm holds no observations in the window. */
+  | 'no-observations'
+  /** No live provider is configured, so live work cannot be executed. */
+  | 'no-provider'
+  /** The pinned workflow authorises no budget for this desk's live work. */
+  | 'no-authorized-budget'
+  /** The desk waits on another desk's accepted work. */
+  | 'dependencies-not-met'
+  /** The desk is not waiting to be picked up, or the workflow does not assign it. */
+  | 'not-assignable'
+  /** The desk has no institutional agent to act for it. */
+  | 'no-principal'
+  /** The institution declined at the command boundary. */
+  | 'declined'
+
+/** What the firm did when it was advanced, read off the record (v4). */
+export interface HostCommission {
+  /** The evidence the desks were handed, where a basis existed and held observations. */
+  evidence: { family: string; from: string; to: string; observations: number } | null
+  /** The desks whose runs exist now. */
+  started: readonly HostDesk[]
+  /** The desks that did not start, and why. `desk` is null when nothing named a desk. */
+  withheld: readonly { desk: HostDesk | null; reason: HostWithheldReason }[]
+}
+
 interface HostCaseContext {
   reference: DomainReference
   question: string
@@ -355,6 +413,8 @@ interface HostCaseContext {
   surfaces: HostSurfaces
   activity: HostActivity
   amendments: HostAmendments
+  /** Only on the result of `begin`: what the firm started, and what it withheld. */
+  commission?: HostCommission
 }
 
 export type UnsupportedReason =
@@ -432,7 +492,13 @@ const REQUEST_KINDS = new Set([
   'inspect',
   'amend',
   'close',
+  'begin',
 ])
+const COMMISSION_KINDS = new Set(['explanation', 'position'])
+const FOCUS_LIMIT = 6
+const FOCUS_LENGTH = 60
+const VIEW_LENGTH = 600
+const POSITION_WORD = /^[a-z][a-z-]{1,23}$/
 const INSPECT_KINDS = new Set(['debate', 'desk', 'objections'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -493,6 +559,40 @@ function parseView(value: unknown): InspectView | string {
 }
 
 /**
+ * The opening, in its exact shape: a kind, a bounded focus list, and for a
+ * position either the person's view or `null`. A statement, a position
+ * word or an actor beside an explanation is refused by name — the host
+ * never writes the firm's record for it, only says what the person meant.
+ */
+function parseOpening(value: unknown): HostOpening | string {
+  if (!isRecord(value)) return 'opening'
+  if (typeof value.kind !== 'string' || !COMMISSION_KINDS.has(value.kind)) return 'opening.kind'
+  const stray = onlyKeys(value, value.kind === 'position' ? ['kind', 'focus', 'view'] : ['kind', 'focus'])
+  if (stray) return `opening.${stray}`
+  if (!Array.isArray(value.focus) || value.focus.length > FOCUS_LIMIT) return 'opening.focus'
+  const focus: string[] = []
+  for (const entry of value.focus) {
+    if (!nonEmptyString(entry) || entry.trim().length > FOCUS_LENGTH) return 'opening.focus'
+    focus.push(entry.trim())
+  }
+  if (value.kind === 'explanation') return { kind: 'explanation', focus }
+  if (!('view' in value)) return 'opening.view'
+  if (value.view === null) return { kind: 'position', focus, view: null }
+  if (!isRecord(value.view)) return 'opening.view'
+  const strayView = onlyKeys(value.view, ['statement', 'position'])
+  if (strayView) return `opening.view.${strayView}`
+  if (!nonEmptyString(value.view.statement) || value.view.statement.trim().length > VIEW_LENGTH)
+    return 'opening.view.statement'
+  if (typeof value.view.position !== 'string' || !POSITION_WORD.test(value.view.position))
+    return 'opening.view.position'
+  return {
+    kind: 'position',
+    focus,
+    view: { statement: value.view.statement.trim(), position: value.view.position },
+  }
+}
+
+/**
  * The only way a request enters the gateway. Unknown input in, a typed
  * request or the name of the offending field out.
  */
@@ -526,7 +626,9 @@ export function parseHostRequest(input: unknown): ParsedHostRequest {
         ? ['kind', 'reference', 'requestId', 'text']
         : input.kind === 'close'
           ? ['kind', 'reference', 'reason']
-          : ['kind', 'reference']
+          : input.kind === 'begin'
+            ? ['kind', 'reference', 'requestId', 'opening']
+            : ['kind', 'reference']
   const stray = onlyKeys(input, allowed)
   if (stray) return { ok: false, field: stray }
 
@@ -558,6 +660,16 @@ export function parseHostRequest(input: unknown): ParsedHostRequest {
     /* A closure without a reason cannot answer "varför stängde vi det?". */
     if (!nonEmptyString(input.reason)) return { ok: false, field: 'reason' }
     return { ok: true, request: { kind: 'close', reference, reason: input.reason } }
+  }
+
+  if (input.kind === 'begin') {
+    if (!nonEmptyString(input.requestId)) return { ok: false, field: 'requestId' }
+    const opening = parseOpening(input.opening)
+    if (typeof opening === 'string') return { ok: false, field: opening }
+    return {
+      ok: true,
+      request: { kind: 'begin', reference, requestId: input.requestId as string, opening },
+    }
   }
 
   return {

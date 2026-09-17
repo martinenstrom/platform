@@ -437,6 +437,180 @@ describe('a live session', () => {
     expect(result.say).toBe('Kommittén behöver din utgångstes.')
   })
 
+  describe('the person speaks human; JARVIS translates (ruled 2026-09-17)', () => {
+    /* The firm's own question decides what the person's later words are; here it is a capital question. */
+    const usa = { ...bound, question: 'Borde jag minska min USA-exponering?', subject: 'USA-exponering' }
+    const awaiting: HostResult = { ...usa, state: 'needs-decision', decision: { reason: 'institutional-initialization-required' } }
+    const macro = { id: 'global-macro', name: 'Global Macro', isGovernance: false }
+    const started: HostResult = {
+      ...usa,
+      state: 'working',
+      commission: {
+        evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
+        started: [macro],
+        withheld: [],
+      },
+    }
+    /** The firm as it behaves: convened and waiting, then started on the opening. */
+    const firm = (request: HostRequest): HostResult => (request.kind === 'begin' ? started : awaiting)
+    const toolOutputs = (index: number): string =>
+      JSON.stringify(provider.responses[index]!.input.filter((item) => (item as { type?: string }).type === 'function_call_output'))
+
+    it('opens an explanation on the person’s words at once — no thesis, no scope, no second question', async () => {
+      const rt = runtime()
+      let round = 0
+      const line = 'Kolla med kommittén och be dem ta reda på varför guld är upp idag.'
+      respondWith = () =>
+        round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Guld' }) : textResult('Absolut, jag tar det vidare.')
+      answer = firm
+      const result = await rt.respond({ text: line })
+      expect(asked.map((request) => request.kind)).toEqual(['ask', 'begin'])
+      expect(asked[1]).toMatchObject({
+        kind: 'begin',
+        reference,
+        opening: { kind: 'explanation', focus: ['makro', 'flöden', 'specifika händelser'] },
+      })
+      expect(result.state).toBe('working')
+      expect(result.reference).toEqual(reference)
+      /* What the model was handed to say: the work, the desk, the basis — and none of the ceremony. */
+      const said = toolOutputs(1)
+      expect(said).toContain('Absolut. Jag ber dem ta reda på vad som driver')
+      expect(said).toContain('makro, flöden, specifika händelser')
+      expect(said).toContain('Global Macro har börjat, med den amerikanska räntekurvan som underlag.')
+      expect(said).toContain('Jag återkommer när det är klart.')
+      for (const word of ['utgångstes', 'omfattning', 'godkännande', 'formell']) expect(said.toLowerCase()).not.toContain(word)
+      expect(rt.typedTelemetry().responses).toBe(2)
+    })
+
+    it('keeps the focus the person named in the same breath', async () => {
+      const rt = runtime()
+      let round = 0
+      const line = 'Be kommittén ta reda på varför guld är upp idag, framför allt flödena och dollarn.'
+      respondWith = () =>
+        round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Guld' }) : textResult('Absolut.')
+      answer = firm
+      await rt.respond({ text: line })
+      expect(asked[1]).toMatchObject({ opening: { kind: 'explanation', focus: ['flöden', 'dollarn'] } })
+    })
+
+    it('asks the one human question for a capital question, and begins on any reasonable answer', async () => {
+      const rt = runtime()
+      let round = 0
+      respondWith = () =>
+        round++ === 0
+          ? functionCallResult('delegate_to_financial_os', { question: 'Borde jag minska min USA-exponering?', subject: 'USA-exponering' })
+          : textResult('Vill du att de utgår från din egen syn, eller prövar frågan öppet?')
+      answer = firm
+      const first = await rt.respond({ text: 'Borde jag minska min USA-exponering?' })
+      expect(asked.map((request) => request.kind)).toEqual(['ask'])
+      expect(first.state).toBe('needs-decision')
+      expect(toolOutputs(1)).toContain('En sak innan de sätter igång.')
+      expect(toolOutputs(1)).toContain('din egen syn')
+      expect(toolOutputs(1).toLowerCase()).not.toContain('utgångstes')
+
+      /* "Pröva den öppet." — the answer, through begin_delegation, on the bound case. */
+      round = 0
+      respondWith = () => (round++ === 0 ? functionCallResult('begin_delegation', { view: 'Pröva den öppet.' }) : textResult('Perfekt, jag kör på det.'))
+      const second = await rt.respond({ text: 'Pröva den öppet.', reference })
+      expect(asked.slice(1).map((request) => request.kind)).toEqual(['status', 'begin'])
+      expect(asked[2]).toMatchObject({ kind: 'begin', opening: { kind: 'position', focus: [], view: null } })
+      expect(second.state).toBe('working')
+    })
+
+    it('takes words added to a case that still awaits its opening as the opening — the loop cannot happen', async () => {
+      const rt = runtime()
+      let round = 0
+      respondWith = () =>
+        round++ === 0
+          ? functionCallResult('add_to_delegation', { note: 'Jag är negativ till USA, värderingen är huvudskälet.' })
+          : textResult('Absolut, jag tar det vidare.')
+      answer = firm
+      const result = await rt.respond({ text: 'Jag är negativ till USA, värderingen är huvudskälet.', reference })
+      expect(asked.map((request) => request.kind)).toEqual(['amend', 'begin'])
+      expect(asked[1]).toMatchObject({
+        kind: 'begin',
+        opening: {
+          kind: 'position',
+          focus: ['värdering'],
+          view: { statement: 'Jag är negativ till USA, värderingen är huvudskälet.', position: 'reduce' },
+        },
+      })
+      expect(result.state).toBe('working')
+    })
+
+    it('reads a bare confirmation as leave to examine openly, and a focus as focus', async () => {
+      const rt = runtime()
+      for (const [note, opening] of [
+        ['De kan börja.', { kind: 'position', focus: [], view: null }],
+        ['Kör.', { kind: 'position', focus: [], view: null }],
+        ['Makro, flöden och specifika händelser.', { kind: 'position', focus: ['makro', 'flöden', 'specifika händelser'], view: null }],
+      ] as const) {
+        asked.length = 0
+        let round = 0
+        respondWith = () => (round++ === 0 ? functionCallResult('add_to_delegation', { note }) : textResult('Absolut.'))
+        answer = firm
+        await rt.respond({ text: note, reference })
+        expect(asked.map((request) => request.kind), note).toEqual(['amend', 'begin'])
+        expect(asked[1], note).toMatchObject({ kind: 'begin', opening })
+      }
+    })
+
+    it('never lets a focus or a confirmation open a second case while one is bound, whatever tool the model chose', async () => {
+      const rt = runtime()
+      answer = (request) => (request.kind === 'amend' ? { ...started, amendments: { count: 1, latestAt: '2026-09-17T19:14:30.000Z', workPredates: true } } : started)
+      for (const line of ['Makro, flöden och specifika händelser.', 'De kan börja.']) {
+        asked.length = 0
+        let round = 0
+        respondWith = () =>
+          round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Guld' }) : textResult('Tillagt.')
+        await rt.respond({ text: line, reference })
+        expect(asked.map((request) => request.kind), line).toEqual(['amend'])
+        expect(asked[0], line).toMatchObject({ kind: 'amend', reference, text: line })
+      }
+      /* A new question while a case is bound is still a new question. */
+      asked.length = 0
+      let round = 0
+      respondWith = () =>
+        round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: 'Borde jag köpa silver?', subject: 'Silver' }) : textResult('Svar.')
+      await rt.respond({ text: 'Borde jag köpa silver?', reference })
+      expect(asked.map((request) => request.kind)).toEqual(['ask'])
+    })
+
+    it('keeps what the person says once the firm is under way, and drops only a bare confirmation', async () => {
+      const rt = runtime()
+      answer = (request) => (request.kind === 'amend' ? { ...started, amendments: { count: 1, latestAt: '2026-09-17T19:14:30.000Z', workPredates: true } } : started)
+      let round = 0
+      respondWith = () => (round++ === 0 ? functionCallResult('begin_delegation', { view: 'Makro, flöden och specifika händelser.' }) : textResult('Tillagt.'))
+      await rt.respond({ text: 'Makro, flöden och specifika händelser.', reference })
+      expect(asked.map((request) => request.kind)).toEqual(['status', 'amend'])
+      expect(asked[1]).toMatchObject({ kind: 'amend', text: 'Makro, flöden och specifika händelser.' })
+      asked.length = 0
+      round = 0
+      respondWith = () => (round++ === 0 ? functionCallResult('begin_delegation', { view: 'Kör.' }) : textResult('De är igång.'))
+      await rt.respond({ text: 'Kör.', reference })
+      expect(asked.map((request) => request.kind)).toEqual(['status'])
+    })
+
+    it('tells the truth when no desk could start, and promises no return', async () => {
+      const rt = runtime()
+      let round = 0
+      const line = 'Kolla med kommittén varför oljan faller idag.'
+      respondWith = () =>
+        round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Olja' }) : textResult('Jag har lagt frågan hos dem.')
+      answer = (request) =>
+        request.kind === 'begin'
+          ? { ...bound, state: 'blocked', block: { reason: 'analysis-required', owner: macro }, commission: { evidence: null, started: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] } }
+          : awaiting
+      const result = await rt.respond({ text: line })
+      expect(asked.map((request) => request.kind)).toEqual(['ask', 'begin'])
+      expect(result.state).toBe('blocked')
+      const said = toolOutputs(1)
+      expect(said).toContain('Men borden kan inte börja än — firman har inget registrerat underlag för den här sortens fråga än.')
+      expect(said).not.toContain('återkommer')
+      expect(JSON.parse(JSON.parse(toolOutputs(1))[0].output).acknowledgeWork).toBe(false)
+    })
+  })
+
   it('carries the bound case into a typed follow-up, and tells the backend the channel is text', async () => {
     const rt = runtime()
     respondWith = () => textResult('Ärendet väntar på ditt beslut.')

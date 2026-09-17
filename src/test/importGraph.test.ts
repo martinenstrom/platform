@@ -1222,6 +1222,13 @@ describe('Phase C1C-2 — contribution', () => {
     expect(namesThePort).toEqual([
       /* Receives a provider and hands it to the orchestrator. Calls nothing. */
       'application/analysis/commissionAnalysis.ts',
+      /*
+       * Receives the provider the container built and hands it to
+       * `commissionAnalysis` when the firm is advanced on the person's word
+       * (host `begin`, 2026-09-17). Calls nothing; the sequencer check above
+       * is what proves that, and this pin is what makes a third a decision.
+       */
+      'application/analysis/domainSystem.ts',
       'application/analysis/orchestrator.ts',
     ])
   })

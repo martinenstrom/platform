@@ -25,6 +25,7 @@ import type { CommandDeps } from '~/application/analysis/commands/runCommand'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import { createInMemoryRepositories } from './inMemoryRepositories'
+import { createStubContributionProvider } from './providers/stub'
 import { TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
 
 const AT = '2026-09-14T09:00:00.000Z'
@@ -503,5 +504,105 @@ describe('the person acts on their open case', () => {
       /* The stage word is contract vocabulary in `activity.stage`, and nowhere else. */
       expect(JSON.stringify({ ...result, activity: undefined })).not.toMatch(/"withdrawn"/)
     }
+  })
+})
+
+describe('the opening, on the person’s behalf (v4, ruled 2026-09-17)', () => {
+  const gold = {
+    kind: 'ask' as const,
+    requestId: 'req-gold',
+    question: 'Kolla med kommittén och be dem ta reda på varför guld är upp idag.',
+    subject: 'Guld',
+  }
+  const explanation = { kind: 'explanation' as const, focus: ['makro', 'flöden', 'specifika händelser'] }
+
+  it('proposes revision 1 from the person’s words as the operator’s act, initiated by the host', async () => {
+    const asked = positive(await gateway(gold))
+    expect(asked.state).toBe('needs-decision')
+    const result = positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
+
+    const revisions = await repositories.theses.listForCase(asked.reference.id)
+    expect(revisions).toHaveLength(1)
+    expect(revisions[0]).toMatchObject({
+      revisionNumber: 1,
+      statement: `${gold.question} Prövas mot: makro, flöden, specifika händelser.`,
+      position: 'explain',
+      implications: [],
+      proposedByDepartmentId: 'research-office',
+      proposedByEmployeeId: OPERATOR,
+      revisionCause: 'initial-proposal',
+    })
+    const entry = await repositories.commands.find(`${asked.reference.id}-begin-req-2`)
+    expect(entry).not.toBeNull()
+    expect(entry!.intent.commandType).toBe('ProposeThesis')
+    expect(entry!.intent.initiator).toEqual({ kind: 'orchestrator', orchestratorId: HOST_ORCHESTRATOR_ID })
+    expect(entry!.intent.actor).toMatchObject({ kind: 'employee', employeeId: OPERATOR })
+
+    /* The firm no longer waits for the person; it waits for its desks, and says which. */
+    expect(result.state).toBe('blocked')
+    expect(result.state === 'blocked' && result.block.reason).toBe('analysis-required')
+    expect(result.state === 'blocked' && result.block.owner).not.toBeNull()
+    expect(TEST_ORGANIZATION.departments.map((d) => d.id)).toContain(result.state === 'blocked' && result.block.owner?.id)
+    /* This firm cannot execute work; the person is told, not promised. */
+    expect(result.commission).toEqual({ evidence: null, started: [], withheld: [{ desk: null, reason: 'no-provider' }] })
+  })
+
+  it('opens once: a second beginning proposes nothing new and reports the same standing', async () => {
+    const asked = positive(await gateway(gold))
+    await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation })
+    const again = positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-3', opening: { kind: 'position', focus: [], view: null } }))
+    expect(await repositories.theses.listForCase(asked.reference.id)).toHaveLength(1)
+    expect(again.state).toBe('blocked')
+    expect((await repositories.commands.find(`${asked.reference.id}-begin-req-3`))).toBeNull()
+  })
+
+  it('writes the person’s view and the position word read off it, with position-sizing declared', async () => {
+    const asked = positive(await gateway(question))
+    await gateway({
+      kind: 'begin',
+      reference: asked.reference,
+      requestId: 'req-2',
+      opening: { kind: 'position', focus: ['värdering'], view: { statement: 'Jag är negativ till Nvidia, värderingen är för hög.', position: 'reduce' } },
+    })
+    const revision = (await repositories.theses.listForCase(asked.reference.id))[0]!
+    expect(revision.statement).toBe('Jag är negativ till Nvidia, värderingen är för hög. Prövas mot: värdering.')
+    expect(revision.position).toBe('reduce')
+    expect(revision.implications).toEqual(['position-sizing'])
+  })
+
+  it('assembles the standing evidence and reports, truthfully, that the firm holds no observations', async () => {
+    const executing = createHostGateway({
+      system: createFinancialOsSystem({
+        repositories,
+        commandDeps: async () => deps,
+        now: () => AT,
+        advance: { provider: () => createStubContributionProvider(), startWaitMs: 200 },
+      }),
+      operator: async () => resolveCurrentOperator(configured, TEST_ORGANIZATION),
+      surfaces: (caseId) => ({ boardroom: `/cases/${caseId}`, record: `/cases/${caseId}/underlag` }),
+      orchestratorId: HOST_ORCHESTRATOR_ID,
+      now: () => AT,
+    })
+    const asked = positive(await executing(gold))
+    const result = positive(await executing({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
+    expect(result.commission).toEqual({ evidence: null, started: [], withheld: [{ desk: null, reason: 'no-observations' }] })
+    expect((await repositories.runs.listForCase(asked.reference.id))).toHaveLength(0)
+    expect(await repositories.theses.listForCase(asked.reference.id)).toHaveLength(1)
+  })
+
+  it('refuses a foreign reference, needs an operator, and refuses a settled case', async () => {
+    const asked = positive(await gateway(gold))
+    expect(
+      await gateway({ kind: 'begin', reference: { ...asked.reference, system: 'other' as never }, requestId: 'r', opening: explanation }),
+    ).toEqual({ state: 'unsupported', reason: 'unknown-reference' })
+    configured = undefined
+    expect((await gateway({ kind: 'begin', reference: asked.reference, requestId: 'r', opening: explanation })).state).toBe('failed')
+    expect(await repositories.theses.listForCase(asked.reference.id)).toHaveLength(0)
+    configured = OPERATOR
+    await gateway({ kind: 'close', reference: asked.reference, reason: 'Klart.' })
+    expect(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'r2', opening: explanation })).toMatchObject({
+      state: 'failed',
+      reason: 'case-settled',
+    })
   })
 })
