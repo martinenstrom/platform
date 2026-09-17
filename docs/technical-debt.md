@@ -2432,11 +2432,13 @@ person's instruction or confirmation is the adopting act.
   opening, so the loop cannot recur whatever the model does with them. A
   capital question keeps its one human question, asked once.
 
-What stays open: a run that ends `awaiting-acceptance` waits for its desk's
-adoption before the next entry can start (the acceptance boundary, unchanged
-by this); the standing evidence basis is a policy for one workflow, and
-choosing evidence by subject is the evidence architecture's next question;
-a process that dies mid-run leaves what TD-92 describes.
+What stays open: the standing evidence basis is a policy for one workflow,
+and choosing evidence by subject is the evidence architecture's next
+question; a process that dies mid-run leaves what TD-92 describes. The
+adoption boundary was ruled the same evening (second ruling of
+2026-09-17): a finished run is adopted by its desk's own institutional
+agent on the next advance, never by the person and never by the host —
+see the contract document §11, "Adoption and the passes after `begin`".
 
 ## TD-89 · `scripts/` is not typechecked, and the bootstrap tooling has rotted · open
 
@@ -2669,6 +2671,44 @@ act behind the sentence.
 
 What stays open: nothing here re-runs a desk because of an addition, and a
 case closed on instruction stays closed until the firm writes `ReopenCase`.
+
+## TD-96 · the firm pays the provider before it discovers a budget violation · open
+
+**Opened 2026-09-17**, measured in the first `begin` runs of the gold case
+(`docs/jarvis-voice-live-proof.md` §13.3): two live desk runs read a
+thirty-day curve window — 252 observations, 63,010 input tokens each on
+`claude-opus-5` — and the firm failed both `budget-exhausted` against the
+24,000 tokens the pinned workflow authorises. The calls had already been
+made and paid for; the token budget is enforced on the answer, not on the
+prompt. The v6 playbook note assumed the breaker refuses ahead ("stays
+refused at 24,000"); measured, it pays first. The two calls spent the
+remaining provider credit, which is what stopped the end-to-end proof.
+
+**The immediate correction, ruled 2026-09-17:** the standing evidence
+window is seven days (`STANDING_EVIDENCE`, 60 observations, 15,531 tokens
+by the workflow's own measurement), which fits the envelope for both
+desks. That is a policy fitting the budget, not budget control.
+
+**The debt.** Enforcement before dispatch: estimate or bound the expected
+invocation cost from the evidence set and the brief — the provider's own
+token counter, or a measured bytes-to-tokens ratio with headroom —
+compare it with the run's authorised budget, and **refuse or reduce the
+context before the call** where policy requires, so that
+
+```
+estimate / bound expected cost → refuse or reduce before dispatch → provider call
+```
+
+replaces
+
+```
+oversized provider call → pay → discover the budget violation
+```
+
+Ruled 2026-09-17 as technical debt to track, not to solve inside the
+acceptance run that found it, unless the seven-day gold flow needs it to
+complete. The refusal must remain the institution's (`StartAgentRun` and
+the orchestrator's budget resolution), never a second rule in a caller.
 
 ## TD-95 · a typed line into a live session never reaches the firm — CLOSED 2026-09-16
 

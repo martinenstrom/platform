@@ -49,10 +49,14 @@ import { amendCase } from './commands/amendCase'
 import { closeCase } from './commands/closeCase'
 import { proposeThesis } from './commands/proposeThesis'
 import { assembleEvidenceSet } from './commands/assembleEvidenceSet'
+import { acceptContribution } from './commands/acceptContribution'
+import { aggregateManagerConclusion } from './commands/aggregateManagerConclusion'
 import { commissionAnalysis, type CommissionResult } from './commissionAnalysis'
 import type { ContributionProvider } from './contributionPort'
 import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
-import { evidenceWindow, openingProposal, standingEvidenceFor } from './opening'
+import type { CasePlaybook } from './playbooks'
+import { synthesisContext, type SynthesisContext } from './synthesisContext'
+import { evidenceWindow, openingProposal, standingEvidenceFor, synthesisEntryFor } from './opening'
 import type { HostOpening, HostWithheldReason } from './hostContract'
 import {
   caseIdFor,
@@ -208,6 +212,8 @@ export interface CaseCommission {
     observations: number
   } | null
   started: readonly { departmentId: string; runId: string }[]
+  /** Finished candidate work adopted by its own desk's principal in this pass. */
+  adopted: readonly { departmentId: string; runId: string }[]
   withheld: readonly { departmentId: string | null; reason: HostWithheldReason }[]
 }
 
@@ -219,21 +225,31 @@ export interface BeginOutcome {
 
 /**
  * What advancing a case needs from the world: a provider that executes a
- * desk's work, and how long to wait for a run to appear on the record
- * before reporting a desk as not started.
+ * desk's work, one that synthesises it, and how long to wait for a run to
+ * appear on the record before reporting a desk as not started.
  *
  * A live provider runs for minutes; the person is not kept waiting for
  * that. The commission continues in this process after `begin` returns,
- * and what the person is told is read off the run record — a run inside
- * its window is work the firm is doing, and a process that dies mid-run
- * leaves exactly what TD-92 describes, reported as such.
+ * and when it ends the firm is advanced again — the desk's own principal
+ * adopts what it produced, the next entries that are ready are
+ * commissioned — until nothing autonomous remains. What the person is told
+ * is read off the record at every step; a process that dies mid-run leaves
+ * exactly what TD-92 describes, reported as such.
  */
 export interface AdvanceDeps {
   provider: () => ContributionProvider | null
+  /**
+   * The provider for the workflow's synthesis entry, given a loader of the
+   * facts it reconciles — read off the record at dispatch, never before.
+   */
+  synthesisProvider?: (loadContext: () => Promise<SynthesisContext>) => ContributionProvider | null
   startWaitMs?: number
   /** Where a commission that continues after `begin` reports how it ended. */
   log?: (line: string) => void
 }
+
+/** How many times one beginning may advance the case after its first pass: each finished run earns one. */
+const ADVANCE_PASSES = 8
 
 export function createFinancialOsSystem(input: {
   repositories: AnalysisRepositories
@@ -320,32 +336,45 @@ export function createFinancialOsSystem(input: {
     }
   }
 
+  /** The desk's own institutional agent, where the firm has one. */
+  const principalFor = (deps: CommandDeps, departmentId: string) =>
+    deps.organization.agentPrincipals.find(
+      (candidate) => candidate.active && candidate.departmentId === departmentId,
+    ) ?? null
+
+  /** The evidence set this case was advanced on before, so the desks read one body of evidence. */
+  async function standingEvidenceSetFor(caseId: string) {
+    const sets = await repositories.evidence.list(50)
+    return sets.find((set) => set.correlationId === caseId) ?? null
+  }
+
   /**
-   * The firm advanced as far as policy permits, on the person's word.
-   *
-   * Evidence first, from the workflow's standing basis; then every entry of
-   * the pinned workflow, in its order, under the desk's own institutional
-   * agent. Each commission is started and left to run; `begin` waits only
-   * until the run is on the record. Refusals are the institution's own,
-   * reported in the host's words, and nothing is retried.
+   * The standing evidence basis, assembled once per case under the
+   * convenor mandate — or reused when this case was advanced before.
    */
-  async function advanceCase(
+  async function evidenceFor(
     delegation: Delegation,
     current: InvestmentCase,
     owningDepartmentId: string,
     deps: CommandDeps,
-  ): Promise<CaseCommission> {
-    const none = (reason: HostWithheldReason): CaseCommission => ({
-      evidence: null,
-      started: [],
-      withheld: [{ departmentId: null, reason }],
-    })
-    if (!advance) return none('no-provider')
+  ): Promise<{ evidence: CaseCommission['evidence']; withheld: HostWithheldReason | null }> {
     const basis = standingEvidenceFor(current.playbookId)
-    if (!basis || !current.playbookId || !current.playbookVersion) return none('no-evidence-basis')
-
+    if (!basis) return { evidence: null, withheld: 'no-evidence-basis' }
+    const window = evidenceWindow(now(), basis.windowDays)
+    const existing = await standingEvidenceSetFor(current.id)
+    if (existing) {
+      return {
+        evidence: {
+          evidenceSetId: existing.id,
+          family: basis.subjectFamily,
+          from: window.from,
+          to: window.to,
+          observations: existing.items.length,
+        },
+        withheld: null,
+      }
+    }
     const at = now()
-    const window = evidenceWindow(at, basis.windowDays)
     const assembled = await runCommand(
       assembleEvidenceSet(deps.organization),
       {
@@ -369,31 +398,121 @@ export function createFinancialOsSystem(input: {
     if (assembled.outcome !== 'committed') {
       /* "The firm holds no observations for …" is the one refusal the person is told in those words. */
       const why = assembled.outcome === 'rejected' ? JSON.stringify(assembled.rejection) : ''
-      return none(/no observations/i.test(why) ? 'no-observations' : 'declined')
+      return { evidence: null, withheld: /no observations/i.test(why) ? 'no-observations' : 'declined' }
     }
-    const evidence = {
-      evidenceSetId: assembled.value.evidenceSetId,
-      family: basis.subjectFamily,
-      from: window.from,
-      to: window.to,
-      observations: assembled.value.observationCount,
+    return {
+      evidence: {
+        evidenceSetId: assembled.value.evidenceSetId,
+        family: basis.subjectFamily,
+        from: window.from,
+        to: window.to,
+        observations: assembled.value.observationCount,
+      },
+      withheld: null,
     }
+  }
 
+  /**
+   * Finished candidate work adopted by its own desk's principal — the act
+   * the P4 proof performed, ruled a production path on 2026-09-17: a
+   * specialist's adoption is an internal institutional act, not a decision
+   * of the person's, and never the host's. A synthesis candidate goes one
+   * step further through the office's own act: `AggregateManagerConclusion`
+   * mints the revision from the exact persisted candidate.
+   */
+  async function adoptFinishedWork(
+    delegation: Delegation,
+    current: InvestmentCase,
+    deps: CommandDeps,
+    adopted: { departmentId: string; runId: string }[],
+    withheld: { departmentId: string | null; reason: HostWithheldReason }[],
+  ): Promise<void> {
+    const runs = await repositories.runs.listForCase(current.id)
+    for (const run of runs.filter((candidate) => candidate.state === 'awaiting-acceptance')) {
+      const principal = principalFor(deps, run.departmentId)
+      if (!principal) {
+        withheld.push({ departmentId: run.departmentId, reason: 'no-principal' })
+        continue
+      }
+      const actor = { kind: 'institutional-agent' as const, agentPrincipalId: principal.id }
+      const accepted = await runCommand(
+        acceptContribution(deps.organization),
+        { caseId: current.id, runId: run.id, departmentId: run.departmentId },
+        {
+          commandId: `agent-accept-${run.id}`,
+          correlationId: current.id,
+          actor,
+          initiator: initiatedBy(delegation),
+          occurredAt: now(),
+        },
+        deps,
+      )
+      advance?.log?.(`[advance] ${current.id} ${run.departmentId} adopts ${run.id}: ${accepted.outcome}${accepted.outcome === 'rejected' ? ` ${accepted.rejection.code}` : ''}`)
+      if (accepted.outcome !== 'committed') {
+        withheld.push({ departmentId: run.departmentId, reason: 'declined' })
+        continue
+      }
+      adopted.push({ departmentId: run.departmentId, runId: run.id })
+
+      const candidate = await repositories.producedSyntheses.get(run.id)
+      if (!candidate) continue
+      const institutionalised = await runCommand(
+        aggregateManagerConclusion(deps.organization),
+        {
+          caseId: current.id,
+          sourceRevisionId: candidate.basis.sourceRevisionId,
+          departmentId: run.departmentId,
+          synthesisFromRunId: run.id,
+        },
+        {
+          commandId: `office-adopt-${run.id}`,
+          correlationId: current.id,
+          actor,
+          initiator: initiatedBy(delegation),
+          occurredAt: now(),
+        },
+        deps,
+      )
+      advance?.log?.(
+        `[advance] ${current.id} ${run.departmentId} institutionalises ${run.id}: ${institutionalised.outcome}${institutionalised.outcome === 'rejected' ? ` ${institutionalised.rejection.code}` : ''}${institutionalised.outcome === 'committed' ? ` → ${institutionalised.value.revisionId}` : ''}`,
+      )
+      if (institutionalised.outcome !== 'committed') withheld.push({ departmentId: run.departmentId, reason: 'declined' })
+    }
+  }
+
+  /** The lineage's current revision — the argument a synthesis reconciles. */
+  async function currentRevisionOf(caseId: string) {
+    const revisions = await repositories.theses.listForCase(caseId)
+    return revisions.find((revision) => revision.lifecycle !== 'superseded') ?? null
+  }
+
+  /**
+   * Every entry of the pinned workflow that has no run yet, in the
+   * workflow's order, commissioned under the desk's own institutional agent.
+   * The synthesis entry reads the facts off the record at dispatch and is
+   * scoped to the current revision. Each commission is left to run; this
+   * waits only until the run is on the record, and when the run ends the
+   * case is advanced again.
+   */
+  async function commissionReadyEntries(
+    delegation: Delegation,
+    current: InvestmentCase,
+    playbook: CasePlaybook,
+    evidenceSetId: string,
+    deps: CommandDeps,
+    pass: number,
+    started: { departmentId: string; runId: string }[],
+    withheld: { departmentId: string | null; reason: HostWithheldReason }[],
+  ): Promise<void> {
+    if (!advance) return
     const provider = advance.provider()
-    if (!provider) return { evidence, started: [], withheld: [{ departmentId: null, reason: 'no-provider' }] }
-
-    let playbook
-    try {
-      playbook = requirePlaybook(current.playbookId, current.playbookVersion)
-    } catch (error) {
-      if (error instanceof UnknownPlaybookError)
-        return { evidence, started: [], withheld: [{ departmentId: null, reason: 'not-assignable' }] }
-      throw error
+    if (!provider) {
+      withheld.push({ departmentId: null, reason: 'no-provider' })
+      return
     }
-
-    const started: { departmentId: string; runId: string }[] = []
-    const withheld: { departmentId: string | null; reason: HostWithheldReason }[] = []
-    const known = new Set((await repositories.runs.listForCase(current.id)).map((run) => run.id))
+    const synthesisEntry = synthesisEntryFor(current.playbookId)
+    const runs = await repositories.runs.listForCase(current.id)
+    const known = new Set(runs.map((run) => run.id))
     const assignments = await repositories.assignments.listForCase(current.id)
     for (const entry of playbook.entries) {
       const assignment = assignments.find(
@@ -403,27 +522,62 @@ export function createFinancialOsSystem(input: {
         withheld.push({ departmentId: entry.departmentId, reason: 'not-assignable' })
         continue
       }
-      const principal = deps.organization.agentPrincipals.find(
-        (candidate) => candidate.active && candidate.departmentId === entry.departmentId,
-      )
+      /* A desk already running, waiting to be adopted, or adopted is not commissioned again here. */
+      if (runs.some((run) => run.assignmentId === assignment.id && ['running', 'awaiting-acceptance', 'completed'].includes(run.state))) continue
+      const principal = principalFor(deps, entry.departmentId)
       if (!principal) {
         withheld.push({ departmentId: entry.departmentId, reason: 'no-principal' })
         continue
       }
+      let entryProvider: ContributionProvider | null = provider
+      let revisionId: string | undefined
+      if (entry.key === synthesisEntry) {
+        const revision = await currentRevisionOf(current.id)
+        if (!revision) {
+          withheld.push({ departmentId: entry.departmentId, reason: 'not-assignable' })
+          continue
+        }
+        revisionId = revision.revisionId
+        entryProvider =
+          advance.synthesisProvider?.(async () => {
+            const [assignmentsNow, runsNow, revisionNow] = await Promise.all([
+              repositories.assignments.listForCase(current.id),
+              repositories.runs.listForCase(current.id),
+              currentRevisionOf(current.id),
+            ])
+            return synthesisContext({
+              caseId: current.id,
+              question: current.question,
+              playbook,
+              entryKey: entry.key,
+              revision: revisionNow ?? revision,
+              assignments: assignmentsNow,
+              runs: runsNow,
+            })
+          }) ?? null
+        if (!entryProvider) {
+          withheld.push({ departmentId: entry.departmentId, reason: 'no-provider' })
+          continue
+        }
+      }
       const commission = commissionAnalysis({
         repositories,
         deps,
-        provider,
+        provider: entryProvider,
         caseId: current.id,
         departmentId: entry.departmentId,
         entryKey: entry.key,
-        evidenceSetId: evidence.evidenceSetId,
+        evidenceSetId,
         actingPrincipal: { kind: 'institutional-agent', agentPrincipalId: principal.id },
+        ...(revisionId ? { revisionId } : {}),
         now: () => new Date(now()),
       })
-      /* Left to run; how it ended is on the record, and in the log for whoever reads it. */
+      /* Left to run; how it ended is on the record and in the log, and a finished run advances the case again. */
       commission.then(
-        (result) => advance.log?.(`[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}`),
+        (result) => {
+          advance.log?.(`[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}`)
+          if (result.outcome === 'ran' && result.state === 'awaiting-acceptance') void advanceLater(delegation, current.id, pass + 1)
+        },
         (error: unknown) => advance.log?.(`[begin] ${current.id} ${entry.key}: threw ${String(error)}`),
       )
       const outcome = await Promise.race([
@@ -441,11 +595,88 @@ export function createFinancialOsSystem(input: {
       } else if (outcome.result.outcome === 'ran') {
         known.add(outcome.result.runId)
         started.push({ departmentId: entry.departmentId, runId: outcome.result.runId })
+        /* A stub or recorded provider settles at once; the adoption happens on the next pass, which this run earned. */
+        if (outcome.result.state === 'awaiting-acceptance') void advanceLater(delegation, current.id, pass + 1)
       } else {
         withheld.push({ departmentId: entry.departmentId, reason: withheldReason(outcome.result) })
       }
     }
-    return { evidence, started, withheld }
+  }
+
+  /** One case is advanced by one pass at a time; a pass that arrives while another runs waits for it. */
+  const advancing = new Map<string, Promise<unknown>>()
+
+  /**
+   * The firm advanced as far as policy permits, on the person's word.
+   *
+   * Evidence first, from the workflow's standing basis; then finished
+   * candidate work adopted by its desks' own principals; then every entry
+   * that is ready, under the desk's own institutional agent. Refusals are
+   * the institution's own, reported in the host's words, and nothing is
+   * retried.
+   */
+  async function advanceCase(
+    delegation: Delegation,
+    current: InvestmentCase,
+    owningDepartmentId: string,
+    deps: CommandDeps,
+    pass = 0,
+  ): Promise<CaseCommission> {
+    const previous = advancing.get(current.id)
+    if (previous) await previous.catch(() => undefined)
+    const run = (async (): Promise<CaseCommission> => {
+      const started: { departmentId: string; runId: string }[] = []
+      const adopted: { departmentId: string; runId: string }[] = []
+      const withheld: { departmentId: string | null; reason: HostWithheldReason }[] = []
+      /* Adoption needs no provider and no evidence: it is the desks' own act on work already produced. */
+      await adoptFinishedWork(delegation, current, deps, adopted, withheld)
+      const stopped = (reason: HostWithheldReason, evidence: CaseCommission['evidence'] = null): CaseCommission => ({
+        evidence,
+        started,
+        adopted,
+        withheld: [...withheld, { departmentId: null, reason }],
+      })
+      if (!advance) return stopped('no-provider')
+      if (!current.playbookId || !current.playbookVersion) return stopped('no-evidence-basis')
+      const basis = await evidenceFor(delegation, current, owningDepartmentId, deps)
+      if (!basis.evidence) return stopped(basis.withheld ?? 'declined')
+      let playbook: CasePlaybook
+      try {
+        playbook = requirePlaybook(current.playbookId, current.playbookVersion)
+      } catch (error) {
+        if (error instanceof UnknownPlaybookError) return stopped('not-assignable', basis.evidence)
+        throw error
+      }
+      await commissionReadyEntries(delegation, current, playbook, basis.evidence.evidenceSetId, deps, pass, started, withheld)
+      return { evidence: basis.evidence, started, adopted, withheld }
+    })()
+    advancing.set(current.id, run)
+    try {
+      return await run
+    } finally {
+      if (advancing.get(current.id) === run) advancing.delete(current.id)
+    }
+  }
+
+  /** A finished run earns the case one more pass, in this process, off the request's clock. */
+  async function advanceLater(delegation: Delegation, caseId: string, pass: number): Promise<void> {
+    if (pass > ADVANCE_PASSES) {
+      advance?.log?.(`[advance] ${caseId}: pass ${pass} not taken — the beginning's allowance is spent`)
+      return
+    }
+    try {
+      const deps = await commandDeps()
+      const owning = await owningDepartmentOf(caseId, deps)
+      const current = await repositories.cases.get(caseId)
+      if (!owning.ok || !current) return
+      if (current.stage === 'withdrawn' || current.stage === 'published') return
+      const result = await advanceCase(delegation, current, owning.departmentId, deps, pass)
+      advance?.log?.(
+        `[advance] ${caseId} pass ${pass}: adopted ${result.adopted.map((entry) => entry.departmentId).join(',') || '–'} · started ${result.started.map((entry) => entry.departmentId).join(',') || '–'} · withheld ${result.withheld.map((entry) => `${entry.departmentId ?? '*'}:${entry.reason}`).join(',') || '–'}`,
+      )
+    } catch (error) {
+      advance?.log?.(`[advance] ${caseId} pass ${pass}: threw ${String(error)}`)
+    }
   }
 
   return {

@@ -158,24 +158,104 @@ for (const [index, step] of (keepOpen ? LINES.filter((line) => !line.closes) : L
   console.log(`      ${step.text}\n      JARVIS: ${answer || '(nothing)'}`)
 }
 
-await browser.close()
 let finalRecord = caseId ? await record(caseId) : null
+let loop = null
 if (keepOpen && finalRecord) {
-  /* The desks' runs continue in the server after `begin` returned; what they produced is on the record when they end. */
+  /*
+   * The desks' runs continue in the server after `begin` returned, and each
+   * finished run advances the case again — the desk's own principal adopts
+   * it, the next entries start. The loop is settled when nothing is running,
+   * nothing awaits a principal that exists, and no new run has appeared for
+   * a while. Everything below is read off the record.
+   */
   const startedAt = Date.now()
-  while (Date.now() - startedAt < SETTLE_MS && finalRecord.runs.some((run) => run.state === 'running')) {
-    await new Promise((resolve) => setTimeout(resolve, 15_000))
+  let lastChange = Date.now()
+  let signature = ''
+  const settledFor = 45_000
+  while (Date.now() - startedAt < SETTLE_MS) {
+    await new Promise((resolve) => setTimeout(resolve, 10_000))
     finalRecord = await record(caseId)
+    const next = JSON.stringify(finalRecord.runs.map((run) => [run.id, run.state]).concat(finalRecord.revisions.map((r) => r.revision_number)))
+    if (next !== signature) {
+      signature = next
+      lastChange = Date.now()
+    }
+    const busy = finalRecord.runs.some((run) => run.state === 'running' || run.state === 'awaiting-acceptance')
+    if (!busy && Date.now() - lastChange > settledFor) break
   }
-  const claims = (await db.query('SELECT run_id, count(*)::int AS n FROM analysis.produced_claims WHERE run_id = ANY($1) GROUP BY run_id', [finalRecord.runs.map((run) => run.id)])).rows
+  const runIds = finalRecord.runs.map((run) => run.id)
+  const claims = runIds.length
+    ? (await db.query('SELECT run_id, count(*)::int AS n FROM analysis.produced_claims WHERE run_id = ANY($1) GROUP BY run_id', [runIds])).rows
+    : []
   finalRecord.claims = Object.fromEntries(claims.map((row) => [row.run_id, row.n]))
-  console.log(`\nsettled after ${Math.round((Date.now() - startedAt) / 1000)} s · produced claims per run: ${JSON.stringify(finalRecord.claims)}`)
+  const events = runIds.length
+    ? (await db.query('SELECT run_id, at, state FROM analysis.run_events WHERE run_id = ANY($1) ORDER BY at', [runIds])).rows
+    : []
+  const usage = runIds.length
+    ? (await db.query('SELECT id, department_id, playbook_entry_key, input_tokens, output_tokens, cost_minor_units, currency, model_id, started_at, completed_at, state, failure_category FROM analysis.runs WHERE id = ANY($1) ORDER BY started_at', [runIds])).rows
+    : []
+  const commands = (await db.query("SELECT command_id, command_type, actor, initiator, occurred_at FROM analysis.commands WHERE correlation_id = $1 ORDER BY occurred_at", [caseId])).rows.catch?.(() => []) ?? []
+  const ms = (a, b) => (a && b ? new Date(b).getTime() - new Date(a).getTime() : null)
+  const stages = usage.map((run) => {
+    const own = events.filter((e) => e.run_id === run.id)
+    const produced = own.find((e) => e.state === 'awaiting-acceptance')?.at ?? null
+    const adopted = own.find((e) => e.state === 'completed')?.at ?? null
+    return {
+      run: run.id,
+      desk: run.department_id,
+      entry: run.playbook_entry_key,
+      state: run.state,
+      failure: run.failure_category,
+      model: run.model_id,
+      inputTokens: run.input_tokens,
+      outputTokens: run.output_tokens,
+      costMinorUnits: run.cost_minor_units,
+      currency: run.currency,
+      startedAt: run.started_at,
+      producedAt: produced,
+      adoptedAt: adopted,
+      providerMs: ms(run.started_at, produced),
+      adoptionMs: ms(produced, adopted),
+    }
+  })
+  loop = {
+    settledAfterMs: Date.now() - startedAt,
+    stages,
+    totalInputTokens: stages.reduce((sum, s) => sum + (s.inputTokens ?? 0), 0),
+    totalOutputTokens: stages.reduce((sum, s) => sum + (s.outputTokens ?? 0), 0),
+    recordedCost: stages.filter((s) => s.costMinorUnits !== null).map((s) => `${s.costMinorUnits} ${s.currency}`),
+    revisions: finalRecord.revisions.map((r) => ({ number: r.revision_number, position: r.position, by: r.proposed_by_employee_id ?? null })),
+    commands: commands.map((c) => ({ id: c.command_id, type: c.command_type, actor: c.actor, initiator: c.initiator, at: c.occurred_at })),
+  }
+  console.log(`\nloop settled after ${Math.round(loop.settledAfterMs / 1000)} s`)
+  for (const s of stages) console.log(`  ${s.desk}/${s.entry}: ${s.state}${s.failure ? ` (${s.failure})` : ''} · provider ${s.providerMs ?? '–'} ms · adoption ${s.adoptionMs ?? '–'} ms · tokens ${s.inputTokens ?? '–'}/${s.outputTokens ?? '–'} · cost ${s.costMinorUnits ?? 'not recorded'}`)
+  console.log(`  tokens in/out: ${loop.totalInputTokens}/${loop.totalOutputTokens} · recorded cost: ${loop.recordedCost.join(', ') || 'none recorded'} · revisions: ${JSON.stringify(loop.revisions)}`)
+
+  /* JARVIS receives it: where the case stands, and what the firm concluded, asked the way a person asks. */
+  for (const text of ['Var står det?', 'Vad kom de fram till?']) {
+    const before = (await turns()).length
+    await page.fill('aside[aria-label="JARVIS"] textarea', text)
+    const sentAt = Date.now()
+    await page.click('aside[aria-label="JARVIS"] button[aria-label="Ställ frågan"]')
+    let answer = ''
+    while (Date.now() - sentAt < WAIT_MS) {
+      const now = await turns()
+      if (now.length > before + 1 && now[now.length - 1].by === 'jarvis') {
+        answer = now.slice(before + 1).filter((t) => t.by === 'jarvis').map((t) => t.text).join(' ')
+        break
+      }
+      await page.waitForTimeout(100)
+    }
+    results.push({ id: text, text, visibleMs: Date.now() - sentAt, answer, pass: answer.length > 0, checks: answer ? [] : ['no answer'] })
+    console.log(`\n      ${text}\n      JARVIS: ${answer || '(nothing)'}`)
+  }
 }
+await browser.close()
 if (finalRecord) printRecord(finalRecord)
 await db.end()
 
 console.log(`\n${label} · clarification turns before work: ${clarifications} · work started at turn: ${workStartedAtTurn ?? 'never'} · browser errors: ${errors.length ? errors.join('; ') : 'none'}`)
 const file = join(OUT, `intent-${label}.json`)
-writeFileSync(file, JSON.stringify({ label, at: new Date().toISOString(), results, clarifications, workStartedAtTurn, record: finalRecord, errors }, null, 2))
+writeFileSync(file, JSON.stringify({ label, at: new Date().toISOString(), results, clarifications, workStartedAtTurn, record: finalRecord, loop, errors }, null, 2))
 console.log('result:', file)
 process.exit(results.every((r) => r.pass) ? 0 : 1)

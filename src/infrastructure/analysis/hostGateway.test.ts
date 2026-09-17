@@ -24,9 +24,15 @@ import { parseHostRequest, type HostResult } from '~/application/analysis/hostCo
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
 import type { DomainReference } from '~/application/analysis/domainSystem'
+import { runCommand } from '~/application/analysis/commands/runCommand'
+import { startAgentRun } from '~/application/analysis/commands/startAgentRun'
+import { recordContribution } from '~/application/analysis/commands/recordContribution'
+import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
+import { deriveClaimId } from '~/application/analysis/commands/eventIdentity'
+import type { AgentClaim, SynthesisArtifact } from '~/domain/analysis'
 import { createInMemoryRepositories } from './inMemoryRepositories'
 import { createStubContributionProvider } from './providers/stub'
-import { TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
+import { EMPLOYEE_BY_DEPARTMENT, TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
 
 const AT = '2026-09-14T09:00:00.000Z'
 const OPERATOR = 'research-director'
@@ -544,7 +550,7 @@ describe('the opening, on the person’s behalf (v4, ruled 2026-09-17)', () => {
     expect(result.state === 'blocked' && result.block.owner).not.toBeNull()
     expect(TEST_ORGANIZATION.departments.map((d) => d.id)).toContain(result.state === 'blocked' && result.block.owner?.id)
     /* This firm cannot execute work; the person is told, not promised. */
-    expect(result.commission).toEqual({ evidence: null, started: [], withheld: [{ desk: null, reason: 'no-provider' }] })
+    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-provider' }] })
   })
 
   it('opens once: a second beginning proposes nothing new and reports the same standing', async () => {
@@ -585,9 +591,174 @@ describe('the opening, on the person’s behalf (v4, ruled 2026-09-17)', () => {
     })
     const asked = positive(await executing(gold))
     const result = positive(await executing({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
-    expect(result.commission).toEqual({ evidence: null, started: [], withheld: [{ desk: null, reason: 'no-observations' }] })
+    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-observations' }] })
     expect((await repositories.runs.listForCase(asked.reference.id))).toHaveLength(0)
     expect(await repositories.theses.listForCase(asked.reference.id)).toHaveLength(1)
+  })
+
+  /**
+   * A desk's run left awaiting adoption, produced the way the stub provider
+   * produces one: started under the firm's commands, one claim recorded.
+   */
+  async function awaitingRun(
+    caseId: string,
+    entryKey: string,
+    departmentId: string,
+    options: { revisionId?: string; synthesis?: (officeClaimId: string, runId: string) => SynthesisArtifact } = {},
+  ): Promise<string> {
+    const employeeId = EMPLOYEE_BY_DEPARTMENT[departmentId]!
+    const assignment = (await repositories.assignments.listForCase(caseId)).find(
+      (candidate) => candidate.playbookEntryKey === entryKey && candidate.departmentId === departmentId,
+    )!
+    if (!(await repositories.evidence.get('set-host'))) {
+      await repositories.evidence.save({
+        id: 'set-host',
+        assembledAt: AT,
+        correlationId: 'corr-host',
+        items: [],
+        disagreements: [],
+        revisions: [],
+        coTemporality: { publication: { kind: 'empty' }, reference: { kind: 'empty' } },
+      })
+    }
+    const envelope = (commandId: string) => ({
+      commandId,
+      correlationId: caseId,
+      actor: { kind: 'employee' as const, employeeId },
+      initiator: { kind: 'orchestrator' as const, orchestratorId: 'test' },
+      occurredAt: AT,
+    })
+    const startedRun = await runCommand(
+      startAgentRun(TEST_ORGANIZATION),
+      {
+        caseId,
+        assignmentId: assignment.id,
+        departmentId,
+        evidenceSetId: 'set-host',
+        ...(options.revisionId ? { revisionId: options.revisionId } : {}),
+        providerId: 'stub',
+        providerVersion: '1',
+        providerKind: 'stub',
+        agentContractVersion: '0',
+        outputSchemaVersion: '0',
+        identity: { kind: 'scenario', scenarioId: 'success', stubVersion: '1' },
+        budget: resolveExecutionBudget('stub', { firmCeiling: { deadlineMs: 30_000 } }),
+      },
+      envelope(`${caseId}-${entryKey}-start`),
+      deps,
+    )
+    if (startedRun.outcome !== 'committed') throw new Error(JSON.stringify(startedRun))
+    const runId = startedRun.value.id
+    const recordCommandId = `${caseId}-${entryKey}-record`
+    const providerClaimId = `${entryKey}-claim`
+    const recorded = await runCommand(
+      recordContribution(TEST_ORGANIZATION),
+      {
+        caseId,
+        runId,
+        departmentId,
+        claims: [
+          {
+            id: providerClaimId,
+            type: 'observation',
+            statement: `${departmentId} reports on gold`,
+            evidenceRefs: [],
+            contradictingEvidenceRefs: [],
+            confidence: { level: 'insufficient', basis: ['test contribution'], cappedBy: 'no-evidence' },
+            temporalScope: { asOf: AT },
+            status: 'insufficient-evidence',
+          } as AgentClaim,
+        ],
+        observedStates: ['running'],
+        usage: { state: 'not-applicable' },
+        ...(options.synthesis ? { synthesis: options.synthesis(deriveClaimId(recordCommandId, providerClaimId), runId) } : {}),
+      },
+      envelope(recordCommandId),
+      deps,
+    )
+    if (recorded.outcome !== 'committed') throw new Error(JSON.stringify(recorded))
+    return runId
+  }
+  const claimIdOf = (caseId: string, entryKey: string) => deriveClaimId(`${caseId}-${entryKey}-record`, `${entryKey}-claim`)
+
+  it('adopts finished candidate work through the desk’s own principal, and leaves a desk without one waiting', async () => {
+    const asked = positive(await gateway(gold))
+    const caseId = asked.reference.id
+    const macroRun = await awaitingRun(caseId, 'macro-analysis', 'global-macro')
+    const quantRun = await awaitingRun(caseId, 'quant-validation', 'quant-technical')
+    expect((await repositories.runs.get(macroRun))!.state).toBe('awaiting-acceptance')
+
+    const result = positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
+    expect(result.commission!.adopted.map((desk) => desk.id)).toEqual(['global-macro'])
+    expect(result.commission!.withheld.some((entry) => entry.desk?.id === 'quant-technical' && entry.reason === 'no-principal')).toBe(true)
+    expect((await repositories.runs.get(macroRun))!.state).toBe('completed')
+    expect((await repositories.runs.get(quantRun))!.state).toBe('awaiting-acceptance')
+
+    /* The desk's own agent adopted it; JARVIS only initiated; no person pressed anything. */
+    const entry = await repositories.commands.find(`agent-accept-${macroRun}`)
+    expect(entry).not.toBeNull()
+    expect(entry!.intent.commandType).toBe('AcceptContribution')
+    expect(entry!.intent.actor).toMatchObject({ kind: 'institutional-agent', agentPrincipalId: 'global-macro-agent' })
+    expect(entry!.intent.initiator).toEqual({ kind: 'orchestrator', orchestratorId: HOST_ORCHESTRATOR_ID })
+    /* Adopted once: a later beginning finds nothing waiting for that desk. */
+    const again = positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-3', opening: explanation }))
+    expect(again.commission!.adopted).toEqual([])
+  })
+
+  it('institutionalises the office’s synthesis candidate through the office’s own act, as the revision', async () => {
+    const asked = positive(await gateway(gold))
+    const caseId = asked.reference.id
+    positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
+    const opening = (await repositories.theses.listForCase(caseId))[0]!
+    /* Both analytical desks, because the office's synthesis waits for both. */
+    const macroRun = await awaitingRun(caseId, 'macro-analysis', 'global-macro')
+    const ratesRun = await awaitingRun(caseId, 'rates-analysis', 'rates')
+    positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-3', opening: explanation }))
+    expect((await repositories.runs.get(macroRun))!.state).toBe('completed')
+    expect((await repositories.runs.get(ratesRun))!.state).toBe('completed')
+
+    /* The office's run, thesis-scoped, with the candidate the provider would have produced. */
+    const officeRun = await awaitingRun(caseId, 'aggregation', 'research-office', {
+      revisionId: opening.revisionId,
+      synthesis: (officeClaimId, officeRunId) => ({
+        statement: 'Guldets uppgång drivs främst av lägre realräntor.',
+        position: 'explain',
+        rationale: 'Makro läser räntekurvan som den främsta drivkraften.',
+        invalidationCriteria: 'Faller om realräntorna stiger utan att guldet faller.',
+        implications: [],
+        inputRunIds: [macroRun, ratesRun, officeRunId],
+        dispositions: [
+          { claimId: claimIdOf(caseId, 'macro-analysis'), disposition: 'adopted-supporting' },
+          { claimId: claimIdOf(caseId, 'rates-analysis'), disposition: 'adopted-supporting' },
+          { claimId: officeClaimId, disposition: 'adopted-supporting' },
+        ],
+        optionalInputs: [
+          {
+            playbookEntryKey: 'quant-validation',
+            availability: 'unavailable-at-aggregation',
+            materiallyRelevant: false,
+            explanation: 'The quant desk had not contributed when this was written.',
+          },
+        ],
+      }),
+    })
+    const result = positive(await gateway({ kind: 'begin', reference: asked.reference, requestId: 'req-4', opening: explanation }))
+    expect(result.commission!.adopted.map((desk) => desk.id)).toEqual(['research-office'])
+
+    const revisions = await repositories.theses.listForCase(caseId)
+    expect(revisions.map((revision) => revision.revisionNumber).sort()).toEqual([1, 2])
+    const minted = revisions.find((revision) => revision.revisionNumber === 2)!
+    expect(minted.statement).toBe('Guldets uppgång drivs främst av lägre realräntor.')
+    expect(minted.proposedByAgentPrincipalId).toBe('research-office-agent')
+    expect(minted.aggregationId).toBeTruthy()
+    for (const commandId of [`agent-accept-${officeRun}`, `office-adopt-${officeRun}`]) {
+      const entry = await repositories.commands.find(commandId)
+      expect(entry, commandId).not.toBeNull()
+      expect(entry!.intent.actor).toMatchObject({ kind: 'institutional-agent', agentPrincipalId: 'research-office-agent' })
+      expect(entry!.intent.initiator).toEqual({ kind: 'orchestrator', orchestratorId: HOST_ORCHESTRATOR_ID })
+    }
+    /* No person's decision anywhere in it, and the firm now owes governance, which nobody here can perform. */
+    expect(result.state).toBe('blocked')
   })
 
   it('refuses a foreign reference, needs an operator, and refuses a settled case', async () => {

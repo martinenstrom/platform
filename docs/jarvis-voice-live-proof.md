@@ -1487,3 +1487,64 @@ instruction is an explanation and needs none.
   way either way.
 - **The person's own voice** is still the synthesized Sofie in these runs;
   the two manual validation items of §12.7 stand.
+
+### 13.7 The loop after `begin` — adoption and the passes, prepared while credits are out (2026-09-17, second ruling)
+
+The ruling that accepted `a8e1c01` distinguished what was proven — **work
+starts** — from what was not — **complete institutional delivery** — and
+named the next boundary: a finished desk run waited for its desk's
+adoption, and the only path to adopt it was proof tooling. It ruled the
+adoption an internal institutional act: the desk's own principal adopts,
+JARVIS only initiates, the person is never asked.
+
+**What is built.** `FinancialOsSystem.begin` now advances the case in
+passes. Every pass first adopts each run in `awaiting-acceptance` whose
+desk has an active institutional agent — `AcceptContribution` with the
+agent as actor and the host as initiator, the P4 act made a production
+path — and takes a synthesis candidate one act further through the
+office's own `AggregateManagerConclusion`, which mints the revision from
+the exact persisted candidate. Then the standing evidence is reused or
+assembled, and every entry of the pinned workflow with no run yet is
+commissioned under its desk's agent; the synthesis entry is scoped to the
+current revision and reads its facts off the record at dispatch through
+the live synthesis provider. Each finished run earns the case one more
+pass in the same process, up to eight per beginning, logged as
+`[advance]`. A desk without a principal leaves its work waiting and is
+reported `no-principal`; `commission.adopted` names the desks whose work
+was adopted.
+
+**Verified in memory** (`hostGateway.test.ts`): a Global Macro run left
+awaiting is adopted on the next `begin` by `global-macro-agent` with the
+host as initiator, and a Quant run — a desk with no principal — stays
+waiting and is reported so; a second beginning adopts nothing twice; the
+office's synthesis candidate, recorded on a thesis-scoped run, is adopted
+and institutionalised through `agent-accept-<run>` and `office-adopt-<run>`
+under `research-office-agent`, and revision 2 carries its statement and
+its aggregation id; the case then reads `blocked`, because the firm owes
+governance.
+
+**What the firm's own policy stops at.** Under macro-regime v6 the
+governance entries carry no live budget and the dev firm has no governance
+principals, so the autonomous loop settles at `blocked /
+verification-required` with the office's revision on the record. The
+"authoritative conclusion" the ruling asks for lies past governance acts
+for which the product has no door at all — neither autonomous (no
+principals, no budgets) nor human (no server function records a
+verification, a challenge, a risk review, a peer examination or a CIO
+decision; those exist only in harnesses). That is the boundary the
+end-to-end proof will reach, and it is a ruling matter, not a defect of
+the door.
+
+**The probe** (`scripts/probe-jarvis-intent.mjs text-5 --keep-open`)
+follows the passes on the record until nothing runs, nothing waits for a
+principal that exists, and nothing new has appeared for forty-five
+seconds; it reports per run the provider latency, the adoption latency,
+tokens and recorded cost, the revisions and every command with its actor
+and initiator; then it asks JARVIS _"Var står det?"_ and _"Vad kom de fram
+till?"_ and prints what the person would hear. It has not been run to
+completion: the provider's credit balance is exhausted (§13.3), and the
+first thing to do once it is not is to run it.
+
+**Recorded as debt.** TD-96: the firm pays the provider before it
+discovers a budget violation; the target is a bound on expected cost
+before dispatch, refused or reduced where policy requires.

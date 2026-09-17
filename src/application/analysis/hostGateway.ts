@@ -620,6 +620,9 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     started: commission.started
       .map((entry) => deskOf(overview, entry.departmentId))
       .filter((desk): desk is HostDesk => desk !== null),
+    adopted: commission.adopted
+      .map((entry) => deskOf(overview, entry.departmentId))
+      .filter((desk): desk is HostDesk => desk !== null),
     withheld: commission.withheld.map((entry) => ({
       desk: deskOf(overview, entry.departmentId),
       reason: entry.reason,

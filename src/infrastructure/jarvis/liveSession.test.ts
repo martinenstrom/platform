@@ -448,6 +448,7 @@ describe('a live session', () => {
       commission: {
         evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
         started: [macro],
+        adopted: [],
         withheld: [],
       },
     }
@@ -599,7 +600,7 @@ describe('a live session', () => {
         round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Olja' }) : textResult('Jag har lagt frågan hos dem.')
       answer = (request) =>
         request.kind === 'begin'
-          ? { ...bound, state: 'blocked', block: { reason: 'analysis-required', owner: macro }, commission: { evidence: null, started: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] } }
+          ? { ...bound, state: 'blocked', block: { reason: 'analysis-required', owner: macro }, commission: { evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] } }
           : awaiting
       const result = await rt.respond({ text: line })
       expect(asked.map((request) => request.kind)).toEqual(['ask', 'begin'])

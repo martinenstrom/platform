@@ -410,6 +410,29 @@ the `missing-required-contribution` blocker), no longer `synthesis-required`
 for a synthesis nobody could have produced. `working` is unchanged: a run
 inside its window.
 
+**Adoption and the passes after `begin` (ruled 2026-09-17, second ruling
+of the day).** A finished desk run is a candidate until its desk adopts it,
+and the ruling made that adoption an internal institutional act with a
+production path: on every advance, each run in `awaiting-acceptance` whose
+desk has an active institutional agent is adopted by **that agent** —
+`AcceptContribution`, actor the desk's principal, initiator the host — and
+a synthesis candidate goes one act further through the office's own
+`AggregateManagerConclusion`, which mints the revision from the exact
+persisted candidate. The person is never asked; JARVIS never adopts; a
+desk with no principal leaves its work waiting and is reported
+`no-principal`. Adoption happens before evidence and before commissioning,
+needs neither, and `commission.adopted` names the desks it happened for.
+Each finished run then earns the case one more pass in the same process —
+adopt what finished, commission what is now ready (the synthesis entry
+scoped to the current revision, its facts read off the record at
+dispatch) — up to eight passes per beginning, logged as `[advance]`. The
+firm's own order of work is what stops it: under macro-regime v6 the
+governance entries carry no live budget and the dev firm has no
+governance principals, so the case settles at
+`blocked / verification-required` with the office's revision on the
+record — the honest end of what policy permits, said to the person as
+such.
+
 **The spoken sentence** is produced from the read-back
 (`beginSpeech`): what the desks were asked — "ta reda på vad som driver
 guld idag — makro, flöden, specifika händelser" — which desks started and on

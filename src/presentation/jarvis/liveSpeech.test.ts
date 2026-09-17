@@ -148,6 +148,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
         commission: {
           evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
           started: [macro, rates],
+          adopted: [],
           withheld: [{ desk: { id: 'quant-technical', name: 'Quant & Technical', isGovernance: false }, reason: 'dependencies-not-met' }],
         },
       },
@@ -168,7 +169,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
         ...gold,
         state: 'blocked',
         block: { reason: 'analysis-required', owner: macro },
-        commission: { evidence: null, started: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] },
+        commission: { evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] },
       },
       'begin',
       { kind: 'explanation', focus: ['makro'] },
@@ -182,7 +183,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
 
   it('words a position from the person’s view, or as an open examination', () => {
     const usa = { ...context, question: 'Borde jag minska min USA-exponering?', subject: 'USA-exponering' }
-    const commission = { evidence: null, started: [macro], withheld: [] }
+    const commission = { evidence: null, started: [macro], adopted: [], withheld: [] }
     expect(
       toolSpeech({ ...usa, state: 'working', commission }, 'begin', {
         kind: 'position',

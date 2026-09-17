@@ -402,6 +402,8 @@ export interface HostCommission {
   evidence: { family: string; from: string; to: string; observations: number } | null
   /** The desks whose runs exist now. */
   started: readonly HostDesk[]
+  /** The desks whose finished candidate work was adopted by their own principal in this advance. */
+  adopted: readonly HostDesk[]
   /** The desks that did not start, and why. `desk` is null when nothing named a desk. */
   withheld: readonly { desk: HostDesk | null; reason: HostWithheldReason }[]
 }

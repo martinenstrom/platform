@@ -111,6 +111,22 @@ export function standingEvidenceFor(playbookId: string | null | undefined): Stan
   return STANDING_EVIDENCE[playbookId] ?? null
 }
 
+/**
+ * The entry of a workflow that synthesises the desks' work — the one whose
+ * run is thesis-scoped and whose candidate the Research Office adopts as a
+ * revision (`AggregateManagerConclusion`). A policy per workflow, like the
+ * evidence basis; a workflow without one has its synthesis commissioned by
+ * nobody on the person's word.
+ */
+export const SYNTHESIS_ENTRY: Readonly<Record<string, string>> = Object.freeze({
+  'macro-regime': 'aggregation',
+})
+
+export function synthesisEntryFor(playbookId: string | null | undefined): string | null {
+  if (!playbookId) return null
+  return SYNTHESIS_ENTRY[playbookId] ?? null
+}
+
 /** The window's inclusive reference dates, ending on the day of the act. */
 export function evidenceWindow(now: string, windowDays: number): { from: string; to: string } {
   const to = new Date(now)

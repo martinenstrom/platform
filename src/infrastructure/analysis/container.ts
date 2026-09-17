@@ -23,6 +23,10 @@ import {
   LIVE_MAX_OUTPUT_TOKENS,
   LIVE_MODEL_ID,
 } from './providers/live'
+import {
+  createLiveSynthesisProvider,
+  LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS,
+} from './providers/liveSynthesis'
 import type { OrganizationReader } from '~/application/analysis/organizationReader'
 import type { StorageProvenance } from '~/application/analysis/repositories'
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
@@ -202,6 +206,16 @@ export async function createAnalysisContainer(
                   }
                 },
               }
+            },
+            synthesisProvider: (loadContext) => {
+              const apiKey = process.env.ANTHROPIC_API_KEY
+              if (!apiKey) return null
+              return createLiveSynthesisProvider({
+                apiKey,
+                model: LIVE_MODEL_ID,
+                maxTokens: LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS,
+                loadContext,
+              })
             },
             log: (line) => console.log(`[analysis] ${line}`),
           },
