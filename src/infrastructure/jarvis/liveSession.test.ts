@@ -578,6 +578,67 @@ describe('a live session', () => {
     expect(counts['error.market_context']).toBe(1)
   })
 
+  describe('the fast path, as a product principle (ruled 2026-09-17)', () => {
+    /*
+     * A simple market fact goes structured fresh data → deterministic
+     * formatting → answer. Never simple fact → general model → tools →
+     * general model → answer. A richer JARVIS must not become a slower one;
+     * these lines hold the chain: no case, no model, a provenanced value,
+     * an honest absence, and the router for everything that is not a fact.
+     */
+    const RETRIEVALS = ['Hur gick S&P 500 idag?', 'Vad gör tioåringen?', 'Hur går Nasdaq?', 'Hur går tech?', 'Vad gör dollarn?']
+
+    it('answers every simple retrieval with no model pass, no institutional case, and a provenanced value or an honest absence', async () => {
+      const rt = runtime()
+      for (const text of RETRIEVALS) {
+        const result = await rt.respond({ text })
+        expect(result.stages, text).toMatchObject({ tier: 0, routed: 'retrieval', modelPasses: 0, contextAttached: false })
+        expect(result.reference, text).toBeNull()
+        expect(result.say, text).toMatch(/\(fördröjd data från Yahoo, kl\. 15:59\)|saknas i datan just nu/)
+      }
+      expect(provider.responses).toHaveLength(0)
+      expect(asked).toHaveLength(0)
+      expect(rt.typedTelemetry().responses).toBe(0)
+    })
+
+    it('says a stale number as the latest available, never as now', async () => {
+      const us = brief('us')
+      const stale: MarketBrief = { ...us, indices: [{ ...us.indices[0]!, freshness: 'stale' }] }
+      const rt = createLiveRuntime({
+        provider,
+        host: async (request) => {
+          asked.push(request)
+          return answer(request)
+        },
+        market: async () => stale,
+        config,
+        requestId: () => 'req-1',
+      })
+      const result = await rt.respond({ text: 'Hur gick S&P 500 idag?' })
+      expect(result.say).toBe('Senaste tillgängliga noteringen för S&P 500 är från kl. 15:59 (Yahoo): 6 512, upp 0,42 procent.')
+      expect(result.say).not.toContain('just nu')
+      expect(result.stages.modelPasses).toBe(0)
+      expect(provider.responses).toHaveLength(0)
+    })
+
+    it('never lets a judgement, a why, a meaning, a case act or a broad synthesis take the fast path — the planted violations', async () => {
+      const rt = runtime()
+      respondWith = () => textResult('Svar.')
+      const violations = [
+        'Borde jag köpa S&P 500?',
+        'Varför faller tioåringen?',
+        'Vad betyder högre tioårsränta för tech?',
+        'Lägg till att tioåringen oroar mig i ärendet.',
+        'Hur ser amerikanska börsen ut idag?',
+      ]
+      for (const text of violations) {
+        const result = await rt.respond({ text })
+        expect(result.stages.tier, text).toBe('router')
+      }
+      expect(provider.responses).toHaveLength(violations.length)
+    })
+  })
+
   it('does not exist when the provider refuses', async () => {
     provider.createSession = vi.fn(async () => {
       throw new Error('429 insufficient_quota')

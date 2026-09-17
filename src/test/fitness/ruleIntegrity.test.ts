@@ -33,6 +33,7 @@ describe('fitness rules detect a planted violation', () => {
       'challenge-threshold-only-in-the-gate',
       'eligibility-decided-only-in-the-domain',
       'evidence-assembled-only-by-the-governed-act',
+      'fast-path-meets-no-model',
       'llm-client-confined-to-provider',
       'no-caller-supplied-or-invented-identity',
       'no-eligibility-in-sql',

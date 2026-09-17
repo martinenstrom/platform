@@ -1302,8 +1302,51 @@ const evidenceOnlyFromTheGovernedAct: FitnessRule = {
  * Ordered as the reviewer named them. Adding an entry here without a planted
  * violation and a benign near-miss in `planted.ts` fails the meta-test.
  */
+/*
+ * The fast path, ruled a hard product principle on 2026-09-17: a simple
+ * market fact goes structured fresh data → deterministic formatting →
+ * answer, and never simple fact → general model → tools → general model →
+ * answer. Two modules make a line Tier 0 and speak it: the recogniser and
+ * the formatter. The day either of them reaches for a model, a provider,
+ * or the runtime's plumbing, the one-second path has quietly become a
+ * model path again, and every green test above it still passes.
+ */
+const FAST_PATH_MODULES = ['application/jarvis/marketIntent.ts', 'presentation/jarvis/marketSpeech.ts']
+
+const MODEL_PACKAGES = /^(openai|@anthropic-ai\/sdk|@langchain\/.*|langchain|ai|@ai-sdk\/.*|@google\/generative-ai|@mistralai\/.*|cohere-ai|groq-sdk)$/
+
+const fastPathMeetsNoModel: FitnessRule = {
+  id: 'fast-path-meets-no-model',
+  states:
+    'The Tier-0 market path — the recogniser and the formatter — imports no model, no provider and no infrastructure.',
+  because:
+    'A named instrument’s move is answered from the platform’s own numbers ' +
+    'in under a second because nothing on that path waits for a model. An ' +
+    'import of a model SDK, of the live provider or of the runtime would ' +
+    'put a general model back between the number and the person, and the ' +
+    'measured second would become the measured five without any test ' +
+    'failing — a richer JARVIS quietly becoming a slower one.',
+  selects: (file) => !file.isTest && FAST_PATH_MODULES.includes(file.path),
+  detect(file) {
+    const found: string[] = []
+    for (const reference of file.imports) {
+      if (reference.typeOnly) continue
+      const { specifier } = reference
+      if (MODEL_PACKAGES.test(specifier)) {
+        found.push(`${file.path} — imports the model package '${specifier}'`)
+      } else if (/(^~\/|\/)infrastructure\//.test(specifier) || specifier.startsWith('~/infrastructure')) {
+        found.push(`${file.path} — imports infrastructure '${specifier}'`)
+      } else if (/\/(openaiLive|liveSession|liveTools|liveSpeech)$/.test(specifier)) {
+        found.push(`${file.path} — imports the live runtime’s '${specifier}'`)
+      }
+    }
+    return found
+  },
+}
+
 export const LOAD_BEARING_RULES: readonly FitnessRule[] = [
   noOutboundNetwork,
+  fastPathMeetsNoModel,
   noProseActivityInDomain,
   orchestratorWritesNothing,
   llmClientConfinedToProvider,

@@ -1302,4 +1302,68 @@ export const PLANTED: readonly RuleFixtures[] = [
       },
     ],
   },
+  {
+    ruleId: 'fast-path-meets-no-model',
+    violations: [
+      {
+        path: 'application/jarvis/marketIntent.ts',
+        what: 'the recogniser asking a model whether a line is a retrieval',
+        source: `
+          import { OpenAI } from 'openai'
+          export const classify = (text: string) => new OpenAI().responses.create({ input: text })
+        `,
+      },
+      {
+        path: 'presentation/jarvis/marketSpeech.ts',
+        what: 'the formatter phrasing the number through the live provider',
+        source: `
+          import { createOpenAiLiveProvider } from '~/infrastructure/jarvis/openaiLive'
+          export const speak = (n: number) => createOpenAiLiveProvider().respond({ input: String(n) })
+        `,
+      },
+      {
+        path: 'presentation/jarvis/marketSpeech.ts',
+        what: 'the formatter reaching into the runtime',
+        source: `
+          import { createLiveRuntime } from '../../infrastructure/jarvis/liveSession'
+          export const speak = createLiveRuntime
+        `,
+      },
+      {
+        path: 'application/jarvis/marketIntent.ts',
+        what: 'the recogniser borrowing the router’s instructions',
+        source: `
+          import { LIVE_BACKEND_INSTRUCTIONS } from '~/presentation/jarvis/liveSpeech'
+          export const rules = LIVE_BACKEND_INSTRUCTIONS
+        `,
+      },
+    ],
+    nearMisses: [
+      {
+        path: 'application/jarvis/marketIntent.ts',
+        what: 'the recogniser naming instruments from the domain',
+        source: `
+          import { SYM_SP500, SYM_US10Y } from '~/domain/market'
+          export const known = [SYM_SP500, SYM_US10Y]
+        `,
+      },
+      {
+        path: 'presentation/jarvis/marketSpeech.ts',
+        what: 'the formatter reading the brief’s type, which ships nothing',
+        source: `
+          import type { MarketBrief } from '~/application/jarvis/marketBrief'
+          import type { LiveConfig } from '~/infrastructure/jarvis/liveSession'
+          export const speak = (brief: MarketBrief, config: LiveConfig) => brief.scope + config.model
+        `,
+      },
+      {
+        path: 'application/jarvis/marketIntent.ts',
+        what: 'a comment that names the model the path must never call',
+        source: `
+          /* Never route this through openai or the live runtime; the number is enough. */
+          export const MODEL_FREE = true
+        `,
+      },
+    ],
+  },
 ]

@@ -1178,3 +1178,31 @@ asked for the thesis; no other line opened one.
   Tier 1 needs to feel faster than a single 2 s pass allows); market hours
   with every source live (Avanza's circuit was open all evening, so Nasdaq
   100, DAX, OMXS30 and Nikkei were honestly missing throughout).
+
+### 12.7 The ruling of 2026-09-17, and what it leaves as validation
+
+Commit `3697179` was accepted; the fast-path performance milestone is
+closed; further latency work — typed streaming, bridging words, sub-second
+tuning, the priority tier, the 2 s reasoning path — is deferred and must
+not become a rabbit hole. The execution classes are a **hard product
+principle** now: a simple fact goes structured fresh data → deterministic
+or light formatting → answer, never simple fact → general model → tools →
+general model → answer; Tier 0 ≈ 1 s or better, Tier 1 ≈ 1–3 s where
+practical, Tier 2 ≈ 2–5 s, Tier 3 correctness and governance before
+latency. A broad question (_"Hur ser amerikanska börsen ut idag?"_) may
+legitimately take longer than a named retrieval (_"Hur gick S&P 500
+idag?"_), and broad synthesis is never reclassified as Tier 0 to hit a
+number. Regression coverage for the chain — simple market retrieval → no
+institutional case → no general model when unnecessary → fresh,
+provenanced value → deterministic answer — is held by the fitness rule
+`fast-path-meets-no-model` (the recogniser and the formatter import no
+model, provider or infrastructure; verified by planted violations) and by
+the runtime regression in `liveSession.test.ts` (`the fast path, as a
+product principle`), beside the live probes above.
+
+**Two manual validation items remain, and they are validation of the
+accepted architecture, not a new milestone:** (1) several conversations
+with the person's real microphone and voice; (2) the market test repeated
+in normal market conditions with the live market-data circuit healthy.
+Neither blocks broader product development unless it exposes a real
+defect.
