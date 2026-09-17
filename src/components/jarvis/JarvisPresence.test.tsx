@@ -173,6 +173,18 @@ const td88: HostResult = {
   decision: { reason: 'institutional-initialization-required' },
 }
 
+const routerStages = {
+  tier: 'router' as const,
+  intentMs: 900,
+  routed: 'tool' as const,
+  toolNames: ['delegate_to_financial_os'],
+  dataMs: null,
+  composeMs: 800,
+  modelPasses: 2,
+  contextAttached: false,
+  totalMs: 1700,
+}
+
 /** What the router answers a typed Nvidia question with: a delegation the firm bound, relayed in words. */
 const delegated = {
   ok: true as const,
@@ -183,9 +195,11 @@ const delegated = {
   toolCalls: ['delegate_to_financial_os'],
   backendMs: 12,
   spoken: false,
+  stages: routerStages,
+  marketContext: null,
 }
 
-/** A market answer: no case, no reference, words from fresh data. */
+/** A market answer: no case, no reference, words from fresh data, and the brief's time to hand back. */
 const marketAnswer = {
   ok: true as const,
   say: 'S&P 500 är upp 0,4 procent och Nasdaq 100 0,7. Tech leder; tioåringen ligger kring 4,1 procent.',
@@ -195,6 +209,9 @@ const marketAnswer = {
   toolCalls: ['get_market_snapshot'],
   backendMs: 9,
   spoken: false,
+  stages: { ...routerStages, toolNames: ['get_market_snapshot'], dataMs: 40 },
+  /* A time inside the presence's ten-minute memory of a brief, whenever the test runs. */
+  marketContext: { at: new Date().toISOString(), scope: 'us' as const },
 }
 
 async function mountApp(initial = '/') {
@@ -348,7 +365,12 @@ describe('engaged', () => {
         { by: 'user', text: 'Hur ser amerikanska börsen ut idag?' },
         { by: 'jarvis', text: marketAnswer.say },
       ],
+      /* The brief's time goes back with the follow-up, so it is answered over the same numbers. */
+      marketContext: { at: marketAnswer.marketContext.at },
     })
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
+      `"marketContextAt":"${marketAnswer.marketContext.at}"`,
+    )
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText('För att räntan steg.')).toBeInTheDocument()
   })
@@ -528,6 +550,8 @@ describe('engaged', () => {
       toolCalls: ['delegate_to_financial_os'],
       backendMs: 7,
       spoken: false,
+      stages: routerStages,
+      marketContext: null,
     })
     const user = userEvent.setup()
     await mountApp()
@@ -746,6 +770,10 @@ describe('the microphone', () => {
     await user.type(screen.getByLabelText('Fråga'), 'Hur går börsen?')
     await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
     expect(typeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1', text: 'Hur går börsen?' } })
+    /* And the brief's time the reply carried is remembered for the next line. */
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
+      `"marketContextAt":"${marketAnswer.marketContext.at}"`,
+    )
     expect(host).not.toHaveBeenCalled()
     expect(askJarvis).not.toHaveBeenCalled()
     const log = within(presence()).getByRole('list', { name: 'Samtal' })

@@ -47,6 +47,12 @@ export interface PresenceState {
   turns: readonly PresenceTurn[]
   /** Which deeper surface stands open beside the conversation, if any. */
   surface: ContextualSurface | null
+  /**
+   * When the conversation last carried a market brief, ISO 8601. A pointer
+   * handed back with the next line so a follow-up is answered over the same
+   * numbers; the numbers themselves are re-read on the server, never kept here.
+   */
+  marketContextAt: string | null
 }
 
 export const EMPTY_PRESENCE: PresenceState = Object.freeze({
@@ -56,6 +62,7 @@ export const EMPTY_PRESENCE: PresenceState = Object.freeze({
   question: null,
   turns: Object.freeze([]) as readonly PresenceTurn[],
   surface: null,
+  marketContextAt: null,
 })
 
 const KEY = 'jarvis:presence'
@@ -83,6 +90,7 @@ function load(): PresenceState {
       turns: Array.isArray(parsed.turns) ? parsed.turns : [],
       surface:
         parsed.surface === 'boardroom' || parsed.surface === 'underlag' ? parsed.surface : null,
+      marketContextAt: typeof parsed.marketContextAt === 'string' ? parsed.marketContextAt : null,
     }
   } catch {
     return EMPTY_PRESENCE

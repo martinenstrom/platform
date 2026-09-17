@@ -56,16 +56,28 @@ function liveConfig(): LiveConfig {
   const price = BACKEND_PRICES[backendModel] ?? BACKEND_PRICES['gpt-5.6-terra']!
   const voice = process.env.JARVIS_LIVE_VOICE ?? 'marin'
   const tier = process.env.JARVIS_LIVE_SERVICE_TIER
-  const effort = process.env.JARVIS_LIVE_REASONING
+  /*
+   * Benchmarked in HQ on 2026-09-16 (docs/jarvis-voice-live-proof.md §12):
+   * `none` answered every follow-up line as correctly and as honestly as
+   * `high` at a median of 2.1 s against 3.1 s unset and 3.8 s high, routed
+   * the capital question to the firm every time, and verified every
+   * number. The priority tier bought ~0.2 s at a premium price and stays
+   * off unless configured.
+   */
+  const effort = process.env.JARVIS_LIVE_REASONING ?? 'none'
   return {
     model: process.env.JARVIS_LIVE_MODEL ?? 'gpt-live-1',
     backendModel,
     ...(tier === 'auto' || tier === 'default' || tier === 'flex' || tier === 'priority' ? { backendServiceTier: tier } : {}),
-    ...(effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' ? { backendReasoningEffort: effort } : {}),
+    ...(effort === 'none' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max'
+      ? { backendReasoningEffort: effort }
+      : {}),
     voices: LIVE_VOICES,
     defaultVoice: (LIVE_VOICES as readonly string[]).includes(voice) ? voice : 'marin',
     idleSeconds: Number(process.env.JARVIS_LIVE_IDLE_SECONDS ?? 90),
     maxSeconds: Number(process.env.JARVIS_LIVE_MAX_SECONDS ?? 1200),
+    /* The explicit window a fetched brief is reused as context; the numbers inside keep their own times. */
+    marketContextSeconds: Number(process.env.JARVIS_LIVE_MARKET_CONTEXT_SECONDS ?? 180),
     prices: {
       voicePerMinuteUsd: Number(process.env.JARVIS_LIVE_PRICE_PER_MINUTE ?? 0.05),
       backendInputUsd: price.input,
@@ -196,10 +208,11 @@ export const askJarvisFn = createServerFn({ method: 'POST' })
  * on its own, so it cannot answer it on its own.
  */
 export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
-  .validator((input: { sessionId: string; text: string; history?: unknown }) => ({
+  .validator((input: { sessionId: string; text: string; history?: unknown; marketContext?: unknown }) => ({
     sessionId: String(input.sessionId),
     text: String(input.text),
     ...(input.history !== undefined ? { history: input.history } : {}),
+    ...(input.marketContext !== undefined ? { marketContext: input.marketContext } : {}),
   }))
   .handler(async ({ data }): Promise<AskJarvisResponse> => typedTurn(data))
 

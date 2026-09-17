@@ -188,6 +188,7 @@ describe('the US brief', () => {
     expect(brief.unavailable).toEqual([])
     expect(brief.notServed).toBe(MARKET_NOT_SERVED)
     expect(brief.notServed).toContain('Dow Jones')
+    expect(brief.notServed).toContain('värderingsmått (P/E, multiplar)')
   })
 
   it('never quotes a fixture as the market, and keeps the real observations beside it', () => {

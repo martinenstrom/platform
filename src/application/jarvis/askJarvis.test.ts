@@ -44,6 +44,17 @@ describe('a typed line to JARVIS', () => {
     }
   })
 
+  it('carries when the conversation last held a market brief, and refuses anything but a time', () => {
+    expect(parseAskJarvisRequest({ text: 'Varför?', marketContext: { at: '2026-09-16T18:21:00.000Z' } })).toEqual({
+      ok: true,
+      request: { text: 'Varför?', marketContext: { at: '2026-09-16T18:21:00.000Z' } },
+    })
+    expect(parseAskJarvisRequest({ text: 'x', marketContext: null })).toEqual({ ok: true, request: { text: 'x' } })
+    for (const bad of [{ at: 'yesterday' }, { at: 1 }, { at: '2026-09-16T18:21:00.000Z', brief: {} }, 'now']) {
+      expect(parseAskJarvisRequest({ text: 'x', marketContext: bad })).toEqual({ ok: false, field: 'marketContext' })
+    }
+  })
+
   it('refuses an empty or oversized line', () => {
     expect(parseAskJarvisRequest({ text: '   ' })).toEqual({ ok: false, field: 'text' })
     expect(parseAskJarvisRequest({ text: 'x'.repeat(2_001) })).toEqual({ ok: false, field: 'text' })

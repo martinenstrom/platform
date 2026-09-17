@@ -48,6 +48,8 @@ export type TypedReply =
       say: string
       reference: DomainReference | null
       lastAsk: { question: string; subject: string } | null
+      /** A market brief was fetched or attached; handed back with the next line. */
+      marketContext: { at: string } | null
     }
   | { ok: false }
 
@@ -253,14 +255,23 @@ export class VoiceSession {
    * same backend the voice delegates to, then spoken. What comes back is the
    * answer as text and the case the line may have bound.
    */
-  async type(text: string, history: readonly { by: 'user' | 'jarvis'; text: string }[] = []): Promise<TypedReply> {
+  async type(
+    text: string,
+    history: readonly { by: 'user' | 'jarvis'; text: string }[] = [],
+    marketContext: { at: string } | null = null,
+  ): Promise<TypedReply> {
     const sessionId = this.snapshot.sessionId
     if (!this.pc || !sessionId) return { ok: false }
     const result = await typeIntoLiveSessionFn({
-      data: { sessionId, text, ...(history.length > 0 ? { history: [...history] } : {}) },
+      data: {
+        sessionId,
+        text,
+        ...(history.length > 0 ? { history: [...history] } : {}),
+        ...(marketContext ? { marketContext } : {}),
+      },
     })
     if (!result.ok) return { ok: false }
-    return { ok: true, say: result.say, reference: result.reference, lastAsk: result.lastAsk }
+    return { ok: true, say: result.say, reference: result.reference, lastAsk: result.lastAsk, marketContext: result.marketContext }
   }
 
   /* ------------------------------------------------------------ events */

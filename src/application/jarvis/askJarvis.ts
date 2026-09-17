@@ -25,6 +25,8 @@ export interface AskJarvisRequest {
   sessionId?: string
   /** The last few turns before this line, oldest first. Conversational data, never the record. */
   history?: AskJarvisTurn[]
+  /** When the conversation last carried a market brief; the server re-reads the numbers, never this. */
+  marketContext?: { at: string }
 }
 
 const MAX_TEXT = 2_000
@@ -53,8 +55,22 @@ export function parseAskJarvisRequest(
 ): { ok: true; request: AskJarvisRequest } | { ok: false; field: string } {
   if (!isRecord(input)) return { ok: false, field: '' }
   for (const key of Object.keys(input)) {
-    if (key !== 'text' && key !== 'subject' && key !== 'reference' && key !== 'sessionId' && key !== 'history')
+    if (
+      key !== 'text' &&
+      key !== 'subject' &&
+      key !== 'reference' &&
+      key !== 'sessionId' &&
+      key !== 'history' &&
+      key !== 'marketContext'
+    )
       return { ok: false, field: key }
+  }
+  let marketContext: { at: string } | undefined
+  if (input.marketContext !== undefined && input.marketContext !== null) {
+    const value = input.marketContext
+    if (!isRecord(value) || typeof value.at !== 'string' || Number.isNaN(Date.parse(value.at)) || Object.keys(value).length !== 1)
+      return { ok: false, field: 'marketContext' }
+    marketContext = { at: value.at }
   }
   if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > MAX_TEXT)
     return { ok: false, field: 'text' }
@@ -82,6 +98,7 @@ export function parseAskJarvisRequest(
       ...(reference ? { reference } : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(history ? { history } : {}),
+      ...(marketContext ? { marketContext } : {}),
     },
   }
 }

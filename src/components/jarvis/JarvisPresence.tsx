@@ -269,13 +269,26 @@ export function JarvisPresence() {
   const recentHistory = () =>
     presence.turns.slice(-10).map((entry) => ({ by: entry.by, text: entry.text }))
 
+  /**
+   * The market brief the conversation last carried, if recent: a pointer
+   * the server uses to answer a follow-up over the same numbers. Ten
+   * minutes is the conversation's memory of it, not the data's freshness —
+   * the server re-reads the numbers and applies its own window.
+   */
+  const recentMarketContext = (): { at: string } | null => {
+    const at = presence.marketContextAt
+    if (!at) return null
+    return Date.now() - new Date(at).getTime() < 10 * 60_000 ? { at } : null
+  }
+
   /** A typed line while live: routed by the server, answered here as text, then spoken by the voice. */
   async function say(text: string) {
     const history = recentHistory()
+    const marketContext = recentMarketContext()
     updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
     setBusy(true)
     try {
-      const reply = await voiceRef.current?.type(text, history)
+      const reply = await voiceRef.current?.type(text, history, marketContext)
       if (!reply?.ok) {
         updatePresence((state) => ({
           ...state,
@@ -289,6 +302,7 @@ export function JarvisPresence() {
         reference: reply.reference ?? state.reference,
         subject: reply.lastAsk?.subject ?? state.subject,
         question: reply.lastAsk?.question ?? state.question,
+        marketContextAt: reply.marketContext?.at ?? state.marketContextAt,
         turns: [...state.turns, turn('jarvis', reply.say || 'JARVIS svarade inte på det.')],
       }))
     } finally {
@@ -304,6 +318,7 @@ export function JarvisPresence() {
    */
   async function ask(text: string, subject: string) {
     const history = recentHistory()
+    const marketContext = recentMarketContext()
     updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
     setBusy(true)
     try {
@@ -314,6 +329,7 @@ export function JarvisPresence() {
           ...(subject ? { subject } : {}),
           ...(reference ? { reference } : {}),
           ...(history.length > 0 ? { history } : {}),
+          ...(marketContext ? { marketContext } : {}),
         },
       })
       if (!result.ok) {
@@ -328,6 +344,7 @@ export function JarvisPresence() {
         reference: result.reference ?? state.reference,
         subject: result.lastAsk?.subject ?? state.subject,
         question: result.lastAsk?.question ?? state.question,
+        marketContextAt: result.marketContext?.at ?? state.marketContextAt,
         turns: [...state.turns, turn('jarvis', result.say || 'JARVIS svarade inte på det.')],
       }))
     } catch {

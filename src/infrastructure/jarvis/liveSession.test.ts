@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
 import type { MarketBrief, MarketScope } from '~/application/jarvis/marketBrief'
+import { LIVE_APPEND_MAX_CHARS } from '~/presentation/jarvis/liveSpeech'
 import {
   createLiveRuntime,
   type LiveConfig,
@@ -27,6 +28,7 @@ const config: LiveConfig = {
   voices: ['marin', 'cedar'],
   defaultVoice: 'marin',
   idleSeconds: 30,
+  marketContextSeconds: 180,
   maxSeconds: 600,
   prices: { voicePerMinuteUsd: 0.05, backendInputUsd: 0.2, backendCachedUsd: 0.02, backendOutputUsd: 1.2 },
 }
@@ -113,6 +115,8 @@ describe('a live session', () => {
   let answer: (request: HostRequest) => HostResult
   let marketAsked: MarketScope[]
   let respondWith: (request: ResponsesRequest) => ResponsesResult
+  /* What the runtime sent, without the market context it hands the voice on its own. */
+  const tool = () => sideband.sent.filter((e) => !(e.type === 'session.instructions.append' && String(e.event_id).startsWith('market_')))
 
   beforeEach(() => {
     /* The watchdog's interval and the clock are faked; setTimeout stays real so `flush` can yield. */
@@ -176,7 +180,7 @@ describe('a live session', () => {
     await flush()
 
     expect(asked).toEqual([{ kind: 'ask', requestId: 'req-1', question: 'Borde jag minska Hållbar Energi?', subject: 'Hållbar Energi' }])
-    const [output, cont] = sideband.sent
+    const [output, cont] = tool()
     expect(output?.type).toBe('response.item.create')
     const item = output?.item as { type: string; call_id: string; output: string }
     expect(item.call_id).toBe('call-1')
@@ -201,7 +205,7 @@ describe('a live session', () => {
       await rt.open({ sdp: 'offer' })
       sideband.emit(functionCall('delegate_to_financial_os', { question: 'q', subject: 's' }))
       await flush()
-      const parsed = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+      const parsed = JSON.parse((tool()[0]?.item as { output: string }).output)
       expect(parsed.acknowledgeWork, result.state).toBe(false)
       expect(parsed.say, result.state).not.toMatch(/återkommer/)
     }
@@ -235,7 +239,7 @@ describe('a live session', () => {
     sideband.emit(functionCall('add_to_delegation', { note: ' ta hänsyn till dollarn ', actorEmployeeId: 'cio' }, 'c3'))
     await flush()
     expect(asked[2]).toEqual({ kind: 'amend', reference, requestId: 'req-1', text: 'ta hänsyn till dollarn' })
-    const added = JSON.parse((sideband.sent[4]?.item as { output: string }).output)
+    const added = JSON.parse((tool()[4]?.item as { output: string }).output)
     expect(added.state).toBe('blocked')
     expect(added.say).toBe('Tillagt i ärendet. Det arbete som redan gjorts tar inte hänsyn till det.')
     expect(added.acknowledgeWork).toBe(false)
@@ -252,7 +256,7 @@ describe('a live session', () => {
     sideband.emit(functionCall('close_case', {}, 'c1'))
     await flush()
     expect(asked).toEqual([{ kind: 'close', reference, reason: 'På användarens begäran i samtalet.' }])
-    const closed = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    const closed = JSON.parse((tool()[0]?.item as { output: string }).output)
     expect(closed.state).toBe('closed')
     expect(closed.say).toBe('Ärendet är stängt. Lades ner innan något arbete gjorts — På användarens begäran i samtalet.')
     expect(closed.acknowledgeWork).toBe(false)
@@ -268,7 +272,7 @@ describe('a live session', () => {
     await flush()
     expect(asked).toEqual([])
     for (const index of [0, 2]) {
-      const out = JSON.parse((sideband.sent[index]?.item as { output: string }).output)
+      const out = JSON.parse((tool()[index]?.item as { output: string }).output)
       expect(out.state).toBe('unsupported')
       expect(out.say).toContain('inget pågående ärende')
       expect(out.acknowledgeWork).toBe(false)
@@ -286,6 +290,9 @@ describe('a live session', () => {
     await flush()
     sideband.emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 8200, end_ms: 8900 })
     sideband.emit({ type: 'session.output_transcript.delta', delta: 'Jag kollar på det och återkommer.', start_ms: 11000, end_ms: 12500 })
+    /* Two whole bridging sentences are not useful, nor a stray syllable; the firm's answer is. */
+    sideband.emit({ type: 'session.output_transcript.delta', delta: 'sep.,', start_ms: 12500, end_ms: 12580 })
+    sideband.emit({ type: 'session.output_transcript.delta', delta: 'Firman har tagit frågan.', start_ms: 12600, end_ms: 13200 })
     sideband.emit({ type: 'response.event', delegation_id: 'd-1', event: { type: 'response.completed', response: {} } })
     /* The person speaking again opens the next turn's timing. */
     sideband.emit({ type: 'session.input_transcript.delta', delta: 'Okej.', start_ms: 14000, end_ms: 14400 })
@@ -296,7 +303,7 @@ describe('a live session', () => {
 
     const turns = rt.state('live-1')!.telemetry.turns
     expect(turns).toHaveLength(3)
-    expect(turns[0]).toMatchObject({ userEndMs: 8000, delegationMs: 7800, firstSpeechMs: 8200, speechStartsMs: [8200, 11000], typed: false })
+    expect(turns[0]).toMatchObject({ userEndMs: 8000, delegationMs: 7800, firstSpeechMs: 8200, firstUsefulSpeechMs: 12600, speechStartsMs: [8200, 11000], typed: false })
     expect(turns[0]!.backendStartMs).not.toBeNull()
     expect(turns[0]!.backendEndMs).not.toBeNull()
     expect(turns[0]!.hostCallMs).not.toBeNull()
@@ -335,9 +342,9 @@ describe('a live session', () => {
     await rt.open({ sdp: 'offer' })
     sideband.emit({ type: 'session.input_transcript.delta', delta: 'hej', start_ms: 0, end_ms: 500 })
     vi.advanceTimersByTime(29_000)
-    expect(sideband.sent.some((e) => e.type === 'session.close')).toBe(false)
+    expect(tool().some((e) => e.type === 'session.close')).toBe(false)
     vi.advanceTimersByTime(2_000)
-    expect(sideband.sent.some((e) => e.type === 'session.close')).toBe(true)
+    expect(tool().some((e) => e.type === 'session.close')).toBe(true)
     sideband.emit({ type: 'session.closed', reason: 'client_requested', usage: { seconds: 31 } })
     const state = rt.state('live-1')!
     expect(state.closed).toBe(true)
@@ -351,9 +358,10 @@ describe('a live session', () => {
     await rt.open({ sdp: 'offer' })
     sideband.emit(functionCall('get_market_snapshot', { scope: 'us' }, 'm1'))
     await flush()
-    expect(marketAsked).toEqual(['us'])
+    /* 'global' is the context handed to the voice at open and after the read; the tool itself asked for 'us'. */
+    expect(marketAsked.filter((scope) => scope === 'us')).toEqual(['us'])
     expect(asked).toEqual([])
-    const out = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    const out = JSON.parse((tool()[0]?.item as { output: string }).output)
     expect(out.state).toBe('market-snapshot')
     expect(out.acknowledgeWork).toBe(false)
     expect(out.brief.indices[0].name).toBe('S&P 500')
@@ -376,7 +384,7 @@ describe('a live session', () => {
     await failing.open({ sdp: 'offer' })
     sideband.emit(functionCall('get_market_snapshot', { scope: 'us' }, 'm1'))
     await flush()
-    const out = JSON.parse((sideband.sent[0]?.item as { output: string }).output)
+    const out = JSON.parse((tool()[0]?.item as { output: string }).output)
     expect(out.state).toBe('market-unavailable')
     expect(out.say).toContain('inte åt färska marknadsdata')
     expect(out.acknowledgeWork).toBe(false)
@@ -386,13 +394,15 @@ describe('a live session', () => {
     const rt = runtime()
     let round = 0
     respondWith = () => (round++ === 0 ? functionCallResult('get_market_snapshot', { scope: 'us' }) : textResult('S&P 500 är upp 0,4 procent.'))
-    const result = await rt.respond({ text: 'Hur ser amerikanska börsen ut idag?' })
+    /* A line that names no market word: no brief is attached, so the tool is offered and the router reaches for it. */
+    const result = await rt.respond({ text: 'Hur ser det ut där borta just nu?' })
     expect(result.say).toBe('S&P 500 är upp 0,4 procent.')
     expect(result.toolCalls).toEqual(['get_market_snapshot'])
     expect(result.state).toBe('market-snapshot')
     expect(result.reference).toBeNull()
     expect(result.spoken).toBe(false)
     expect(marketAsked).toEqual(['us'])
+    expect(result.stages.contextAttached).toBe(false)
     expect(asked).toEqual([])
     /* Two calls: the second carries the call and its output back, in the request. */
     expect(provider.responses).toHaveLength(2)
@@ -458,7 +468,7 @@ describe('a live session', () => {
     respondWith = () => textResult('S&P 500 är upp 0,4 procent.')
     const result = await rt.respond({ text: 'Hur går börsen?', sessionId: 'live-1' })
     expect(result.spoken).toBe(true)
-    const appended = sideband.sent.find((e) => e.type === 'session.instructions.append') as { content: string; delegation_id: null }
+    const appended = tool().find((e) => e.type === 'session.instructions.append') as { content: string; delegation_id: null }
     expect(appended.content).toContain('«S&P 500 är upp 0,4 procent.»')
     expect(appended.content).toContain('Svara inte på frågan själv.')
     expect(appended.delegation_id).toBeNull()
@@ -478,6 +488,94 @@ describe('a live session', () => {
     const after = await rt.respond({ text: 'igen', sessionId: 'live-1' })
     expect(after.say).toBe('Text.')
     expect(after.spoken).toBe(false)
+  })
+
+  it('answers a named instrument’s state in Tier 0: no model, the platform’s number with its time and source', async () => {
+    const rt = runtime()
+    const result = await rt.respond({ text: 'Hur gick S&P 500 idag?' })
+    expect(provider.responses).toHaveLength(0)
+    expect(marketAsked).toEqual(['us'])
+    expect(result.say).toBe('S&P 500 ligger på 6 512 just nu, upp 0,42 procent idag (fördröjd data från Yahoo, kl. 15:59).')
+    expect(result.state).toBe('market-retrieval')
+    expect(result.stages).toMatchObject({ tier: 0, routed: 'retrieval', modelPasses: 0, contextAttached: false })
+    expect(result.stages.dataMs).not.toBeNull()
+    expect(result.marketContext).toEqual({ at: '2026-09-16T14:00:00.000Z', scope: 'us' })
+    expect(rt.typedTelemetry().stages).toHaveLength(1)
+    expect(rt.typedTelemetry().responses).toBe(0)
+  })
+
+  it('routes a judgement about a named instrument to the router, never to the formatter', async () => {
+    const rt = runtime()
+    let round = 0
+    respondWith = () =>
+      round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: 'Ska jag köpa guld?', subject: 'guld' }) : textResult('Kommittén behöver din utgångstes.')
+    answer = () => ({ ...bound, state: 'needs-decision', decision: { reason: 'institutional-initialization-required' } })
+    const result = await rt.respond({ text: 'Ska jag köpa guld?' })
+    expect(result.stages).toMatchObject({ tier: 'router', routed: 'tool', modelPasses: 2 })
+    expect(asked).toHaveLength(1)
+    expect(result.reference).toEqual(reference)
+  })
+
+  it('attaches a fresh brief as context to a market question, so the router answers over the numbers', async () => {
+    const rt = runtime()
+    respondWith = () => textResult('S&P 500 föll 0,45 procent; tech höll emot.')
+    const result = await rt.respond({ text: 'Hur ser amerikanska börsen ut idag?' })
+    expect(marketAsked).toEqual(['global'])
+    expect(provider.responses[0]!.instructions).toContain('MARKNADSLÄGE hämtat')
+    expect(provider.responses[0]!.instructions).toContain('S&P 500')
+    expect(provider.responses[0]!.instructions).toContain('drivkraft är inte verifierad')
+    /* With the global brief attached, the snapshot tool has nothing to add and is not offered; the firm's tools are. */
+    const offered = provider.responses[0]!.tools.map((tool) => (tool as { name: string }).name)
+    expect(offered).not.toContain('get_market_snapshot')
+    expect(offered).toContain('delegate_to_financial_os')
+    expect(result.stages).toMatchObject({ tier: 'router', routed: 'answer', modelPasses: 1, contextAttached: true })
+    expect(result.marketContext).toEqual({ at: '2026-09-16T14:00:00.000Z', scope: 'global' })
+    /* A follow-up carrying the pointer gets the numbers again, fresh; a line about nothing market-like gets none. */
+    await rt.respond({ text: 'Varför?', marketContext: { at: '2026-09-16T14:00:00.000Z' } })
+    expect(provider.responses[1]!.instructions).toContain('MARKNADSLÄGE hämtat')
+    await rt.respond({ text: 'Vad är term premium?' })
+    expect(provider.responses[2]!.instructions).not.toContain('MARKNADSLÄGE hämtat')
+    expect(provider.responses[2]!.tools.map((tool) => (tool as { name: string }).name)).toContain('get_market_snapshot')
+    expect(marketAsked).toEqual(['global', 'global'])
+  })
+
+  it('hands the voice fresh numbers at open, after a read, and again when the window passes', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer' })
+    await flush()
+    const contexts = () =>
+      sideband.sent.filter((e) => e.type === 'session.instructions.append' && String(e.event_id).startsWith('market_'))
+    expect(contexts()).toHaveLength(1)
+    expect(String(contexts()[0]!.content)).toContain('MARKNADSLÄGE hämtat')
+    expect(String(contexts()[0]!.content)).toContain('S&P 500 6 512 upp 0,42 % (öppet, Yahoo 15:59)')
+    expect(String(contexts()[0]!.content)).toContain('Gäller 3 min')
+    /* The provider refuses an append above 500 tokens; the brief is held under that by construction. */
+    expect(String(contexts()[0]!.content).length).toBeLessThanOrEqual(LIVE_APPEND_MAX_CHARS)
+    sideband.emit(functionCall('get_market_snapshot', { scope: 'us' }, 'm1'))
+    await flush()
+    await flush()
+    expect(contexts()).toHaveLength(2)
+    /* The window passes while the person keeps talking (under the idle policy): fresh numbers again, once. */
+    for (let step = 1; step <= 8; step++) {
+      vi.advanceTimersByTime(25_000)
+      sideband.emit({ type: 'session.input_transcript.delta', delta: 'hej', start_ms: step * 25_000, end_ms: step * 25_000 + 500 })
+    }
+    await flush()
+    expect(contexts()).toHaveLength(3)
+  })
+
+  it('counts a refused market-context append by name, so a silent voice is visible in telemetry', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer' })
+    await flush()
+    sideband.emit({
+      type: 'error',
+      error: { type: 'invalid_request_error', code: 'invalid_value', message: 'Context append text must not exceed 500 tokens.', param: 'content', client_event_id: 'market_1' },
+    })
+    sideband.emit({ type: 'error', error: { type: 'invalid_request_error', code: 'invalid_value', message: 'other', client_event_id: 'say_1' } })
+    const counts = rt.state('live-1')?.telemetry.eventCounts ?? {}
+    expect(counts.error).toBe(2)
+    expect(counts['error.market_context']).toBe(1)
   })
 
   it('does not exist when the provider refuses', async () => {

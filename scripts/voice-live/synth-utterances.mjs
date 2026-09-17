@@ -78,16 +78,34 @@ async function speak(text) {
 
 const silence = (seconds) => Buffer.alloc(Math.round(seconds * RATE) * 2)
 
+/*
+ * A line may carry expectations for the probes, stripped before synthesis:
+ *   "+…"      this line may open a case (the institutional control)
+ *   "…|12"    a custom gap in seconds after this line
+ */
 const parts = [silence(lead)]
 const segments = []
 let cursor = lead
-for (const [index, text] of lines.entries()) {
+for (const [index, raw] of lines.entries()) {
+  let text = raw
+  let mayOpenCase = false
+  let after = gap
+  if (text.startsWith('+')) {
+    mayOpenCase = true
+    text = text.slice(1)
+  }
+  const custom = text.match(/\|(\d+(?:\.\d+)?)$/)
+  if (custom) {
+    after = Number(custom[1])
+    text = text.slice(0, custom.index)
+  }
+  text = text.trim()
   const pcm = await speak(text)
   const seconds = pcm.length / 2 / RATE
-  segments.push({ id: `r${index + 1}`, text, startSeconds: +cursor.toFixed(2), endSeconds: +(cursor + seconds).toFixed(2) })
-  parts.push(pcm, silence(gap))
-  cursor += seconds + gap
-  console.log(`${segments[segments.length - 1].id} ${seconds.toFixed(2)} s  ${text}`)
+  segments.push({ id: `r${index + 1}`, text, mayOpenCase, startSeconds: +cursor.toFixed(2), endSeconds: +(cursor + seconds).toFixed(2) })
+  parts.push(pcm, silence(after))
+  cursor += seconds + after
+  console.log(`${segments[segments.length - 1].id} ${seconds.toFixed(2)} s  ${text}${mayOpenCase ? '  (may open a case)' : ''}`)
 }
 const data = Buffer.concat(parts)
 const header = Buffer.alloc(44)

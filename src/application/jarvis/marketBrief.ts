@@ -128,6 +128,7 @@ export const MARKET_NOT_SERVED: readonly string[] = [
   'VIX-nivå',
   'marknadsbredd (advance/decline)',
   'intradagsserier',
+  'värderingsmått (P/E, multiplar)',
 ]
 
 /* ------------------------------------------------------------- the brief */

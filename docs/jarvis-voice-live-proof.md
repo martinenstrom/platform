@@ -10,7 +10,9 @@ what it measured; §8–§9 take it into the product; §10 (2026-09-16) measures
 how the conversation flows, before and after the person's two acts on an
 open case were given real doors; §11 (2026-09-16) draws the line between
 what the market is doing and what to do with capital, and measures it by
-text and by voice.
+text and by voice; §12 (2026-09-17) takes the fast path off the model,
+benchmarks the backend's reasoning effort and service tier, and measures
+every latency class by text and by voice.
 
 ---
 
@@ -876,3 +878,303 @@ a "VIX" that was the risk-appetite score, which is what the fix removed.
   question while a case is open, and _"och Europa?"_ / _"hur ser
   värderingen ut?"_ from the ruling's follow-up list.
 
+## 12. Fast-path performance — the latency classes, measured, 2026-09-16/17
+
+The routing of §11 was accepted with one objection: 5 s for the market
+overview and 13 s for _"Varför?"_ by text is a sequence of backend jobs,
+not a colleague beside you. The ruling set explicit classes and a target
+for the simplest of them.
+
+| Tier | What | Target | Path after this slice |
+| --- | --- | --- | --- |
+| 0 | a named instrument's current move — _"Hur gick S&P 500 idag?"_, _"Vad gör tioåringen?"_ | ≈ 1 s typed; 1–2 s to the first useful spoken word | recogniser → platform cache → formatter; no model |
+| 1 | light interpretation — _"Varför?"_, _"Vad driver marknaden?"_ | ≈ 1–3 s | one router pass over the attached brief |
+| 2 | JARVIS reasoning — _"Vad betyder högre långräntor för tech?"_ | ≈ 2–5 s | one router pass |
+| 3 | institutional — _"Borde jag minska USA?"_ | no latency target; process wins | router → the firm |
+
+### 12.1 What changed
+
+- **Instrumentation.** Every typed turn records its stages — routing
+  decision, data, composition, model passes, whether a brief was attached
+  — as milliseconds in the typed telemetry (`TypedTurnStages`); every voice
+  turn now also records the first *useful* spoken word, measured past the
+  bridging syllables (`BRIDGING_PATTERN`: _"Mm."_, _"Hm."_, _"Jag kollar."_,
+  _"Låt mig se."_) and kept only as a millisecond.
+- **Tier 0 without a model.** `application/jarvis/marketIntent.ts` recognises
+  a named instrument's state question with a Swedish lexicon and plain
+  state cues, and refuses any line carrying a judgement, why, meaning,
+  valuation or case cue (planted violations fail it: _"Ska jag köpa
+  guld?"_, _"Tror du dollarn stärks framöver?"_). `presentation/jarvis/
+  marketSpeech.ts` speaks the value with its session, time and source —
+  _"S&P 500 stängde på 7 552, ned 0,45 procent idag (fördröjd data från
+  Yahoo, kl. 20:20)"_ — and says what is missing. The runtime answers such
+  a line from the platform's cache with no model pass.
+- **The brief as context.** A market question that is not Tier 0, or any
+  follow-up in a conversation that carried a brief, gets the fresh brief
+  attached to the router's instructions (`MARKNADSLÄGE hämtat HH:MM …`),
+  every number with its own time and source, within an explicit window
+  (`JARVIS_LIVE_MARKET_CONTEXT_SECONDS`, 180 s). The router answers over
+  the numbers and calls the tool only for a scope it lacks (Europe,
+  Sweden). No headlines → the context says the driver is not verified.
+- **The voice gets the same numbers — under the provider's limit.** A live
+  session is handed the brief at open, again after every market read, and
+  again when the window passes while the person is talking, so the voice
+  answers a simple state question itself, first word first, and hands off
+  what is not there. The first voice run of this slice found the handoff
+  silently broken: GPT-Live refuses a `session.instructions.append` above
+  500 tokens (_"Context append text must not exceed 500 tokens"_), and the
+  full brief was refused six times in one session while the person heard
+  nothing of it — every Tier-0 line went to the backend. The voice now
+  gets its own rendering of the brief (`marketVoiceContext`): the same
+  numbers with their sessions, times and sources in fewer words, held
+  under `LIVE_APPEND_MAX_CHARS` (1 000 characters; 2.2–2.4 characters a
+  token measured with o200k_base on the brief itself, so ≤ 450 tokens) by
+  dropping the least useful lines first — the never-served list, the
+  middle of the sector table, headlines beyond the first, the missing
+  list — and never an index or a rate. A refused append is now counted by
+  name in the session's telemetry (`error.market_context`).
+- **Bridging words.** The voice is told to begin with the content; the
+  ruler for the first useful word strips a whole bridging sentence
+  (_"Jag kollar den senaste nivån."_), not only its first words — the
+  first voice run's 400 ms "first useful word" was that ruler stopping
+  after _"Jag kollar"_, and is not reported.
+
+### 12.2 Reasoning effort and service tier, benchmarked by text
+
+`scripts/bench-jarvis-fastpath.mjs` restarts the dev server per
+configuration and runs the text probe's full set: the seven follow-up
+lines (F1–F7), the three Tier-0 lines five times each (T1–T3 × 5, _"Hur
+gick S&P 500 idag?"_, _"Vad gör tioåringen?"_, _"Hur går Nasdaq?"_), the
+capital control (C1, _"Borde jag minska min USA-exponering?"_) and the
+market question asked again with the control's case open (I1) — 24 lines
+per configuration, every number in every answer verified against the
+platform's snapshot, the firm's case count read from the database around
+every line. Configurations: `JARVIS_LIVE_REASONING` unset (the model's
+default), `none`, `low`, `high`; `JARVIS_LIVE_SERVICE_TIER=priority`
+alone and with `none`. `minimal` is refused by `gpt-5.6-luna` (HTTP 400)
+and is not in the table: an earlier run with it recorded every line as
+_"JARVIS kunde inte svara"_, which is how the configuration guard learned
+the values the model accepts (`none`, `low`, `medium`, `high`, `xhigh`,
+`max`). Aggregate `.probe/bench-fastpath.md`; runs
+`.probe/routing-bench-<config>.json`.
+
+| Config | Follow-up median / p95 | Tier 0 median / p95 | Control | Isolation | Numbers | Passes/turn | Responses | Cost |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| default | 3104 / 4587 ms | 421 / 620 ms | case, PASS | PASS | 35/35 | 1.14 | 8 | $0.0029 |
+| none | 2118 / 3725 ms | 385 / 621 ms | case, PASS | PASS | 36/36 | 1.14 | 8 | $0.0023 |
+| low | 2571 / 2945 ms | 395 / 613 ms | case, PASS | PASS | 34/34 | 1.14 | 8 | $0.0030 |
+| high | 3848 / 4700 ms | 365 / 623 ms | case, PASS | PASS | 38/38 | 1.14 | 8 | $0.0037 |
+| priority | 2830 / 5946 ms | 394 / 523 ms | case, PASS | PASS | 35/35 | 1.14 | 8 | $0.0033 |
+| none + priority | 1910 / 2562 ms | 396 / 559 ms | case, PASS | PASS | 36/36 | 1.14 | 8 | $0.0028 |
+
+"Numbers" is verified numbers over numbers said; "Passes/turn" is model
+passes per model turn (Tier 0 meets no model; the control's delegate-and-
+relay is two); "Responses" is Responses API calls in the run; cost is the
+backend tokens for the 24 lines, Tier 0 costing nothing. Every
+configuration routed every line correctly: the control opened exactly one
+case, the other 23 lines none.
+
+Per line, visible latency in ms (the server's part in parentheses):
+
+| Line | default | none | low | high | priority | none + priority |
+| --- | --- | --- | --- | --- | --- | --- |
+| F1 _Hur ser amerikanska börsen ut idag?_ | 4587 (4260) | 3725 (3331) | 2945 (2619) | 4700 (4378) | 3234 (2792) | 2562 (2128) |
+| F2 _Varför?_ | 3104 (2738) | 2440 (2124) | 2571 (2250) | 3848 (3461) | 3135 (2768) | 2095 (1773) |
+| F3 _Hur går tech?_ (Tier 0) | 423 (159) | 368 (114) | 520 (120) | 423 (141) | 493 (158) | 542 (173) |
+| F4 _Vad gör tioåringen?_ (Tier 0) | 422 (65) | 365 (85) | 381 (72) | 292 (82) | 504 (118) | 378 (99) |
+| F5 _Vad betyder högre tioårsränta för tech?_ | 4125 (3937) | 2332 (2072) | 2370 (2084) | 4064 (3705) | 2830 (2489) | 2282 (1964) |
+| F6 _Och Europa?_ | 3170 (2799) | 1859 (1522) | 2798 (2507) | 3624 (3339) | 5946 (5416) | 1710 (1257) |
+| F7 _Hur ser värderingen ut?_ | 2962 (2637) | 2118 (1670) | 2892 (2556) | 4400 (4058) | 2157 (1885) | 1910 (1661) |
+| T1 × 5 _Hur gick S&P 500 idag?_ | 377–576 (70–127) | 264–426 (63–83) | 262–464 (75–92) | 331–623 (62–95) | 278–474 (74–95) | 307–559 (72–93) |
+| T2 × 5 _Vad gör tioåringen?_ | 334–620 (83–135) | 340–621 (63–91) | 252–613 (69–132) | 223–423 (65–117) | 299–523 (71–102) | 390–506 (78–164) |
+| T3 × 5 _Hur går Nasdaq?_ | 371–468 (83–97) | 339–504 (59–77) | 304–513 (78–89) | 314–451 (77–86) | 361–492 (59–119) | 219–431 (51–84) |
+| C1 _Borde jag minska min USA-exponering?_ | 5785 (5482) | 3661 (3294) | 4062 (3808) | 4084 (3723) | 5593 (5358) | 6727 (6328) |
+| I1 _Hur ser amerikanska börsen ut idag?_ (case open) | 3781 (3570) | 2411 (2000) | 3141 (2832) | 4467 (4002) | 2285 (1838) | 1995 (1610) |
+
+### 12.3 The chosen configuration
+
+**Reasoning effort `none` by default; service tier unset.** Set in
+`liveConfig()` (`JARVIS_LIVE_REASONING`, overridable; the guard admits the
+values the model accepts: `none`, `low`, `medium`, `high`, `xhigh`, `max`).
+The evidence: on the final bench every configuration routed every line
+correctly and verified every number; `none` was the fastest effort on
+five of seven follow-up lines and on the capital question, its answers
+read the same as `high`'s on the lines a person can compare, and it costs
+the least. `low` had the tightest p95 (2.9 s) on its one run and is the
+fallback if `none` ever shows a routing error in use; `high` and unset are
+slower for nothing measured here. Per execution class, what the bench
+supports: Tier 0 needs no model; Tiers 1 and 2 are served by one pass at
+`none`; Tier 3 routes correctly at every effort and pays its second pass
+by design. A per-class effort would be a further knob and is not needed
+by the numbers.
+
+### 12.4 Measured by text — the follow-up set, Tier 0 with repeats, the control, the isolation line
+
+`scripts/probe-jarvis-routing.mjs`, sets `followup,tier0,control,isolation`,
+five repeats of the Tier-0 lines, the firm's case count read from the
+database before and after every line, every number in every answer checked
+against the platform's snapshot. Under the chosen default (`none`,
+`.probe/routing-bench-none.json`):
+
+| Line | Visible | Server | Stages | Cases |
+| --- | --- | --- | --- | --- |
+| Hur ser amerikanska börsen ut idag? | 3.7 s | 3.3 s | router, one pass, brief attached | +0 |
+| Varför? | 2.4 s | 2.1 s | router, one pass, brief attached, no fetch | +0 |
+| Hur går tech? | 0.37 s | 114 ms | Tier 0 | +0 |
+| Vad gör tioåringen? | 0.37 s | 85 ms | Tier 0 | +0 |
+| Vad betyder högre tioårsränta för tech? | 2.3 s | 2.1 s | router, one pass | +0 |
+| Och Europa? | 1.9 s | 1.5 s | router, one pass, brief attached (Europe is in it) | +0 |
+| Hur ser värderingen ut? | 2.1 s | 1.7 s | router, one pass, no case | +0 |
+| Hur gick S&P 500 idag? ×5 | 264–426 ms | 63–83 ms | Tier 0 | +0 |
+| Vad gör tioåringen? ×5 | 340–621 ms | 63–91 ms | Tier 0 | +0 |
+| Hur går Nasdaq? ×5 | 339–504 ms | 59–77 ms | Tier 0, honestly "saknas" while Avanza's circuit is open | +0 |
+| Borde jag minska min USA-exponering? (control) | 3.7 s | 3.3 s | router, two passes: delegate, relay | **+1** |
+| Hur ser amerikanska börsen ut idag? (case now bound) | 2.4 s | 2.0 s | router, one pass, brief attached, no case tool | +0 |
+
+Tier 0 across the six configurations, 15 samples each: median 365–421 ms,
+p95 523–623 ms visible; the server's part 51–174 ms. Follow-up set by
+configuration, median / p95: unset 3.1 / 4.6 s · `none` 2.1 / 3.7 s ·
+`low` 2.6 / 2.9 s · `high` 3.8 / 4.7 s · `priority` 2.8 / 5.9 s ·
+`none` + `priority` 1.9 / 2.6 s. Before this slice, the same lines by text
+were 5.1, 13.1, 4.7, 3.8 and 3.4 s (§11.3).
+
+### 12.5 Measured by voice — Tier 0 and the follow-up set
+
+Two conversations synthesized with Azure Speech (`sv-SE-SofieNeural`) as
+the fake microphone: the three Tier-0 lines twice over, 10 s apart
+(`c11-tier0`), and the ruling's follow-up set with the control and the
+isolation line (`c12-followups`). The probe pairs what was heard with the
+line it was by content, since a pause inside an utterance can split it
+into two exchanges. Times from the moment the person stopped, on the
+session clock; a negative figure is the voice starting before the
+transcript's end-of-speech mark. "First useful" is measured past a whole
+bridging sentence.
+
+**Tier 0 (`.probe/routing-voice-tier0-2.json`):** session 88 s, $0.075;
+both market-context appends accepted (`session.instructions.appended` 2:
+at open and after the one read); tools `get_market_snapshot` × 1; the
+firm's cases 48 → 48.
+
+| Line | First sound | First useful | Handoff | Backend span | Cases | What JARVIS said |
+| --- | --- | --- | --- | --- | --- | --- |
+| _"Hur gick S&P 500 idag?"_ — heard as _"Nasdaq P 500 idag"_ | 800 ms | 800 ms | 400 ms | 3.1 s | +0 | _"Jag kollar. S&P 500 stängde på 7 551,81, ned 0,45 procent."_ |
+| _"Vad gör tioåringen?"_ | 0 ms | 0 ms | none | – | +0 | _"Den amerikanska tioårsräntan är 5,01 procent, upp 1 baspunkt."_ — from the brief |
+| _"Hur går Nasdaq?"_ | −200 ms | −200 ms | none | – | +0 | _"Jag kan tyvärr inte säga hur Nasdaq rörde sig i dag – men tekniksektorn var upp 0,10 procent."_ — from the brief |
+| _"Hur gick S&P 500 idag?"_ | 200 ms | 200 ms | none | – | +0 | _"Den var ned 0,45 procent."_ — from the brief |
+| _"Vad gör tioåringen?"_ | 0 ms | 0 ms | none | – | +0 | _"Den amerikanska tioårsräntan är 5,01 procent, upp 1 baspunkt."_ |
+| _"Hur går Nasdaq?"_ | 0 ms | 0 ms | none | – | +0 | _"Jag kan tyvärr inte säga hur Nasdaq rörde sig i dag – men tekniksektorn var upp 0,10 procent."_ |
+
+First useful word, n = 6: median 0 ms, p95 800 ms. Five of six lines were
+answered by the voice itself from the injected brief, without a handoff,
+with the number first; the one handoff was the line the transcript
+garbled. The run before the fix (`.probe/routing-voice-tier0-1.json`, the
+full brief refused six times) handed every line it understood to the
+backend — five of six, backend spans 2.2–2.9 s — and opened each with
+_"Jag kollar den senaste nivån."_, _"Jag tar fram senaste rörelsen."_ or
+the like; its reported "first useful word median 400 ms" was the old
+ruler stopping after _"Jag kollar"_.
+
+**The follow-up set (`.probe/routing-voice-followups-2.json`):** session
+177 s, $0.151; four market-context appends accepted (at open and after
+three reads); tools `get_market_snapshot` × 3, `delegate_to_financial_os`
+× 1; the firm's cases 48 → 49, the one opened by the control.
+
+| Line | First sound | First useful | Handoff | Backend span | Cases | What JARVIS said |
+| --- | --- | --- | --- | --- | --- | --- |
+| _"Hur ser amerikanska börsen ut idag?"_ | −200 ms | 0 ms | none | – | +0 | _"S&P 500 är ned 0,45 procent, minus 0,45. Nasdaq 100 finns inte med i det senaste läget, så jag har inte en bekräftad siffra där."_ — from the brief |
+| _"Varför?"_ | 0 ms | 0 ms | none | – | +0 | _"Drivkraften är inte verifierad i det senaste läget, så jag kan inte säga vad som ligger bakom just nu. Generellt kan en nedgång på den nivån hänga ihop med enskilda bolagsrörelser eller bredare riskaptit, men jag har ingen bekräftad orsak här."_ — from the brief |
+| _"Hur går tech?"_ | 400 ms | 400 ms | −200 ms | 3.2 s | +0 | _"Jag kollar. Mm, Tech sticker ut lite positivt"_ — from the brief — then the backend's _"Information Technology-sektorn steg 0,10 procent till 6 867,57"_ |
+| _"Vad gör tioåringen?"_ | 200 ms | 200 ms | −200 ms | 3.6 s | +0 | _"Jag kollar. Tioåringen ligger på 5,01 procent, upp 1 baspunkt. Tvååringen är på 4,74 procent, upp 7 punkter."_ — the brief's number first, and a handoff the voice did not need |
+| _"Vad betyder högre tioårsränta för tech?"_ | −200 ms | −200 ms | none | – | +0 | _"Högre tioårsränta brukar pressa tech, eftersom framtida vinster diskonteras hårdare och bolag med hög värdering blir känsligare. Det syns ofta direkt i kursreaktioner, men effekten beror på hur ihållande ränteuppgången är."_ — reasoning, by the voice |
+| _"Och Europa?"_ | 800 ms | 5.2 s † | 400 ms | 5.4 s | +0 | _"Jag kollar. sep., FTSE 100 steg 0,28 procent till 10 688,47 vid senaste stängningen. DAX och OMXS30 saknas, så jag har inga bekräftade siffror."_ |
+| _"Hur ser värderingen ut?"_ | 600 ms | 600 ms | 200 ms | 1.7 s | +0 | _"Jag kollar. Det finns inget verifierat värderingsmått just nu, så jag kan inte säga om marknaden är dyr eller billig. Generellt blir värderingar mer känsliga när långräntor ligger högt, särskilt för framtidsvinster i tech."_ |
+| _"Borde jag minska min USA-exponering?"_ | 0 ms | 0 ms | −400 ms | 3.1 s (host 560 ms) | **+1** | _"Jag tar med det. Kommittén behöver en utgångstes. Vill du att prövningen utgår från att du överväger att minska USA-exponeringen på grund av högre långräntor och känsliga techvärderingar?"_ |
+| _"Hur ser amerikanska börsen ut idag?"_ — the case now open | 0 ms | 200 ms | none | – | +0 | _"S&P 500 är ned 0,45 procent. Nasdaqs siffra finns inte med i det senaste läget, så jag har ingen verifierad uppgift där."_ — from the brief, no case tool |
+
+† The run's ruler marked 800 ms: the first fragment after _"Jag
+kollar."_ was _"sep.,"_ — a syllable of the brief's date, three letters,
+which that ruler counted as content. The first useful word, FTSE 100's
+move, came with the second fragment at +5.2 s (the fragment starts are in
+the record); the figure is corrected here by hand, and the ruler now
+requires two words.
+
+First useful word, n = 9: by the run's ruler median 200 ms, p95 800 ms;
+with the Europe line corrected, median 200 ms, p95 5.2 s. Four of the nine
+lines were answered from the brief with no handoff at all, including
+_"Varför?"_ and the isolation line; the control opened the one case and
+asked for the thesis; no other line opened one.
+
+### 12.6 Reading
+
+- **Tier 0 is a sub-second interaction.** Typed, a named instrument's move
+  is visible in a median of ~0.4 s and a p95 of ~0.6 s across 15 repeats
+  per configuration (the server's own part 56–174 ms, of which the
+  platform's cache read is most). No model is involved, and every number
+  said was verified against the platform's snapshot. "Nasdaq 100 saknas i
+  datan just nu — källan svarar inte" is the honest Tier-0 answer while
+  Avanza's circuit is open; it is not counted as a failure, it is the
+  truth in 0.3 s.
+- **Where the router's time goes.** With the brief attached and the
+  snapshot tool withheld, every non-institutional line is one model pass,
+  and the pass IS the latency: the routing decision and the answer are
+  the same tokens. Data is 60–730 ms (a cold category read), composition
+  is zero. The two-pass shape survives only where it must — the capital
+  question, which delegates and then relays the firm's answer.
+- **Reasoning effort is the lever, and the model names its own values.**
+  `gpt-5.6-luna` accepts `none`, `low`, `medium`, `high`, `xhigh`, `max`;
+  `minimal` is refused with a 400, which a first bench recorded as every
+  line answered _"JARVIS kunde inte svara"_ — the configuration guard now
+  admits only the accepted values. Follow-up median / p95 by text: default
+  3.1 / 4.6 s, low 2.6 / 2.9 s, none 2.1 / 3.7 s, high 3.8 / 4.7 s. Every
+  configuration routed every line correctly on the final bench and
+  verified every number; the answers under `none` are as honest and as
+  well-formed as under `high` — _"det är en möjlig faktor – inte en
+  bekräftad förklaring"_ — on the lines a reader can compare.
+- **What went wrong on the way, and was fixed by measurement.** Offered the
+  snapshot tool beside an attached brief, the router still called it on a
+  third of market lines (a second pass for numbers it already had); the
+  tool is now withheld when the global brief is attached. Under `low`,
+  _"Hur ser värderingen ut?"_ was delegated to the firm once — a routing
+  error — and the instructions now say valuation is reasoning unless the
+  person asks what to do; the line has answered directly in every run
+  since, under every effort.
+- **"Varför?" is 2–3 s now, not 13.** The follow-up carries the brief's time,
+  the server re-reads the numbers from the platform's cache and attaches
+  them, and the answer reasons over them without a fetch.
+- **Cost** is not a factor at this scale: 24 lines cost $0.002–0.004 in
+  backend tokens under any effort; Tier 0 costs nothing.
+- **Service tier.** `priority` on its own changed nothing worth the price
+  (2.8 / 5.9 s follow-up median / p95, one 5.9 s outlier on the Europe
+  line); with `none` it took the median from 2.1 s to 1.9 s and the p95
+  from 3.7 s to 2.6 s. That is a real but modest gain on top of the effort
+  choice, at the priority tier's premium per token, and the ruling asked
+  not to buy speed by default. It stays off: `JARVIS_LIVE_SERVICE_TIER=
+  priority` turns it on for whoever rules that the p95 is worth it.
+- **Voice.** With the brief accepted, the voice answers Tier 0 itself:
+  five of six Tier-0 lines and four of nine follow-up lines came from the
+  injected numbers with no handoff, the first useful word 0–400 ms after
+  the person stopped — inside the ruling's 1–2 s, and with the number
+  first. The handoffs that remain are the one the doctrine wants (the
+  capital question, to the firm) and four the voice chose although the
+  brief held most of the answer — tech, the ten-year, Europe, valuation.
+  On tech and the ten-year it spoke the brief's number first and let the
+  backend confirm, so the person heard the answer in 200–400 ms and the
+  backend's pass was cost, not wait. Europe is the slow line: 5.2 s to the
+  first useful word, one backend pass of 5.4 s over a 22 ms market read —
+  the set's p95, and a reminder that a single model pass at `none` is
+  still 2–5 s by voice as by text. _"Varför?"_ by voice is now honest by
+  construction: the brief says there are no headlines, and the voice says
+  the driver is not verified and invents nothing. Bridging: _"Jag kollar."_
+  still opens the handoff replies and _"Mm,"_ one of them; the instruction
+  asks for silence on a handoff and content first, and the voice model does
+  not obey it reliably — when it answers from the brief it begins with the
+  number. The two runs before the fix were wrong twice, and both errors
+  were found by reading the record, not the summary: a 400 ms "first useful
+  word" that was the ruler stopping after _"Jag kollar"_, and six refused
+  appends visible only as `"error": 6` in the event counts. The microphone
+  was Sofie, synthesized; the person's own voice is still untested.
+- **Not measured here:** the person's own voice on these lines; the answer's
+  first token by text (the typed path is not streamed — the next lever if
+  Tier 1 needs to feel faster than a single 2 s pass allows); market hours
+  with every source live (Avanza's circuit was open all evening, so Nasdaq
+  100, DAX, OMXS30 and Nikkei were honestly missing throughout).

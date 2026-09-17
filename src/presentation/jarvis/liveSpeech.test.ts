@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { HostResult } from '~/application/analysis/hostContract'
 import {
   ACKNOWLEDGEMENT_PATTERN,
+  BRIDGING_PATTERN,
   LIVE_BACKEND_INSTRUCTIONS,
   LIVE_TYPED_CONTEXT,
   LIVE_VOICE_INSTRUCTIONS,
@@ -213,8 +214,30 @@ describe('the instructions', () => {
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Inget ärende, ingen kommitté, ingen tes, inget scenario')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('Nivåer ur minnet är förbjudna')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('kalla det aldrig VIX')
+    /* Valuation is reasoning, never a case by itself — measured: under low effort it was delegated. */
+    expect(LIVE_BACKEND_INSTRUCTIONS).toContain('är resonemang du gör själv, inte ett ärende')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('En fråga om vad som händer är inte en investeringsbedömning')
     expect(LIVE_BACKEND_INSTRUCTIONS).toContain('VAD SKA JAG GÖRA MED KAPITAL? — investeringskommittén')
+  })
+
+  it('measure the first useful word past a whole bridging sentence, not just its first words', () => {
+    /* Measured by voice 2026-09-17: "Jag kollar den senaste nivån." is a wait, however it ends. */
+    for (const opening of [
+      'Jag kollar den senaste nivån. ',
+      'Jag tar fram senaste rörelsen. ',
+      '[hum] Jag kollar. ',
+      'Mm, jag kollar. ',
+      'Ja, ett ögonblick. ',
+      'Ja, jag ser på det. ',
+      'Ett ögonblick. Jag kollar nu. ',
+    ]) {
+      expect(`${opening}Tioåringen ligger på 5,01 procent.`.replace(BRIDGING_PATTERN, ''), opening).toBe('Tioåringen ligger på 5,01 procent.')
+    }
+    /* Content that merely begins with "jag" is content. */
+    expect('Jag har tyvärr inte aktuella siffror för Nasdaq nu.'.replace(BRIDGING_PATTERN, '')).toBe(
+      'Jag har tyvärr inte aktuella siffror för Nasdaq nu.',
+    )
+    expect('S&P 500 föll 0,45 procent.'.replace(BRIDGING_PATTERN, '')).toBe('S&P 500 föll 0,45 procent.')
   })
 
   it('tell the voice to say a routed typed answer, and never to answer the question itself', () => {

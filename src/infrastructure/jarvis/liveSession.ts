@@ -38,15 +38,19 @@ import type { HostRequest, HostResult } from '~/application/analysis/hostContrac
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import { interpretToolCall, LIVE_TOOL_DEFINITIONS } from '~/application/jarvis/liveTools'
 import type { MarketBrief, MarketScope } from '~/application/jarvis/marketBrief'
+import { mentionsMarket, recognizeRetrieval, scopeForRetrieval } from '~/application/jarvis/marketIntent'
 import {
   ACKNOWLEDGEMENT_PATTERN,
+  BRIDGING_PATTERN,
   LIVE_BACKEND_INSTRUCTIONS,
+  LIVE_MARKET_CONTEXT,
   LIVE_TYPED_CONTEXT,
   LIVE_VOICE_INSTRUCTIONS,
   MARKET_UNAVAILABLE,
   toolSpeech,
   unsupportedSpeech,
 } from '~/presentation/jarvis/liveSpeech'
+import { retrievalSpeech } from '~/presentation/jarvis/marketSpeech'
 
 /* ------------------------------------------------------------ the ports */
 
@@ -92,14 +96,24 @@ export interface LiveConfig {
   backendModel: string
   /** Responses `service_tier` for the backend: auto, default, flex or priority. Latency is measured, not assumed. */
   backendServiceTier?: 'auto' | 'default' | 'flex' | 'priority'
-  /** Responses `reasoning.effort` for the backend, where the model takes one. */
-  backendReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+  /**
+   * Responses `reasoning.effort` for the backend. The values gpt-5.6-luna
+   * accepts, measured 2026-09-16: none, low, medium, high, xhigh, max —
+   * "minimal" is refused with a 400.
+   */
+  backendReasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   voices: readonly string[]
   defaultVoice: string
   /** A session with no user speech for this long is closed by the server. */
   idleSeconds: number
   /** No session outlives this, whatever the browser does. */
   maxSeconds: number
+  /**
+   * How long a market brief attached to a conversation is offered as context
+   * before it is fetched again — the explicit freshness window of the
+   * ruling. Every number inside still carries its own observation time.
+   */
+  marketContextSeconds: number
   prices: {
     voicePerMinuteUsd: number
     /** Per 1M tokens, for the configured backend model. */
@@ -169,6 +183,11 @@ export interface TurnTiming {
   /** The first assistant transcript fragment after the person stopped. */
   firstSpeechMs: number | null
   /**
+   * The first fragment that carried content — past "Mm.", "Hm.", "Jag
+   * kollar." and the like. Measured on the words, kept as a millisecond.
+   */
+  firstUsefulSpeechMs: number | null
+  /**
    * Where each spoken reply began: a fragment more than 1.2 s after the
    * previous one opens a new reply. The presence shows one bubble per reply,
    * so a probe can pair these with what was said and tell an acknowledgement
@@ -199,6 +218,31 @@ export interface TypedTurnInput {
   sessionId?: string
   /** The conversation before this line, oldest first, so "varför?" has something to be about. */
   history?: readonly { by: 'user' | 'jarvis'; text: string }[]
+  /** When the conversation last carried a market brief, so a follow-up is answered over the same numbers. */
+  marketContext?: { at: string } | null
+}
+
+/**
+ * Where a typed turn's time went, in milliseconds, by the stages the ruling
+ * names: the routing decision, the data, the composition, the whole. Tier 0
+ * is the deterministic path (no model); tiers 1–3 go through the router.
+ */
+export interface TypedTurnStages {
+  tier: 0 | 'router'
+  /** Tier 0: the recogniser's decision (µs, reported as 0). Router: the first model pass, which decides. */
+  intentMs: number
+  /** How the router decided: a tool, or a direct answer. */
+  routed: 'retrieval' | 'tool' | 'answer'
+  toolNames: string[]
+  /** The market read, when one happened. */
+  dataMs: number | null
+  /** Composing the answer: the formatter (Tier 0) or the model's further passes. */
+  composeMs: number
+  /** Model passes made; 0 on Tier 0. */
+  modelPasses: number
+  /** A brief travelled with the turn as context, so no fetch was needed for it. */
+  contextAttached: boolean
+  totalMs: number
 }
 
 export interface TypedTurnResult {
@@ -207,12 +251,15 @@ export interface TypedTurnResult {
   /** The case the conversation is bound to after the turn: unchanged, or the one a delegation opened. */
   reference: DomainReference | null
   lastAsk: { question: string; subject: string } | null
-  /** The last tool's product state, when a tool was called; `market-snapshot` for the market. */
+  /** The last tool's product state, when a tool was called; `market-snapshot` for the market; `market-retrieval` on Tier 0. */
   state: string | null
   toolCalls: string[]
   backendMs: number
   /** True when the line was also handed to a live session to be spoken. */
   spoken: boolean
+  stages: TypedTurnStages
+  /** A market brief was fetched or attached for this turn; the presence hands it back with the next line. */
+  marketContext: { at: string; scope: MarketScope } | null
 }
 
 export interface TypedTelemetry {
@@ -223,6 +270,8 @@ export interface TypedTelemetry {
   outputTokens: number
   costUsd: number
   toolCallsByName: Record<string, number>
+  /** The last turns' stages, newest last. Milliseconds and tool names, never words. */
+  stages: TypedTurnStages[]
 }
 
 export interface LiveRuntime {
@@ -259,8 +308,12 @@ interface Session {
   /** True once the firm has reported delegated work under way; the claim is truthful after that. */
   everWorking: boolean
   spokenTail: string
+  /** The current reply's words so far, for the useful-speech mark; dropped when the person speaks. */
+  replyText: string
   /** The end of the last assistant fragment, to tell a new reply from a continuing one. */
   lastAssistantEndMs: number | null
+  /** When a market brief was last handed to the voice as context, on the wall clock. */
+  marketContextAt: number | null
   lastUserSpeechAt: number
   openedAt: number
   closed: boolean
@@ -297,6 +350,32 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     outputTokens: 0,
     costUsd: 0,
     toolCallsByName: {},
+    stages: [],
+  }
+  const MAX_STAGES = 200
+
+  /**
+   * The market brief handed to a live voice session as context, so the
+   * voice answers a simple state question itself, from fresh numbers with
+   * their times and sources, and hands off only what is not there. Sent at
+   * open, again after every market read, and again when the window passes.
+   */
+  async function injectMarketContext(session: Session, why: string) {
+    try {
+      const brief = await market('global')
+      if (session.closed) return
+      session.marketContextAt = now()
+      const content = LIVE_MARKET_CONTEXT.voice(brief, config.marketContextSeconds)
+      send(session, {
+        type: 'session.instructions.append',
+        event_id: `market_${now()}`,
+        delegation_id: null,
+        content,
+      })
+      log(`[${session.id}] market context ${why}: ${brief.indices.length} indices, ${brief.unavailable.length} unavailable, ${content.length} chars`)
+    } catch (error) {
+      log(`[${session.id}] market context ${why} failed: ${String(error)}`)
+    }
   }
 
   function sessionConfig(voice: string): Record<string, unknown> {
@@ -445,13 +524,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     const t = session.telemetry
     t.toolCalls += 1
     t.toolCallsByName[item.name] = (t.toolCallsByName[item.name] ?? 0) + 1
-    const { output } = await runTool(item, session, session.openTurn, (wallMs) => sessionMs(session, wallMs), session.id)
+    const { output, state } = await runTool(item, session, session.openTurn, (wallMs) => sessionMs(session, wallMs), session.id)
     send(session, {
       type: 'response.item.create',
       event_id: `out_${item.call_id}`,
       item: { type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(output) },
     })
     send(session, { type: 'response.create', event_id: `continue_${item.call_id}` })
+    /* The voice gets the same fresh numbers, so the next simple question needs no handoff. */
+    if (state === 'market-snapshot') void injectMarketContext(session, 'after a read')
   }
 
   /** The text of a Responses result: every output_text part, in order. */
@@ -481,9 +562,11 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       marketDurationMs: null,
       backendEndMs: null,
       firstSpeechMs: null,
+      firstUsefulSpeechMs: null,
       speechStartsMs: [],
       typed,
     }
+    session.replyText = ''
     session.telemetry.turns.push(session.openTurn)
   }
 
@@ -525,6 +608,17 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         if (turn && startMs >= turn.userEndMs - 400) {
           if (turn.firstSpeechMs === null) turn.firstSpeechMs = startMs
           if (session.lastAssistantEndMs === null || startMs - session.lastAssistantEndMs > 1200) turn.speechStartsMs.push(startMs)
+          /*
+           * The useful-speech mark: the first fragment after which the reply,
+           * with its bridging words stripped, says something. The words are
+           * held only until the person speaks again; the mark is a number.
+           */
+          if (turn.firstUsefulSpeechMs === null) {
+            session.replyText = (session.replyText + delta).slice(-300)
+            const content = session.replyText.replace(BRIDGING_PATTERN, '')
+            /* Two words of content — not a stray syllable of a date ("sep.,"), which a run of 2026-09-17 counted as an answer. */
+            if ((content.match(/[\p{L}\p{N}]{2,}/gu) ?? []).length >= 2) turn.firstUsefulSpeechMs = startMs
+          }
         }
         session.lastAssistantEndMs = Math.max(session.lastAssistantEndMs ?? 0, endMs)
         break
@@ -560,9 +654,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         finish(session, typeof event.reason === 'string' ? event.reason : null, false)
         break
       }
-      case 'error':
+      case 'error': {
+        /* A refused market-context append is the one error that leaves the voice without its numbers: counted by name. */
+        const error = event.error as { client_event_id?: unknown } | undefined
+        if (typeof error?.client_event_id === 'string' && error.client_event_id.startsWith('market_')) {
+          count(session.telemetry, 'error.market_context')
+        }
         log(`[${session.id}] error event: ${JSON.stringify(event.error ?? event).slice(0, 200)}`)
         break
+      }
       default:
         break
     }
@@ -573,6 +673,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       if (session.closed) return
       const idle = (now() - session.lastUserSpeechAt) / 1000
       const age = (now() - session.openedAt) / 1000
+      /* The window passed while the person is still talking: fresh numbers, or none. */
+      if (
+        session.marketContextAt !== null &&
+        now() - session.marketContextAt >= config.marketContextSeconds * 1000 &&
+        idle < 60
+      ) {
+        session.marketContextAt = now()
+        void injectMarketContext(session, 'window passed')
+      }
       if (idle >= config.idleSeconds || age >= config.maxSeconds) {
         session.telemetry.reason = idle >= config.idleSeconds ? `idle ${Math.round(idle)} s` : `max ${Math.round(age)} s`
         session.telemetry.closedByPolicy = true
@@ -619,7 +728,9 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         lastAsk: null,
         everWorking: false,
         spokenTail: '',
+        replyText: '',
         lastAssistantEndMs: null,
+        marketContextAt: null,
         lastUserSpeechAt: now(),
         openedAt: now(),
         closed: false,
@@ -632,6 +743,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         sideband.onMessage((event) => onEvent(session, event))
         sideband.onClose(() => finish(session, 'transport-closed', false))
         watch(session)
+        /* Not awaited: the offer is answered now; the numbers follow within the session's first seconds. */
+        void injectMarketContext(session, 'at open')
       } catch (error) {
         log(`[${session.id}] sideband failed: ${String(error)}`)
         finish(session, 'sideband-unavailable', false)
@@ -673,11 +786,106 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
 
       const started = now()
       if (!session) typed.turns += 1
+      const recordStages = (stages: TypedTurnStages) => {
+        typed.stages.push(stages)
+        if (typed.stages.length > MAX_STAGES) typed.stages.shift()
+      }
+      /** The answer, handed to the voice as well when the session is live. */
+      const deliver = (say: string): boolean => {
+        if (!live || !say) return false
+        session.telemetry.typedInjections += 1
+        send(session, {
+          type: 'session.instructions.append',
+          event_id: `typed_${now()}`,
+          delegation_id: null,
+          content: LIVE_TYPED_CONTEXT.speak(input.text, say),
+        })
+        return true
+      }
+
+      /*
+       * Tier 0: a named instrument's current state. The recogniser decides
+       * in microseconds, the market answers from the platform's cache, the
+       * formatter speaks the number with its time and source. No model.
+       */
+      const retrieval = recognizeRetrieval(input.text)
+      if (retrieval) {
+        const scope = scopeForRetrieval(retrieval)
+        const dataStarted = now()
+        if (timing && timing.marketCallMs === null) timing.marketCallMs = clock(dataStarted)
+        let say: string
+        let dataMs: number | null = null
+        let context: TypedTurnResult['marketContext'] = null
+        try {
+          const brief = await market(scope)
+          dataMs = now() - dataStarted
+          if (timing && timing.marketDurationMs === null) timing.marketDurationMs = dataMs
+          const composeStarted = now()
+          say = retrievalSpeech(retrieval.targets, brief)
+          context = { at: brief.generatedAt, scope }
+          const stages: TypedTurnStages = {
+            tier: 0,
+            intentMs: 0,
+            routed: 'retrieval',
+            toolNames: [],
+            dataMs,
+            composeMs: now() - composeStarted,
+            modelPasses: 0,
+            contextAttached: false,
+            totalMs: now() - started,
+          }
+          recordStages(stages)
+          if (timing) timing.backendEndMs = clock(now())
+          const spoken = deliver(say)
+          log(`[${tag}] typed → tier 0 (${retrieval.targets.length} target${retrieval.targets.length === 1 ? '' : 's'}, ${scope}) in ${stages.totalMs} ms`)
+          return { say, reference: effects.reference, lastAsk: effects.lastAsk, state: 'market-retrieval', toolCalls: [], backendMs: stages.totalMs, spoken, stages, marketContext: context }
+        } catch (error) {
+          /* The platform could not be read: said, and the line goes to the router like any other. */
+          log(`[${tag}] tier 0 market read failed, routing: ${String(error)}`)
+        }
+      }
+
+      /*
+       * The router. A brief travels with the turn when the line is about
+       * markets or the conversation already carried one — fresh from the
+       * platform's cache, every number with its own time — so the model
+       * answers over the numbers and fetches only what it does not have.
+       */
+      const wantsContext =
+        mentionsMarket(input.text) ||
+        (input.marketContext !== undefined && input.marketContext !== null) ||
+        (input.history ?? []).some((turn) => turn.by === 'user' && mentionsMarket(turn.text))
+      let contextText = ''
+      let dataMs: number | null = null
+      let context: TypedTurnResult['marketContext'] = null
+      if (wantsContext) {
+        const dataStarted = now()
+        try {
+          const brief = await market('global')
+          dataMs = now() - dataStarted
+          if (timing) {
+            if (timing.marketCallMs === null) timing.marketCallMs = clock(dataStarted)
+            if (timing.marketDurationMs === null) timing.marketDurationMs = dataMs
+          }
+          contextText = `\n\n${LIVE_MARKET_CONTEXT.typed(brief, config.marketContextSeconds)}`
+          context = { at: brief.generatedAt, scope: 'global' }
+        } catch (error) {
+          log(`[${tag}] market context failed: ${String(error)}`)
+        }
+      }
+
       const bound = effects.reference ? `\n${LIVE_TYPED_CONTEXT.bound}` : ''
+      /*
+       * With the global brief attached the snapshot tool has nothing to add
+       * — every scope is in it — so it is not offered. Measured: offered, the
+       * router still called it on a third of market lines and paid a second
+       * model pass for numbers it already had.
+       */
+      const tools = contextText ? LIVE_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'get_market_snapshot') : LIVE_TOOL_DEFINITIONS
       const request = (conversation: unknown[]): ResponsesRequest => ({
         model: config.backendModel,
-        instructions: `${LIVE_BACKEND_INSTRUCTIONS}\n${LIVE_TYPED_CONTEXT.channel}${bound}`,
-        tools: LIVE_TOOL_DEFINITIONS,
+        instructions: `${LIVE_BACKEND_INSTRUCTIONS}\n${LIVE_TYPED_CONTEXT.channel}${bound}${contextText}`,
+        tools,
         input: conversation,
         ...(config.backendServiceTier ? { serviceTier: config.backendServiceTier } : {}),
         ...(config.backendReasoningEffort ? { reasoningEffort: config.backendReasoningEffort } : {}),
@@ -689,42 +897,53 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       ]
       const toolCalls: string[] = []
       let state: string | null = null
+      let modelPasses = 0
 
       if (timing) timing.backendStartMs = clock(now())
+      const routingStarted = now()
       let result = await provider.respond(request(conversation))
+      modelPasses += 1
       usage(result)
+      const intentMs = now() - routingStarted
+      const routed: TypedTurnStages['routed'] = result.output.some(isFunctionCall) ? 'tool' : 'answer'
+      const composeStarted = now()
       for (let round = 0; round < 4; round++) {
         const calls = result.output.filter(isFunctionCall)
         if (calls.length === 0) break
         for (const call of calls) {
           countTool(call.name)
           toolCalls.push(call.name)
+          const toolStarted = now()
           const ran = await runTool(call, effects, timing, clock, tag)
+          if (ran.state === 'market-snapshot') dataMs = (dataMs ?? 0) + (now() - toolStarted)
           state = ran.state
           /* The call and its result travel back in the request; nothing is kept at the provider. */
           conversation.push(call)
           conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(ran.output) })
         }
         result = await provider.respond(request(conversation))
+        modelPasses += 1
         usage(result)
       }
       if (timing) timing.backendEndMs = clock(now())
       const say = answerOf(result)
-      const backendMs = now() - started
-
-      let spoken = false
-      if (live && say) {
-        session.telemetry.typedInjections += 1
-        send(session, {
-          type: 'session.instructions.append',
-          event_id: `typed_${now()}`,
-          delegation_id: null,
-          content: LIVE_TYPED_CONTEXT.speak(input.text, say),
-        })
-        spoken = true
+      const stages: TypedTurnStages = {
+        tier: 'router',
+        intentMs,
+        routed,
+        toolNames: toolCalls,
+        dataMs,
+        composeMs: routed === 'tool' ? now() - composeStarted : 0,
+        modelPasses,
+        contextAttached: contextText !== '',
+        totalMs: now() - started,
       }
-      log(`[${tag}] typed → ${toolCalls.join(',') || 'no tool'} → ${state ?? 'answered'} in ${backendMs} ms`)
-      return { say, reference: effects.reference, lastAsk: effects.lastAsk, state, toolCalls, backendMs, spoken }
+      recordStages(stages)
+      if (toolCalls.includes('get_market_snapshot')) context = context ?? { at: new Date(now()).toISOString(), scope: 'global' }
+
+      const spoken = deliver(say)
+      log(`[${tag}] typed → ${toolCalls.join(',') || 'no tool'} → ${state ?? 'answered'} in ${stages.totalMs} ms (${modelPasses} pass${modelPasses === 1 ? '' : 'es'}${contextText ? ', context' : ''})`)
+      return { say, reference: effects.reference, lastAsk: effects.lastAsk, state, toolCalls, backendMs: stages.totalMs, spoken, stages, marketContext: context }
     },
 
     async close(sessionId) {
