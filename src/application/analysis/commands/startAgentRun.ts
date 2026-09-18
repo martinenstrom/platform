@@ -144,7 +144,13 @@ export function startAgentRun(
             `Contributing for a department is authority over its own work.`,
         )
       }
-      if (assignment.status !== 'queued' && assignment.status !== 'returned') {
+      /*
+       * `active` is admitted here only as an OPENED queue — a control
+       * function's, by the submission that put a revision before it (G1,
+       * 2026-09-17) — and the readiness checks below refuse it the moment a
+       * run on record has worked it, live or completed.
+       */
+      if (assignment.status !== 'queued' && assignment.status !== 'returned' && assignment.status !== 'active') {
         reject(
           'illegal-prior-state',
           `Assignment "${input.assignmentId}" is ${assignment.status} and is not ` +
@@ -224,6 +230,16 @@ export function startAgentRun(
           'illegal-prior-state',
           `Assignment "${input.assignmentId}" already has run "${active.id}" in ` +
             `${active.state}.`,
+        )
+      }
+      const worked =
+        assignment.status === 'active' &&
+        runs.find((run) => run.assignmentId === input.assignmentId && run.state === 'completed')
+      if (worked) {
+        reject(
+          'illegal-prior-state',
+          `Assignment "${input.assignmentId}" is active and its work is already ` +
+            `completed in run "${worked.id}". An opened queue is worked once.`,
         )
       }
 

@@ -191,6 +191,15 @@ export interface CaseStandingInput {
    * owner, and which reported the Devil's Advocate as owing the submission.
    */
   submittingDepartmentId: DepartmentId | null
+  /**
+   * Whether the current revision has been put before the control functions
+   * — submitted for verification, or past it. An aggregated revision that
+   * has not is owed exactly that act, whatever stage the case rests at: the
+   * submission is what moves the case, so a case never rests at
+   * `aggregation` on its own, and the peer, Verification and the Devil's
+   * Advocate can file nothing against a draft (G1, 2026-09-18).
+   */
+  revisionSubmitted: boolean
   /** As the firm resolved it for the current revision. */
   riskRequirement: RiskRequirementState
   hasSubmission: boolean
@@ -361,10 +370,12 @@ function nextActFor(
    * different outstanding act from a missing review, and conflating them sends
    * the wrong desk a request.
    */
-  if (stage === 'aggregation') {
+  if (stage === 'aggregation' || (stage === 'research' && !input.revisionSubmitted)) {
+    /* The desk that synthesised the revision submits it — the same actor `submitForVerification` expects. */
     return {
       act: 'submit-for-verification',
-      owningDepartmentId: input.investmentCase.participatingDepartmentIds[0] ?? null,
+      owningDepartmentId:
+        input.submittingDepartmentId ?? input.investmentCase.participatingDepartmentIds[0] ?? null,
     }
   }
   /*

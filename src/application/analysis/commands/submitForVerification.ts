@@ -31,6 +31,7 @@
  */
 
 import {
+  actorFieldsOf,
   buildTransitionEvent,
   requirementStatusFor,
   transitionCase,
@@ -265,7 +266,8 @@ export function submitForVerification(
       for (const stage of path) {
         movements.push({ from: movedCase.stage, to: stage })
         movedCase = transitionCase(movedCase, stage, {
-          employeeId: context.actor.employeeId!,
+          employeeId: context.actor.employeeId,
+          agentPrincipalId: context.actor.agentPrincipalId,
           departmentId: context.actor.departmentId!,
           at: context.occurredAt,
         })
@@ -286,7 +288,7 @@ export function submitForVerification(
             fromState: movement.from,
             toState: movement.to,
             occurredAt: context.occurredAt,
-            actorEmployeeId: context.actor.employeeId ?? undefined,
+            ...actorFieldsOf(context.actor),
             actorDepartmentId: context.actor.departmentId ?? undefined,
             correlationId: context.correlationId,
             aggregateVersion: savedCase.version,

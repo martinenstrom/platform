@@ -63,7 +63,7 @@ import {
   type ProviderKind,
   type RunFailureCategory,
   type RunState,
-  type AssertedActor,
+  type AssertedActor,  isRunTerminal,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 import type { CommandDeps } from './commands/runCommand'
@@ -154,12 +154,21 @@ export function commissionEligibility(input: {
   if (!assignment) return { kind: 'refused', reason: 'no-assignment' }
 
   /*
-   * The same pair `StartAgentRun` accepts. `active` is excluded here for the
-   * reason it is excluded there — an assignment already carrying a live run
-   * cannot carry a second — and the partial unique index in migration 0015 is
-   * what actually enforces it.
+   * The same rule `StartAgentRun` applies. An assignment already carrying a
+   * live run cannot carry a second — the partial unique index in migration
+   * 0015 is what actually enforces it — and one whose work is completed is
+   * not waiting. `active` with no run on record is a queue that was OPENED
+   * and not yet worked: a control function's, by the submission that put a
+   * revision before it (G1, 2026-09-17). The run is what works it.
    */
-  if (assignment.status !== 'queued' && assignment.status !== 'returned') {
+  const worked =
+    assignment.status === 'active' &&
+    runs.some(
+      (run) =>
+        run.assignmentId === assignment.id &&
+        (!isRunTerminal(run.state) || run.state === 'completed'),
+    )
+  if ((assignment.status !== 'queued' && assignment.status !== 'returned' && assignment.status !== 'active') || worked) {
     return {
       kind: 'refused',
       reason: 'assignment-not-waiting',
@@ -554,6 +563,8 @@ export type CommissionResult =
       runId: string
       state: RunState
       failureCategory?: RunFailureCategory
+      /** The domain's sentence for a refused candidate, for the log; never provider prose. */
+      failureDetail?: string
     }
 
 export interface CommissionAnalysisInput {
@@ -831,5 +842,6 @@ export async function commissionAnalysis(
     runId: created.id,
     state: created.state,
     ...(created.failure ? { failureCategory: created.failure.category } : {}),
+    ...(stage.rejectionDetail ? { failureDetail: stage.rejectionDetail } : {}),
   }
 }

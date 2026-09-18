@@ -194,8 +194,8 @@
         }
       ],
       "nextAct": {
-        "act": "record-verification-review",
-        "owningDepartmentId": "verification"
+        "act": "submit-for-verification",
+        "owningDepartmentId": "research-office"
       }
     }
   },

@@ -18,7 +18,8 @@
     "dev:prove-agent": "npx vite-node scripts/prove-agent-desk.ts --",
     "dev:prove-synthesis": "npx vite-node scripts/prove-office-synthesis.ts --",
     "dev:ingest-prices": "npx vite-node scripts/ingest-prices.ts --",
-    "dev:ingest-yields": "npx vite-node scripts/ingest-yields.ts --"
+    "dev:ingest-yields": "npx vite-node scripts/ingest-yields.ts --",
+    "dev:measure-governance": "npx vite-node scripts/measure-governance-contexts.ts --"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

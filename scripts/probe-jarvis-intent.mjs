@@ -194,7 +194,13 @@ if (keepOpen && finalRecord) {
   const usage = runIds.length
     ? (await db.query('SELECT id, department_id, playbook_entry_key, input_tokens, output_tokens, cost_minor_units, currency, model_id, started_at, completed_at, state, failure_category FROM analysis.runs WHERE id = ANY($1) ORDER BY started_at', [runIds])).rows
     : []
-  const commands = (await db.query("SELECT command_id, command_type, actor, initiator, occurred_at FROM analysis.commands WHERE correlation_id = $1 ORDER BY occurred_at", [caseId])).rows.catch?.(() => []) ?? []
+  /* Every act on the case, with who performed it and who initiated it — the ledger's own columns, read as they are. */
+  const commands = (
+    await db.query(
+      'SELECT command_id, command_type, actor_kind, actor_employee_id, actor_agent_principal_id, actor_department_id, initiator_kind, initiator_id, occurred_at FROM analysis.commands WHERE correlation_id = $1 ORDER BY occurred_at, command_id',
+      [caseId],
+    )
+  ).rows
   const ms = (a, b) => (a && b ? new Date(b).getTime() - new Date(a).getTime() : null)
   const stages = usage.map((run) => {
     const own = events.filter((e) => e.run_id === run.id)
@@ -225,11 +231,21 @@ if (keepOpen && finalRecord) {
     totalOutputTokens: stages.reduce((sum, s) => sum + (s.outputTokens ?? 0), 0),
     recordedCost: stages.filter((s) => s.costMinorUnits !== null).map((s) => `${s.costMinorUnits} ${s.currency}`),
     revisions: finalRecord.revisions.map((r) => ({ number: r.revision_number, position: r.position, by: r.proposed_by_employee_id ?? null })),
-    commands: commands.map((c) => ({ id: c.command_id, type: c.command_type, actor: c.actor, initiator: c.initiator, at: c.occurred_at })),
+    commands: commands.map((c) => ({
+      id: c.command_id,
+      type: c.command_type,
+      actorKind: c.actor_kind,
+      actor: c.actor_employee_id ?? c.actor_agent_principal_id ?? null,
+      actorDepartment: c.actor_department_id,
+      initiator: `${c.initiator_kind}:${c.initiator_id}`,
+      at: c.occurred_at,
+    })),
   }
   console.log(`\nloop settled after ${Math.round(loop.settledAfterMs / 1000)} s`)
   for (const s of stages) console.log(`  ${s.desk}/${s.entry}: ${s.state}${s.failure ? ` (${s.failure})` : ''} · provider ${s.providerMs ?? '–'} ms · adoption ${s.adoptionMs ?? '–'} ms · tokens ${s.inputTokens ?? '–'}/${s.outputTokens ?? '–'} · cost ${s.costMinorUnits ?? 'not recorded'}`)
   console.log(`  tokens in/out: ${loop.totalInputTokens}/${loop.totalOutputTokens} · recorded cost: ${loop.recordedCost.join(', ') || 'none recorded'} · revisions: ${JSON.stringify(loop.revisions)}`)
+  console.log('  acts on the record (actor → initiator):')
+  for (const c of loop.commands) console.log(`    ${c.at} ${c.type} · ${c.actorKind}:${c.actor ?? '–'} (${c.actorDepartment ?? '–'}) ← ${c.initiator}`)
 
   /* JARVIS receives it: where the case stands, and what the firm concluded, asked the way a person asks. */
   for (const text of ['Var står det?', 'Vad kom de fram till?']) {

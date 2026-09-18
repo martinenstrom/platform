@@ -180,11 +180,16 @@ describe('ownership never renders the same for settled and outstanding', () => {
     expect(within(pending).getByText('Fatta beslut eller återsänd')).toBeInTheDocument()
   })
 
-  it('shows the desk and the outstanding count on work still in governance', async () => {
+  it('shows the act owed and the outstanding count on work not yet before governance', async () => {
     await renderQueue()
     const pending = card(/^Pågående \(2\)$/)
 
-    expect(within(pending).getByText('Registrera faktagranskning')).toBeInTheDocument()
+    /*
+     * The in-flight case ran Macro through the aggregation and never submitted
+     * the revision, so what it owes is the submission — a control function can
+     * file nothing against a draft (G1, 2026-09-18).
+     */
+    expect(within(pending).getByText('Lämna in för granskning')).toBeInTheDocument()
     expect(within(pending).getAllByText(/utestående steg/).length).toBeGreaterThan(0)
   })
 })

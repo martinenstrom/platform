@@ -49,8 +49,35 @@ export interface ContributionRequest {
   signal: AbortSignal
 }
 
+import type {
+  DevilsAdvocateCandidateArtifact,
+  PeerExaminationCandidateArtifact,
+  VerificationCandidateArtifact,
+} from '~/domain/analysis'
+
+/**
+ * What a control function's provider produced, when the entry is a control
+ * act rather than a desk's analysis (2026-09-17, G1).
+ *
+ * The same three shapes `RecordGovernanceCandidate` takes, declared here so
+ * the port names the output without importing a command. A result that
+ * carries one carries no claims: a verdict, an objection set or an
+ * examination is not a claim, and the orchestrator records it through the
+ * candidate command instead of `RecordContribution`.
+ */
+export type GovernanceCandidateOutput =
+  | { kind: 'verification'; artifact: VerificationCandidateArtifact }
+  | { kind: 'devils-advocate'; artifact: DevilsAdvocateCandidateArtifact }
+  | {
+      kind: 'peer-examination'
+      artifact: PeerExaminationCandidateArtifact
+      examinedDepartmentId: string
+    }
+
 export interface ContributionResult {
   claims: readonly AgentClaim[]
+  /** A control function's candidate, where the entry is a control act. Never beside claims. */
+  governance?: GovernanceCandidateOutput
   /*
    * The prompt and model are deliberately absent: they were DECLARED before
    * execution and are already on the run. Restating them here would let a

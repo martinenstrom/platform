@@ -47,7 +47,7 @@ const CASE_COLUMNS = `
 
 const TRANSITION_COLUMNS = `
   event_id, subject, case_id, tenant_id, thesis_id, revision_id, assignment_id,
-  run_id, from_state, to_state, actor_employee_id, actor_department_id, reason,
+  run_id, from_state, to_state, actor_employee_id, actor_agent_principal_id, actor_department_id, reason,
   ${ts('occurred_at')}, correlation_id, causation_id, aggregate_version, corrects
 `
 

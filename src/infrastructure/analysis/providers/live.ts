@@ -88,8 +88,21 @@ export const LIVE_MODEL_ID = 'claude-opus-5'
  * response text, so a tight cap truncates the JSON mid-answer. This bounds the
  * ANSWER; what bounds the work is the run's token budget, which is resolved
  * from the firm's policy sources and is a different thing entirely.
+ *
+ * **8,192 since 2026-09-18, measured.** At 4,096 the first live gold loop
+ * after G1 (`docs/jarvis-voice-live-proof.md` §14) recorded the Global Macro
+ * answer at 4,002 output tokens on the 7-day standing window (48
+ * observations, 12,570 input) and lost the Rates answer to the cap —
+ * `budget-exhausted`, the run `timed-out`, the loop stopped at the desks.
+ * The same shape and the same cure as the synthesis provider's
+ * (`LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS`): an answer that must account for
+ * every claim it makes grows with the argument, and a cap fitted to an
+ * earlier answer destroys the work the firm has paid for. The desk budget
+ * (`MACRO_ANALYSIS_BUDGET_V4`, 24,000 tokens) does not move: 12,570 + 8,192
+ * = 20,762 stays inside it for the measured window, and an answer that
+ * overran the budget would be refused by `budgetOverruns` as before.
  */
-export const LIVE_MAX_OUTPUT_TOKENS = 4_096
+export const LIVE_MAX_OUTPUT_TOKENS = 8_192
 
 /** The prompt is versioned and content-addressed, like everything else. */
 const PROMPT_ID = 'macro-analysis-brief'

@@ -197,7 +197,7 @@ export function toCase(
   }
 
   const movements = transitions.map((event) => {
-    if (!event.actor_employee_id || !event.actor_department_id) {
+    if ((!event.actor_employee_id && !event.actor_agent_principal_id) || !event.actor_department_id) {
       /*
        * Refused rather than filled with an empty string. A department acts
        * through a person, and an empty employee id reads as an employee rather
@@ -210,15 +210,25 @@ export function toCase(
         'cases.get',
       )
     }
-    return present({
+    /*
+     * Built by hand rather than through `present`: `byEmployeeId` is null,
+     * not absent, where the department's own principal moved the case — the
+     * record says who moved it or that no person did, as the in-memory store
+     * says it — and the key order is the one every captured fixture holds.
+     */
+    const movement: CaseTransition = {
       caseId: event.case_id,
       from: event.from_state as InvestmentCase['stage'],
       to: event.to_state as InvestmentCase['stage'],
       at: event.occurred_at,
-      byEmployeeId: event.actor_employee_id,
-      byDepartmentId: event.actor_department_id,
-      reason: event.reason,
-    }) as unknown as CaseTransition
+      byEmployeeId: event.actor_employee_id ?? null,
+      ...(event.actor_agent_principal_id && !event.actor_employee_id
+        ? { byAgentPrincipalId: event.actor_agent_principal_id }
+        : {}),
+      byDepartmentId: event.actor_department_id!,
+      ...(event.reason !== null && event.reason !== undefined ? { reason: event.reason } : {}),
+    }
+    return movement
   })
 
   return seal(
@@ -1357,6 +1367,8 @@ export function toTransitionEvent(row: TransitionEventRow): TransitionEvent {
           challengeId: row.challenge_id,
           toState: row.to_state,
           actorEmployeeId: row.actor_employee_id,
+          /* The principal that acted, where no person did (0042); `present` drops the null. */
+          actorAgentPrincipalId: row.actor_agent_principal_id,
           actorDepartmentId: row.actor_department_id,
           reason: row.reason,
           occurredAt: row.occurred_at,
@@ -1517,9 +1529,9 @@ export function toRequirementResolution(
         inputHash: row.input_hash,
         evaluatedAt: row.evaluated_at,
         evaluatedBy: {
-          kind: 'employee',
+          kind: row.evaluated_by_employee_id ? 'employee' : 'institutional-agent',
           employeeId: row.evaluated_by_employee_id,
-          agentPrincipalId: null,
+          agentPrincipalId: row.evaluated_by_agent_principal_id,
           roleId: row.evaluated_by_role_id,
           roleFunction: row.evaluated_by_role_function as RoleFunction,
           departmentId: row.evaluated_by_department_id,

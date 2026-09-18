@@ -742,6 +742,8 @@ export interface TransitionEventRow {
   from_state: string | null
   to_state: string
   actor_employee_id: string | null
+  /** The institutional agent that performed the act, where one did (migration 0042). */
+  actor_agent_principal_id: string | null
   actor_department_id: string | null
   reason: string | null
   occurred_at: string
@@ -853,7 +855,10 @@ export interface RequirementResolutionRow {
   /** Hash of the normalized rule input, so the evaluation stays checkable. */
   input_hash: string
   evaluated_at: string
-  evaluated_by_employee_id: string
+  /** Null where the department's own principal evaluated (migration 0053). */
+  evaluated_by_employee_id: string | null
+  /** The principal that evaluated, where no person did (migration 0053). */
+  evaluated_by_agent_principal_id: string | null
   evaluated_by_role_id: string
   evaluated_by_role_function: string
   evaluated_by_department_id: string

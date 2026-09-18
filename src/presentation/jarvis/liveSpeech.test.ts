@@ -30,6 +30,7 @@ const context = {
     inFlight: 1,
     expired: 0,
     awaitingAdoption: 0,
+    failed: 0,
   },
   amendments: { count: 0, latestAt: null, workPredates: false },
 }
@@ -111,6 +112,48 @@ describe('the acknowledgement of delegated work', () => {
     )
   })
 
+  it('says an open objection in the objector’s words, never as a count', () => {
+    const advocate = { id: 'devils-advocate', name: "Devil's Advocate", isGovernance: true }
+    const objected: HostResult = {
+      ...context,
+      state: 'blocked',
+      block: { reason: 'objections-unresolved', owner: advocate },
+      inspection: {
+        view: 'objections',
+        objections: [
+          {
+            reviewId: 'review-da',
+            byDepartmentId: 'devils-advocate',
+            raisedAs: 'devils-advocate',
+            superseded: false,
+            challengeId: 'challenge-1',
+            contests: 'claim-1',
+            argument: 'Realräntorna föll först efter att guldet steg.',
+            materiality: 'material',
+            outcome: 'open',
+            counterEvidenceCount: 0,
+          },
+          {
+            reviewId: 'review-da',
+            byDepartmentId: 'devils-advocate',
+            raisedAs: 'devils-advocate',
+            superseded: false,
+            challengeId: 'challenge-2',
+            contests: 'claim-2',
+            argument: 'Dollarn nämns inte.',
+            materiality: 'non-material',
+            outcome: 'resolved',
+            counterEvidenceCount: 0,
+          },
+        ],
+      },
+    }
+    expect(toolSpeech(objected).say).toBe(
+      "Analysen kan inte fortsätta just nu. En invändning som avgör svaret är fortfarande öppen. Ligger hos Devil's Advocate. Devil's Advocate invänder: Realräntorna föll först efter att guldet steg.",
+    )
+    expect(toolSpeech(objected).acknowledgeWork).toBe(false)
+  })
+
   it('tells the truth about an unresolved operator', () => {
     const speech = toolSpeech(results.failedOperator!)
     expect(speech.say).toContain('Ingen operatör är konfigurerad')
@@ -149,6 +192,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
           evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
           started: [macro, rates],
           adopted: [],
+          filed: [],
           withheld: [{ desk: { id: 'quant-technical', name: 'Quant & Technical', isGovernance: false }, reason: 'dependencies-not-met' }],
         },
       },
@@ -169,7 +213,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
         ...gold,
         state: 'blocked',
         block: { reason: 'analysis-required', owner: macro },
-        commission: { evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] },
+        commission: { evidence: null, started: [], adopted: [], filed: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] },
       },
       'begin',
       { kind: 'explanation', focus: ['makro'] },
@@ -183,7 +227,7 @@ describe('the opening, said aloud (2026-09-17)', () => {
 
   it('words a position from the person’s view, or as an open examination', () => {
     const usa = { ...context, question: 'Borde jag minska min USA-exponering?', subject: 'USA-exponering' }
-    const commission = { evidence: null, started: [macro], adopted: [], withheld: [] }
+    const commission = { evidence: null, started: [macro], adopted: [], filed: [], withheld: [] }
     expect(
       toolSpeech({ ...usa, state: 'working', commission }, 'begin', {
         kind: 'position',

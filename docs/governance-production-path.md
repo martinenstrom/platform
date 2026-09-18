@@ -355,3 +355,60 @@ actor and initiator of every act.
 **Cost, bounded before it is spent.** Each governance context is measured
 with the token counter first; the v7 envelopes are written from those
 numbers; TD-96 stays the reason the firm still pays before it refuses.
+
+## 11. G1 as built and measured, 2026-09-17/18
+
+**Built, exactly the slice of §9.** Migration 0051 seats `verification-agent`,
+`devils-advocate-agent` and `risk-agent` on the firm's governance roles.
+`ContributionResult.governance` and the orchestrator's `RecordGovernanceCandidate`
+branch; `stubGovernance.ts` for the tests; `liveGovernance.ts` with one
+identity per control function and `governanceContext.ts` reading what each
+may read off the record. Macro-regime **v7** with budgets from the measured
+contexts (verification 17,369 input; challenge 5,163; peer 5,130 — on
+`dev-1789157716935` r2), then **v8** the next day when the first live
+governance runs proved the 4,096 answer cap truncates an answer on this
+model with thinking on (both caps now 8,192; v8 budgets 28,000 / 16,000).
+The advance pass files candidates through their principals, resolves Risk's
+requirement through Risk's principal, submits through the office's principal
+(migrations 0052, 0053: a department's principal may move a case and evaluate
+a gate), commissions the three control functions on the submitted revision,
+never submits to the CIO, never retries on its own pass, and stops at the
+committee's conclusion, a material objection, or a named block. JARVIS reads
+an open objection itself and says whose it is. Contract v4 §12.
+
+**Proven in memory** (`hostGovernanceLoop.test.ts`, `governanceCommission.test.ts`):
+from the person's word to `answer-ready / committee-conclusion` with every
+act's actor and initiator asserted from the ledger; the stops at a material
+objection, a missing principal and a failed provider; a Devil's Advocate that
+raises nothing settled as malformed output; a second commission on an opened
+queue refused; a live control function nobody budgeted refused before any
+spend; Risk's requirement resolved by `risk-agent` and by nobody else.
+
+**Proven live** (five runs, §14 of the proof): the person's instruction
+starts work on turn one; two desks run and adopt through their own principals;
+the office synthesises and mints revision 2 through its own principal; Risk's
+principal resolves its requirement; the office's principal submits; all three
+control functions start under their own principals on the submitted revision;
+the Devil's Advocate's objection and the peer's examination are recorded as
+candidates and **filed by their own principals**; the case stops at
+`verification-required`, said to the person with the failed run named.
+
+**Not proven live.** Verification's filing (the first four runs failed on the
+answer cap, then on two finding rules the contract did not state, then on the
+180 s deadline — TD-101), and therefore the committee's conclusion. And the
+conclusion would not have been reached anyway: every live revision 2 declared
+`portfolio-risk` on an explanatory opening, so Risk applied and Risk has no
+candidate boundary (TD-98, TD-100). Each of those is on the record, not
+inferred.
+
+**What G1 changed in accepted doctrine, by measurement.** The standing owes
+`submit-for-verification` for an aggregated revision nobody submitted,
+whatever stage the case rests at (it used to ask for a peer examination no one
+could file); the owner of that act is the desk that synthesised. A case
+movement, a requirement resolution and a review may be a department's own
+principal's act. An opened governance queue (`active`, no run) is
+commissionable. A department's institutional agent evaluates a gate.
+
+**Debt recorded.** TD-96 stays open. TD-97 model diversity (ruled), TD-98
+Risk's candidate boundary, TD-99 the objection round, TD-100 the explanatory
+opening ending at Risk, TD-101 Verification's live envelope.

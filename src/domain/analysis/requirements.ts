@@ -230,11 +230,19 @@ export function buildRequirementResolution(
         `or skipped without a stated reason cannot be reviewed.`,
     )
   }
-  if (resolution.evaluatedBy.kind !== 'employee') {
+  /*
+   * Whether a governance gate applies is an institutional judgement, and an
+   * accountable principal makes it: an employee, or — since G1 (2026-09-17)
+   * seated the Risk desk's own principal for exactly this act — the
+   * department's institutional agent. The system actor is refused: nobody is
+   * accountable for a gate the machinery opened or skipped on its own.
+   */
+  if (resolution.evaluatedBy.kind === 'system') {
     throw new Error(
-      `Resolution of "${resolution.playbookEntryKey}" was evaluated by a system ` +
+      `Resolution of "${resolution.playbookEntryKey}" was evaluated by the system ` +
         `actor. Whether a governance gate applies is an institutional judgement ` +
-        `and an employee is accountable for it.`,
+        `and an accountable principal — an employee or the department's own ` +
+        `institutional agent — makes it.`,
     )
   }
   return Object.freeze({ ...resolution })

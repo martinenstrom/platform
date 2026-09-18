@@ -160,8 +160,13 @@ export interface CaseTransition {
   from: CaseStage
   to: CaseStage
   at: string
-  /** Who moved it. A department acts through an employee. */
-  byEmployeeId: EmployeeId
+  /**
+   * Who moved it. A department acts through an employee — or, since G1
+   * (2026-09-18), through its own institutional principal; null then.
+   */
+  byEmployeeId: EmployeeId | null
+  /** The principal that moved the case, where no person did. */
+  byAgentPrincipalId?: string
   byDepartmentId: DepartmentId
   /** Required for `returned` and `blocked`: work does not stall anonymously. */
   reason?: string
@@ -240,7 +245,8 @@ export interface CaseClosure {
   kind: 'cancelled' | 'abandoned'
   reason: string | null
   at: string
-  byEmployeeId: EmployeeId
+  /** Null where the department's own principal closed it; closing is a person's act today. */
+  byEmployeeId: EmployeeId | null
   byDepartmentId: DepartmentId
 }
 
@@ -302,8 +308,20 @@ export function pinPlaybook(
 export function transitionCase(
   investmentCase: InvestmentCase,
   to: CaseStage,
-  by: { employeeId: EmployeeId; departmentId: DepartmentId; at: string; reason?: string },
+  by: {
+    employeeId?: EmployeeId | null
+    agentPrincipalId?: string | null
+    departmentId: DepartmentId
+    at: string
+    reason?: string
+  },
 ): InvestmentCase {
+  if (!by.employeeId && !by.agentPrincipalId) {
+    throw new Error(
+      `Moving case "${investmentCase.id}" to ${to} names no actor. A department ` +
+        `acts through a person or its own institutional principal.`,
+    )
+  }
   if (!canTransition(investmentCase.stage, to)) {
     throw new Error(
       `Case "${investmentCase.id}" cannot move from ${investmentCase.stage} to ${to}`,
@@ -321,7 +339,8 @@ export function transitionCase(
     from: investmentCase.stage,
     to,
     at: by.at,
-    byEmployeeId: by.employeeId,
+    byEmployeeId: by.employeeId ?? null,
+    ...(by.agentPrincipalId && !by.employeeId ? { byAgentPrincipalId: by.agentPrincipalId } : {}),
     byDepartmentId: by.departmentId,
     ...(by.reason ? { reason: by.reason } : {}),
   }

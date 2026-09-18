@@ -550,7 +550,7 @@ describe('the opening, on the person’s behalf (v4, ruled 2026-09-17)', () => {
     expect(result.state === 'blocked' && result.block.owner).not.toBeNull()
     expect(TEST_ORGANIZATION.departments.map((d) => d.id)).toContain(result.state === 'blocked' && result.block.owner?.id)
     /* This firm cannot execute work; the person is told, not promised. */
-    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-provider' }] })
+    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], filed: [], withheld: [{ desk: null, reason: 'no-provider' }] })
   })
 
   it('opens once: a second beginning proposes nothing new and reports the same standing', async () => {
@@ -591,7 +591,7 @@ describe('the opening, on the person’s behalf (v4, ruled 2026-09-17)', () => {
     })
     const asked = positive(await executing(gold))
     const result = positive(await executing({ kind: 'begin', reference: asked.reference, requestId: 'req-2', opening: explanation }))
-    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-observations' }] })
+    expect(result.commission).toEqual({ evidence: null, started: [], adopted: [], filed: [], withheld: [{ desk: null, reason: 'no-observations' }] })
     expect((await repositories.runs.listForCase(asked.reference.id))).toHaveLength(0)
     expect(await repositories.theses.listForCase(asked.reference.id)).toHaveLength(1)
   })

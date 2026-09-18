@@ -53,6 +53,7 @@ import {
   type CasePlaybook,
 } from '~/application/analysis/playbooks'
 import { createInMemoryRepositories } from './inMemoryRepositories'
+import { TEST_ORGANIZATION, TEST_SEED_VERSION } from './testOrganization'
 
 const AT = '2026-07-28T09:00:00.000Z'
 const SEED = 'seed-1'
@@ -964,7 +965,21 @@ describe('the conditional Risk rule', () => {
           reason: 'scheduled evaluation',
         }),
       }),
-    ).toThrow(/an employee is accountable/)
+    ).toThrow(/an accountable principal/)
+  })
+
+  it('admits the department’s own institutional principal as the evaluator (G1, 2026-09-17)', () => {
+    const resolution = resolutionFor([], {
+      evaluatedBy: resolveActor(TEST_ORGANIZATION, TEST_SEED_VERSION, {
+        kind: 'institutional-agent',
+        agentPrincipalId: 'risk-agent',
+      }),
+    })
+    expect(resolution.evaluatedBy).toMatchObject({
+      kind: 'institutional-agent',
+      agentPrincipalId: 'risk-agent',
+      departmentId: 'risk',
+    })
   })
 
   it('scopes the resolution to an exact revision', async () => {

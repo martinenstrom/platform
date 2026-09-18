@@ -1,4 +1,4 @@
-# JARVIS → Financial OS — the host contract (slice B, refined by B.1, extended for the open case and the opening)
+# JARVIS → Financial OS — the host contract (slice B, refined by B.1, extended for the open case, the opening and the loop through governance)
 
 **Status: implemented and verified; contract version 4.** Written 2026-09-14
 under the Slice B ruling, refined the same day under the B.1 review,
@@ -470,3 +470,66 @@ explanation begun at once with no second question; the one question for a
 capital question and `begin_delegation` on "pröva den öppet"; words added to
 an awaiting case taken as the opening; a bare confirmation and a focus read
 as such; the truthful sentence when no desk could start.
+
+## 12. The loop through governance — `filed`, `activity.failed`, the objection read (contract v4, G1, 2026-09-17/18)
+
+The ruling that accepted `b0e1028` named governance as the next boundary and
+G1 as the slice: the control functions perform their own acts, through their
+own principals, with no door for a person to press and nothing asked of the
+person. The contract grows by two fields and one runtime read; the request
+union does not change.
+
+```ts
+Context adds (on the result of begin only)
+  commission: {
+    …as §11…
+    /** A control function's candidate filed as its verdict, objection or examination by its own principal in this pass. */
+    filed: HostDesk[]
+  }
+
+Activity adds (every case-bearing result)
+  activity: {
+    …as before…
+    /** Runs that failed and were not retried by the firm on its own. */
+    failed: number
+  }
+```
+
+**What the passes now do.** Each pass, in order: adopt every finished desk
+run through its desk's principal (§11); **file** every finished control
+function run through that function's principal — `RecordVerificationReview`,
+`RecordDevilsAdvocateReview`, `RecordPeerExamination`, each with
+`candidateFromRunId`, so the verdict is exactly the persisted candidate and
+nothing the caller says; then, when the firm's standing says the office owes
+the submission, the Risk principal resolves whether Risk applies
+(`ResolveConditionalRequirement`, by `risk-agent`) and the office's principal
+submits the aggregated revision for verification
+(`SubmitForVerification`, by `research-office-agent` — the act that moves the
+case from research into review, which a department's principal may now do,
+migrations 0052 and 0053); then commission whatever the workflow now owes: the
+three control functions, each scoped to the revision under scrutiny, reading
+only what its mandate requires off the record at dispatch. Nothing submits to
+the CIO. The firm retries a failed run on the person's word only, never on a
+pass it gave itself. Passes are serialised per case.
+
+**Where it stops, and how the person hears it.** `answer-ready /
+committee-conclusion` when every control function has filed and nothing
+blocks; `blocked / objections-unresolved` when an open objection decides the
+answer — and the runtime then reads the objections itself
+(`inspect: objections`) so the tool result names the objector and the
+argument, never a count; `blocked / verification-required`,
+`risk-review-required` and the rest as before, with `activity.failed` said as
+"Ett bord kunde inte slutföra sitt arbete." when a run failed. A desk with no
+principal is `withheld: no-principal`; a control function with no provider or
+no authorised budget is `no-provider` / `no-authorized-budget`; Risk's review,
+which has no candidate boundary yet (TD-98), is `no-provider` once its queue
+is open.
+
+**Identity, unchanged and proven live.** Actor is always the principal
+performing the act — a desk's agent, a control function's agent, Risk's
+agent, the office's agent, or the operator for the person's own acts (ask,
+begin, amend, close). Initiator is the host (`orchestrator:jarvis`) for what
+the firm does on the person's word and `orchestrator:agent-headquarters` for
+what the orchestrator does inside a run. JARVIS is never the actor of
+anything. Every act above is on the ledger with both, read back by
+`scripts/probe-jarvis-intent.mjs --keep-open` (§14 of the proof).

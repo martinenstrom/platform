@@ -120,6 +120,12 @@ describe('a clean database reaches the expected schema', () => {
       '0049',
       /* What the person added to an open case: append-only, beside the question. */
       '0050',
+      /* The control functions' own principals, on the firm's governance roles. */
+      '0051',
+      /* A case movement may be a department's own principal's act (G1). */
+      '0052',
+      /* A requirement resolution may be the department's own principal's evaluation (G1). */
+      '0053',
     ])
   })
 

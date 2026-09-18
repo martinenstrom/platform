@@ -1051,6 +1051,13 @@ describe('Phase C1C-1 — the external-work boundary', () => {
     expect(offenders).toEqual([
       'infrastructure/analysis/providers/live.ts',
       /*
+       * The control functions' provider, added at G1 (2026-09-17): one module
+       * whose three identities — verification, challenge, peer examination —
+       * each carry their own prompt id and contract, and which declares its
+       * own kind for the same reason the other two do.
+       */
+      'infrastructure/analysis/providers/liveGovernance.ts',
+      /*
        * The synthesis provider, added at P4.5b. A separate module rather than a
        * mode on the claim provider, because it produces a different artifact
        * answering a different question — and the two would otherwise have
@@ -1099,6 +1106,9 @@ describe('Phase C1C-2 — contribution', () => {
      * market-data adapters are under, for the same reason.
      *
      * The fifth is the Research Office synthesis provider, approved at P4.5b.
+     * The sixth and seventh are the control functions' provider — one module,
+     * three identities, one per function — and its stub, approved at G1
+     * (2026-09-17): the committee's scrutiny, produced as candidates.
      */
     const adapters = FILES.filter((f) => inLayer(f, providers) && !isTest(f))
       .map((f) => f.path)
@@ -1106,10 +1116,12 @@ describe('Phase C1C-2 — contribution', () => {
     expect(adapters).toEqual([
       'infrastructure/analysis/providers/index.ts',
       'infrastructure/analysis/providers/live.ts',
+      'infrastructure/analysis/providers/liveGovernance.ts',
       'infrastructure/analysis/providers/liveSynthesis.ts',
       'infrastructure/analysis/providers/modelClient.ts',
       'infrastructure/analysis/providers/recorded.ts',
       'infrastructure/analysis/providers/stub.ts',
+      'infrastructure/analysis/providers/stubGovernance.ts',
     ])
   })
 

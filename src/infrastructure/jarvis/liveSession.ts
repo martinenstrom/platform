@@ -461,6 +461,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     timing: TurnTiming | null,
     clock: (wallMs: number) => number | null,
     tag: string,
+    /** The person's own words this turn, where the runtime has them (a typed turn); the voice's are not on the sideband. */
+    line: string | null = null,
   ): Promise<{ output: Record<string, unknown>; state: string }> {
     let args: unknown = {}
     try {
@@ -501,15 +503,25 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       } else if (
         interpreted.request.kind === 'ask' &&
         effects.reference &&
-        (isFocusOnly(interpreted.request.question) || isConfirmation(interpreted.request.question))
+        [line, interpreted.request.question].some(
+          (words) => words !== null && (isFocusOnly(words) || isConfirmation(words)),
+        )
       ) {
         /*
          * A focus alone, or a bare "kör", while a case is bound is about that
          * case — never a second question to the firm, whatever tool the model
          * reached for. Measured 2026-09-17: "Makro, flöden och specifika
-         * händelser." opened a duplicate case once in three runs.
+         * händelser." opened a duplicate case once in three runs. Measured
+         * 2026-09-18: the model rephrased that line into the case's question
+         * before asking, so the person's OWN words are read where the runtime
+         * has them, and they are what goes on the record.
          */
-        request = { kind: 'amend', reference: effects.reference, requestId: requestId(), text: interpreted.request.question }
+        request = {
+          kind: 'amend',
+          reference: effects.reference,
+          requestId: requestId(),
+          text: line ?? interpreted.request.question,
+        }
         result = await host(request)
         path.push('ask taken as addition', 'amend', result.state)
       } else {
@@ -535,6 +547,19 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           result = await host(begin)
           path.push(`begin (${opening.kind})`, result.state)
           if (request.kind === 'amend') request = begin
+        }
+      }
+      /*
+       * A material objection is the firm's own stop, and the person hears
+       * what it is rather than that "something" is open: the runtime reads
+       * the objections behind the block itself (G1, 2026-09-17). One read,
+       * no second tool call for the model to think of.
+       */
+      if (result.state === 'blocked' && result.block.reason === 'objections-unresolved' && !result.inspection) {
+        const inspected = await host({ kind: 'inspect', reference: result.reference, view: { kind: 'objections' } })
+        if (inspected.state === 'blocked' && inspected.inspection) {
+          result = inspected
+          path.push('inspect (objections)')
         }
       }
       if (timing && timing.hostDurationMs === null) timing.hostDurationMs = now() - started
@@ -985,7 +1010,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           countTool(call.name)
           toolCalls.push(call.name)
           const toolStarted = now()
-          const ran = await runTool(call, effects, timing, clock, tag)
+          const ran = await runTool(call, effects, timing, clock, tag, input.text)
           if (ran.state === 'market-snapshot') dataMs = (dataMs ?? 0) + (now() - toolStarted)
           state = ran.state
           /* The call and its result travel back in the request; nothing is kept at the provider. */

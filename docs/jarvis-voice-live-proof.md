@@ -1548,3 +1548,272 @@ first thing to do once it is not is to run it.
 **Recorded as debt.** TD-96: the firm pays the provider before it
 discovers a budget violation; the target is a bound on expected cost
 before dispatch, refused or reduced where policy requires.
+
+## 14. The committee, live — G1, from the person's word through governance, 2026-09-17/18
+
+The ruling that accepted `7f6925f` said: proceed with G1 exactly as ruled,
+then run the retained live gold proof against the real provider, and claim
+nothing the live record does not prove. This section is that record. Six live
+runs were made on 2026-09-18; each stopped where the firm's own rules stopped
+it, each stop named a defect or a policy, and the defects were fixed by
+measurement between runs. Every number below is read off the case records,
+the ledger and the server log (`scripts/probe-jarvis-intent.mjs text-5
+--keep-open`, records in `.probe/intent-text-5-attempt<n>.json`).
+
+### 14.1 What G1 built
+
+Seated principals for the three control functions (migration 0051), the
+governance-candidate branch of the orchestrator, one live provider with three
+identities and a context assembled off the record for each, budgets measured
+before they were written (v7, then v8), the advance pass extended through
+filing, Risk's resolution, the office's submission and the commissioning of
+scrutiny, and JARVIS reading an open objection itself. Contract v4 §12 and
+`docs/governance-production-path.md` §11 describe the pieces; the acceptance
+list is §14.9. Two doctrines had to widen for it, both by migration: a case
+movement (0052) and a requirement resolution (0053) may be a department's own
+principal's act. One standing rule was corrected: an aggregated revision
+nobody has submitted owes the submission, not a peer examination no one can
+file.
+
+### 14.2 Measured before a budget was written
+
+The three governance contexts, rendered from the real record of
+`dev-1789157716935` r2 (31 claims, 107 citations into the 7-day window) and
+counted with the provider's token counter (`npm run dev:measure-governance`):
+
+| control | claims | citations | system | user | input |
+|---|---|---|---|---|---|
+| verification | 31 | 107 | 624 | 16,745 | 17,369 |
+| devils-advocate | 31 | 0 | 460 | 4,703 | 5,163 |
+| peer-examination | 31 | 0 | 380 | 4,750 | 5,130 |
+
+v7 budgeted these against a 4,096-token answer cap: 24,000 for Verification,
+12,000 for the two claim-only functions. **The first live governance runs
+(§14.3, run 2) proved the cap wrong**: thinking is on by default on this
+model and shares `max_tokens` with the answer, and both the Verification and
+the Devil's Advocate answers were truncated — `budget-exhausted`, the runs
+`timed-out`, paid for (TD-96). The same cap had already lost the Rates desk's
+answer in run 1 (Macro's answer that run was 4,002 tokens, 98% of the cap).
+All three caps are now 8,192 and **v8** recomputes the budgets against it:
+28,000 for Verification, 16,000 for scrutiny. v7 stands unedited; the three
+cases opened on it keep it.
+
+### 14.3 The six runs
+
+| run | case | reached | stopped at | cause, from the record | fixed by |
+|---|---|---|---|---|---|
+| 1 · 19:40 | `case-dd5fa0a6549430852569b8a3` | Macro adopted | `blocked / analysis-required` | Rates' answer overran the desks' 4,096 answer cap: `budget-exhausted`, run `timed-out` | desk answer cap 8,192, measured |
+| 2 · 19:46 | `case-0b076a58a11c262cfb711145` (+ a duplicate, `case-50b3f207a06863d8a1c8aaa9`) | revision 2, Risk attempted, submitted, three control functions started | status reads `failed` | four faults: the stored agent-moved event refused on read (agent column written, never read back); Risk's resolution refused by the 0014 NOT NULL employee column; Verification and Devil's Advocate answers truncated at 4,096; the peer's candidate refused by the domain (an objection without counter-evidence and no resolution stated) — and the person's focus line opened a second case because the model rephrased it into a question | event read-back; migration 0053; governance cap 8,192 and v8; the objection contract stated as the domain judges it; the runtime reads the person's own typed line |
+| 3 · 20:41 | `case-d9e563c9e766a45e31a628af` | **Devil's Advocate objection filed; peer examination filed** | `blocked / verification-required` | Verification's candidate refused: a blocking finding without `correctionRequired` | the finding contract states it |
+| 4 · 20:50 | `case-9f6a83a345baa705070ab4d2` | same | same | Verification refused: a `stale-evidence` finding without the hash the claim cited | the contract states it; the parser records the cited hash; citations resolved from the claims the function reads, not the entry's inputs |
+| 5 · 20:57 | `case-399f655e8f049896171285e8` | same | same | Verification's call did not finish inside the 180 s deadline (`provider-timeout`) | measured directly, §14.6 |
+| 6 · 21:12 | `case-2ee08c340b9a5ffc2912200e` | **all three control functions filed** — Verification `correction-required`, the Devil's Advocate's objections, the peer's examination | `blocked / risk-review-required`; corrections demanded and material objections open are on the record beside it | the firm's own policy: Risk applies and has no candidate boundary (TD-98, TD-100); no defect | — |
+
+In every run the person spoke twice — the instruction and the focus line —
+and was asked nothing. Runs 3, 4 and 5 took the same instruction to the same
+state with the same acts, which is the loop being deterministic where the
+firm is and variable only where the model is.
+
+### 14.4 The chain, as the record shows it (run 5, `case-399f655e8f049896171285e8`)
+
+Every act on the ledger for the case, actor → initiator, in order:
+
+| at | act | actor | initiator |
+|---|---|---|---|
+| 20:57:24 | InstantiatePlaybook, OpenInvestmentCase | employee `research-director` (the operator) | `orchestrator:jarvis` |
+| 20:57:25 | ProposeThesis (revision 1, `explain`) | employee `research-director` | `orchestrator:jarvis` |
+| 20:57:26 | AssembleEvidenceSet (7-day US par curve, 48 observations) | employee `research-director` | `orchestrator:jarvis` |
+| 20:57:26 | StartAgentRun ×2 | `global-macro-agent`, `rates-agent` | `orchestrator:agent-headquarters` |
+| 20:57:31 | AmendCase ("Makro, flöden och specifika händelser.") | employee `research-director` | `orchestrator:jarvis` |
+| 20:58:22, 20:58:39 | RecordContribution, **AcceptContribution** (Macro, then Rates) | each desk's own agent | run: agent-headquarters; adoption: `orchestrator:jarvis` |
+| 20:58:40 | StartAgentRun (aggregation) | `research-office-agent` | `orchestrator:agent-headquarters` |
+| 20:59:30 | RecordContribution, AcceptContribution, **AggregateManagerConclusion** → revision 2 | `research-office-agent` | `orchestrator:jarvis` |
+| 20:59:31 | **ResolveConditionalRequirement** → `required` ("declares implementation implications (portfolio-risk)") | `risk-agent` | `orchestrator:jarvis` |
+| 20:59:31 | **SubmitForVerification** (research → aggregation → review) | `research-office-agent` | `orchestrator:jarvis` |
+| 20:59:32 | StartAgentRun ×3 | `verification-agent`, `devils-advocate-agent`, `rates-agent` | `orchestrator:agent-headquarters` |
+| 21:00:17 | RecordGovernanceCandidate, **RecordPeerExamination** | `rates-agent` | candidate: agent-headquarters; filing: `orchestrator:jarvis` |
+| 21:00:34 | RecordGovernanceCandidate, **RecordDevilsAdvocateReview** | `devils-advocate-agent` | candidate: agent-headquarters; filing: `orchestrator:jarvis` |
+| 21:02:32 | FailAgentRun (verification, `provider-timeout` at 180 s) | `verification-agent` | `orchestrator:agent-headquarters` |
+
+No act names JARVIS as its actor. No act asks the person anything after the
+instruction. `SubmitForCioDecision` does not appear, and the case's stage is
+`review`. The same table holds for runs 3 and 4 with the verification refusal
+in place of the timeout (`[begin] … verification: ran failed — Finding
+"unresolved-citation" on claim … blocks the case without stating what would
+clear it`, then `— Finding "stale-evidence" on claim … does not record the
+hash the claim cited`, on the server log).
+
+**What JARVIS said at the end of run 5** — to _"Var står det?"_: "Analysen
+står stilla hos Verification eftersom faktagranskningen inte är gjord.
+Tillägget om makro, flöden och specifika händelser har ännu inte arbetats
+in." — and to _"Vad kom de fram till?"_: "Analysen kan inte fortsätta just nu
+eftersom faktagranskningen inte är gjord. Ärendet ligger hos Verification, och
+tillägget … har ännu inte arbetats in." In runs 3 and 4, where a run had
+failed, the sentence carried it: "… och ett bord kunde inte slutföra sitt
+arbete." (`activity.failed`). In run 2, before the read-back fix, the same
+questions got "Analysmiljön svarar inte just nu" — the honest failure, not a
+guess.
+
+### 14.5 Latency, tokens, cost
+
+Per live provider call, runs 3–5 (provider latency is from the run's start to
+its produced candidate; adoption is from produced to filed/accepted):
+
+| desk / control | run 3 | run 4 | run 5 |
+|---|---|---|---|
+| Global Macro | 55.9 s · 12,570 / 3,565 · adopt 252 ms | 63.4 s · 12,570 / 3,988 · 285 ms | 55.8 s · 12,570 / 3,280 · 399 ms |
+| Rates | 64.8 s · 12,601 / 4,414 · 194 ms | 55.5 s · 12,601 / 3,526 · 437 ms | 72.2 s · 12,601 / 4,836 · 283 ms |
+| Research Office (synthesis) | 48.4 s · 1,880 / 4,716 · 597 ms | 52.9 s · 1,944 / 4,847 · 655 ms | 50.0 s · 1,932 / 4,219 · 454 ms |
+| Verification | refused (contract) | refused (contract) | timed out at 180 s |
+| Devil's Advocate | 120.2 s · 4,882 / 4,181 · filed 346 ms | 73.0 s · 4,968 / 4,584 · 373 ms | 61.8 s · 4,989 / 3,945 · 200 ms |
+| Peer examination (Rates) | 62.1 s · 4,886 / 4,444 · filed 136 ms | 46.9 s · 4,972 / 3,178 · 401 ms | 44.9 s · 4,993 / 2,810 · 391 ms |
+| **tokens in / out, recorded** | 36,819 / 21,320 | 37,055 / 20,123 | 37,085 / 19,090 |
+
+Tokens are the provider's own usage figures on the run records. **Cost is
+not recorded on any run**: the Messages API reports tokens and no price, which
+is why every budget's monetary figure is an authorization and not a control
+(TD-96). The two truncated answers of run 2 and the timed-out call of run 5
+were paid for without a usage record — the shape TD-96 describes.
+
+Wall clock, from the person's instruction (run 5 / run 3 / run 4):
+
+| | run 5 | run 3 | run 4 |
+|---|---|---|---|
+| instruction → work started (StartAgentRun) | 2 s | 2 s | 2 s |
+| instruction → JARVIS's spoken acknowledgement visible | 6.7 s | 8.4 s | 8.0 s |
+| instruction → revision 2 on the record | 2 min 6 s | 1 min 58 s | 2 min 0 s |
+| instruction → submitted for verification | 2 min 7 s | 1 min 59 s | 2 min 1 s |
+| instruction → last governance filing | 3 min 10 s | 4 min 0 s | 3 min 15 s |
+| instruction → last act on the case | 5 min 8 s (the timeout) | 4 min 0 s (the block stood from 2 min 58 s) | 3 min 28 s |
+| final state → JARVIS's answer to "Var står det?" | 4.9 s | 4.7 s | 4.1 s |
+| final state → JARVIS's answer to "Vad kom de fram till?" | 2.6 s | 3.2 s | 4.0 s |
+| person's turns after the instruction, other than the focus line | 0 | 0 | 0 |
+
+### 14.6 The verification envelope, measured directly
+
+After run 5, one live Verification call was made outside the loop against the
+same revision (`npm run dev:measure-governance -- --case
+case-399f655e8f049896171285e8 --call verification`), timed, and its candidate
+judged by the same domain builder the firm files with:
+
+```
+answered in 69524 ms · tokens 17641 in / 5099 out
+candidate VALID · status insufficient-evidence · findings 10 · claimsReviewed 28
+  - unresolved-citation · critical · blocking
+  - stale-evidence · material · blocking
+  - unresolved-citation · advisory ×8
+```
+
+So the contract now produces what the domain accepts — including the two
+rules the live runs found (a blocking finding states its correction; a
+stale-evidence finding records the hash the claim cited) and the citation
+resolution the entry's inputs could never provide — and the shape costs
+17,641 + 5,099 = 22,740 tokens, inside v8's 28,000. The 180 s deadline holds
+one such attempt plus one retry by the arithmetic v4 recorded for the desks
+(69.5 + 0.5 + 69.5 ≈ 140 s); run 5's call was an outlier at more than 2.6×
+the measured duration. Recorded as TD-101 rather than widened on one sample.
+
+### 14.7 The sixth run — every control function filed, and the firm stopped where its policy stops
+
+`case-2ee08c340b9a5ffc2912200e`, instruction at 21:12:04, the same two turns
+(JARVIS's acknowledgement visible after 8188 ms; the focus line taken as an
+addition after 4234 ms). Macro 54.4 s (12,570 / 3,827), Rates 81.0 s
+(12,601 / 5,202), each adopted by its own agent; the office 52.2 s
+(2,028 / 3,727), revision 2 minted at 21:14:21 — `hold`, declaring
+`portfolio-risk`, 37 accepted claims; Risk's principal resolved `required`
+at 21:14:21; the office's principal submitted at 21:14:22; the three control
+functions started at 21:14:22–23 under their own principals.
+
+| control | provider | tokens in / out | filed | as |
+|---|---|---|---|---|
+| Devil's Advocate | 66.6 s | 5,530 / 3,798 | 21:15:30, **RecordDevilsAdvocateReview** by `devils-advocate-agent` | five objections — `fragile-assumption` and `overconfidence`, graded material and decision-critical — all open |
+| Peer examination (Rates) | 67.6 s | 5,534 / 3,884 | 21:15:31, **RecordPeerExamination** by `rates-agent` | the examination on the record |
+| Verification | 95.2 s | 20,351 / 6,611 | 21:15:58, **RecordVerificationReview** by `verification-agent` | `correction-required`: nine findings — two value mismatches and two unresolved citations blocking, five advisory |
+
+Loop settled after 281 s; instruction → submission 2 min 18 s, → last filing
+3 min 54 s; tokens 58,614 in / 27,049 out on the record; cost not recorded.
+Every filing's initiator is `orchestrator:jarvis`; every actor is the
+function's own principal.
+
+The record then holds three reasons the firm cannot conclude, none of them a
+defect: Verification demands corrections; the Devil's Advocate's objections
+are material and open; Risk's review is required and has no provider. The
+host reported `blocked / risk-review-required` — the first owned blocker in
+review — and JARVIS said, to _"Var står det?"_ after 4510 ms:
+"Analysen är blockerad hos Risk eftersom riskgranskningen inte är gjord. Det
+senaste tillägget har ännu inte arbetats in." — and to _"Vad kom de fram
+till?"_ after 3109 ms: "Analysen kan inte fortsätta
+just nu. Riskgranskningen är inte gjord och ärendet ligger hos Risk. Tillägget
+om makro, flöden och specifika händelser har ännu inte arbetats in."
+
+What the sixth run adds: the third control function's filing, live; the whole
+G1 chain from the person's word to a scrutinised revision with every act by
+its own principal and none by the host; and the honest end. What it did not
+exercise: the spoken objection sentence — the host named Risk before the
+objections, so `objections-unresolved` and its read-back stay proven in
+memory only.
+
+### 14.8 What is proven, and what is not
+
+**Proven live, from the record.** The instruction starts work on turn one
+with no clarification; revision 1 is opened on the person's words; the
+standing evidence is assembled; two desks run live and adopt their own work
+through their own principals; the office synthesises independently and
+institutionalises revision 2 through its own principal; Risk's principal
+resolves whether Risk applies; the office's principal submits; all three
+control functions run live under their own principals on the submitted
+revision; the Devil's Advocate's objection and the peer's examination are
+produced as candidates and **filed by the principals whose acts they are**;
+the firm never submits to the CIO, never asks the person, never lets JARVIS
+act; a failed run and an open block are said to the person as such.
+
+**Proven live in the sixth run, after five that were not.** Verification's
+filing — the cap, two contract rules the domain enforced and one outlier
+call stood between the first live governance run and it.
+
+**Not proven live.** The committee's conclusion — which, on this gold case,
+**the firm's own policy withholds**: every live revision 2 declared
+`portfolio-risk` on an explanatory opening, Risk applied, and Risk's review
+has no candidate boundary (TD-98, TD-100); in the sixth run Verification also
+demanded corrections and the Devil's Advocate's objections stood material and
+open. The autonomous end of an explanation today is a named block, said
+honestly. Also not exercised live: the objection read-back sentence
+(`objections-unresolved`), which the host did not reach because Risk was
+named first.
+
+**Proven in memory, on the whole chain** (`hostGovernanceLoop.test.ts`): from
+the person's word to `answer-ready / committee-conclusion`, every act by its
+own principal and none by the host, the CIO not submitted to, and the stops at
+a material objection, a missing principal and a failed provider.
+
+### 14.9 The acceptance list
+
+Automated, and where each is proven:
+
+| item | where |
+|---|---|
+| wrong principal rejected | `governanceCommission.test.ts` (Devil's Advocate's agent cannot work Verification's queue); `governanceAdoption.test.ts` (cannot file it) |
+| browser actor rejected | `hostGateway.test.ts` (`parseHostRequest` refuses actor fields by name) |
+| stale candidate rejected | `governanceAdoption.test.ts` (argument moved under the candidate) |
+| malformed candidate rejected | `governanceCommission.test.ts` (Devil's Advocate that raises nothing → `malformed-output`) |
+| missing principal blocks visibly | `hostGovernanceLoop.test.ts` (`no-principal`, nobody else performs the act) |
+| missing budget blocks visibly | `governanceCommission.test.ts` (live kind on an unbudgeted entry refused before any spend) |
+| provider failure blocks visibly | `hostGovernanceLoop.test.ts` (`failed` run, `activity.failed`, not retried on the firm's own pass) |
+| verification cannot file itself | `governanceCommission.test.ts` (produced is not performed: no verdict, queue open) |
+| Devil's Advocate must object | domain builder + `governanceCommission.test.ts` |
+| peer may return zero | `hostGovernanceLoop.test.ts` (silent peer filed as an examination) |
+| Risk act requires the Risk principal | `governanceCommission.test.ts`, `caseCommands.test.ts` |
+| committee conclusion stops autonomous governance | `hostGovernanceLoop.test.ts` (stage `review`, `submit-for-cio-decision` still owed) |
+| CIO submission not automatic | same |
+| JARVIS never actor | every ledger assertion in the loop suite; every act in §14.4 |
+
+Live, run 6: instruction accepted ✔ · revision 1 opened ✔ · evidence
+assembled ✔ · two specialist runs complete ✔ · adopted under their own
+principals ✔ · office synthesised and institutionalised through its own
+principal ✔ · Risk resolved by its principal ✔ · submitted by the office's
+principal ✔ · Verification ran under its principal and filed ✔ · Devil's
+Advocate ran and filed, objecting ✔ · peer ran and filed ✔ · no internal step
+asked the person ✔ · stopped at the state policy permits, named ✔ · JARVIS
+explained the state ✔ · committee conclusion ✘ (withheld by the firm's own
+policy: TD-98, TD-100, corrections and material objections open) · CIO
+submission ✘ never automatic ✔ · JARVIS never actor ✔.

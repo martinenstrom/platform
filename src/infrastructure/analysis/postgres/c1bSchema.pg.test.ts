@@ -234,6 +234,41 @@ describe('a recorded requirement resolution', () => {
     ).rejects.toThrow(/requirement_resolutions_authentication_known/)
   })
 
+  it('records the department’s own principal as the evaluator, and refuses two evaluators or none (G1, 2026-09-18)', async () => {
+    /*
+     * Measured on the first live gold loop after G1: the Risk principal's
+     * resolution failed on this table's NOT NULL employee column, and the
+     * revision went before the control functions with Risk unresolved.
+     * Migration 0053: one evaluator, a person or the department's principal.
+     */
+    const caseId = await insertCase()
+    const revisionId = await insertRevision(caseId)
+    const provenanceId = await insertProvenance()
+    const insert = (employee: string | null, agent: string | null, entryKey: string) =>
+      sql.query(
+        `INSERT INTO analysis.requirement_resolutions
+           (case_id, tenant_id, playbook_entry_key, revision_id, state,
+            rule_id, rule_version, reason, input_hash, evaluated_at,
+            evaluated_by_employee_id, evaluated_by_agent_principal_id, evaluated_by_role_id,
+            evaluated_by_role_function, evaluated_by_department_id,
+            evaluated_by_department_is_governance,
+            evaluated_by_department_handles, evaluated_by_authentication,
+            organization_seed_version, provenance_id)
+         VALUES ($1, 'system', $2, $3, 'not-required', 'risk-review-when-implementable', '1', 'why',
+                 'hash', now(), $4, $5, 'governance', 'governance',
+                 'risk', true, ARRAY['risk'], 'system-asserted',
+                 '1', $6)`,
+        [caseId, entryKey, revisionId, employee, agent, provenanceId],
+      )
+    await insert(null, 'risk-agent', 'risk-review')
+    await expect(insert(null, null, 'risk-review-nobody')).rejects.toThrow(
+      /requirement_resolutions_one_evaluator/,
+    )
+    await expect(insert('research-director', 'risk-agent', 'risk-review-both')).rejects.toThrow(
+      /requirement_resolutions_one_evaluator/,
+    )
+  })
+
   it('gives the runtime insert and select, and nothing else', async () => {
     const { rows } = await sql.query<{ privilege_type: string }>(
       `SELECT privilege_type FROM information_schema.role_table_grants

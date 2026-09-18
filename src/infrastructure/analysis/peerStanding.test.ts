@@ -503,10 +503,55 @@ describe('who owes the CIO submission', () => {
       riskRequirement: 'not-required',
       peerScrutiny: { applicability: 'required', complete: true },
       submittingDepartmentId: 'research-office',
+      revisionSubmitted: true,
       hasSubmission: false,
       hasDecision: false,
       blockers: [],
     })
+
+  it('owes the submission, not a peer examination, while the aggregated revision is still a draft (G1)', () => {
+    const participating = ['research-office']
+    /*
+     * The submission is what moves a case out of research, so a case never
+     * rests at `aggregation` on its own — and no control function can file
+     * against a revision nobody has submitted. The standing says so.
+     */
+    const draft = caseStanding({
+      investmentCase: { id: 'case-1', stage: 'research', participatingDepartmentIds: participating } as never,
+      organization,
+      hasThesis: true,
+      hasAggregation: true,
+      hasVerification: false,
+      hasDevilsAdvocate: false,
+      hasRisk: false,
+      riskRequirement: 'unresolved',
+      peerScrutiny: { applicability: 'required', complete: false },
+      submittingDepartmentId: 'research-office',
+      revisionSubmitted: false,
+      hasSubmission: false,
+      hasDecision: false,
+      blockers: [],
+    })
+    /* Owed by the desk that synthesised it, not by whichever department the case happened to list first. */
+    expect(draft.nextAct).toEqual({ act: 'submit-for-verification', owningDepartmentId: 'research-office' })
+    const submitted = caseStanding({
+      investmentCase: { id: 'case-1', stage: 'review', participatingDepartmentIds: participating } as never,
+      organization,
+      hasThesis: true,
+      hasAggregation: true,
+      hasVerification: false,
+      hasDevilsAdvocate: false,
+      hasRisk: false,
+      riskRequirement: 'unresolved',
+      peerScrutiny: { applicability: 'required', complete: false },
+      submittingDepartmentId: 'research-office',
+      revisionSubmitted: true,
+      hasSubmission: false,
+      hasDecision: false,
+      blockers: [],
+    })
+    expect(submitted.nextAct.act).toBe('record-peer-examination')
+  })
 
   it('names the desk that produced the revision', () => {
     expect(standingWith(['research-office']).nextAct).toEqual({

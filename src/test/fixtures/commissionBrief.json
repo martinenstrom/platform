@@ -24,7 +24,7 @@
     "assignableWork": [
       {
         "playbookId": "macro-regime",
-        "playbookVersion": "6",
+        "playbookVersion": "8",
         "entryKey": "macro-analysis",
         "brief": "Assess the prevailing macro regime for the subject: growth, inflation, policy path and the rates and currency implications. State what would change your view.",
         "requirement": "required",

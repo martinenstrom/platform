@@ -871,7 +871,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "8be4fa57cc42c57494ab2a2ea2c26f440dd7ab85dca234047ec4e8d803c41981"
+          "digest": "76170ff4767f066b15f0f8360a4994f05335056fe37e774c100c6f9bc43cd9d4"
         }
       }
     },
@@ -923,7 +923,7 @@
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "6ecec21ef6ecf64d629bbf53f0d5c8c630bcc2f38867b6fcc57f53c91274a3f4"
+          "digest": "b8aef05941e2b0adea649def76d4a796145a7018f3ef0782401d4599b2ec28b5"
         }
       }
     }

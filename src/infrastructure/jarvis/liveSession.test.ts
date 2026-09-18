@@ -34,7 +34,7 @@ const config: LiveConfig = {
 }
 
 const reference = { system: 'financial-os', kind: 'case', id: 'case-9', provenanceId: 'p' } as const
-const activity = { stage: 'research' as const, desks: [{ id: 'rates', name: 'Rates', isGovernance: false }], outstanding: [], inFlight: 1, expired: 0, awaitingAdoption: 0 }
+const activity = { stage: 'research' as const, desks: [{ id: 'rates', name: 'Rates', isGovernance: false }], outstanding: [], inFlight: 1, expired: 0, awaitingAdoption: 0, failed: 0 }
 const amendments = { count: 0, latestAt: null, workPredates: false }
 const bound = { reference, question: 'q', subject: 's', surfaces: { boardroom: '/cases/case-9', record: '/cases/case-9/underlag' }, activity, amendments }
 
@@ -219,6 +219,41 @@ describe('a live session', () => {
     await flush()
     expect(asked).toEqual([{ kind: 'status', reference }])
     expect(rt.state('live-1')?.lastAsk).toBeNull()
+  })
+
+  it('reads the objection behind a block itself, and says it in the objector’s words', async () => {
+    const rt = runtime()
+    await rt.open({ sdp: 'offer', reference })
+    const advocate = { id: 'devils-advocate', name: "Devil's Advocate", isGovernance: true }
+    const objection = {
+      reviewId: 'review-da',
+      byDepartmentId: 'devils-advocate',
+      raisedAs: 'devils-advocate' as const,
+      superseded: false,
+      challengeId: 'challenge-1',
+      contests: 'claim-1',
+      argument: 'Realräntorna föll först efter att guldet steg.',
+      materiality: 'material' as const,
+      outcome: 'open' as const,
+      counterEvidenceCount: 0,
+    }
+    answer = (request) => ({
+      ...bound,
+      state: 'blocked',
+      block: { reason: 'objections-unresolved', owner: advocate },
+      ...(request.kind === 'inspect' ? { inspection: { view: 'objections' as const, objections: [objection] } } : {}),
+    })
+    sideband.emit(functionCall('check_delegation', {}, 'c1'))
+    await flush()
+    /* One status read, then the objections behind it — the model asked for neither twice. */
+    expect(asked).toEqual([
+      { kind: 'status', reference },
+      { kind: 'inspect', reference, view: { kind: 'objections' } },
+    ])
+    const outputs = tool().filter((event) => typeof (event as { item?: { output?: unknown } }).item?.output === 'string')
+    const said = JSON.parse((outputs.at(-1)!.item as { output: string }).output)
+    expect(said.state).toBe('blocked')
+    expect(said.say).toContain("Devil's Advocate invänder: Realräntorna föll först efter att guldet steg.")
   })
 
   it('remembers the case the firm bound, reads its status with it, and adds to it in the person’s words', async () => {
@@ -449,6 +484,7 @@ describe('a live session', () => {
         evidence: { family: 'us-par-curve', from: '2026-08-18', to: '2026-09-17', observations: 220 },
         started: [macro],
         adopted: [],
+        filed: [],
         withheld: [],
       },
     }
@@ -592,6 +628,20 @@ describe('a live session', () => {
       expect(asked.map((request) => request.kind)).toEqual(['status'])
     })
 
+    it('takes a typed focus line as an addition even when the model asks the firm a rephrased question', async () => {
+      const rt = runtime()
+      answer = (request) => (request.kind === 'amend' ? { ...started, amendments: { count: 1, latestAt: '2026-09-18T17:46:30.000Z', workPredates: true } } : started)
+      let round = 0
+      respondWith = () =>
+        round++ === 0
+          ? functionCallResult('delegate_to_financial_os', { question: 'Ta reda på varför guld är upp idag.', subject: 'Guld' })
+          : textResult('Tillagt.')
+      await rt.respond({ text: 'Makro, flöden och specifika händelser.', reference })
+      /* Measured 2026-09-18: the model rephrased the person's focus into the case's question. The person's own line decides. */
+      expect(asked.map((request) => request.kind)).toEqual(['amend'])
+      expect(asked[0]).toMatchObject({ kind: 'amend', reference, text: 'Makro, flöden och specifika händelser.' })
+    })
+
     it('tells the truth when no desk could start, and promises no return', async () => {
       const rt = runtime()
       let round = 0
@@ -600,7 +650,7 @@ describe('a live session', () => {
         round++ === 0 ? functionCallResult('delegate_to_financial_os', { question: line, subject: 'Olja' }) : textResult('Jag har lagt frågan hos dem.')
       answer = (request) =>
         request.kind === 'begin'
-          ? { ...bound, state: 'blocked', block: { reason: 'analysis-required', owner: macro }, commission: { evidence: null, started: [], adopted: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] } }
+          ? { ...bound, state: 'blocked', block: { reason: 'analysis-required', owner: macro }, commission: { evidence: null, started: [], adopted: [], filed: [], withheld: [{ desk: null, reason: 'no-evidence-basis' }] } }
           : awaiting
       const result = await rt.respond({ text: line })
       expect(asked.map((request) => request.kind)).toEqual(['ask', 'begin'])

@@ -2710,6 +2710,12 @@ acceptance run that found it, unless the seven-day gold flow needs it to
 complete. The refusal must remain the institution's (`StartAgentRun` and
 the orchestrator's budget resolution), never a second rule in a caller.
 
+**Measured again 2026-09-18** (`docs/jarvis-voice-live-proof.md` §14): the
+first live governance runs paid for two answers truncated at the 4,096 cap
+and one Verification call that ran past its 180 s deadline, none with a usage
+record. Still open; the governance budgets (v7, v8) were written from
+measured contexts first, which bounds the input but not the answer.
+
 ## TD-95 · a typed line into a live session never reaches the firm — CLOSED 2026-09-16
 
 **Opened 2026-09-16**, measured by `scripts/probe-jarvis-typed-live.mjs`
@@ -2769,3 +2775,100 @@ confirmation read off the record: _"Dollarn är tillagd i ärendet"_,
 _"Ärendet är stängt och lades ner innan något arbete hade gjorts"_,
 _"Det lades ner på din begäran"_. Before: four lines, zero delegations,
 two fabricated confirmations.
+
+## TD-97 · the control functions run on the desks' model · open
+
+**Opened 2026-09-17**, by ruling, at G1. Verification, the Devil's Advocate
+and the peer examination each run under their own principal, prompt, context
+and run identity — and all three on `claude-opus-5`, the model the desks and
+the Research Office run on. A control function that shares the model of the
+work it checks shares that model's blind spots; independence of principal and
+prompt is real, independence of judgement is not yet.
+
+**What is in place for it.** Every run records its provider identity — model
+id, prompt id and content hash, parameters hash — so a policy that requires a
+control function to run on a different model from the desks it scrutinises
+can be enforced at `StartAgentRun` without touching the workflow.
+
+**Deliberately not implemented in G1** (ruled: record, do not build). The
+resolution is a policy rule over provider identities per role function, and
+a second configured model, decided when the firm decides what diversity it
+wants to pay for.
+
+## TD-98 · Risk Review has no candidate boundary · open
+
+**Opened 2026-09-17** at G1. The Risk desk's own principal now resolves
+whether its review applies to a revision (`ResolveConditionalRequirement`,
+by `risk-agent`, proven live 2026-09-18), but the review itself — sizing,
+concentration, liquidity, tail risk — has no provider, no candidate artifact
+and no filing path: `RecordRiskReview` is a person's act. Where the
+requirement resolves to `required`, the submission opens Risk's queue and the
+advance pass reports `risk: no-provider`; the case then stops at
+`risk-review-required` after the other control functions have filed.
+
+**Measured consequence.** In every live gold run of 2026-09-18 that reached
+a synthesis (`docs/jarvis-voice-live-proof.md` §14), the Research Office's
+revision 2 declared `portfolio-risk`, so Risk applied and the committee's
+conclusion was unreachable by the firm on its own. See TD-100 for the other
+half of that fact.
+
+**The resolution** is a Risk candidate boundary on the pattern the three
+other control functions now use: a context of what Risk reads, a JSON
+contract validated by a domain builder, `RecordGovernanceCandidate` for a
+fourth kind, and the Risk principal filing it. Not in G1 by ruling.
+
+## TD-99 · no examination round after a material objection · open
+
+**Opened 2026-09-17** at G1, by ruling. A material objection from the Devil's
+Advocate stops the firm at `objections-unresolved`, visibly, with the
+objector and the argument said to the person (`liveSpeech.objectionLines`,
+proven in memory). Nothing then answers the objection: no re-examination by
+the desks, no rebuttal, no withdrawal — the round that would let the firm
+resolve or sustain the objection on the record does not exist, and the ruling
+forbade building an automatic objection/rebuttal loop in G1.
+
+**The resolution** is a bounded round — one re-examination by the desk whose
+claim is contested, one ruling on the objection by the office or the CIO —
+with a hard stop, designed when the firm has seen real material objections.
+
+## TD-100 · an explanatory opening ends at Risk's queue · open
+
+**Opened 2026-09-18**, measured on the live gold runs of that day
+(`docs/jarvis-voice-live-proof.md` §14). The person asked the committee why
+gold is up today; the opening was proposed as `explain` with no
+implications. In all three runs that reached a synthesis the Research
+Office's live provider minted revision 2 as position `hold` declaring
+`portfolio-risk` (cases `case-d9e563c9e766a45e31a628af`,
+`case-9f6a83a345baa705070ab4d2`, `case-399f655e8f049896171285e8`), the
+pinned rule read that as "Risk applies", the submission opened Risk's
+queue, and — Risk having no provider (TD-98) — the case can never reach the
+committee's conclusion on its own, whatever Verification says.
+
+**Why it matters.** The ruling of 2026-09-17 said a market explanation is not
+a full committee by default. The synthesis contract does not know the kind of
+opening it is reconciling, so an explanation is free to become a position with
+implementation implications, and then the firm's own policy — correctly —
+demands a risk review nobody can perform.
+
+**The resolution is a ruling**, then a small change: either the synthesis
+contract carries the opening's kind and an explanatory revision declares no
+implementation implications unless the desks' evidence supports acting, or the
+requirement rule reads the opening's kind. Not decided here; the record is.
+
+## TD-101 · Verification's live envelope · open
+
+**Opened 2026-09-18**, measured on the fifth live gold run
+(`docs/jarvis-voice-live-proof.md` §14.6). With the answer cap at 8,192 and
+a revision of 32 accepted claims and their citations (17,000–18,000 input
+tokens), the live Verification call did not finish inside the 180,000 ms
+deadline the v8 workflow reuses from the desks; the run settled `timed-out /
+provider-timeout` at exactly 180 s. The Devil's Advocate and the peer, on the
+same revision with a claims-only context, answered in 45–120 s.
+
+**Measured directly** (`npm run dev:measure-governance -- --case <id> --call
+verification`): see §14.6 of the proof for the one call timed outside the
+loop, its tokens, and whether its candidate passed the domain's builders.
+
+**The resolution** is a Verification deadline of its own, computed from that
+measurement — one attempt plus one retry, as v4 did for the desks — in a
+new workflow version, since a deadline is inside `playbookContentHash`.

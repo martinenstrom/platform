@@ -251,9 +251,36 @@ describe('the seeded principals', () => {
        ORDER BY p.id`,
     )
     expect(rows.rows.map((row) => row.id)).toEqual([
+      'devils-advocate-agent',
       'global-macro-agent',
       'rates-agent',
       'research-office-agent',
+      'risk-agent',
+      'verification-agent',
+    ])
+  })
+
+  it('seats each control function’s principal on a governance role in a control-function department', async () => {
+    /*
+     * Ruled 2026-09-17 (third): internal governance is autonomous within its
+     * mandate. The `governance-verdict` mandate reads the role's function, the
+     * department's control flag and the discipline it handles; these rows are
+     * what lets an agent pass it, and nothing else changed.
+     */
+    const rows = await sql.query(
+      `SELECT p.id, r.function, d.is_governance,
+              (SELECT array_agg(h.discipline ORDER BY h.discipline)
+                 FROM analysis.department_handles h WHERE h.department_id = d.id) AS disciplines
+         FROM analysis.agent_principals p
+         JOIN analysis.departments d ON d.id = p.department_id
+         JOIN analysis.roles r ON r.id = p.role_id
+        WHERE p.id IN ('verification-agent', 'devils-advocate-agent', 'risk-agent')
+        ORDER BY p.id`,
+    )
+    expect(rows.rows).toEqual([
+      { id: 'devils-advocate-agent', function: 'governance', is_governance: true, disciplines: ['challenge'] },
+      { id: 'risk-agent', function: 'governance', is_governance: true, disciplines: ['risk', 'stress', 'tail-risk'] },
+      { id: 'verification-agent', function: 'governance', is_governance: true, disciplines: ['verification'] },
     ])
   })
 

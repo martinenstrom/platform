@@ -67,6 +67,7 @@ import { systemRandom, type Random } from '~/domain/shared/random'
 import { runCommand, type CommandDeps } from './commands/runCommand'
 import { startAgentRun } from './commands/startAgentRun'
 import { recordContribution } from './commands/recordContribution'
+import { recordGovernanceCandidate } from './commands/recordGovernanceCandidate'
 import { failAgentRun } from './commands/failAgentRun'
 // The rejection code comes through the command envelope rather than from the
 // ledger module directly: the orchestrator's only durable surface is
@@ -191,6 +192,12 @@ export interface StageOutcome {
    * models this record flows through.
    */
   failureCategory?: RunFailureCategory
+  /**
+   * The domain's own sentence for a candidate it refused to record — names
+   * records and constraints, never carries provider prose (`DomainRejection.detail`).
+   * For the operator's log; the run record keeps only the category.
+   */
+  rejectionDetail?: string
   /**
    * Upstream entries whose work is produced and awaiting a human.
    *
@@ -781,6 +788,53 @@ async function runEntry(
     return stage({
       failureCategory: 'budget-exhausted',
       completedAt: context.now().toISOString(),
+    })
+  }
+
+  /*
+   * A control function's output is a candidate, not a contribution (G1,
+   * 2026-09-17). It goes through the candidate command — which validates the
+   * artifact against the record, derives the basis itself and leaves the run
+   * awaiting acceptance — and never through `RecordContribution`, whose
+   * guards would refuse the claimless result correctly. Filing is a later act
+   * by the control function's own principal; nothing here performs it.
+   */
+  if (settled.value.governance) {
+    const produced = await runCommand(
+      recordGovernanceCandidate(deps.organization),
+      {
+        caseId: context.caseId,
+        runId: run.id,
+        departmentId,
+        observedStates: settled.value.observedStates,
+        usage: settled.value.usage,
+        candidate: settled.value.governance,
+      },
+      envelope('record'),
+      deps,
+    )
+    if (produced.outcome !== 'committed') {
+      const category: RunFailureCategory =
+        produced.outcome === 'rejected' && produced.rejection.code === 'invariant-violated'
+          ? 'malformed-output'
+          : 'internal-error'
+      await settle(entry, context, deps, run.id, departmentId, {
+        category,
+        state: 'failed',
+        retryable: false,
+      })
+      return stage({
+        failureCategory: category,
+        ...(produced.outcome === 'rejected'
+          ? { rejection: produced.rejection.code, rejectionDetail: produced.rejection.detail }
+          : {}),
+        completedAt: context.now().toISOString(),
+      })
+    }
+    return stage({
+      state: 'awaiting-acceptance',
+      claims: [],
+      completedAt: produced.value.completedAt ?? context.now().toISOString(),
     })
   }
 

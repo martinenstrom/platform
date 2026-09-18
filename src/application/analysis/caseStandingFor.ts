@@ -178,6 +178,11 @@ export async function standingFrom(input: {
       facts.aggregations.find(
         (aggregation) => aggregation.producedRevisionId === current?.revisionId,
       )?.departmentId ?? null,
+    revisionSubmitted:
+      current !== null &&
+      current !== undefined &&
+      current.lifecycle !== 'proposed' &&
+      current.lifecycle !== 'under-analysis',
     hasSubmission: facts.submissions.length > 0,
     hasDecision: facts.hasDecision,
     blockers: forCurrent?.eligibility.blockedBy ?? [],

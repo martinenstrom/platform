@@ -51,6 +51,14 @@ import { proposeThesis } from './commands/proposeThesis'
 import { assembleEvidenceSet } from './commands/assembleEvidenceSet'
 import { acceptContribution } from './commands/acceptContribution'
 import { aggregateManagerConclusion } from './commands/aggregateManagerConclusion'
+import { submitForVerification } from './commands/submitForVerification'
+import { resolveConditionalRequirement } from './commands/resolveConditionalRequirement'
+import { recordVerificationReview } from './commands/recordVerificationReview'
+import { recordDevilsAdvocateReview } from './commands/recordDevilsAdvocateReview'
+import { recordPeerExamination } from './commands/recordPeerExamination'
+import { governanceContext, type GovernanceContext, type GovernanceKind } from './governanceContext'
+import { PEER_EXAMINATION_ENTRY_KEY, RISK_ENTRY_KEY } from './reviewRecording'
+import { currentRevision, requirementStatusFor } from '~/domain/analysis'
 import { commissionAnalysis, type CommissionResult } from './commissionAnalysis'
 import type { ContributionProvider } from './contributionPort'
 import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
@@ -214,6 +222,8 @@ export interface CaseCommission {
   started: readonly { departmentId: string; runId: string }[]
   /** Finished candidate work adopted by its own desk's principal in this pass. */
   adopted: readonly { departmentId: string; runId: string }[]
+  /** A control function's candidate filed as its verdict, objection or examination by its own principal in this pass. */
+  filed: readonly { departmentId: string; runId: string }[]
   withheld: readonly { departmentId: string | null; reason: HostWithheldReason }[]
 }
 
@@ -243,13 +253,33 @@ export interface AdvanceDeps {
    * facts it reconciles — read off the record at dispatch, never before.
    */
   synthesisProvider?: (loadContext: () => Promise<SynthesisContext>) => ContributionProvider | null
+  /**
+   * The provider for a control function's entry — verification, challenge,
+   * peer examination — given a loader of what that function may read (G1,
+   * 2026-09-17). Each is its own invocation, prompt and identity.
+   */
+  governanceProvider?: (kind: GovernanceKind, loadContext: () => Promise<GovernanceContext | null>) => ContributionProvider | null
   startWaitMs?: number
   /** Where a commission that continues after `begin` reports how it ended. */
   log?: (line: string) => void
 }
 
-/** How many times one beginning may advance the case after its first pass: each finished run earns one. */
-const ADVANCE_PASSES = 8
+/**
+ * How many times one beginning may advance the case after its first pass:
+ * each finished run earns one. Twelve covers the macro-regime workflow's
+ * longest honest path — two desks, the synthesis, three control functions —
+ * with a margin for refusals; a case that needs more is a case whose stop
+ * conditions should be read, not a loop to be lengthened.
+ */
+const ADVANCE_PASSES = 12
+
+/** The control act a workflow entry performs, read off its discipline and key; null for a desk's analysis. */
+function governanceKindOf(entry: { key: string; disciplineTag?: string }): GovernanceKind | null {
+  if (entry.key === PEER_EXAMINATION_ENTRY_KEY) return 'peer-examination'
+  if (entry.disciplineTag === 'verification') return 'verification'
+  if (entry.disciplineTag === 'challenge') return 'devils-advocate'
+  return null
+}
 
 export function createFinancialOsSystem(input: {
   repositories: AnalysisRepositories
@@ -425,6 +455,7 @@ export function createFinancialOsSystem(input: {
     current: InvestmentCase,
     deps: CommandDeps,
     adopted: { departmentId: string; runId: string }[],
+    filed: { departmentId: string; runId: string }[],
     withheld: { departmentId: string | null; reason: HostWithheldReason }[],
   ): Promise<void> {
     const runs = await repositories.runs.listForCase(current.id)
@@ -435,19 +466,43 @@ export function createFinancialOsSystem(input: {
         continue
       }
       const actor = { kind: 'institutional-agent' as const, agentPrincipalId: principal.id }
+      const envelope = (commandId: string) => ({
+        commandId,
+        correlationId: current.id,
+        actor,
+        initiator: initiatedBy(delegation),
+        occurredAt: now(),
+      })
+
+      /*
+       * A control function's candidate is FILED, not accepted: the filing
+       * command institutionalises the persisted candidate under the
+       * function's own mandate and completes the producing run. The principal
+       * is the control function's; the host only initiates (G1, 2026-09-17).
+       */
+      const verification = await repositories.producedVerifications.get(run.id)
+      const challenge = verification ? null : await repositories.producedChallenges.get(run.id)
+      const examination = verification || challenge ? null : await repositories.producedPeerExaminations.get(run.id)
+      if (verification || challenge || examination) {
+        const filing = { caseId: current.id, byDepartmentId: run.departmentId, candidateFromRunId: run.id }
+        const result = verification
+          ? await runCommand(recordVerificationReview(deps.organization), filing, envelope(`file-${run.id}`), deps)
+          : challenge
+            ? await runCommand(recordDevilsAdvocateReview(deps.organization), filing, envelope(`file-${run.id}`), deps)
+            : await runCommand(recordPeerExamination(deps.organization), filing, envelope(`file-${run.id}`), deps)
+        advance?.log?.(`[advance] ${current.id} ${run.departmentId} files ${run.id}: ${result.outcome}${result.outcome === 'rejected' ? ` ${result.rejection.code}: ${result.rejection.detail}` : ''}`)
+        if (result.outcome === 'committed') filed.push({ departmentId: run.departmentId, runId: run.id })
+        else withheld.push({ departmentId: run.departmentId, reason: 'declined' })
+        continue
+      }
+
       const accepted = await runCommand(
         acceptContribution(deps.organization),
         { caseId: current.id, runId: run.id, departmentId: run.departmentId },
-        {
-          commandId: `agent-accept-${run.id}`,
-          correlationId: current.id,
-          actor,
-          initiator: initiatedBy(delegation),
-          occurredAt: now(),
-        },
+        envelope(`agent-accept-${run.id}`),
         deps,
       )
-      advance?.log?.(`[advance] ${current.id} ${run.departmentId} adopts ${run.id}: ${accepted.outcome}${accepted.outcome === 'rejected' ? ` ${accepted.rejection.code}` : ''}`)
+      advance?.log?.(`[advance] ${current.id} ${run.departmentId} adopts ${run.id}: ${accepted.outcome}${accepted.outcome === 'rejected' ? ` ${accepted.rejection.code}: ${accepted.rejection.detail}` : ''}`)
       if (accepted.outcome !== 'committed') {
         withheld.push({ departmentId: run.departmentId, reason: 'declined' })
         continue
@@ -464,26 +519,110 @@ export function createFinancialOsSystem(input: {
           departmentId: run.departmentId,
           synthesisFromRunId: run.id,
         },
-        {
-          commandId: `office-adopt-${run.id}`,
-          correlationId: current.id,
-          actor,
-          initiator: initiatedBy(delegation),
-          occurredAt: now(),
-        },
+        envelope(`office-adopt-${run.id}`),
         deps,
       )
       advance?.log?.(
-        `[advance] ${current.id} ${run.departmentId} institutionalises ${run.id}: ${institutionalised.outcome}${institutionalised.outcome === 'rejected' ? ` ${institutionalised.rejection.code}` : ''}${institutionalised.outcome === 'committed' ? ` → ${institutionalised.value.revisionId}` : ''}`,
+        `[advance] ${current.id} ${run.departmentId} institutionalises ${run.id}: ${institutionalised.outcome}${institutionalised.outcome === 'rejected' ? ` ${institutionalised.rejection.code}: ${institutionalised.rejection.detail}` : ''}${institutionalised.outcome === 'committed' ? ` → ${institutionalised.value.revisionId}` : ''}`,
       )
       if (institutionalised.outcome !== 'committed') withheld.push({ departmentId: run.departmentId, reason: 'declined' })
     }
   }
 
-  /** The lineage's current revision — the argument a synthesis reconciles. */
+  /**
+   * The lineage's current revision — the argument a synthesis reconciles and
+   * the control functions scrutinise. The domain's own rule: the LAST live
+   * revision of the lineage, so revision 2 is current the moment the office
+   * mints it (the first live one would be revision 1 forever; found by the
+   * loop suite, 2026-09-18).
+   */
   async function currentRevisionOf(caseId: string) {
     const revisions = await repositories.theses.listForCase(caseId)
-    return revisions.find((revision) => revision.lifecycle !== 'superseded') ?? null
+    const thesisId = revisions[0]?.thesisId
+    return thesisId ? currentRevision(revisions, thesisId) : null
+  }
+
+  /**
+   * The office's revision put before the control functions, on the firm's
+   * own reading of what it owes next (G1, 2026-09-17).
+   *
+   * Two acts, each by its own principal, each only when the standing says it
+   * is owed: the Risk desk resolves whether its review applies to this
+   * revision — the pinned rule decides, the rule's reason is the act's — and
+   * the Research Office submits the aggregated revision for verification,
+   * which opens the control functions' queues. Nothing here submits to the
+   * CIO: that stays a deliberate act, and the loop stops at the committee's
+   * conclusion.
+   */
+  async function putBeforeGovernance(
+    delegation: Delegation,
+    current: InvestmentCase,
+    deps: CommandDeps,
+    withheld: { departmentId: string | null; reason: HostWithheldReason }[],
+  ): Promise<void> {
+    const revision = await currentRevisionOf(current.id)
+    if (!revision || !revision.aggregationId) return
+    if (revision.lifecycle === 'awaiting-verification' || revision.lifecycle === 'verified') return
+    const standing = await standingForCase({ repositories, organization: deps.organization, investmentCase: current, now: now() })
+    if (standing.nextAct.act !== 'submit-for-verification') return
+
+    /* Risk decides whether Risk applies, before the queues open, so a revision that needs it gets it. */
+    const resolutions = await repositories.requirements.listForCase(current.id)
+    if (requirementStatusFor(RISK_ENTRY_KEY, revision.revisionId, resolutions).state === 'unresolved') {
+      const risk = principalFor(deps, 'risk')
+      if (!risk) {
+        withheld.push({ departmentId: 'risk', reason: 'no-principal' })
+      } else {
+        /*
+         * The command evaluates the workflow's pinned rule and records the
+         * rule's own reason on the resolution; this reason is the ACT's, for
+         * the ledger. Reading the rule here would be a second answer.
+         */
+        const resolved = await runCommand(
+          resolveConditionalRequirement(deps.organization),
+          {
+            caseId: current.id,
+            playbookEntryKey: RISK_ENTRY_KEY,
+            revisionId: revision.revisionId,
+            departmentId: 'risk',
+            discipline: 'risk',
+          },
+          {
+            commandId: `${current.id}-risk-resolve-${revision.revisionId}`,
+            correlationId: current.id,
+            actor: { kind: 'institutional-agent', agentPrincipalId: risk.id },
+            initiator: initiatedBy(delegation),
+            occurredAt: now(),
+            reason: `Risk resolves whether its review applies to revision ${revision.revisionId}, by the workflow's pinned rule, before the revision goes before the control functions.`,
+          },
+          deps,
+        )
+        advance?.log?.(`[advance] ${current.id} risk resolves its requirement on ${revision.revisionId}: ${resolved.outcome}${resolved.outcome === 'rejected' ? ` ${resolved.rejection.code}: ${resolved.rejection.detail}` : ''}`)
+        if (resolved.outcome !== 'committed') withheld.push({ departmentId: 'risk', reason: 'declined' })
+      }
+    }
+
+    const office = principalFor(deps, revision.proposedByDepartmentId)
+    if (!office) {
+      withheld.push({ departmentId: revision.proposedByDepartmentId, reason: 'no-principal' })
+      return
+    }
+    const fresh = await repositories.cases.get(current.id)
+    const submitted = await runCommand(
+      submitForVerification(deps.organization),
+      { caseId: current.id, revisionId: revision.revisionId, submittedByDepartmentId: revision.proposedByDepartmentId },
+      {
+        commandId: `${current.id}-submit-verification-${revision.revisionId}`,
+        correlationId: current.id,
+        actor: { kind: 'institutional-agent', agentPrincipalId: office.id },
+        initiator: initiatedBy(delegation),
+        occurredAt: now(),
+        expectedVersion: (fresh ?? current).version,
+      },
+      deps,
+    )
+    advance?.log?.(`[advance] ${current.id} ${revision.proposedByDepartmentId} submits ${revision.revisionId} for verification: ${submitted.outcome}${submitted.outcome === 'rejected' ? ` ${submitted.rejection.code}: ${submitted.rejection.detail}` : ''}`)
+    if (submitted.outcome !== 'committed') withheld.push({ departmentId: revision.proposedByDepartmentId, reason: 'declined' })
   }
 
   /**
@@ -524,6 +663,16 @@ export function createFinancialOsSystem(input: {
       }
       /* A desk already running, waiting to be adopted, or adopted is not commissioned again here. */
       if (runs.some((run) => run.assignmentId === assignment.id && ['running', 'awaiting-acceptance', 'completed'].includes(run.state))) continue
+      /*
+       * The firm retries on the person's word, not on its own. An entry whose
+       * run failed stays on the record, visible, until the next beginning; the
+       * passes the firm gives itself never re-commission it — a provider that
+       * refused once would only be paid to refuse again.
+       */
+      if (pass > 0 && runs.some((run) => run.assignmentId === assignment.id && run.state === 'failed')) {
+        withheld.push({ departmentId: entry.departmentId, reason: 'declined' })
+        continue
+      }
       const principal = principalFor(deps, entry.departmentId)
       if (!principal) {
         withheld.push({ departmentId: entry.departmentId, reason: 'no-principal' })
@@ -531,7 +680,37 @@ export function createFinancialOsSystem(input: {
       }
       let entryProvider: ContributionProvider | null = provider
       let revisionId: string | undefined
-      if (entry.key === synthesisEntry) {
+      const control = governanceKindOf(entry)
+      if (entry.key === RISK_ENTRY_KEY) {
+        /*
+         * Risk's review has no candidate boundary yet (TD-98). Where the
+         * submission opened its queue — the review applies — the firm says
+         * so rather than pretending; before that, nothing is owed.
+         */
+        if (assignment.status === 'active') withheld.push({ departmentId: entry.departmentId, reason: 'no-provider' })
+        continue
+      }
+      if (control) {
+        /*
+         * A control function reads only what its mandate requires, assembled
+         * from the record at dispatch, and is scoped to the revision under
+         * scrutiny — the candidate command refuses one that names none.
+         */
+        const revision = await currentRevisionOf(current.id)
+        /* Scrutiny is owed only once the office has put its revision before the control functions. */
+        if (!revision || !revision.aggregationId || revision.lifecycle !== 'awaiting-verification') continue
+        revisionId = revision.revisionId
+        entryProvider =
+          advance.governanceProvider?.(control, async () => {
+            const revisionNow = await currentRevisionOf(current.id)
+            if (!revisionNow) return null
+            return governanceContext({ repositories, kind: control, caseId: current.id, question: current.question, revision: revisionNow })
+          }) ?? null
+        if (!entryProvider) {
+          withheld.push({ departmentId: entry.departmentId, reason: 'no-provider' })
+          continue
+        }
+      } else if (entry.key === synthesisEntry) {
         const revision = await currentRevisionOf(current.id)
         if (!revision) {
           withheld.push({ departmentId: entry.departmentId, reason: 'not-assignable' })
@@ -575,7 +754,9 @@ export function createFinancialOsSystem(input: {
       /* Left to run; how it ended is on the record and in the log, and a finished run advances the case again. */
       commission.then(
         (result) => {
-          advance.log?.(`[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}`)
+          advance.log?.(
+            `[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}${'failureDetail' in result && result.failureDetail ? ` — ${result.failureDetail}` : ''}`,
+          )
           if (result.outcome === 'ran' && result.state === 'awaiting-acceptance') void advanceLater(delegation, current.id, pass + 1)
         },
         (error: unknown) => advance.log?.(`[begin] ${current.id} ${entry.key}: threw ${String(error)}`),
@@ -622,18 +803,28 @@ export function createFinancialOsSystem(input: {
     deps: CommandDeps,
     pass = 0,
   ): Promise<CaseCommission> {
-    const previous = advancing.get(current.id)
-    if (previous) await previous.catch(() => undefined)
-    const run = (async (): Promise<CaseCommission> => {
+    /*
+     * One pass at a time per case. Every pass queues behind the LATEST one
+     * registered, not behind whichever it happened to read first: two passes
+     * that both waited on the same predecessor would run side by side, and
+     * two desks adopting the same run at once is exactly the collision the
+     * ledger then refuses (found by the loop suite, 2026-09-18).
+     */
+    const previous = advancing.get(current.id) ?? Promise.resolve(null)
+    const run = previous.catch(() => null).then(async (): Promise<CaseCommission> => {
       const started: { departmentId: string; runId: string }[] = []
       const adopted: { departmentId: string; runId: string }[] = []
+      const filed: { departmentId: string; runId: string }[] = []
       const withheld: { departmentId: string | null; reason: HostWithheldReason }[] = []
-      /* Adoption needs no provider and no evidence: it is the desks' own act on work already produced. */
-      await adoptFinishedWork(delegation, current, deps, adopted, withheld)
+      /* Adoption and filing need no provider and no evidence: they are the desks' own acts on work already produced. */
+      await adoptFinishedWork(delegation, current, deps, adopted, filed, withheld)
+      /* The office's revision goes before the control functions when the firm says it is owed. */
+      await putBeforeGovernance(delegation, current, deps, withheld)
       const stopped = (reason: HostWithheldReason, evidence: CaseCommission['evidence'] = null): CaseCommission => ({
         evidence,
         started,
         adopted,
+        filed,
         withheld: [...withheld, { departmentId: null, reason }],
       })
       if (!advance) return stopped('no-provider')
@@ -648,8 +839,8 @@ export function createFinancialOsSystem(input: {
         throw error
       }
       await commissionReadyEntries(delegation, current, playbook, basis.evidence.evidenceSetId, deps, pass, started, withheld)
-      return { evidence: basis.evidence, started, adopted, withheld }
-    })()
+      return { evidence: basis.evidence, started, adopted, filed, withheld }
+    })
     advancing.set(current.id, run)
     try {
       return await run
@@ -672,7 +863,7 @@ export function createFinancialOsSystem(input: {
       if (current.stage === 'withdrawn' || current.stage === 'published') return
       const result = await advanceCase(delegation, current, owning.departmentId, deps, pass)
       advance?.log?.(
-        `[advance] ${caseId} pass ${pass}: adopted ${result.adopted.map((entry) => entry.departmentId).join(',') || '–'} · started ${result.started.map((entry) => entry.departmentId).join(',') || '–'} · withheld ${result.withheld.map((entry) => `${entry.departmentId ?? '*'}:${entry.reason}`).join(',') || '–'}`,
+        `[advance] ${caseId} pass ${pass}: adopted ${result.adopted.map((entry) => entry.departmentId).join(',') || '–'} · filed ${result.filed.map((entry) => entry.departmentId).join(',') || '–'} · started ${result.started.map((entry) => entry.departmentId).join(',') || '–'} · withheld ${result.withheld.map((entry) => `${entry.departmentId ?? '*'}:${entry.reason}`).join(',') || '–'}`,
       )
     } catch (error) {
       advance?.log?.(`[advance] ${caseId} pass ${pass}: threw ${String(error)}`)

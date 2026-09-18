@@ -600,6 +600,165 @@ export const MACRO_REGIME_PLAYBOOK_V6: CasePlaybook = Object.freeze({
 })
 
 /**
+ * The control functions' budgets — Verification, the Devil's Advocate and the
+ * peer examination — approved 2026-09-17 (G1) from measurement, before any of
+ * the three was allowed to start live.
+ *
+ * Measured with the provider's own token counter on the real record of case
+ * `dev-1789157716935`, revision r2: the largest argument the firm has put
+ * before its committee — 31 claims from two desks and the office, 107
+ * citations into the 7-day standing window — rendered through each control
+ * function's own system prompt, its own user prompt from `governanceContext`,
+ * and the entry's brief (`npm run dev:measure-governance`):
+ *
+ * | control          | claims | citations | system | user   | input  | + 4,096 output cap |
+ * |---|---|---|---|---|---|---|
+ * | verification     | 31     | 107       | 624    | 16,745 | 17,369 | 21,465 |
+ * | devils-advocate  | 31     | 0         | 460    | 4,703  | 5,163  | 9,259  |
+ * | peer-examination | 31     | 0         | 380    | 4,750  | 5,130  | 9,226  |
+ *
+ * Two shapes, so two constants — and not three. Verification reads every
+ * cited observation, so its input scales with the evidence the desks cited:
+ * the same 31 claims over the 30-day window the firm refused for the desks
+ * (TD-96) would cite roughly four times as much — an ESTIMATE, on the order
+ * of 55,000–60,000 input tokens, not a measurement, because that window is
+ * refused before a desk can produce it — and it stays refused here too. The
+ * Devil's Advocate and the peer read the claims and never the observations,
+ * so they scale with the claim count alone: the synthesis's shape, with a
+ * shorter answer. The two are budgeted by ONE constant for the reason v6 gave
+ * Rates the desk figure — two numbers that must stay equal are two things to
+ * keep in step.
+ *
+ * **24,000 for Verification** holds the largest real shape's worst case
+ * (21,465) and refuses the 30-day pathology. It coincides with the desk
+ * figure and is deliberately its own constant: the two are measured on
+ * different work and may part company on the next measurement, and a shared
+ * constant would make that divergence silent.
+ *
+ * **12,000 for scrutiny** is ~2.3x the largest real shape and admits an
+ * argument of about fifty claims at the cap (~150 user tokens per claim,
+ * measured: 4,703 / 31); a 250-claim pathology — an estimated ~38,000 — is
+ * refused. It is the synthesis's figure, reused: same input shape, smaller
+ * answer.
+ *
+ * The output cap is `LIVE_GOVERNANCE_MAX_OUTPUT_TOKENS` (4,096): a
+ * verification answer lists its findings and the claim ids it reviewed, an
+ * objection is a few paragraphs; neither grows the way a synthesis does. The
+ * deadline is v4's envelope, reused — same model, same retry arithmetic —
+ * and unmeasured for this work until the first live run, which is what the
+ * first live run is for. The monetary figure is an authorization, not a
+ * control, for the reason every budget above states; TD-96 stays open.
+ */
+const VERIFICATION_REVIEW_BUDGET = Object.freeze({
+  tokens: 24_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+const GOVERNANCE_SCRUTINY_BUDGET = Object.freeze({
+  tokens: 12_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+/**
+ * Version 7 — the committee, authorized to scrutinise live (G1, 2026-09-17).
+ *
+ * v6's path to a synthesis, unchanged, plus a budget on each of the three
+ * control functions that examine it: `verification`, `challenge` and
+ * `peer-examination`. Nothing else moves. `quant-validation` stays
+ * unbudgeted, and `risk-review` stays unbudgeted because the Risk desk has
+ * no candidate boundary yet (TD-98): its conditional requirement is resolved
+ * by its own principal, and where the review applies the firm says so and
+ * stops rather than pretending.
+ *
+ * What this version authorizes is exactly the committee's conclusion: two
+ * desks, the office's synthesis, three scrutinies. It authorizes no CIO
+ * submission — that act is deliberate and stays outside every budget.
+ */
+const MACRO_REGIME_V7_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_V6_ENTRIES.map((entry) => {
+    if (entry.key === 'verification') {
+      return Object.freeze({ ...entry, budget: VERIFICATION_REVIEW_BUDGET })
+    }
+    if (entry.key === 'challenge' || entry.key === 'peer-examination') {
+      return Object.freeze({ ...entry, budget: GOVERNANCE_SCRUTINY_BUDGET })
+    }
+    return entry
+  }),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V7: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '7',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V7_ENTRIES,
+})
+
+/**
+ * Version 8 — the committee's budgets recomputed against the measured answer
+ * cap (2026-09-18).
+ *
+ * v7's budgets were computed against a 4,096-token answer cap. The first live
+ * gold loop through governance (`docs/jarvis-voice-live-proof.md` §14, cases
+ * `case-0b076a58a11c262cfb711145` and `case-50b3f207a06863d8a1c8aaa9`, 34 and
+ * 37 accepted claims) lost both the Verification and the Devil's Advocate
+ * answers to that cap: thinking is on by default on this model and shares
+ * `max_tokens` with the answer. The cap is now
+ * `LIVE_GOVERNANCE_MAX_OUTPUT_TOKENS` = 8,192, the value the synthesis and
+ * the desks measured for the same reason, and the arithmetic is redone:
+ *
+ * | control          | measured input | + 8,192 cap | v8 budget |
+ * |---|---|---|---|
+ * | verification     | 17,369         | 25,561      | 28,000    |
+ * | devils-advocate  | 5,163          | 13,355      | 16,000    |
+ * | peer-examination | 5,130          | 13,322      | 16,000    |
+ *
+ * 28,000 holds Verification's largest measured shape at the full cap and still
+ * refuses the 30-day citation pathology (estimated 55,000–60,000). 16,000 is
+ * the synthesis's own shape with the full cap and ~2.9x the measured input;
+ * the 250-claim pathology (~38,000 estimated) stays refused. Deadlines and the
+ * monetary authorization are v7's; TD-96 stays open.
+ *
+ * v7 is not edited: registration is append-only and a budget is inside
+ * `playbookContentHash`; the three cases opened on v7 keep the workflow they
+ * pinned. Nothing else moves — same entries, same dependencies, same
+ * unopened Quant and Risk.
+ */
+const VERIFICATION_REVIEW_BUDGET_V8 = Object.freeze({
+  tokens: 28_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+const GOVERNANCE_SCRUTINY_BUDGET_V8 = Object.freeze({
+  tokens: 16_000,
+  cost: Object.freeze({ costMinorUnits: 100, currency: 'USD' }),
+  deadlineMs: 180_000,
+})
+
+const MACRO_REGIME_V8_ENTRIES: readonly PlaybookEntry[] = Object.freeze(
+  MACRO_REGIME_V7_ENTRIES.map((entry) => {
+    if (entry.key === 'verification') {
+      return Object.freeze({ ...entry, budget: VERIFICATION_REVIEW_BUDGET_V8 })
+    }
+    if (entry.key === 'challenge' || entry.key === 'peer-examination') {
+      return Object.freeze({ ...entry, budget: GOVERNANCE_SCRUTINY_BUDGET_V8 })
+    }
+    return entry
+  }),
+)
+
+export const MACRO_REGIME_PLAYBOOK_V8: CasePlaybook = Object.freeze({
+  id: 'macro-regime',
+  version: '8',
+  caseKind: MACRO_REGIME_CASE_KIND,
+  name: 'Macro regime assessment',
+  entries: MACRO_REGIME_V8_ENTRIES,
+})
+
+/**
  * Every playbook this build can register.
  *
  * A list rather than a lookup by id alone, because registration is keyed on
@@ -613,4 +772,6 @@ export const COMPILED_PLAYBOOKS: readonly CasePlaybook[] = Object.freeze([
   MACRO_REGIME_PLAYBOOK_V4,
   MACRO_REGIME_PLAYBOOK_V5,
   MACRO_REGIME_PLAYBOOK_V6,
+  MACRO_REGIME_PLAYBOOK_V7,
+  MACRO_REGIME_PLAYBOOK_V8,
 ])

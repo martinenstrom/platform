@@ -228,7 +228,7 @@ describe('the playbook registry', () => {
      */
     expect(resolveForCaseKind('macro-regime')).toEqual({
       playbookId: 'macro-regime',
-      version: '6',
+      version: '8',
     })
   })
 

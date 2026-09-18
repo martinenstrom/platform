@@ -27,6 +27,10 @@ import {
   createLiveSynthesisProvider,
   LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS,
 } from './providers/liveSynthesis'
+import {
+  createLiveGovernanceProvider,
+  LIVE_GOVERNANCE_MAX_OUTPUT_TOKENS,
+} from './providers/liveGovernance'
 import type { OrganizationReader } from '~/application/analysis/organizationReader'
 import type { StorageProvenance } from '~/application/analysis/repositories'
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
@@ -214,6 +218,23 @@ export async function createAnalysisContainer(
                 apiKey,
                 model: LIVE_MODEL_ID,
                 maxTokens: LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS,
+                loadContext,
+              })
+            },
+            /*
+             * The control functions, each under its own prompt and context
+             * (G1, 2026-09-17). The same model serves them today; the
+             * provider identity on every run is what lets policy require
+             * otherwise later (TD-97), without touching the workflow.
+             */
+            governanceProvider: (kind, loadContext) => {
+              const apiKey = process.env.ANTHROPIC_API_KEY
+              if (!apiKey) return null
+              return createLiveGovernanceProvider({
+                kind,
+                apiKey,
+                model: LIVE_MODEL_ID,
+                maxTokens: LIVE_GOVERNANCE_MAX_OUTPUT_TOKENS,
                 loadContext,
               })
             },

@@ -124,9 +124,17 @@ export function toolSpeech(result: HostResult, act?: HostRequest['kind'], openin
         reference,
       }
     case 'blocked':
+      /* An objection that stops the firm is said in the objector's words, not as a count. */
       return {
         state: result.state,
-        say: [spoken.headline, spoken.detail, amendmentLine(result)].filter(Boolean).join(' '),
+        say: [
+          spoken.headline,
+          spoken.detail,
+          ...objectionLines(result),
+          amendmentLine(result),
+        ]
+          .filter(Boolean)
+          .join(' '),
         acknowledgeWork: false,
         decisionRequired: false,
         reference,
@@ -141,6 +149,23 @@ export function toolSpeech(result: HostResult, act?: HostRequest['kind'], openin
         reference,
       }
   }
+}
+
+/**
+ * An open objection in the objector's words: who holds what against the
+ * argument. Never a count — and never a judgement of its weight: that the
+ * objection decides the answer is what the block already said, and the
+ * firm's policy alone draws that line.
+ */
+function objectionLines(result: Extract<HostResult, { state: 'blocked' }>): string[] {
+  if (result.inspection?.view !== 'objections') return []
+  const nameOf = (departmentId: string): string =>
+    result.block.owner?.id === departmentId
+      ? result.block.owner.name
+      : (result.activity.desks.find((desk) => desk.id === departmentId)?.name ?? departmentId)
+  return result.inspection.objections
+    .filter((objection) => objection.outcome === 'open')
+    .map((objection) => `${nameOf(objection.byDepartmentId)} invänder: ${objection.argument}`)
 }
 
 const UNSUPPORTED_TOOL: Record<UnsupportedToolReason, string> = {

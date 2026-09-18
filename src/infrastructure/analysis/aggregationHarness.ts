@@ -28,6 +28,7 @@ import { resolveExecutionBudget } from '~/application/analysis/executionBudget'
 import { recordContribution } from '~/application/analysis/commands/recordContribution'
 import { acceptContribution } from '~/application/analysis/commands/acceptContribution'
 import { MACRO_REGIME_PLAYBOOK } from '~/application/analysis/macroPlaybook'
+import type { CasePlaybook } from '~/application/analysis/playbooks'
 import { EMPLOYEE_BY_DEPARTMENT } from './testOrganization'
 
 export const AT = '2026-07-30T09:00:00.000Z'
@@ -44,6 +45,9 @@ export interface Seeded {
   quantClaimId: string
   aggregationRunId: string
   aggregationClaimId: string
+  /** Present when the pinned workflow has a Rates desk (v5 and later). */
+  ratesRunId?: string
+  ratesClaimId?: string
 }
 
 const envelopeFor = (
@@ -215,12 +219,15 @@ export async function seedAggregatableCase(
   organization: Organization,
   options: {
     caseId?: string
+    /** The workflow to pin; v1 unless a test needs a later one (G1's governance budgets live in v7). */
+    playbook?: CasePlaybook
     completeMacroRun?: boolean
     completeQuantRun?: boolean
     completeAggregationRun?: boolean
   } = {},
 ): Promise<Seeded> {
   const caseId = options.caseId ?? 'case-1'
+  const playbook = options.playbook ?? MACRO_REGIME_PLAYBOOK
   const thesisId = `${caseId}-thesis`
   const instantiateCommandId = `${caseId}-inst`
 
@@ -251,8 +258,8 @@ export async function seedAggregatableCase(
     instantiatePlaybook(organization),
     {
       caseId,
-      playbookId: MACRO_REGIME_PLAYBOOK.id,
-      playbookVersion: MACRO_REGIME_PLAYBOOK.version,
+      playbookId: playbook.id,
+      playbookVersion: playbook.version,
       onBehalfOfDepartmentId: 'research-office',
     },
     envelopeFor(instantiateCommandId, 'research-director', { expectedVersion: 1 }),
@@ -303,6 +310,19 @@ export async function seedAggregatableCase(
           instantiateCommandId,
         })
 
+  /* A workflow with a Rates desk makes the aggregation wait for it, so it is seeded alongside Macro. */
+  const rates =
+    options.completeMacroRun === false || !playbook.entries.some((entry) => entry.key === 'rates-analysis')
+      ? null
+      : await contributionFor(repositories, deps, organization, {
+          caseId,
+          entryKey: 'rates-analysis',
+          departmentId: 'rates',
+          commandPrefix: `${caseId}-rates`,
+          statement: 'The curve prices the policy path the desk describes',
+          instantiateCommandId,
+        })
+
   const aggregationRun =
     options.completeAggregationRun === false
       ? { runId: '', claimId: '' }
@@ -325,5 +345,6 @@ export async function seedAggregatableCase(
     quantClaimId: quant.claimId,
     aggregationRunId: aggregationRun.runId,
     aggregationClaimId: aggregationRun.claimId,
+    ...(rates ? { ratesRunId: rates.runId, ratesClaimId: rates.claimId } : {}),
   }
 }

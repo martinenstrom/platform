@@ -359,7 +359,7 @@ function projectTransitions(store: Store, caseId: string): CaseTransition[] {
       (a, b) => byString(a.occurredAt, b.occurredAt) || byString(a.eventId, b.eventId),
     )
     .map((event) => {
-      if (!event.actorEmployeeId || !event.actorDepartmentId) {
+      if ((!event.actorEmployeeId && !event.actorAgentPrincipalId) || !event.actorDepartmentId) {
         /*
          * Refused rather than filled with an empty string. A department acts
          * through a person, and an empty employee id reads as an employee.
@@ -376,7 +376,10 @@ function projectTransitions(store: Store, caseId: string): CaseTransition[] {
         from: event.fromState as CaseTransition['from'],
         to: event.toState as CaseTransition['to'],
         at: event.occurredAt,
-        byEmployeeId: event.actorEmployeeId,
+        byEmployeeId: event.actorEmployeeId ?? null,
+        ...(event.actorAgentPrincipalId && !event.actorEmployeeId
+          ? { byAgentPrincipalId: event.actorAgentPrincipalId }
+          : {}),
         byDepartmentId: event.actorDepartmentId,
         ...(event.reason ? { reason: event.reason } : {}),
       })

@@ -173,6 +173,12 @@ export interface HostActivity {
   expired: number
   /** Produced work the firm holds that its desk has not yet adopted. */
   awaitingAdoption: number
+  /**
+   * Runs that failed and were not retried: a provider that did not deliver,
+   * output the firm refused, a budget overrun. Reported beside the step they
+   * left owed, never hidden behind it (G1, 2026-09-17).
+   */
+  failed: number
 }
 
 /**
@@ -404,6 +410,8 @@ export interface HostCommission {
   started: readonly HostDesk[]
   /** The desks whose finished candidate work was adopted by their own principal in this advance. */
   adopted: readonly HostDesk[]
+  /** The control functions whose candidate was filed as their verdict, objection or examination in this advance. */
+  filed: readonly HostDesk[]
   /** The desks that did not start, and why. `desk` is null when nothing named a desk. */
   withheld: readonly { desk: HostDesk | null; reason: HostWithheldReason }[]
 }

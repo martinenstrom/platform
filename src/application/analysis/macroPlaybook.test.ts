@@ -23,6 +23,8 @@ import {
   MACRO_REGIME_PLAYBOOK_V4,
   MACRO_REGIME_PLAYBOOK_V5,
   MACRO_REGIME_PLAYBOOK_V6,
+  MACRO_REGIME_PLAYBOOK_V7,
+  MACRO_REGIME_PLAYBOOK_V8,
 } from './macroPlaybook'
 import { playbookContentHash, type PlaybookEntry } from './playbooks'
 import { resolveForCaseKind, requirePlaybook } from './playbookRegistry'
@@ -562,8 +564,219 @@ describe('version 6 authorizes the path to a synthesis, and nothing beyond it', 
   })
 })
 
-describe('the registry ships all six, and defaults new cases to the newest', () => {
-  it('registers exactly six versions of one playbook', () => {
+describe('version 7 authorizes the committee to scrutinise live, and nothing beyond it (G1, 2026-09-17)', () => {
+  const entry = (key: string) =>
+    MACRO_REGIME_PLAYBOOK_V7.entries.find((candidate) => candidate.key === key)!
+
+  const permitsLive = (candidate: PlaybookEntry) =>
+    budgetPermitsStart(
+      'live',
+      resolveExecutionBudget('live', {
+        ...(candidate.budget ? { proposed: candidate.budget } : {}),
+        firmCeiling: {},
+      }),
+    )
+
+  it('is a different workflow by content from every predecessor', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK_V7)).not.toBe(
+      playbookContentHash(MACRO_REGIME_PLAYBOOK_V6),
+    )
+  })
+
+  it('budgets Verification for the largest argument the firm has measured, and refuses the window it refused the desks', () => {
+    /*
+     * Measured with the provider's token counter on case dev-1789157716935
+     * r2 — 31 claims, 107 citations into the 7-day window — through the
+     * verification prompt: 17,369 input, 21,465 with the 4,096 answer cap.
+     */
+    expect(entry('verification').budget).toEqual({
+      tokens: 24_000,
+      cost: { costMinorUnits: 100, currency: 'USD' },
+      deadlineMs: 180_000,
+    })
+    expect(21_465).toBeLessThan(entry('verification').budget!.tokens!)
+    /* The 30-day window's citations, estimated at ~4x: refused, as it is for the desks. */
+    expect(55_000).toBeGreaterThan(entry('verification').budget!.tokens!)
+  })
+
+  it('gives the Devil’s Advocate and the peer one figure — the synthesis’s — because they read the claims and never the evidence', () => {
+    /* Measured the same way: 5,163 and 5,130 input; 9,259 and 9,226 with the answer cap. */
+    expect(entry('challenge').budget).toBe(entry('peer-examination').budget)
+    expect(entry('challenge').budget).toEqual({
+      tokens: 12_000,
+      cost: { costMinorUnits: 100, currency: 'USD' },
+      deadlineMs: 180_000,
+    })
+    expect(9_259).toBeLessThan(entry('challenge').budget!.tokens!)
+    expect(entry('challenge').budget!.tokens!).toBe(entry('aggregation').budget!.tokens!)
+  })
+
+  it('does not share Verification’s constant with the desks, though the numbers coincide', () => {
+    expect(entry('verification').budget).not.toBe(entry('macro-analysis').budget)
+    expect(entry('verification').budget).toEqual(entry('macro-analysis').budget)
+  })
+
+  it('lets exactly the committee’s path start live work', () => {
+    const permitted = MACRO_REGIME_PLAYBOOK_V7.entries
+      .filter(permitsLive)
+      .map((candidate) => candidate.key)
+      .sort()
+    expect(permitted).toEqual([
+      'aggregation',
+      'challenge',
+      'macro-analysis',
+      'peer-examination',
+      'rates-analysis',
+      'verification',
+    ])
+  })
+
+  it('leaves Quant and Risk refusing live work', () => {
+    /* Risk has no candidate boundary (TD-98); Quant’s autonomy was never ruled. */
+    for (const key of ['quant-validation', 'risk-review']) {
+      expect(entry(key).budget).toBeUndefined()
+      expect(permitsLive(entry(key))).toBe(false)
+    }
+  })
+
+  it('changes nothing about what a stub may do, anywhere', () => {
+    for (const candidate of MACRO_REGIME_PLAYBOOK_V7.entries) {
+      expect(
+        budgetPermitsStart(
+          'stub',
+          resolveExecutionBudget('stub', {
+            ...(candidate.budget ? { proposed: candidate.budget } : {}),
+            firmCeiling: {},
+          }),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  it('changes nothing except three budgets', () => {
+    const withoutBudget = ({ budget: _budget, ...rest }: PlaybookEntry) => rest
+    expect(MACRO_REGIME_PLAYBOOK_V7.entries.map(withoutBudget)).toEqual(
+      MACRO_REGIME_PLAYBOOK_V6.entries.map(withoutBudget),
+    )
+    const changed = MACRO_REGIME_PLAYBOOK_V6.entries.filter(
+      (before) => JSON.stringify(before) !== JSON.stringify(entry(before.key)),
+    )
+    expect(changed.map((candidate) => candidate.key).sort()).toEqual([
+      'challenge',
+      'peer-examination',
+      'verification',
+    ])
+  })
+
+  it('leaves every earlier version byte-identical', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK)).toBe(V1_CONTENT_HASH)
+    const hashes = [
+      MACRO_REGIME_PLAYBOOK,
+      MACRO_REGIME_PLAYBOOK_V2,
+      MACRO_REGIME_PLAYBOOK_V3,
+      MACRO_REGIME_PLAYBOOK_V4,
+      MACRO_REGIME_PLAYBOOK_V5,
+      MACRO_REGIME_PLAYBOOK_V6,
+      MACRO_REGIME_PLAYBOOK_V7,
+    ].map(playbookContentHash)
+    expect(new Set(hashes).size).toBe(7)
+  })
+})
+
+describe('version 8 recomputes the committee’s budgets against the measured answer cap (2026-09-18)', () => {
+  const entry = (key: string) =>
+    MACRO_REGIME_PLAYBOOK_V8.entries.find((candidate) => candidate.key === key)!
+
+  const permitsLive = (candidate: PlaybookEntry) =>
+    budgetPermitsStart(
+      'live',
+      resolveExecutionBudget('live', {
+        ...(candidate.budget ? { proposed: candidate.budget } : {}),
+        firmCeiling: {},
+      }),
+    )
+
+  it('is a different workflow by content from v7', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK_V8)).not.toBe(
+      playbookContentHash(MACRO_REGIME_PLAYBOOK_V7),
+    )
+  })
+
+  it('holds Verification’s largest measured shape at the full 8,192 answer cap, and refuses the 30-day pathology', () => {
+    /* 17,369 measured input + 8,192 = 25,561. */
+    expect(entry('verification').budget).toEqual({
+      tokens: 28_000,
+      cost: { costMinorUnits: 100, currency: 'USD' },
+      deadlineMs: 180_000,
+    })
+    expect(25_561).toBeLessThan(entry('verification').budget!.tokens!)
+    expect(55_000).toBeGreaterThan(entry('verification').budget!.tokens!)
+  })
+
+  it('gives the Devil’s Advocate and the peer one figure that holds their measured shapes at the full cap', () => {
+    /* 5,163 + 8,192 = 13,355 and 5,130 + 8,192 = 13,322. */
+    expect(entry('challenge').budget).toBe(entry('peer-examination').budget)
+    expect(entry('challenge').budget).toEqual({
+      tokens: 16_000,
+      cost: { costMinorUnits: 100, currency: 'USD' },
+      deadlineMs: 180_000,
+    })
+    expect(13_355).toBeLessThan(entry('challenge').budget!.tokens!)
+    expect(38_000).toBeGreaterThan(entry('challenge').budget!.tokens!)
+  })
+
+  it('lets exactly the committee’s path start live work, as v7 did', () => {
+    const permitted = MACRO_REGIME_PLAYBOOK_V8.entries
+      .filter(permitsLive)
+      .map((candidate) => candidate.key)
+      .sort()
+    expect(permitted).toEqual([
+      'aggregation',
+      'challenge',
+      'macro-analysis',
+      'peer-examination',
+      'rates-analysis',
+      'verification',
+    ])
+    for (const key of ['quant-validation', 'risk-review']) {
+      expect(entry(key).budget).toBeUndefined()
+      expect(permitsLive(entry(key))).toBe(false)
+    }
+  })
+
+  it('changes nothing except the three governance budgets', () => {
+    const withoutBudget = ({ budget: _budget, ...rest }: PlaybookEntry) => rest
+    expect(MACRO_REGIME_PLAYBOOK_V8.entries.map(withoutBudget)).toEqual(
+      MACRO_REGIME_PLAYBOOK_V7.entries.map(withoutBudget),
+    )
+    const changed = MACRO_REGIME_PLAYBOOK_V7.entries.filter(
+      (before) => JSON.stringify(before) !== JSON.stringify(entry(before.key)),
+    )
+    expect(changed.map((candidate) => candidate.key).sort()).toEqual([
+      'challenge',
+      'peer-examination',
+      'verification',
+    ])
+  })
+
+  it('leaves every earlier version byte-identical', () => {
+    expect(playbookContentHash(MACRO_REGIME_PLAYBOOK)).toBe(V1_CONTENT_HASH)
+    const hashes = [
+      MACRO_REGIME_PLAYBOOK,
+      MACRO_REGIME_PLAYBOOK_V2,
+      MACRO_REGIME_PLAYBOOK_V3,
+      MACRO_REGIME_PLAYBOOK_V4,
+      MACRO_REGIME_PLAYBOOK_V5,
+      MACRO_REGIME_PLAYBOOK_V6,
+      MACRO_REGIME_PLAYBOOK_V7,
+      MACRO_REGIME_PLAYBOOK_V8,
+    ].map(playbookContentHash)
+    expect(new Set(hashes).size).toBe(8)
+  })
+})
+
+describe('the registry ships all eight, and defaults new cases to the newest', () => {
+  it('registers exactly eight versions of one playbook', () => {
     expect(COMPILED_PLAYBOOKS.map((p) => `${p.id}@${p.version}`)).toEqual([
       'macro-regime@1',
       'macro-regime@2',
@@ -571,14 +784,24 @@ describe('the registry ships all six, and defaults new cases to the newest', () 
       'macro-regime@4',
       'macro-regime@5',
       'macro-regime@6',
+      'macro-regime@7',
+      'macro-regime@8',
     ])
   })
 
-  it('resolves a new macro case to v6', () => {
+  it('resolves a new macro case to v8', () => {
     expect(resolveForCaseKind(MACRO_REGIME_CASE_KIND)).toEqual({
       playbookId: 'macro-regime',
-      version: '6',
+      version: '8',
     })
+  })
+
+  it('still resolves v7 by identity, for the cases that pinned it', () => {
+    expect(requirePlaybook('macro-regime', '7')).toBe(MACRO_REGIME_PLAYBOOK_V7)
+  })
+
+  it('still resolves v6 by identity, for the cases that pinned it', () => {
+    expect(requirePlaybook('macro-regime', '6')).toBe(MACRO_REGIME_PLAYBOOK_V6)
   })
 
   it('still resolves v5 by identity, for the cases that pinned it', () => {

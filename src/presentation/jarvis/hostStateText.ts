@@ -122,9 +122,11 @@ export function phrase(result: HostResult): Phrasing {
       }
     case 'blocked': {
       const owner = result.block.owner ? ` Ligger hos ${result.block.owner.name}.` : ''
+      /* A failed run is said, not folded into the step it left owed. */
+      const failed = result.activity.failed > 0 ? ' Ett bord kunde inte slutföra sitt arbete.' : ''
       return {
         headline: 'Analysen kan inte fortsätta just nu.',
-        detail: `${BLOCKED[result.block.reason]}${owner}`,
+        detail: `${BLOCKED[result.block.reason]}${owner}${failed}`,
         tone: 'warning',
       }
     }

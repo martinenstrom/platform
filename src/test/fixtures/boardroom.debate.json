@@ -1037,12 +1037,12 @@
           }
         ],
         "evidenceSetIds": [],
-        "storageProvenanceId": "864d1b49cc862b574fd745cc9f481950ac82d5f56569ed22ca48395c08ba48a9",
+        "storageProvenanceId": "ac4065a36c1a5681e327bf114260f8f7569d3b4f57ce40d6c0088b7750f351f9",
         "evaluatedAt": "<scrubbed>",
         "manifest": {
           "algorithm": "sha256",
           "canonicalizationVersion": 3,
-          "digest": "4f76502477f550ff81c838ba2c54d63ea24c57adc7f1438284f90c124051da82"
+          "digest": "0a4a57889c3a85ad1c13cc3ef4810298ce66e078d286b198e719672d1943652f"
         }
       }
     }

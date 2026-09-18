@@ -113,14 +113,15 @@ export const TEST_ORGANIZATION: Organization = {
       active: true,
     },
     /*
-     * The two control functions that may file their own drafts. They hold the
-     * `governance` role, which is what `governance-verdict` actually checks —
-     * so a test proving an analytical agent cannot verify has something real to
-     * fail against, and is not passing merely because no such principal exists.
+     * The three control functions, each on the `governance` role, which is
+     * what `governance-verdict` actually checks — so a test proving an
+     * analytical agent cannot verify has something real to fail against, and
+     * is not passing merely because no such principal exists.
      *
-     * Risk is deliberately absent: its requirement-resolution seam is unruled,
-     * and seating a principal for it here would let a test quietly assume an
-     * autonomy nobody approved.
+     * Risk was deliberately absent while its requirement-resolution seam was
+     * unruled. G1 (2026-09-17) ruled it: the Risk principal resolves whether
+     * its review applies to a revision, and holds no budget for the review
+     * itself (TD-98) — as migration 0051 seats it.
      */
     {
       id: 'verification-agent',
@@ -134,6 +135,13 @@ export const TEST_ORGANIZATION: Organization = {
       departmentId: 'devils-advocate',
       roleId: 'governance',
       displayName: "Devil's Advocate",
+      active: true,
+    },
+    {
+      id: 'risk-agent',
+      departmentId: 'risk',
+      roleId: 'governance',
+      displayName: 'Risk',
       active: true,
     },
   ],

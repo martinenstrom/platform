@@ -163,6 +163,7 @@ const context = {
     inFlight: 0,
     expired: 0,
     awaitingAdoption: 0,
+    failed: 0,
   },
   amendments: { count: 0, latestAt: null, workPredates: false },
 }

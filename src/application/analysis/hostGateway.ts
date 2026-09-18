@@ -409,6 +409,7 @@ export function activityFor(overview: CaseOverview, now: string): HostActivity {
     inFlight: overview.runs.filter((run) => withinExecutionWindow(run, now)).length,
     expired: expiredRuns(overview, now).length,
     awaitingAdoption: heldRuns(overview).length,
+    failed: overview.runs.filter((run) => run.state === 'failed').length,
   }
 }
 
@@ -621,6 +622,9 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       .map((entry) => deskOf(overview, entry.departmentId))
       .filter((desk): desk is HostDesk => desk !== null),
     adopted: commission.adopted
+      .map((entry) => deskOf(overview, entry.departmentId))
+      .filter((desk): desk is HostDesk => desk !== null),
+    filed: commission.filed
       .map((entry) => deskOf(overview, entry.departmentId))
       .filter((desk): desk is HostDesk => desk !== null),
     withheld: commission.withheld.map((entry) => ({

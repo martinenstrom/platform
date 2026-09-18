@@ -132,10 +132,12 @@ export function buildTransitionEvent(event: TransitionEvent): TransitionEvent {
    * creation is not a movement, and a run is its own actor.
    */
   if (event.subject === 'case' && event.fromState !== null) {
-    if (!event.actorEmployeeId || !event.actorDepartmentId) {
+    /* A department acts through a person or, since G1 (2026-09-18), through its own principal. */
+    if ((!event.actorEmployeeId && !event.actorAgentPrincipalId) || !event.actorDepartmentId) {
       throw new Error(
         `Event "${event.eventId}" moves a case but names no actor. A department ` +
-          `acts through a person, and work does not move by itself.`,
+          `acts through a person or its own institutional principal, and work ` +
+          `does not move by itself.`,
       )
     }
   }

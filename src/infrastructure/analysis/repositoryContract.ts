@@ -2456,6 +2456,37 @@ export function describeRepositoryContract(name: string, options: ContractOption
         expect((await repos.cases.get('case-1'))!.transitions).toEqual([])
         expect(await repos.events.listForCase('case-1')).toHaveLength(1)
       })
+
+      it('records a case movement by a department’s own principal, and reads it back as that principal’s (G1)', async () => {
+        /*
+         * Measured on the first live gold loop after G1 (2026-09-18): the
+         * Research Office's principal submitted its revision — a movement —
+         * and the PostgreSQL read side then refused the stored event as
+         * naming no actor, because the agent column was written and never
+         * read back. Both stores now read what 0042 stores.
+         */
+        await repos.cases.create(investmentCase())
+        await repos.events.append(
+          event('e-1', {
+            fromState: 'intake',
+            toState: 'research',
+            actorAgentPrincipalId: 'research-office-agent',
+            actorDepartmentId: 'research-office',
+          }),
+        )
+        expect((await repos.cases.get('case-1'))!.transitions).toEqual([
+          expect.objectContaining({
+            from: 'intake',
+            to: 'research',
+            byEmployeeId: null,
+            byAgentPrincipalId: 'research-office-agent',
+            byDepartmentId: 'research-office',
+          }),
+        ])
+        expect((await repos.events.listForCase('case-1'))[0]).toMatchObject({
+          actorAgentPrincipalId: 'research-office-agent',
+        })
+      })
     })
 
     describe('playbook assignment identity (H5)', () => {
