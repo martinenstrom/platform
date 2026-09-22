@@ -533,3 +533,49 @@ the firm does on the person's word and `orchestrator:agent-headquarters` for
 what the orchestrator does inside a run. JARVIS is never the actor of
 anything. Every act above is on the ledger with both, read back by
 `scripts/probe-jarvis-intent.mjs --keep-open` (§14 of the proof).
+
+## 13. Explanation governance and decision governance are different — `inquiry` (contract v4, ruled 2026-09-18)
+
+The ruling that accepted `a597f55` resolved TD-100 by constraining the
+semantics of an explanatory opening: an explanation must not become a
+portfolio-risk workflow because the synthesis used broad implication
+language, and analytical dissent must not automatically hard-block an
+explanation. The contract grows by one word on the committee's conclusion;
+the doctrine behind it lives in the domain.
+
+```ts
+CommitteeConclusion adds
+  /** What kind of question the committee answered, read off the opening revision. */
+  inquiry: 'explanation' | 'judgement'
+```
+
+**The kind of question is read off the record.** The opening revision is the
+record of what the person asked: an explanatory opening carries the position
+word `explain` (`EXPLANATORY_POSITION`); anything else asked for a judgement.
+`inquiryKindOf(revisions)` is the one derivation, in the domain, and it does
+not move when a later revision takes a position — the class is what was asked,
+not what a model later wrote.
+
+**What the kind decides.**
+
+| | explanation | judgement |
+|---|---|---|
+| the synthesis (`synthesisPermittedFor`) | position stays `explain`; implementation implications are refused — the office explains in its prose | any position, any implications |
+| Risk's requirement | resolves `not-required` by the pinned rule, because there are no implications | as the implications say |
+| an open objection (`challengeBlocks`) | retained dissent whatever its weight, unless it is a factual contradiction (`contradicting-evidence`) at or above the policy's materiality | blocks at or above the policy's materiality, as before |
+| Verification | unchanged: a blocking finding still stops the firm | unchanged |
+| the answer | `answer-ready / committee-conclusion` with `inquiry: 'explanation'`, said as "Kommitténs förklaring …", retained dissent named as dissent | as before |
+| the CIO | never required | never automatic |
+
+The rule is applied where the office institutionalises its conclusion
+(`AggregateManagerConclusion` refuses a judgement nobody asked for, whether
+a person stated it or a candidate carried it) and stated in the live
+synthesis contract, whose parser refuses the same shape as malformed. Every
+control function's context carries the kind, the original question and the
+opening's scope, so a control reviewing "why is gold up today" does not
+evaluate it as "should we increase gold exposure".
+
+**What did not change.** The eligibility policy's materiality threshold;
+Verification's hard blocks (an unsupported claim, stale evidence, a citation
+mismatch); the human path; the CIO's gate. Risk's own candidate boundary stays
+open as TD-98, and the round that would answer a retained objection as TD-99.

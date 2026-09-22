@@ -877,7 +877,11 @@ async function runEntry(
     })
     return stage({
       failureCategory: category,
-      ...(recorded.outcome === 'rejected' ? { rejection: recorded.rejection.code } : {}),
+      ...(recorded.outcome === 'rejected'
+        ? { rejection: recorded.rejection.code, rejectionDetail: recorded.rejection.detail }
+        : recorded.outcome === 'failed'
+          ? { rejectionDetail: recorded.error.message }
+          : {}),
       completedAt: context.now().toISOString(),
     })
   }

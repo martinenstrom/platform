@@ -94,7 +94,8 @@ const synthesisStub = (loadContext: () => Promise<SynthesisContext>): Contributi
       claims: [claim],
       synthesis: {
         statement: 'Guldets uppgång drivs främst av lägre realräntor.',
-        position: 'explain',
+        /* The kind of question decides what the office may say (ruled 2026-09-18). */
+        position: context.inquiry === 'explanation' ? 'explain' : 'hold',
         rationale: 'Makro och Rates läser räntekurvan som den främsta drivkraften.',
         invalidationCriteria: 'Faller om realräntorna stiger utan att guldet faller.',
         implications: [],
@@ -253,11 +254,44 @@ describe('from the person’s word to the committee’s conclusion', () => {
   }, 20_000)
 })
 
-describe('where the firm stops', () => {
-  it('stops visibly at a material objection, says whose and what it is, and does not argue with itself', async () => {
+describe('what an explanation retains', () => {
+  it('reaches a scrutinised explanation over material analytical dissent, retained on the record and said as dissent (ruled 2026-09-18)', async () => {
     outcomes['devils-advocate'] = { kind: 'object', materiality: 'material' }
     const gateway = firm()
     const { caseId, reference } = await begun(gateway)
+
+    await until(
+      async () => (await gateway({ kind: 'status', reference })).state === 'answer-ready',
+      () => gateway({ kind: 'status', reference }),
+    )
+    const answer = positive(await gateway({ kind: 'result', reference }))
+    if (answer.state !== 'answer-ready' || answer.answer?.kind !== 'committee-conclusion') {
+      throw new Error(JSON.stringify(answer))
+    }
+    expect(answer.answer.inquiry).toBe('explanation')
+    expect(answer.answer.thesis.position).toBe('explain')
+    expect(answer.answer.thesis.implications).toEqual([])
+    /* The objection is the Devil's Advocate's, filed, open, and retained — it did not stop the explanation. */
+    expect(answer.answer.dissent).toHaveLength(1)
+    expect(answer.answer.dissent[0]).toMatchObject({ byDepartmentId: 'devils-advocate', materiality: 'material', outcome: 'open' })
+    /* Risk was asked whether it applies and said no: an explanation declares no implementation implication. */
+    const resolutions = await repositories.requirements.listForCase(caseId)
+    expect(resolutions.map((r) => r.state)).toEqual(['not-required'])
+    expect((await repositories.cases.get(caseId))!.stage).toBe('review')
+  })
+})
+
+describe('where the firm stops', () => {
+  it('stops a JUDGEMENT visibly at a material objection, says whose and what it is, and does not argue with itself', async () => {
+    outcomes['devils-advocate'] = { kind: 'object', materiality: 'material' }
+    const gateway = firm()
+    /* A capital question: the person's view, examined. Material dissent decides it (ruled 2026-09-18). */
+    const judgement = { kind: 'position' as const, focus: [] as string[], view: { statement: 'Jag vill minska guldexponeringen.', position: 'reduce' } }
+    const asked = positive(await gateway({ ...gold, question: 'Borde jag minska min guldexponering?' }))
+    const caseId = asked.reference.id
+    const reference = asked.reference
+    await evidenceFor(caseId)
+    positive(await gateway({ kind: 'begin', reference, requestId: 'req-begin', opening: judgement }))
 
     await until(
       async () => {

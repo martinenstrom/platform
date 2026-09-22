@@ -75,7 +75,14 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const admin = new Client({ connectionString: adminUrl })
   await admin.connect()
   await admin.query(`DROP DATABASE IF EXISTS ${name}`)
-  await admin.query(`CREATE DATABASE ${name}`)
+  /*
+   * UTF8 with the C collation, never the cluster's default: on Windows that
+   * default is WIN1252, and a database in it refuses any character outside
+   * Windows-1252 in a model's text (SQLSTATE 22P05) — measured on the dev
+   * database on 2026-09-22. The runtime refuses such a database; so must the
+   * tests run against what the runtime accepts.
+   */
+  await admin.query(`CREATE DATABASE ${name} ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`)
   await admin.end()
 
   const owner = new Client({ connectionString: urlFor(adminUrl, name) })

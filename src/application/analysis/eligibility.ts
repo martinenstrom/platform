@@ -37,6 +37,7 @@ import {
   type RiskRequirementState,
   type ThesisEligibility,
   type EligibilityPolicy,
+  inquiryKindOf,
 } from '~/domain/analysis'
 import type { TransactionalAnalysisRepositories } from './repositories'
 import { requirePlaybook } from './playbookRegistry'
@@ -198,6 +199,7 @@ export async function revisionEligibility(
 
     inputs.push({
       thesisId: revision.thesisId,
+      inquiry: inquiryKindOf(revisions, revision.thesisId),
       revisionId: revision.revisionId,
       lifecycle: revision.lifecycle,
       riskRequirement,

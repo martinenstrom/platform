@@ -29,7 +29,7 @@ import {
   type ThesisLifecycleState,
 } from './lifecycle'
 import { DISAGREEMENT_MATERIALITIES, type DisagreementMateriality } from './aggregation'
-import type { RevisionId, ThesisId } from './theses'
+import type { InquiryKind, RevisionId, ThesisId } from './theses'
 
 /**
  * What a review is ABOUT.
@@ -571,14 +571,35 @@ export function unresolvedChallenges(review: DevilsAdvocateReview): Challenge[] 
  * applied, not where it is chosen, and a default would be a second place the
  * line is drawn.
  */
+/**
+ * The challenge kinds that can stop an EXPLANATION: an objection that carries
+ * a factual contradiction. Analytical dissent — another plausible driver, a
+ * fragile assumption, an overconfident inference, unsettled causality — is
+ * retained on the record and shapes the explanation's confidence and wording;
+ * it does not stop the firm from explaining (ruled 2026-09-18). A judgement
+ * is stopped by any objection at or above the policy's materiality.
+ */
+export const EXPLANATORY_HARD_BLOCKING_KINDS: readonly Challenge['kind'][] = Object.freeze([
+  'contradicting-evidence',
+])
+
+/**
+ * Whether an open challenge blocks. The materiality threshold is the policy's;
+ * what the scope adds is the kind of question the challenge is raised against
+ * and the kind of objection it is — both facts of the record, read here and
+ * nowhere else.
+ */
 export function challengeBlocks(
   materiality: DisagreementMateriality,
   blocksAtOrAbove: DisagreementMateriality,
+  scope?: { inquiry: InquiryKind; kind: Challenge['kind'] },
 ): boolean {
-  return (
+  const weighty =
     DISAGREEMENT_MATERIALITIES.indexOf(materiality) >=
     DISAGREEMENT_MATERIALITIES.indexOf(blocksAtOrAbove)
-  )
+  if (!weighty) return false
+  if (scope?.inquiry === 'explanation') return EXPLANATORY_HARD_BLOCKING_KINDS.includes(scope.kind)
+  return true
 }
 
 /** Open challenges at or above the blocking threshold the caller supplies. */
@@ -607,6 +628,8 @@ export interface MandatedChallenge {
   challengerKind: ChallengerKind
   /** The desk that raised it. Carried through, never inferred by a gate. */
   byDepartmentId: string
+  /** What kind of objection it is; absent where only the snapshot's weight is known. */
+  kind?: Challenge['kind']
 }
 
 /**
@@ -635,9 +658,14 @@ export function blockingUnderMandates(
   challenges: readonly MandatedChallenge[],
   mandates: readonly ChallengerKind[],
   blocksAtOrAbove: DisagreementMateriality,
+  inquiry?: InquiryKind,
 ): MandatedChallenge[] {
   return admittedChallenges(challenges, mandates).filter((challenge) =>
-    challengeBlocks(challenge.materiality, blocksAtOrAbove),
+    challengeBlocks(
+      challenge.materiality,
+      blocksAtOrAbove,
+      inquiry && challenge.kind ? { inquiry, kind: challenge.kind } : undefined,
+    ),
   )
 }
 
@@ -816,6 +844,8 @@ export interface GovernanceGate {
    * gate and the submission gate would then be free to default differently.
    */
   challengeMandates: readonly ChallengerKind[]
+  /** The kind of question the revision answers; analytical dissent on an explanation is retained, not a block. */
+  inquiry?: InquiryKind
 }
 
 export interface GateResult {
@@ -902,6 +932,7 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
         materiality: challenge.materiality,
         challengerKind: challenge.challengerKind,
         byDepartmentId,
+        kind: challenge.kind,
       })
     }
   }
@@ -925,6 +956,7 @@ export function evaluateGate(gate: GovernanceGate): GateResult {
     objections,
     gate.challengeMandates,
     gate.challengeBlocksAtOrAbove,
+    gate.inquiry,
   )) {
     blockers.push({
       kind: 'unresolved-material-challenge',
@@ -1038,6 +1070,7 @@ export function evaluateRevisionGates(
   revisions: ReadonlyArray<{
     thesisId: ThesisId
     revisionId: RevisionId
+    inquiry?: InquiryKind
     /** Read from the stored resolution for this exact revision. */
     riskRequirement?: RiskRequirementState
     riskEntryKey?: string
@@ -1067,6 +1100,7 @@ export function evaluateRevisionGates(
       riskEntryKey: revision.riskEntryKey,
       challengeBlocksAtOrAbove,
       challengeMandates,
+      ...(revision.inquiry ? { inquiry: revision.inquiry } : {}),
     })
     return { thesisId: revision.thesisId, revisionId: revision.revisionId, ...result }
   })
@@ -1159,6 +1193,8 @@ export function latestApplicable<
 export interface RevisionEligibilityInput {
   thesisId: ThesisId
   revisionId: RevisionId
+  /** The kind of question the lineage answers, read off its opening revision. */
+  inquiry?: InquiryKind
   lifecycle: ThesisLifecycleState
   /** Whether Risk applies to this exact revision, as the firm recorded it. */
   riskRequirement?: RiskRequirementState

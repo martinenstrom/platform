@@ -30,7 +30,13 @@
  * more than a specialist model may jump into institutional claims.
  */
 
-import { buildClaim } from '~/domain/analysis'
+import {
+  buildClaim,
+  EXPLANATORY_POSITION,
+  synthesisPermittedFor,
+  type InquiryKind,
+  type InvestmentImplication,
+} from '~/domain/analysis'
 import type { AgentClaim, ProviderKind, SynthesisArtifact } from '~/domain/analysis'
 import {
   ContributionFailure,
@@ -178,6 +184,18 @@ export function renderSynthesisUserPrompt(context: SynthesisContext): string {
   const lines: string[] = [
     `Question: ${context.question}`,
     '',
+    ...(context.inquiry === 'explanation'
+      ? [
+          'This is an EXPLANATION. The person asked why the market moved, not what to do.',
+          `"position" MUST be "${EXPLANATORY_POSITION}" and "implications" MUST be []: the firm refuses an`,
+          'explanation that manufactures a portfolio judgement. Put the drivers, the competing',
+          'interpretations and the uncertainty in "statement", "rationale" and "invalidationCriteria".',
+        ]
+      : [
+          'This is an INVESTMENT JUDGEMENT. State the position the firm is prepared to be judged on',
+          'and the implementation implications it carries.',
+        ]),
+    '',
     'The argument currently on the table:',
     `  ${context.currentStatement}`,
     `  position: ${context.currentPosition}`,
@@ -237,7 +255,7 @@ const text = (value: unknown): value is string =>
  * firm has to store — which matters far more here than for a claim: half a
  * synthesis is a position with claims silently missing from it.
  */
-export function parseSynthesis(raw: string): CandidateSynthesis | null {
+export function parseSynthesis(raw: string, inquiry: InquiryKind = 'judgement'): CandidateSynthesis | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw.trim())
@@ -252,7 +270,9 @@ export function parseSynthesis(raw: string): CandidateSynthesis | null {
   if (!reconciliation.every(text)) return null
 
   if (!text(body.statement)) return null
-  if (!text(body.position) || !POSITIONS.includes(body.position as never)) return null
+  if (!text(body.position)) return null
+  /* An explanation keeps the explanatory position; a judgement takes one of the firm's. */
+  if (inquiry === 'explanation' ? body.position !== EXPLANATORY_POSITION : !POSITIONS.includes(body.position as never)) return null
   if (!text(body.rationale)) return null
   if (!text(body.invalidationCriteria)) return null
   if (body.horizon !== undefined && !text(body.horizon)) return null
@@ -260,6 +280,8 @@ export function parseSynthesis(raw: string): CandidateSynthesis | null {
   const implications = body.implications
   if (!Array.isArray(implications)) return null
   if (!implications.every((item) => IMPLICATIONS.includes(item as never))) return null
+  /* The domain's own rule, applied where the answer is read: a judgement nobody asked for is malformed, not routed. */
+  if (!synthesisPermittedFor(inquiry, body.position, implications as InvestmentImplication[]).permitted) return null
 
   const dispositions = body.dispositions
   if (!Array.isArray(dispositions) || dispositions.length === 0) return null
@@ -369,7 +391,7 @@ export function createLiveSynthesisProvider(
         throw new ContributionFailure('budget-exhausted')
       }
 
-      const candidate = parseSynthesis(outcome.response.text)
+      const candidate = parseSynthesis(outcome.response.text, context.inquiry)
       if (!candidate) throw new ContributionFailure('malformed-output')
 
       /*

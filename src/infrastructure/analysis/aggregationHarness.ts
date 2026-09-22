@@ -221,6 +221,8 @@ export async function seedAggregatableCase(
     caseId?: string
     /** The workflow to pin; v1 unless a test needs a later one (G1's governance budgets live in v7). */
     playbook?: CasePlaybook
+    /** The opening's position word; 'explain' seeds an explanatory inquiry (ruled 2026-09-18). */
+    openingPosition?: string
     completeMacroRun?: boolean
     completeQuantRun?: boolean
     completeAggregationRun?: boolean
@@ -272,7 +274,7 @@ export async function seedAggregatableCase(
       caseId,
       thesisId,
       statement: 'The ECB holds through Q2.',
-      position: 'hold',
+      position: options.openingPosition ?? 'hold',
       invalidationCriteria: 'Core inflation prints below 2.0% for two months.',
       implications: [],
       proposedByDepartmentId: 'research-office',

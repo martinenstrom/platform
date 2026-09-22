@@ -356,7 +356,14 @@ function toAgentClaim(
   request: ContributionRequest,
 ): AgentClaim {
   const items: EvidenceItem[] = []
-  const evidenceRefs = candidate.observationIds.map((observationId) => {
+  /*
+   * A citation listed twice is one citation. The stored key of a citation is
+   * (claim, set, observation, stance), and a model that names the same
+   * observation twice for one claim would otherwise fail the write as a
+   * storage error nobody can read — measured live on 2026-09-22, when the
+   * Rates desk's contribution failed at the store after the model answered.
+   */
+  const evidenceRefs = [...new Set(candidate.observationIds)].map((observationId) => {
     const item = evidence.items.find(
       (candidateItem) => candidateItem.ref.id === observationId,
     )

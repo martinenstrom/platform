@@ -410,6 +410,68 @@ export function currentRevision(
  * reasoned over different assumptions. It is retained against revision 1 with
  * an obsolete result state, or rejected.
  */
+/* ------------------------------------------------------------ the inquiry */
+
+/**
+ * What the person asked the firm for — read off the record, never off prose.
+ *
+ * The opening revision is the record of the question's kind: an explanatory
+ * opening carries `EXPLANATORY_POSITION`; anything else asked for a judgement.
+ * Ruled 2026-09-18: explanation governance and decision governance are
+ * different, and the kind must not drift through model-generated prose.
+ */
+export type InquiryKind = 'explanation' | 'judgement'
+
+/** The position word an explanatory opening carries. The class is read from it. */
+export const EXPLANATORY_POSITION = 'explain'
+
+export function inquiryKindOf(
+  revisions: readonly InvestmentThesis[],
+  thesisId?: ThesisId,
+): InquiryKind {
+  const lineage = thesisId
+    ? thesisLineage(revisions, thesisId)
+    : [...revisions].sort((a, b) => a.revisionNumber - b.revisionNumber)
+  return lineage[0]?.position === EXPLANATORY_POSITION ? 'explanation' : 'judgement'
+}
+
+/**
+ * Whether a synthesis is permitted for the kind of question asked.
+ *
+ * An explanation may interpret the market, weigh drivers, state uncertainty
+ * and caveats — in its prose. It may not become a position, and it may not
+ * declare implementation implications: every value of `InvestmentImplication`
+ * is a portfolio or capital consequence nobody asked the firm to judge. A
+ * judgement is free to declare any of them.
+ */
+export function synthesisPermittedFor(
+  inquiry: InquiryKind,
+  position: string,
+  implications: readonly InvestmentImplication[],
+): { permitted: true } | { permitted: false; reason: string } {
+  if (inquiry === 'judgement') return { permitted: true }
+  if (position !== EXPLANATORY_POSITION) {
+    return {
+      permitted: false,
+      reason:
+        `The question asked for an explanation and the synthesis takes the position ` +
+        `"${position}". An explanation stays "${EXPLANATORY_POSITION}": the person did ` +
+        `not ask the firm what to do.`,
+    }
+  }
+  if (implications.length > 0) {
+    return {
+      permitted: false,
+      reason:
+        `The question asked for an explanation and the synthesis declares ` +
+        `implementation implications (${implications.join(', ')}). An explanation ` +
+        `carries none: a portfolio judgement nobody asked for is refused, not ` +
+        `routed to Risk.`,
+    }
+  }
+  return { permitted: true }
+}
+
 export function acceptsContributions(thesis: InvestmentThesis): boolean {
   return thesis.lifecycle === 'proposed' || thesis.lifecycle === 'under-analysis'
 }

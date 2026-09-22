@@ -47,6 +47,8 @@ const BLOCKED: Record<BlockedReason, string> = {
   'synthesis-required': 'Research Office har inte vägt samman bordens arbete.',
   'peer-scrutiny-required': 'Den kollegiala granskningen är inte gjord.',
   'verification-required': 'Faktagranskningen är inte gjord.',
+  'verification-correction-required':
+    'Faktagranskningen är gjord och kräver rättelser innan kommittén kan avsluta.',
   'challenge-required': "Devil's Advocate har inte prövat argumentet.",
   'risk-review-required': 'Riskgranskningen är inte gjord.',
   'objections-unresolved': 'En invändning som avgör svaret är fortfarande öppen.',
@@ -117,7 +119,9 @@ export function phrase(result: HostResult): Phrasing {
         detail:
           result.kind === 'cio-decision'
             ? 'CIO-beslutet är klart.'
-            : 'Kommitténs slutsats är klar.',
+            : result.answer?.kind === 'committee-conclusion' && result.answer.inquiry === 'explanation'
+              ? 'Kommitténs förklaring är klar.'
+              : 'Kommitténs slutsats är klar.',
         tone: 'positive',
       }
     case 'blocked': {
@@ -194,6 +198,28 @@ export function answerLines(answer: InstitutionalAnswer): string[] {
       : count === 1
         ? 'En materiell invändning kvarstår.'
         : `${count} materiella invändningar kvarstår.`
+
+  if (answer.kind === 'committee-conclusion' && answer.inquiry === 'explanation') {
+    /*
+     * An explanation has no position to name and no decision to defend. What
+     * the committee explained, what would make it wrong, and the dissent it
+     * retained — said as dissent, never as a block (ruled 2026-09-18).
+     */
+    const retained =
+      answer.dissent.length === 0
+        ? 'Ingen invändning kvarstår.'
+        : answer.dissent.length === 1
+          ? 'En invändning kvarstår som noterad oenighet.'
+          : `${answer.dissent.length} invändningar kvarstår som noterad oenighet.`
+    return [
+      `Kommitténs förklaring: ${answer.thesis.statement}`,
+      `Osäkerhet: ${answer.thesis.invalidationCriteria}`,
+      retained,
+      ...answer.dissent.map(
+        (objection) => `Invändning (${objection.byDepartmentId}): ${objection.argument}`,
+      ),
+    ]
+  }
 
   if (answer.kind === 'committee-conclusion') {
     return [

@@ -125,13 +125,15 @@ try {
        * wanted to.
        */
       loadContext: async () => {
-        const [assignments, runs] = await Promise.all([
+        const [assignments, runs, revisions] = await Promise.all([
           repositories.assignments.listForCase(caseId),
           repositories.runs.listForCase(caseId),
+          repositories.theses.listForCase(caseId),
         ])
         return synthesisContext({
           caseId,
           question: investmentCase.question,
+          inquiry: inquiryKindOf(revisions, current.thesisId),
           playbook,
           entryKey,
           revision: current,

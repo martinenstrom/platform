@@ -57,6 +57,14 @@ function instance(): EmbeddedPostgres {
     password: SUPERUSER_PASSWORD,
     port: PORT,
     persistent: true,
+    /*
+     * A UTF8 cluster. Without this, initdb takes the operating system's
+     * locale — WIN1252 on a Swedish Windows — and every database created from
+     * it refuses any character outside that code page in a model's text
+     * (SQLSTATE 22P05, measured 2026-09-22). The runtime refuses to start on
+     * such a database.
+     */
+    initdbFlags: ['--encoding=UTF8', '--locale=C'],
   })
 }
 
@@ -77,11 +85,24 @@ async function start(): Promise<void> {
   await postgres.start()
   console.log(`postgres listening on ${PORT}`)
 
-  try {
-    await postgres.createDatabase(DATABASE)
-    console.log(`created database ${DATABASE}`)
-  } catch {
-    console.log(`database ${DATABASE} already exists`)
+  {
+    /* Created with an explicit encoding rather than the cluster's default, for the reason above. */
+    const { Client } = await import('pg')
+    const admin = new Client({ connectionString: ownerUrl('postgres') })
+    await admin.connect()
+    try {
+      const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [DATABASE])
+      if (exists.rowCount) {
+        console.log(`database ${DATABASE} already exists`)
+      } else {
+        await admin.query(
+          `CREATE DATABASE ${DATABASE} ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`,
+        )
+        console.log(`created database ${DATABASE} (UTF8)`)
+      }
+    } finally {
+      await admin.end()
+    }
   }
 
   console.log('')

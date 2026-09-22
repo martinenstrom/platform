@@ -8,12 +8,14 @@
  * state, ordering or eligibility depends on memory.
  */
 
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
+import { Client } from 'pg'
 import {
   AnalysisConfigurationError,
   createAnalysisContainer,
   SchemaVersionMismatchError,
   type AnalysisContainer,
+  ServerEncodingError,
 } from './container'
 import { OrganizationNotSeededError } from '~/application/analysis/organizationReader'
 import { runCommand } from '~/application/analysis/commands/runCommand'
@@ -54,6 +56,42 @@ async function build(over: Record<string, unknown> = {}) {
   opened.push(container)
   return container
 }
+
+describe('the database must be able to hold the firm’s text (2026-09-22)', () => {
+  it('refuses a WIN1252 database at construction, before it reads anything else', async () => {
+    /*
+     * The planted violation: a database in the encoding a Swedish Windows
+     * gives a cluster by default. The dev database was one until 2026-09-22,
+     * and two desks' live contributions failed at the store (SQLSTATE 22P05)
+     * on characters outside Windows-1252 — after the provider had answered.
+     * No schema is created here on purpose: the encoding is judged first.
+     */
+    const adminUrl = inject('adminUrl')
+    const name = `finos_enc_${process.pid}`
+    const admin = new Client({ connectionString: adminUrl })
+    await admin.connect()
+    await admin.query(`DROP DATABASE IF EXISTS ${name}`)
+    await admin.query(`CREATE DATABASE ${name} ENCODING 'WIN1252' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`)
+    try {
+      const url = new URL(adminUrl)
+      url.pathname = `/${name}`
+      await expect(
+        createAnalysisContainer({ connectionString: url.toString(), buildId: 'test-build', clock }),
+      ).rejects.toThrow(ServerEncodingError)
+      await expect(
+        createAnalysisContainer({ connectionString: url.toString(), buildId: 'test-build', clock }),
+      ).rejects.toThrow(/WIN1252.*requires UTF8/s)
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS ${name}`)
+      await admin.end()
+    }
+  })
+
+  it('accepts the UTF8 database every test runs against', async () => {
+    const container = await build()
+    expect(container.provenance.schemaVersion).toBe('0053')
+  })
+})
 
 /* ------------------------------------------------------------- the probe */
 

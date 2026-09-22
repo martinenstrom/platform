@@ -1817,3 +1817,124 @@ asked the person ✔ · stopped at the state policy permits, named ✔ · JARVIS
 explained the state ✔ · committee conclusion ✘ (withheld by the firm's own
 policy: TD-98, TD-100, corrections and material objections open) · CIO
 submission ✘ never automatic ✔ · JARVIS never actor ✔.
+
+## 15. An explanation is an explanation — G2, the live gold case under the ruling of 2026-09-18 (run 2026-09-22)
+
+The ruling that accepted `a597f55` resolved TD-100 by semantic constraint and
+set the live acceptance target: the same instruction, through the desks,
+the office, Verification, the Devil's Advocate and the peer, with Risk
+resolving `not-required`, to a scrutinised explanatory conclusion that JARVIS
+answers with — zero further user turns, zero CIO acts, zero acts by JARVIS.
+What changed is in contract v4 §13; what the record shows is here.
+
+### 15.1 Three runs the environment stopped, and what they exposed
+
+| run | case | stopped at | cause, from the record | fixed by |
+|---|---|---|---|---|
+| 7 · 18:46 | `case-b1aa8fd167feda12d4cd19a9` | Macro adopted; Rates failed | `RecordContribution` for Rates failed at the store (`error_category: storage`), unnamed | the orchestrator now carries a refused or failed contribution's own sentence to the `[begin]` log |
+| 8 · 18:54 | `case-6b9a2b291419c2c223935f7e` | both desks failed | `"producedClaims.record" failed with an unmapped database error (SQLSTATE 22P05)` — the dev database's server encoding was **WIN1252** (the cluster's Windows default), and a model's answer that day carried characters outside Windows-1252; six earlier runs happened not to | the record moved into a UTF8 database (`finos`; the old one kept as `finos_win1252`, every table's count verified); test and dev databases are now created `ENCODING 'UTF8'`; the runtime refuses any other server encoding at construction (`ServerEncodingError`, planted-violation test in `container.pg.test.ts`) |
+| 9 · 19:05 | (no case opened) | the person's instruction | the first ledger write failed: `DuplicateRecordError` on `command_outcomes_pkey` — the copied rows kept their ids, the identity sequences of the new database still started at 1 | every identity sequence advanced past its table's maximum (`command_outcomes` 487, `run_events` 415); a case opens again |
+
+None was a defect of the slice. All three are the kind of stop the proof
+exists to find: the firm's record must be able to hold the firm's text, and
+a failure at the store must say which store and why.
+
+### 15.2 Run 10 — the explanation stays an explanation, and only Verification stops it
+
+`case-fd3e3f4dcd597ba9a0aeea3e`, instruction at 19:31:03, the same two turns
+(acknowledgement visible after 5,431 ms; the focus line taken as an addition
+after 5,174 ms, through `begin_delegation`). Under the 7-day window of
+2026-09-22 the evidence set holds 24 observations, so the desks read 6,618 and
+6,649 input tokens rather than the 12,570 of the September 18 runs.
+
+| step | provider | tokens in / out | filed / adopted by |
+|---|---|---|---|
+| Global Macro | 59.8 s | 6,618 / 3,910 | `global-macro-agent`, 90 ms |
+| Rates | 51.0 s | 6,649 / 3,317 | `rates-agent`, 234 ms |
+| Research Office synthesis → revision 2 | 71.0 s | 1,999 / 5,188 | `research-office-agent`, 208 ms |
+| Verification | 152.0 s | 17,310 / 5,099 | `verification-agent`, 298 ms |
+| Devil's Advocate | 86.4 s | 5,166 / 5,049 | `devils-advocate-agent`, 71 ms |
+| Peer examination (Rates) | 57.1 s | 5,129 / 3,396 | `rates-agent`, 204 ms |
+
+Loop settled after 330 s; tokens 42,871 in / 25,959 out on the record; cost
+not recorded (TD-96).
+
+**What the ruling asked for, on the record.**
+
+- Revision 2 is position `explain` with **no implications**. Its statement
+  ends: _"Detta är en förklaring, inte en rekommendation — firman drar ingen
+  portföljslutsats av den."_ The office's provider was told the kind of
+  question; the office's own act would have refused anything else.
+- Risk's principal resolved `not-required`; the standing reads the risk step
+  as `not-applicable`; Risk's queue never opened and no `risk: no-provider`
+  appears on the log — the first live run in which it does not.
+- All three control functions ran under their own principals on the
+  submitted revision and filed. The Devil's Advocate raised five objections,
+  graded material and decision-critical (`overconfidence`,
+  `fragile-assumption`); the peer raised five. **None of them is a blocker.**
+  Read through the firm's own derivation
+  (`scripts/inspect-case-standing.ts`), the case's blockers are exactly
+  Verification's: `verification-correction-required` over six claims and
+  three `unresolved-citation` findings. Under `a597f55` the same objections
+  stopped the case; under this ruling they are retained dissent.
+- The next act is `submit-for-cio-decision`; the committee's conclusion is
+  not ready because — and only because — Verification's verdict is
+  `correction-required` (eleven findings, six blocking). That is the hard
+  block the ruling kept: an explanation with unsupported figures and
+  citations that could not be checked is not published.
+- JARVIS, to _"Var står det?"_: "Analysen står still. Faktagranskningen är
+  inte gjord och ärendet ligger hos Verification. Ditt senaste tillägg har
+  ännu inte arbetats in." — truthful about the stop, wrong about its nature:
+  the fact-check was done, and it demands corrections. The contract now
+  distinguishes `verification-correction-required` from
+  `verification-required` (§15.3).
+
+Every act's actor is the principal whose act it is; every initiator is the
+host or the run orchestrator; no act asks the person anything; no act is
+JARVIS's; `SubmitForCioDecision` does not appear.
+
+### 15.3 Run 11 — an anomaly, recorded as debt
+
+`case-aeba56c703b682ae6d785699`, instruction at 19:41:22, after the contract
+learned to say "kräver rättelser" (§15.4). Macro 47.1 s (6,618 / 3,028) and
+Rates 58.9 s (6,649 / 4,134) completed and were adopted; the office's
+synthesis run started at 19:42:22 and the record shows it `running` until
+20:41:08 — **59 minutes** — when it settled `timed-out / budget-exhausted`:
+the provider's answer arrived, at the cap, an hour later, and the run's
+180 s deadline never aborted the call. Run 5 (§14) proves the same deadline
+firing at exactly 180 s on the same pipeline; this one did not. The probe,
+reading the record every ten seconds, waited the hour with it and captured no
+answer. Recorded as TD-102 with the timestamps; not diagnosed in this slice.
+
+### 15.4 What JARVIS says of a verdict that demands corrections
+
+Run 10 ended with "Faktagranskningen är inte gjord" said of a verdict that had
+been filed. The contract now carries `verification-correction-required`
+beside `verification-required`: a filed verdict that demands corrections is
+said as "Faktagranskningen är gjord och kräver rättelser innan kommittén kan
+avsluta." (`hostStateText.test.ts`). Not exercised live: run 11 did not reach
+Verification.
+
+### 15.5 What is proven, and what is not
+
+**Proven live (run 10).** Under an explanatory opening the office's revision
+is an explanation — `explain`, no implications — and says so in its own
+words; Risk resolves `not-required` and never opens a queue; all three
+control functions file under their own principals; material and
+decision-critical analytical objections stand as retained dissent and block
+nothing; the only blockers on the record are Verification's; no CIO act, no
+act by JARVIS, no further turn from the person.
+
+**Not proven live.** The scrutinised explanatory conclusion itself, and
+JARVIS answering with it. In run 10 Verification demanded corrections — six
+blocking findings over unsupported figures and citations it could not check
+— which the ruling keeps as a hard block; in run 11 the synthesis call ran
+past its deadline unaborted (TD-102). The conclusion is proven in memory
+(`hostGovernanceLoop.test.ts`: an explanation reached over a material
+objection, said as dissent).
+
+**What the desks' record now shows twice.** In both live runs that reached
+Verification on this window (runs 6 and 10), the desks' claims failed the
+fact-check on citations and figures. That is a finding about the desks'
+claims against their evidence, not about the control function — and the
+correction round that would answer it is TD-99's design question.

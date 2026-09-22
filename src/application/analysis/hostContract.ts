@@ -62,6 +62,7 @@ import type {
   RiskStatus,
   TriggerConditionType,
   VerificationStatus,
+  InquiryKind,
 } from '~/domain/analysis'
 import type { DomainReference } from './domainSystem'
 import type { BoardroomEntry, BoardroomObjection } from './boardroomTimeline'
@@ -213,6 +214,14 @@ export type BlockedReason =
   | 'synthesis-required'
   | 'peer-scrutiny-required'
   | 'verification-required'
+  /**
+   * Verification filed its verdict and it demands corrections — an
+   * unsupported figure, a citation that could not be checked, evidence that
+   * moved — which the desks have not made. Distinct from a verification
+   * nobody has done: measured live on 2026-09-22, JARVIS said "inte gjord" of
+   * a verdict that had been filed an hour earlier.
+   */
+  | 'verification-correction-required'
   /** The Devil's Advocate has not reviewed the argument. */
   | 'challenge-required'
   | 'risk-review-required'
@@ -270,6 +279,15 @@ export interface HostObjection extends BoardroomObjection {
  */
 export interface CommitteeConclusion {
   kind: 'committee-conclusion'
+  /**
+   * What kind of question the committee answered, read off the opening
+   * revision. An `explanation` carries no position and no implications and is
+   * scrutinised as an explanation; retained analytical dissent is in
+   * `dissent` and shapes its confidence rather than stopping it. A
+   * `judgement` is the committee's position with its implications (contract
+   * v4, ruled 2026-09-18).
+   */
+  inquiry: InquiryKind
   thesis: AnswerThesis
   /** The desk that synthesised it, where the record names one. */
   synthesisedBy: HostDesk | null

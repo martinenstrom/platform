@@ -42,6 +42,8 @@ import {
   type ManagerAggregation,
   type Organization,
   type OptionalInputRecord,
+  inquiryKindOf,
+  synthesisPermittedFor,
 } from '~/domain/analysis'
 import { requirePlaybook } from '../playbookRegistry'
 import { mintRevision } from '../revisions'
@@ -309,6 +311,7 @@ export function aggregateManagerConclusion(
             `onto the lineage's current revision.`,
         )
       }
+
 
       /* ------------------------------------------------- required work */
 
@@ -675,6 +678,22 @@ export function aggregateManagerConclusion(
       /* ------------------------------------------------------- the writes */
 
       const { supporting, opposing: opposingIds } = revisionClaimIds(aggregation)
+
+      /*
+       * The kind of question decides what a synthesis may be (ruled
+       * 2026-09-18). An explanation stays an explanation: the office may weigh
+       * drivers and state uncertainty in its prose, but a position or an
+       * implementation implication nobody asked for is refused here — whether
+       * a person stated it or a candidate carried it — not routed to Risk as
+       * though the person had asked what to do.
+       */
+      const lineage = await repositories.theses.listForCase(input.caseId)
+      const permitted = synthesisPermittedFor(
+        inquiryKindOf(lineage, source.thesisId),
+        synthesis.position,
+        synthesis.implications,
+      )
+      if (!permitted.permitted) reject('invariant-violated', permitted.reason)
 
       const revision = await mintRevision(repositories, context, {
         caseId: input.caseId,

@@ -33,7 +33,9 @@ import type {
   InvestmentThesis,
   ManagerAggregation,
   EvidenceRef,
+  InquiryKind,
 } from '~/domain/analysis'
+import { inquiryKindOf } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 
 export type GovernanceKind = 'verification' | 'devils-advocate' | 'peer-examination'
@@ -75,6 +77,13 @@ export interface GovernanceContext {
   kind: GovernanceKind
   caseId: string
   question: string
+  /**
+   * The kind of question the firm is answering, read off the opening
+   * revision. A control function's mandate is its own; its judgement is
+   * scoped by this: an explanation is scrutinised as an explanation, not as a
+   * decision the firm is about to act on (ruled 2026-09-18).
+   */
+  inquiry: InquiryKind
   revision: {
     id: string
     thesisId: string
@@ -94,7 +103,7 @@ export interface GovernanceContext {
 }
 
 export interface GovernanceContextInput {
-  repositories: Pick<AnalysisRepositories, 'aggregations' | 'claims' | 'runs' | 'evidence'>
+  repositories: Pick<AnalysisRepositories, 'aggregations' | 'claims' | 'runs' | 'evidence' | 'theses'>
   kind: GovernanceKind
   caseId: string
   question: string
@@ -119,6 +128,7 @@ export async function governanceContext(input: GovernanceContextInput): Promise<
   if (!aggregation) return null
 
   const runs = await repositories.runs.listForCase(caseId)
+  const inquiry = inquiryKindOf(await repositories.theses.listForCase(caseId), revision.thesisId)
   const evidenceSets = new Map<string, EvidenceSet | null>()
   const setFor = async (setId: string): Promise<EvidenceSet | null> => {
     if (!evidenceSets.has(setId)) evidenceSets.set(setId, await repositories.evidence.get(setId))
@@ -177,6 +187,7 @@ export async function governanceContext(input: GovernanceContextInput): Promise<
     kind,
     caseId,
     question,
+    inquiry,
     revision: {
       id: revision.revisionId,
       thesisId: revision.thesisId,

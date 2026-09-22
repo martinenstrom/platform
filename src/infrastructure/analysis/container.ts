@@ -16,7 +16,7 @@ import {
 } from './postgres/postgresRepositories'
 import { createOrganizationReader } from './postgres/organizationReader'
 import { ensureProvenance } from './postgres/provenance'
-import { defaultSqlContext } from './postgres/sql'
+import { defaultSqlContext, run } from './postgres/sql'
 import { loadMigrations } from './postgres/migrations'
 import {
   createLiveContributionProvider,
@@ -86,6 +86,28 @@ export class AnalysisConfigurationError extends Error {
   }
 }
 
+/**
+ * The database cannot hold the firm's text.
+ *
+ * A model's answer, a person's Swedish, a desk's "−" or "→": the record is
+ * text, and a server encoding narrower than UTF8 refuses part of it at the
+ * write (SQLSTATE 22P05, measured on a WIN1252 dev database on 2026-09-22 —
+ * two desks' contributions lost after the provider had answered). Refused at
+ * construction, like every other way this runtime could look as if it worked
+ * while keeping nothing.
+ */
+export class ServerEncodingError extends Error {
+  constructor(readonly encoding: string) {
+    super(
+      `The database's server encoding is ${encoding}; the analysis runtime ` +
+        `requires UTF8. A narrower encoding refuses characters the firm's ` +
+        `text contains, after the work that produced them has been paid for. ` +
+        `Create the database with ENCODING 'UTF8' (scripts/dev-db.ts does).`,
+    )
+    this.name = 'ServerEncodingError'
+  }
+}
+
 export class SchemaVersionMismatchError extends Error {
   constructor(
     readonly expected: string,
@@ -127,6 +149,20 @@ export async function createAnalysisContainer(
   })
 
   try {
+    const encodingContext = defaultSqlContext({
+      ...(options.metrics ? { metrics: options.metrics } : {}),
+      ...(options.logger ? { logger: options.logger } : {}),
+    })
+    const encoding = (
+      await run<{ server_encoding: string }>(
+        repositories.sql,
+        encodingContext,
+        'server.encoding',
+        'SHOW server_encoding',
+      )
+    )[0]?.server_encoding
+    if (encoding !== 'UTF8') throw new ServerEncodingError(encoding ?? 'unknown')
+
     const provenance = await repositories.provenance()
 
     const expected =

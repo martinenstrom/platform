@@ -31,6 +31,22 @@ const context = {
   amendments: { count: 0, latestAt: null, workPredates: false },
 }
 
+describe('a verification that demands corrections is not one nobody did (2026-09-22)', () => {
+  it('says the fact-check was done and what it wants', () => {
+    const result: HostResult = {
+      ...context,
+      state: 'blocked',
+      block: {
+        reason: 'verification-correction-required',
+        owner: { id: 'verification', name: 'Verification', isGovernance: true },
+      },
+    }
+    expect(phrase(result).detail).toBe(
+      'Faktagranskningen är gjord och kräver rättelser innan kommittén kan avsluta. Ligger hos Verification.',
+    )
+  })
+})
+
 describe('work, no way forward, and your decision are three sentences', () => {
   const working: HostResult = { ...context, state: 'working' }
   const blocked: HostResult = {
@@ -118,6 +134,7 @@ describe('the answer keeps its dissent', () => {
   it('names the conclusion, what would change it, and the open objections', () => {
     const answer: InstitutionalAnswer = {
       kind: 'committee-conclusion',
+      inquiry: 'judgement',
       thesis,
       synthesisedBy: {
         id: 'research-office',

@@ -63,6 +63,7 @@ const results: Record<string, HostResult> = {
     kind: 'committee-conclusion',
     answer: {
       kind: 'committee-conclusion',
+      inquiry: 'judgement',
       thesis: {
         revisionId: 'rev-2',
         statement: 'Kurvan prisar in en mjuklandning.',
@@ -165,6 +166,45 @@ describe('the acknowledgement of delegated work', () => {
     expect(speech.say).toContain('Jag är klar.')
     expect(speech.say).toContain('Kommitténs slutsats är hold')
     expect(speech.say).toContain('Ingen materiell invändning kvarstår.')
+  })
+
+  it('says an explanation as an explanation — no position, dissent retained, never a block (ruled 2026-09-18)', () => {
+    const conclusion = results.answerReady!
+    if (conclusion.state !== 'answer-ready' || conclusion.answer?.kind !== 'committee-conclusion') throw new Error('fixture')
+    const explained: HostResult = {
+      ...conclusion,
+      answer: {
+        ...conclusion.answer,
+        inquiry: 'explanation',
+        thesis: {
+          ...conclusion.answer.thesis,
+          position: 'explain',
+          statement: 'Guldets uppgång drivs av lägre realräntor och en svagare dollar.',
+          invalidationCriteria: 'Faller om realräntorna stiger utan att guldet faller.',
+        },
+        dissent: [
+          {
+            reviewId: 'review-da',
+            byDepartmentId: 'devils-advocate',
+            raisedAs: 'devils-advocate',
+            superseded: false,
+            challengeId: 'challenge-1',
+            contests: 'claim-1',
+            argument: 'Flödena kan förklara lika mycket som räntorna.',
+            materiality: 'material',
+            outcome: 'open',
+            counterEvidenceCount: 0,
+          },
+        ],
+        materialDissentCount: 1,
+      },
+    }
+    const speech = toolSpeech(explained)
+    expect(speech.say).toBe(
+      'Jag är klar. Kommitténs förklaring: Guldets uppgång drivs av lägre realräntor och en svagare dollar. Osäkerhet: Faller om realräntorna stiger utan att guldet faller. En invändning kvarstår som noterad oenighet. Invändning (devils-advocate): Flödena kan förklara lika mycket som räntorna.',
+    )
+    expect(speech.say).not.toContain('slutsats')
+    expect(speech.decisionRequired).toBe(false)
   })
 
   it('refuses what it cannot do honestly, with no promise in it', () => {

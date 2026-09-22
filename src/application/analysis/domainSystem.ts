@@ -58,7 +58,7 @@ import { recordDevilsAdvocateReview } from './commands/recordDevilsAdvocateRevie
 import { recordPeerExamination } from './commands/recordPeerExamination'
 import { governanceContext, type GovernanceContext, type GovernanceKind } from './governanceContext'
 import { PEER_EXAMINATION_ENTRY_KEY, RISK_ENTRY_KEY } from './reviewRecording'
-import { currentRevision, requirementStatusFor } from '~/domain/analysis'
+import { currentRevision, inquiryKindOf, requirementStatusFor } from '~/domain/analysis'
 import { commissionAnalysis, type CommissionResult } from './commissionAnalysis'
 import type { ContributionProvider } from './contributionPort'
 import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
@@ -719,14 +719,17 @@ export function createFinancialOsSystem(input: {
         revisionId = revision.revisionId
         entryProvider =
           advance.synthesisProvider?.(async () => {
-            const [assignmentsNow, runsNow, revisionNow] = await Promise.all([
+            const [assignmentsNow, runsNow, revisionsNow] = await Promise.all([
               repositories.assignments.listForCase(current.id),
               repositories.runs.listForCase(current.id),
-              currentRevisionOf(current.id),
+              repositories.theses.listForCase(current.id),
             ])
+            const thesisId = revisionsNow[0]?.thesisId
+            const revisionNow = thesisId ? currentRevision(revisionsNow, thesisId) : null
             return synthesisContext({
               caseId: current.id,
               question: current.question,
+              inquiry: inquiryKindOf(revisionsNow, thesisId),
               playbook,
               entryKey: entry.key,
               revision: revisionNow ?? revision,

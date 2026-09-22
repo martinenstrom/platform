@@ -403,8 +403,12 @@ describe('the answer is the record, read and not written', () => {
       }
       const answer = institutionalAnswerFor(base)
       expect(answer).not.toBeNull()
-      /* The kind is the contract's word, not the record's. Everything else is the record's. */
-      walk({ ...answer, kind: undefined })
+      /*
+       * The kind and the inquiry are the contract's words, not the record's: the
+       * inquiry is the class read off the opening's position word. Everything
+       * else is the record's.
+       */
+      walk({ ...answer, kind: undefined, inquiry: undefined })
       expect(leaves.length).toBeGreaterThan(5)
       for (const leaf of leaves) {
         expect(record, leaf).toContain(JSON.stringify(leaf).slice(1, -1))

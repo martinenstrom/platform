@@ -62,6 +62,7 @@ import {
   type Blocker,
   type CaseStep,
   type InvestmentThesis,
+  inquiryKindOf,
 } from '~/domain/analysis'
 import type { CaseOverview } from './caseOverview'
 import {
@@ -191,9 +192,11 @@ const liveDecision = (overview: CaseOverview) =>
 function reasonFor(kind: Blocker['kind']): BlockedReason {
   switch (kind) {
     case 'verification-missing':
+      return 'verification-required'
+    /* A filed verdict that demands corrections is not a verification nobody did. */
     case 'verification-correction-required':
     case 'unresolved-citation':
-      return 'verification-required'
+      return 'verification-correction-required'
     case 'unresolved-material-challenge':
     case 'decision-critical-disagreement':
       return 'objections-unresolved'
@@ -522,6 +525,7 @@ export function institutionalAnswerFor(
 
   return {
     kind: 'committee-conclusion',
+    inquiry: inquiryKindOf(overview.revisions, current.thesisId),
     thesis: thesisOf(current),
     synthesisedBy: deskOf(overview, synthesis?.departmentId ?? null),
     scrutiny: {

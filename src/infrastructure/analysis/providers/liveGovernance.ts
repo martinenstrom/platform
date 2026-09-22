@@ -169,7 +169,9 @@ export function renderGovernanceSystemPrompt(kind: GovernanceKind): string {
         'raise at least one objection against a named claim; a review with nothing in it is the',
         'control not being performed. Find the assumption the revision cannot survive being wrong',
         'about. Grade each objection honestly: "material" or "decision-critical" only when it would',
-        'change the conclusion, "non-material" when it would not.',
+        'change the conclusion, "non-material" when it would not. The conclusion is the answer the',
+        'firm was asked for: an explanation when the question asks why, a position when it asks',
+        'whether to act.',
         '',
         'Shape:',
         '{"challenges":[{"contests":"<claimId>",',
@@ -234,6 +236,20 @@ function renderClaim(claim: ScrutinisedClaim, withCitations: boolean): string[] 
 export function renderGovernanceUserPrompt(context: GovernanceContext): string {
   const lines: string[] = [
     `Question: ${context.question}`,
+    '',
+    ...(context.inquiry === 'explanation'
+      ? [
+          'The firm is answering an EXPLANATION: why the market moved. It is not deciding a position,',
+          'and no portfolio judgement was asked for. Scrutinise the explanation as an explanation — its',
+          'evidence, its reasoning, its competing interpretations. Analytical disagreement (another',
+          'plausible driver, unsettled causality, a fragile assumption) is recorded as retained dissent',
+          'and shapes the confidence of the explanation; only a factual contradiction backed by',
+          'evidence stops it.',
+        ]
+      : [
+          'The firm is answering an INVESTMENT JUDGEMENT: whether and how to act. Scrutinise it as a',
+          'decision the firm would be held to.',
+        ]),
     '',
     `Revision ${context.revision.id} by ${context.revision.proposedByDepartmentId}:`,
     `  statement: ${context.revision.statement}`,

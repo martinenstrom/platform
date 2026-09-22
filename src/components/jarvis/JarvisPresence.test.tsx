@@ -508,6 +508,7 @@ describe('engaged', () => {
       kind: 'committee-conclusion',
       answer: {
         kind: 'committee-conclusion',
+        inquiry: 'judgement',
         thesis: {
           revisionId: 'rev-2',
           statement: 'Kurvan prisar in en mjuklandning.',

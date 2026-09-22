@@ -16,7 +16,7 @@
  * is a second thing that can disagree with the record.
  */
 
-import type { AgentRunRecord, Assignment, InvestmentThesis } from '~/domain/analysis'
+import type { AgentRunRecord, Assignment, InquiryKind, InvestmentThesis } from '~/domain/analysis'
 import type { CasePlaybook } from './playbooks'
 
 /** One accepted contribution the synthesis may reason over. */
@@ -37,6 +37,8 @@ export interface AbsentOptionalInput {
 export interface SynthesisContext {
   caseId: string
   question: string
+  /** The kind of question, read off the opening revision: it decides what the synthesis may be. */
+  inquiry: InquiryKind
   /** The argument being reconciled. */
   revisionId: string
   currentStatement: string
@@ -48,6 +50,7 @@ export interface SynthesisContext {
 export interface SynthesisContextInput {
   caseId: string
   question: string
+  inquiry: InquiryKind
   playbook: CasePlaybook
   /** The entry doing the synthesising. Its edges decide what is in view. */
   entryKey: string
@@ -131,6 +134,7 @@ export function synthesisContext(input: SynthesisContextInput): SynthesisContext
   return {
     caseId: input.caseId,
     question: input.question,
+    inquiry: input.inquiry,
     revisionId: input.revision.revisionId,
     currentStatement: input.revision.statement,
     currentPosition: input.revision.position,

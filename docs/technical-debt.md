@@ -2831,7 +2831,7 @@ forbade building an automatic objection/rebuttal loop in G1.
 claim is contested, one ruling on the objection by the office or the CIO —
 with a hard stop, designed when the firm has seen real material objections.
 
-## TD-100 · an explanatory opening ends at Risk's queue · open
+## TD-100 · an explanatory opening ends at Risk's queue — CLOSED 2026-09-22
 
 **Opened 2026-09-18**, measured on the live gold runs of that day
 (`docs/jarvis-voice-live-proof.md` §14). The person asked the committee why
@@ -2855,6 +2855,21 @@ contract carries the opening's kind and an explanatory revision declares no
 implementation implications unless the desks' evidence supports acting, or the
 requirement rule reads the opening's kind. Not decided here; the record is.
 
+**CLOSED 2026-09-22, by semantic constraint (ruled 2026-09-18).** The
+resolution is a ruling and one derivation: the kind of question is read off
+the opening revision (`inquiryKindOf`; an explanatory opening carries the
+position word `explain`), and an explanation may not become a position or
+declare an implementation implication (`synthesisPermittedFor`) — refused by
+`AggregateManagerConclusion` whether a person stated it or a candidate
+carried it, and refused as malformed by the live synthesis contract, which
+now states the rule. With no implications, the pinned Risk rule resolves
+`not-required` on its own. The kind travels into every control function's
+context, and `challengeBlocks` retains analytical dissent on an explanation
+instead of stopping the firm on it; only a factual contradiction at the
+policy's materiality still does. TD-98 stays open and was not used as the
+fix. Proven in memory (`inquiry.test.ts`, `explanationSemantics.test.ts`,
+`hostGovernanceLoop.test.ts`) and live on 2026-09-22 (`docs/jarvis-voice-live-proof.md` §15: the live gold case `case-fd3e3f4dcd597ba9a0aeea3e` reached revision 2 as `explain` with no implications, Risk resolved `not-required` and its queue never opened, all three control functions filed, and the Devil's Advocate's five material and decision-critical objections stood on the record as retained dissent — the case's only blockers were Verification's own `correction-required` findings, the hard block the ruling kept).
+
 ## TD-101 · Verification's live envelope · open
 
 **Opened 2026-09-18**, measured on the fifth live gold run
@@ -2872,3 +2887,27 @@ loop, its tokens, and whether its candidate passed the domain's builders.
 **The resolution** is a Verification deadline of its own, computed from that
 measurement — one attempt plus one retry, as v4 did for the desks — in a
 new workflow version, since a deadline is inside `playbookContentHash`.
+
+## TD-102 · a run stayed `running` for 59 minutes past its 180 s deadline · open
+
+**Opened 2026-09-22**, measured on run 11 of the gold case
+(`docs/jarvis-voice-live-proof.md` §15.3, `case-aeba56c703b682ae6d785699`).
+The Research Office's synthesis run started 17:42:22Z and its
+`timed-out / budget-exhausted` event is stamped 18:41:08Z: the provider's
+answer arrived at the cap an hour later, and the run's deadline — 180,000 ms,
+armed by `executionPipeline` through `withTimeout` and an `AbortController`
+whose signal every provider forwards to `fetch` — did not abort the call.
+The same pipeline aborted Verification at exactly 180 s in run 5 (§14). For
+that hour the case read `working` to the host, truthfully by the record and
+falsely by the world, and the probe waited with it.
+
+**Not diagnosed.** Candidates: the dev server's event loop stalled (the
+probe's own hard cap of 25 minutes did not hold either, which points at the
+server rather than the timer); Node's fetch not honouring the abort once the
+response had begun; a timer that never armed for this attempt. One
+occurrence; the timestamps are the evidence.
+
+**The resolution** is a measurement first — the pipeline's timer and the
+fetch's abort observed under a deliberately stalled provider in a test that
+plants the stall — then whichever fix the measurement names. Until then TD-92
+(an abandoned run stays `running`) is the recovery path.

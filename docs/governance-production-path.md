@@ -412,3 +412,39 @@ commissionable. A department's institutional agent evaluates a gate.
 **Debt recorded.** TD-96 stays open. TD-97 model diversity (ruled), TD-98
 Risk's candidate boundary, TD-99 the objection round, TD-100 the explanatory
 opening ending at Risk, TD-101 Verification's live envelope.
+
+## 12. G2 — explanation governance is not decision governance, 2026-09-18/22
+
+**The ruling** that accepted `a597f55` resolved TD-100 by semantic constraint:
+the kind of opening constrains the permissible institutional implications; an
+explanation is scrutinised for its evidence, its reasoning and its competing
+interpretations, retains analytical dissent, and produces no portfolio
+decision; a judgement produces a position with implications, Risk where the
+rule says so, and a recommendation the person decides on. TD-98 was kept
+open on purpose — Risk is not the fix for a misrouted explanation.
+
+**Built.** One derivation of the kind, off the opening revision
+(`inquiryKindOf`); one rule for what a synthesis may be
+(`synthesisPermittedFor`), applied by `AggregateManagerConclusion` and stated
+in the live synthesis contract; the kind carried into the synthesis context
+and every control function's context, with the original question; the
+objection rule in `challengeBlocks` — on an explanation only a factual
+contradiction at the policy's materiality blocks, every other objection is
+retained dissent; `CommitteeConclusion.inquiry`, and JARVIS saying an
+explanation as one (contract v4 §13). No new model, no new act, no new
+policy version: the materiality threshold and the CIO's gate are untouched.
+
+**Proven in memory.** The domain rules (`inquiry.test.ts`); the office refused
+a judgement on an explanatory lineage and admitted one on a judgement lineage
+(`explanationSemantics.test.ts`); the loop reaching a scrutinised explanation
+over a material analytical objection, retained on the record and said as
+dissent, with Risk resolved `not-required`; a judgement still stopped at the
+same objection (`hostGovernanceLoop.test.ts`).
+
+**Proven live** on 2026-09-22 (`docs/jarvis-voice-live-proof.md` §15): the live gold case `case-fd3e3f4dcd597ba9a0aeea3e` reached revision 2 as `explain` with no implications, Risk resolved `not-required` and its queue never opened, all three control functions filed, and the Devil's Advocate's five material and decision-critical objections stood on the record as retained dissent — the case's only blockers were Verification's own `correction-required` findings, the hard block the ruling kept. The committee's explanatory conclusion itself was not reached in that run: Verification demanded corrections, which the ruling allows and the record shows. See §15 for the run that followed.
+
+**Still open.** TD-98 (Risk's candidate boundary, for workflows where Risk
+legitimately participates), TD-99 (the examination round, to be designed
+around the three categories the record now keeps apart: correction required,
+retained dissent, hard blocker), TD-101 (Verification's live envelope),
+TD-96, TD-97.

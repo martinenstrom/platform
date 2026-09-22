@@ -30,7 +30,7 @@
  * the subject: what would make an opening of this kind fall.
  */
 
-import type { InvestmentImplication } from '~/domain/analysis'
+import { EXPLANATORY_POSITION, type InvestmentImplication } from '~/domain/analysis'
 import type { HostOpening } from './hostContract'
 
 export interface OpeningProposal {
@@ -42,7 +42,7 @@ export interface OpeningProposal {
 }
 
 /** The position word of an explanation: the firm explains, it does not take a side. */
-export const EXPLANATION_POSITION = 'explain'
+export const EXPLANATION_POSITION = EXPLANATORY_POSITION
 /** The position word of a question examined without a predetermined view. */
 export const OPEN_POSITION = 'open'
 
