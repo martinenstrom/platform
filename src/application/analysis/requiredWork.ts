@@ -14,7 +14,7 @@
  */
 
 import type { AgentRunRecord, Assignment, RequirementResolution } from '~/domain/analysis'
-import { requirementStatusFor } from '~/domain/analysis'
+import { isRunTerminal, requirementStatusFor } from '~/domain/analysis'
 import type { CasePlaybook, PlaybookEntry } from './playbooks'
 
 /** Why a dependency is not satisfied. Bounded — this reaches a rejection. */
@@ -95,6 +95,64 @@ export function effectiveRequirement(
   return status.state === 'required' ? 'required' : 'optional'
 }
 
+/**
+ * The accepted run that currently STANDS for an assignment: the latest
+ * `completed`, non-obsolete run by start time.
+ *
+ * An assignment worked twice — its first run adopted, the work then returned
+ * for correction and worked again (TD-99, 2026-09-22) — carries two completed
+ * runs, and only the later one is what the desk now stands behind. Every
+ * reader that asks "which run is this desk's contribution" asks it here, so
+ * synthesis, adoption and readiness agree on the answer.
+ */
+export function standingRunFor(
+  assignment: Pick<Assignment, 'id' | 'status'>,
+  runs: readonly AgentRunRecord[],
+): AgentRunRecord | undefined {
+  /*
+   * Work returned for correction stands for nothing until the correction is
+   * accepted: its earlier run is exactly what is being replaced, and a
+   * dependant that read it would synthesise onto claims Verification found
+   * against.
+   */
+  /*
+   * The assignment says whether its work stands. `completed` is the status
+   * adoption sets and nothing else does; every other status means the desk's
+   * accepted run, if it has one, is the one being replaced: `returned` for
+   * correction, `active` while the correction is in flight, `queued` after a
+   * correction timed out and went back to its queue, `failed` when it could
+   * not. Measured live on 2026-09-23 (`docs/jarvis-voice-live-proof.md` §16):
+   * the office synthesised onto Rates' old claims while Rates' correction was
+   * still running, and the successor was refused at adoption; an ordering of
+   * runs by start time cannot say this — two attempts on one clock tie — but
+   * the assignment's status can.
+   */
+  if (assignment.status !== 'completed') return undefined
+  const own = runs
+    .filter((run) => run.assignmentId === assignment.id)
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id))
+  if (own.some((run) => !isRunTerminal(run.state))) return undefined
+  const standing = own.filter((run) => run.state === 'completed' && !run.obsolete)
+  return standing[standing.length - 1]
+}
+
+/**
+ * The playbook entries whose work STANDS — accepted, not returned for
+ * correction, not replaced. What a dependant may read, and therefore what
+ * makes it ready.
+ */
+export function standingEntryKeys(
+  assignments: readonly Assignment[],
+  runs: readonly AgentRunRecord[],
+): Set<string> {
+  const keys = new Set<string>()
+  for (const assignment of assignments) {
+    const run = standingRunFor(assignment, runs)
+    if (run) keys.add(run.execution.playbookEntryKey)
+  }
+  return keys
+}
+
 export interface RequiredWorkInput {
   playbook: CasePlaybook
   /** The entry whose dependencies are being checked. */
@@ -135,7 +193,7 @@ export function unmetRequiredWork(input: RequiredWorkInput): UnmetDependency[] {
     }
 
     const runs = input.runs.filter((run) => run.assignmentId === assignment.id)
-    const accepted = runs.find((run) => run.state === 'completed')
+    const accepted = standingRunFor(assignment, runs)
 
     if (!accepted) {
       const failed = runs.some(

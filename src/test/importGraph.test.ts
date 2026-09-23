@@ -957,6 +957,7 @@ describe('Phase C1A — the command foundation', () => {
       'reopenForReconsideration.ts',
       'resolveCommand.ts',
       'resolveConditionalRequirement.ts',
+      'returnForCorrection.ts',
       'returnFromCioReview.ts',
       'reviseThesis.ts',
       'runCommand.ts',

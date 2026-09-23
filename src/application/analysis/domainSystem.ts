@@ -52,18 +52,32 @@ import { assembleEvidenceSet } from './commands/assembleEvidenceSet'
 import { acceptContribution } from './commands/acceptContribution'
 import { aggregateManagerConclusion } from './commands/aggregateManagerConclusion'
 import { submitForVerification } from './commands/submitForVerification'
+import { returnForCorrection } from './commands/returnForCorrection'
 import { resolveConditionalRequirement } from './commands/resolveConditionalRequirement'
 import { recordVerificationReview } from './commands/recordVerificationReview'
 import { recordDevilsAdvocateReview } from './commands/recordDevilsAdvocateReview'
 import { recordPeerExamination } from './commands/recordPeerExamination'
 import { governanceContext, type GovernanceContext, type GovernanceKind } from './governanceContext'
 import { PEER_EXAMINATION_ENTRY_KEY, RISK_ENTRY_KEY } from './reviewRecording'
-import { currentRevision, inquiryKindOf, requirementStatusFor } from '~/domain/analysis'
+import {
+  automaticCorrectionPermitted,
+  correctionRoundsTaken,
+  correctionsOwed,
+  correctionsOwedBy,
+  currentRevision,
+  inquiryKindOf,
+  latestApplicable,
+  requirementStatusFor,
+  type CorrectionFinding,
+  type CorrectionOwnership,
+  type VerificationReview,
+} from '~/domain/analysis'
 import { commissionAnalysis, type CommissionResult } from './commissionAnalysis'
 import type { ContributionProvider } from './contributionPort'
 import { requirePlaybook, UnknownPlaybookError } from './playbookRegistry'
 import type { CasePlaybook } from './playbooks'
 import { synthesisContext, type SynthesisContext } from './synthesisContext'
+import { standingRunFor } from './requiredWork'
 import { evidenceWindow, openingProposal, standingEvidenceFor, synthesisEntryFor } from './opening'
 import type { HostOpening, HostWithheldReason } from './hostContract'
 import {
@@ -554,6 +568,88 @@ export function createFinancialOsSystem(input: {
    * CIO: that stays a deliberate act, and the loop stops at the committee's
    * conclusion.
    */
+  /**
+   * The corrections Verification's STANDING verdict demands on a revision, by
+   * owner — or null where no verdict demands any. One derivation, read by the
+   * return, by the desks' correction briefs and by the office's re-synthesis.
+   */
+  async function correctionsDemandedOn(
+    caseId: string,
+    revision: { revisionId: string },
+  ): Promise<{ review: VerificationReview; ownership: CorrectionOwnership } | null> {
+    const review = latestApplicable(await repositories.reviews.verificationsForCase(caseId), caseId, revision.revisionId)
+    if (!review || review.status !== 'correction-required') return null
+    return { review, ownership: correctionsOwed(review, await repositories.runs.listForCase(caseId)) }
+  }
+
+  /**
+   * The correction round, when the firm says one is owed (TD-99, ruled
+   * 2026-09-22): Verification's verdict on the current revision demands
+   * corrections, the firm has not spent its one automatic round, and no
+   * control function is still examining the revision. The office that owns
+   * the revision returns each defective claim to the desk that produced it —
+   * the ownership is the record's, not the office's choice — and its own
+   * synthesis, so a successor is written onto the corrected work. Neither
+   * JARVIS nor Verification corrects anything.
+   */
+  async function returnForCorrectionWhereDemanded(
+    delegation: Delegation,
+    current: InvestmentCase,
+    deps: CommandDeps,
+    withheld: { departmentId: string | null; reason: HostWithheldReason }[],
+  ): Promise<void> {
+    const revision = await currentRevisionOf(current.id)
+    if (!revision || revision.lifecycle !== 'awaiting-verification') return
+    const standing = await standingForCase({ repositories, organization: deps.organization, investmentCase: current, now: now() })
+    if (standing.nextAct.act !== 'return-for-correction') return
+    /*
+     * The bound (ruled 2026-09-22): one correction round on the firm's own
+     * initiative, counted off the lineage. Past it the verdict stands as the
+     * visible stop — the host reads it with its findings and owners — and the
+     * act stays a person's to perform.
+     */
+    const rounds = correctionRoundsTaken(await repositories.theses.listForCase(current.id), revision.thesisId)
+    if (!automaticCorrectionPermitted(rounds)) {
+      advance?.log?.(`[advance] ${current.id}: Verification still demands corrections on ${revision.revisionId} after ${rounds} automatic correction round(s) — the firm stops here`)
+      return
+    }
+    /* The control functions still examining this revision finish first: their filings are the record's. */
+    const runs = await repositories.runs.listForCase(current.id)
+    if (runs.some((run) => run.revisionId === revision.revisionId && run.state === 'running')) return
+    const demanded = await correctionsDemandedOn(current.id, revision)
+    if (!demanded) return
+    /* Already returned: the round is in progress, and the owners' correction work is what is owed now. */
+    const assignments = await repositories.assignments.listForCase(current.id)
+    if (assignments.some((assignment) => assignment.status === 'returned')) return
+    const office = principalFor(deps, revision.proposedByDepartmentId)
+    if (!office) {
+      withheld.push({ departmentId: revision.proposedByDepartmentId, reason: 'no-principal' })
+      return
+    }
+    const returned = await runCommand(
+      returnForCorrection(deps.organization),
+      {
+        caseId: current.id,
+        revisionId: revision.revisionId,
+        verificationReviewId: demanded.review.reviewId,
+        returnedByDepartmentId: revision.proposedByDepartmentId,
+      },
+      {
+        commandId: `${current.id}-return-correction-${revision.revisionId}`,
+        correlationId: current.id,
+        actor: { kind: 'institutional-agent', agentPrincipalId: office.id },
+        initiator: initiatedBy(delegation),
+        occurredAt: now(),
+        reason: `Verification ${demanded.review.reviewId} demands corrections on revision ${revision.revisionId}; the office returns each defective claim to the desk that produced it, and its own synthesis for the successor.`,
+      },
+      deps,
+    )
+    advance?.log?.(
+      `[advance] ${current.id} ${revision.proposedByDepartmentId} returns ${revision.revisionId} for correction: ${returned.outcome}${returned.outcome === 'rejected' ? ` ${returned.rejection.code}: ${returned.rejection.detail}` : ''}${returned.outcome === 'committed' ? ` → ${returned.value.returned.map((entry) => `${entry.departmentId}(${entry.claimIds.length})`).join(',')}` : ''}`,
+    )
+    if (returned.outcome !== 'committed') withheld.push({ departmentId: revision.proposedByDepartmentId, reason: 'declined' })
+  }
+
   async function putBeforeGovernance(
     delegation: Delegation,
     current: InvestmentCase,
@@ -653,6 +749,25 @@ export function createFinancialOsSystem(input: {
     const runs = await repositories.runs.listForCase(current.id)
     const known = new Set(runs.map((run) => run.id))
     const assignments = await repositories.assignments.listForCase(current.id)
+    /* The revision the pass is working on, and the corrections its standing verdict demands, if any. */
+    const currentNow = await currentRevisionOf(current.id)
+    const demanded =
+      currentNow && currentNow.lifecycle === 'awaiting-verification'
+        ? await correctionsDemandedOn(current.id, currentNow)
+        : null
+    /*
+     * A correction round in progress: the verdict stands and the office has
+     * returned the work — some desk is `returned`, or the office's own
+     * synthesis is no longer `completed`. The revision is about to be
+     * replaced; the control functions examine its successor, not it.
+     */
+    const roundInProgress =
+      demanded !== null &&
+      assignments.some(
+        (candidate) =>
+          candidate.status === 'returned' ||
+          (candidate.playbookEntryKey === synthesisEntry && candidate.status !== 'completed'),
+      )
     for (const entry of playbook.entries) {
       const assignment = assignments.find(
         (candidate) => candidate.playbookEntryKey === entry.key && candidate.departmentId === entry.departmentId,
@@ -661,15 +776,46 @@ export function createFinancialOsSystem(input: {
         withheld.push({ departmentId: entry.departmentId, reason: 'not-assignable' })
         continue
       }
-      /* A desk already running, waiting to be adopted, or adopted is not commissioned again here. */
-      if (runs.some((run) => run.assignmentId === assignment.id && ['running', 'awaiting-acceptance', 'completed'].includes(run.state))) continue
+      const control = governanceKindOf(entry)
+      const own = runs.filter((run) => run.assignmentId === assignment.id)
+      /* A desk already running or waiting to be adopted is not commissioned again here. */
+      if (own.some((run) => run.state === 'running' || run.state === 'awaiting-acceptance')) continue
+      /*
+       * Nor is a desk whose work is adopted — with the two exceptions the
+       * record names (TD-99, ruled 2026-09-22). Work the office RETURNED for
+       * correction is owed again: the adopted run is the one being corrected.
+       * And a control function's verdict stands only for the revision it
+       * examined: adopted for revision 2 is not adopted for revision 3, whose
+       * submission reopened the queue. Correction work is scoped to the
+       * revision the verdict examined, so the same rule reads it.
+       */
+      /* Adopted work is not commissioned again; the assignment says so. */
+      if (assignment.status === 'completed') continue
+      /*
+       * Revision-scoped work — a control function's, and the office's — is
+       * worked once PER REVISION: adopted for revision 2 is not adopted for
+       * revision 3, and a synthesis that timed out on revision 2 is owed on
+       * revision 2 still (measured live, run 13). A desk's contribution is
+       * commissioned again only when nothing of its work stands
+       * (`standingRunFor`): returned for correction, or its latest attempt
+       * produced nothing the firm accepted.
+       */
+      const scopedToRevision = control !== null || entry.key === synthesisEntry
+      const onThisRevision = (run: { revisionId?: string }) =>
+        !scopedToRevision || run.revisionId === currentNow?.revisionId
+      if (
+        scopedToRevision
+          ? own.some((run) => run.state === 'completed' && onThisRevision(run))
+          : standingRunFor(assignment, own) !== undefined
+      )
+        continue
       /*
        * The firm retries on the person's word, not on its own. An entry whose
        * run failed stays on the record, visible, until the next beginning; the
        * passes the firm gives itself never re-commission it — a provider that
        * refused once would only be paid to refuse again.
        */
-      if (pass > 0 && runs.some((run) => run.assignmentId === assignment.id && run.state === 'failed')) {
+      if (pass > 0 && own.some((run) => (run.state === 'failed' || run.state === 'timed-out') && onThisRevision(run))) {
         withheld.push({ departmentId: entry.departmentId, reason: 'declined' })
         continue
       }
@@ -680,7 +826,7 @@ export function createFinancialOsSystem(input: {
       }
       let entryProvider: ContributionProvider | null = provider
       let revisionId: string | undefined
-      const control = governanceKindOf(entry)
+      let corrections: readonly CorrectionFinding[] | undefined
       if (entry.key === RISK_ENTRY_KEY) {
         /*
          * Risk's review has no candidate boundary yet (TD-98). Where the
@@ -699,6 +845,8 @@ export function createFinancialOsSystem(input: {
         const revision = await currentRevisionOf(current.id)
         /* Scrutiny is owed only once the office has put its revision before the control functions. */
         if (!revision || !revision.aggregationId || revision.lifecycle !== 'awaiting-verification') continue
+        /* A revision returned for correction is about to be replaced; its successor is what the control functions examine. */
+        if (roundInProgress) continue
         revisionId = revision.revisionId
         entryProvider =
           advance.governanceProvider?.(control, async () => {
@@ -735,12 +883,35 @@ export function createFinancialOsSystem(input: {
               revision: revisionNow ?? revision,
               assignments: assignmentsNow,
               runs: runsNow,
+              /* A re-synthesis after a return is told what Verification found, and whose it was. */
+              ...(demanded
+                ? {
+                    corrections: {
+                      reviewId: demanded.review.reviewId,
+                      revisionId: revision.revisionId,
+                      revisionNumber: revision.revisionNumber,
+                      findings: demanded.ownership.owed.flatMap((owed) =>
+                        owed.findings.map((finding) => ({ ...finding, departmentId: owed.departmentId })),
+                      ),
+                    },
+                  }
+                : {}),
             })
           }) ?? null
         if (!entryProvider) {
           withheld.push({ departmentId: entry.departmentId, reason: 'no-provider' })
           continue
         }
+      } else if (demanded && currentNow && correctionsOwedBy(demanded.ownership, entry.departmentId).length > 0) {
+        /*
+         * Correction work: the desk is told what Verification found against
+         * its own accepted claims, scoped to the revision the verdict
+         * examined. The ownership is the record's (`correctionsOwed`); the
+         * desk gets exactly the findings on the claims it produced — on the
+         * first attempt and on a retry after a timed-out one alike.
+         */
+        revisionId = currentNow.revisionId
+        corrections = correctionsOwedBy(demanded.ownership, entry.departmentId)
       }
       const commission = commissionAnalysis({
         repositories,
@@ -752,15 +923,24 @@ export function createFinancialOsSystem(input: {
         evidenceSetId,
         actingPrincipal: { kind: 'institutional-agent', agentPrincipalId: principal.id },
         ...(revisionId ? { revisionId } : {}),
+        ...(corrections && corrections.length > 0 ? { corrections } : {}),
         now: () => new Date(now()),
       })
       /* Left to run; how it ended is on the record and in the log, and a finished run advances the case again. */
       commission.then(
         (result) => {
           advance.log?.(
-            `[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'state' in result ? ` ${result.state}` : ''}${'failureDetail' in result && result.failureDetail ? ` — ${result.failureDetail}` : ''}`,
+            `[begin] ${current.id} ${entry.key}: ${result.outcome}${'reason' in result ? ` ${result.reason}` : ''}${'code' in result ? ` ${result.code}` : ''}${'state' in result ? ` ${result.state}` : ''}${'failureDetail' in result && result.failureDetail ? ` — ${result.failureDetail}` : ''}${'detail' in result && result.detail ? ` — ${result.detail}` : ''}`,
           )
-          if (result.outcome === 'ran' && result.state === 'awaiting-acceptance') void advanceLater(delegation, current.id, pass + 1)
+          /*
+           * A finished run advances the case again — whatever way it finished.
+           * Produced work is adopted on the next pass; a failed or timed-out run
+           * is not re-commissioned on the firm's own initiative, but the work it
+           * was holding up may now be owed (measured live, run 14: the last
+           * examination of a revision failed, and the return it was holding up
+           * never came).
+           */
+          if (result.outcome === 'ran' && result.state !== 'running') void advanceLater(delegation, current.id, pass + 1)
         },
         (error: unknown) => advance.log?.(`[begin] ${current.id} ${entry.key}: threw ${String(error)}`),
       )
@@ -780,7 +960,7 @@ export function createFinancialOsSystem(input: {
         known.add(outcome.result.runId)
         started.push({ departmentId: entry.departmentId, runId: outcome.result.runId })
         /* A stub or recorded provider settles at once; the adoption happens on the next pass, which this run earned. */
-        if (outcome.result.state === 'awaiting-acceptance') void advanceLater(delegation, current.id, pass + 1)
+        if (outcome.result.state !== 'running') void advanceLater(delegation, current.id, pass + 1)
       } else {
         withheld.push({ departmentId: entry.departmentId, reason: withheldReason(outcome.result) })
       }
@@ -823,6 +1003,8 @@ export function createFinancialOsSystem(input: {
       await adoptFinishedWork(delegation, current, deps, adopted, filed, withheld)
       /* The office's revision goes before the control functions when the firm says it is owed. */
       await putBeforeGovernance(delegation, current, deps, withheld)
+      /* And comes back from them for correction when Verification's verdict demands it — once, on its own. */
+      await returnForCorrectionWhereDemanded(delegation, current, deps, withheld)
       const stopped = (reason: HostWithheldReason, evidence: CaseCommission['evidence'] = null): CaseCommission => ({
         evidence,
         started,

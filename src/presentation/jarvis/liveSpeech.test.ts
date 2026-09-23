@@ -76,6 +76,7 @@ const results: Record<string, HostResult> = {
       scrutiny: { verification: 'verified', risk: null, peerExaminations: 0, devilsAdvocateReviews: 1 },
       dissent: [],
       materialDissentCount: 0,
+      priorDissent: [],
     },
   },
 }
@@ -127,6 +128,7 @@ describe('the acknowledgement of delegated work', () => {
             byDepartmentId: 'devils-advocate',
             raisedAs: 'devils-advocate',
             superseded: false,
+            revisionId: null,
             challengeId: 'challenge-1',
             contests: 'claim-1',
             argument: 'Realräntorna föll först efter att guldet steg.',
@@ -139,6 +141,7 @@ describe('the acknowledgement of delegated work', () => {
             byDepartmentId: 'devils-advocate',
             raisedAs: 'devils-advocate',
             superseded: false,
+            revisionId: null,
             challengeId: 'challenge-2',
             contests: 'claim-2',
             argument: 'Dollarn nämns inte.',
@@ -188,6 +191,7 @@ describe('the acknowledgement of delegated work', () => {
             byDepartmentId: 'devils-advocate',
             raisedAs: 'devils-advocate',
             superseded: false,
+            revisionId: null,
             challengeId: 'challenge-1',
             contests: 'claim-1',
             argument: 'Flödena kan förklara lika mycket som räntorna.',
@@ -197,6 +201,7 @@ describe('the acknowledgement of delegated work', () => {
           },
         ],
         materialDissentCount: 1,
+        priorDissent: [],
       },
     }
     const speech = toolSpeech(explained)

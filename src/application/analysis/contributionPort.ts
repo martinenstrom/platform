@@ -14,6 +14,7 @@
 
 import type {
   AgentClaim,
+  CorrectionFinding,
   ExecutionBudget,
   ExecutionIdentity,
   ProviderKind,
@@ -41,6 +42,13 @@ export interface ContributionRequest {
   /** The exact thesis revision this concerns, where the work is thesis-scoped. */
   revisionId?: string
   brief: string
+  /**
+   * Corrections Verification demands of THIS desk's accepted claims, when the
+   * run is correction work (TD-99, 2026-09-22). Rendered into the desk's
+   * prompt beside the brief; absent on a first contribution. The desk answers
+   * with a complete fresh contribution that replaces the earlier one.
+   */
+  corrections?: readonly CorrectionFinding[]
   evidenceSetId: string
   /** Outputs of declared upstream dependencies. Never a shared mutable context. */
   inputs: Readonly<Record<string, readonly AgentClaim[]>>

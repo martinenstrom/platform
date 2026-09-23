@@ -120,6 +120,8 @@ export async function contributionFor(
     opposesThesisId?: string
     statement?: string
     instantiateCommandId?: string
+    /** Present for revision-scoped work — correction work, or a synthesis. */
+    revisionId?: string
   },
 ): Promise<{ runId: string; claimId: string }> {
   const assignmentId = deriveAssignmentId(
@@ -135,6 +137,7 @@ export async function contributionFor(
       assignmentId,
       departmentId: args.departmentId,
       evidenceSetId: EVIDENCE_SET_ID,
+      ...(args.revisionId ? { revisionId: args.revisionId } : {}),
       ...DECLARATION,
     },
     envelopeFor(`${args.commandPrefix}-start`, employeeId),

@@ -216,6 +216,35 @@ export function renderSynthesisUserPrompt(context: SynthesisContext): string {
       lines.push(`  [${absent.playbookEntryKey}] ${absent.departmentId}`)
     }
   }
+
+  /*
+   * A correction round (TD-99, 2026-09-22): the office is told what
+   * Verification found against the revision it is replacing, and whose each
+   * finding was. The desks named have already contributed corrected claims —
+   * they are the accepted contributions above; findings on the office's own
+   * claims are the office's to correct here.
+   */
+  if (context.corrections) {
+    lines.push(
+      '',
+      `CORRECTION ROUND. Verification examined revision ${context.corrections.revisionNumber}`,
+      `(${context.corrections.reviewId}) and demanded the corrections below. The desks named have`,
+      'since contributed corrected claims — the accepted contributions listed above. Findings on',
+      'the Research Office\u2019s own claims are yours to correct in this synthesis. Write the',
+      'successor revision so that every finding is addressed: do not restate a figure or a',
+      'citation Verification could not confirm, and say in "rationale" what changed and why.',
+      'Where the evidence cannot support a corrected claim, the honest successor says so.',
+      'The findings below concern claims in the desks’ EARLIER contributions, which the corrected',
+      'contributions listed above have replaced. Those earlier claims are quoted for reference only:',
+      'give dispositions ONLY to the claim ids listed under "Accepted contributions" — a disposition',
+      'for any other id is refused as malformed (measured live, 2026-09-23).',
+    )
+    for (const finding of context.corrections.findings) {
+      lines.push(
+        `  - [${finding.departmentId}] "${finding.statement}" (${finding.kind}): ${finding.detail} — required: ${finding.correctionRequired}`,
+      )
+    }
+  }
   return lines.join('\n')
 }
 

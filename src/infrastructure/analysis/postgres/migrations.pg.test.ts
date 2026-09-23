@@ -126,6 +126,8 @@ describe('a clean database reaches the expected schema', () => {
       '0052',
       /* A requirement resolution may be the department's own principal's evaluation (G1). */
       '0053',
+      /* A synthesis may be a correction of the revision Verification sent back (TD-99). */
+      '0054',
     ])
   })
 

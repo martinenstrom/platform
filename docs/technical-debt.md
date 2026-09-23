@@ -2831,6 +2831,52 @@ forbade building an automatic objection/rebuttal loop in G1.
 claim is contested, one ruling on the objection by the office or the CIO —
 with a hard stop, designed when the firm has seen real material objections.
 
+**Built 2026-09-22 as a bounded correction round, by ruling** (the
+material-objection round this entry opened on is a separate question and
+stays open — see below). What the record now does: Verification files
+`correction-required` on revision N; the standing names `return-for-correction`
+as the institution's next act, owned by the office that synthesised; the
+office performs `ReturnForCorrection`, whose owners are derived from
+provenance (`correctionsOwed`: finding → claim → the one accepted run that
+produced it → its desk) and never chosen — a defect in a specialist's claim
+goes to that desk, a defect the synthesis introduced goes to the Research
+Office, a citation defect to whoever made the claim, and a finding on a claim
+no accepted run produced refuses the act; each owner's assignment is
+`returned` with the findings as its reason and the office's own synthesis
+assignment with it; the returned desks are commissioned again with a
+corrections brief (`ContributionRequest.corrections`, rendered into the live
+desk prompt) scoped to revision N, the untouched desks' work is reused, and a
+corrected contribution marks the one it replaces `obsolete` on adoption; the
+office re-synthesises with the verdict in its context and mints revision N+1
+with cause `correction` and a reason naming the verdict, N superseded and not
+edited; the successor is submitted, which reopens Verification, the Devil's
+Advocate AND the peer examination; every control function examines N+1 under
+its own principal; Risk resolves again and stays `not-required` for an
+explanation; the verdict on N stands on the record as history and stands for
+nothing on N+1 (`reviewStandsForCurrent`); the conclusion's `dissent` is
+N+1's and the objections to N are kept beside it as `priorDissent`, each
+saying whether the same function renewed it. The firm takes one such round
+on its own (`MAX_AUTOMATIC_CORRECTION_ROUNDS`, counted off the lineage);
+after it, a verdict that still demands corrections is the visible stop — the
+host says how many findings, whose, and that the round is spent — and the
+act remains a person's. Neither JARVIS nor Verification corrects anything.
+Proven deterministically (`corrections.test.ts`, `correctionRound.test.ts`,
+`hostGovernanceLoop.test.ts`: the correction path to the explanation, the
+stop after one round, and the no-correction path).
+
+**Live, 2026-09-23** (`docs/jarvis-voice-live-proof.md` §16): the round ran on
+the firm's own initiative through the return, the targeted corrections, the
+successor with explicit lineage, Risk again, the successor's submission and
+fresh examinations starting (run 18), each earlier run stopping on one defect
+the record named and a planted test now holds; the conclusion after
+correction is proven in memory, not yet live.
+
+**Still open in this entry:** the round that answers a RETAINED OBJECTION —
+a material Devil's Advocate objection on a judgement, which stops the firm at
+`objections-unresolved`. Nothing re-examines or rebuts it yet; the correction
+round is Verification's, not the Devil's Advocate's, and building the
+objection round is a separate ruling.
+
 ## TD-100 · an explanatory opening ends at Risk's queue — CLOSED 2026-09-22
 
 **Opened 2026-09-18**, measured on the live gold runs of that day
@@ -2888,7 +2934,7 @@ loop, its tokens, and whether its candidate passed the domain's builders.
 measurement — one attempt plus one retry, as v4 did for the desks — in a
 new workflow version, since a deadline is inside `playbookContentHash`.
 
-## TD-102 · a run stayed `running` for 59 minutes past its 180 s deadline · open
+## TD-102 · a run stayed `running` for 59 minutes past its 180 s deadline — CLOSED 2026-09-22
 
 **Opened 2026-09-22**, measured on run 11 of the gold case
 (`docs/jarvis-voice-live-proof.md` §15.3, `case-aeba56c703b682ae6d785699`).
@@ -2911,3 +2957,85 @@ occurrence; the timestamps are the evidence.
 fetch's abort observed under a deliberately stalled provider in a test that
 plants the stall — then whichever fix the measurement names. Until then TD-92
 (an abandoned run stays `running`) is the recovery path.
+
+**CLOSED 2026-09-22, from measurement.** The root cause is on the machine's
+own power log: the workstation entered modern standby at 19:42:48 local
+(Kernel-Power 506), 26 seconds after the synthesis run started, and left it at
+20:41:07; the run's `timed-out` event is stamped one second later. A frozen
+process fires no timer and writes no record — the 59 minutes were the
+machine's, not the pipeline's. Two defects the stall exposed in
+`executionPipeline` were real and are fixed: an attempt that settled AFTER the
+run's deadline was accepted if it settled `ok` (a late answer could have
+resurrected an expired run), and one that settled with a failure was labelled
+`budget-exhausted / not retryable` — the label run 11 carries — when the
+window had in fact ended because the provider did not answer inside it.
+
+**Deadline semantics after the fix.** The deadline is the run's, measured on
+the wall clock from the start of `executeWithinRun`. While the process runs,
+`withTimeout` aborts the call at the deadline and the run settles
+`timed-out / provider-timeout` within milliseconds (run 5 of §14 measured
+exactly 180 s). If the process is not running — suspended, as here — no code
+runs and no record moves; the host's reader already says so, since a
+`running` row whose window has passed is `execution-recovery-required`, never
+`working`. At the first moment the process runs again the deadline is
+enforced whichever way the attempt settled: the timer firing, a failure or an
+answer arriving all end in `timed-out / provider-timeout`, retryable, and
+whatever the attempt produced is discarded — a late provider response never
+resurrects an expired run. Remote cancellation stays a transport limitation
+and is not what the institution relies on.
+
+**Proven** with planted providers: an attempt that settles `ok` after the
+deadline is refused and not retried; one that settles with a failure after the
+deadline is a timeout, not spent budget; one that settles inside the window is
+accepted (`executionPipeline.test.ts`); and at the institutional level a desk
+whose answer arrives an hour late leaves its run `timed-out`, stores no
+claim, and puts the work back on the queue (`orchestration.test.ts`). A
+process that never resumes leaves what TD-92 describes; that is the one
+remaining recovery path, and it is TD-92's.
+
+
+## TD-103 · the office's correction synthesis has no envelope of its own · open
+
+**Opened 2026-09-23**, measured on live run 13 of the gold case
+(`docs/jarvis-voice-live-proof.md` §16.3, `case-377285ab3f561b4cf3924092`).
+The Research Office's re-synthesis after a correction round — the same
+synthesis prompt plus the verdict's findings and two corrected
+contributions, answered at the 8,192-token cap — settled `timed-out /
+provider-timeout` at exactly 180.1 s, the deadline the v8 workflow reuses
+from the desks for the aggregation entry. The plain synthesis on the same
+window took 55.8 s (run 12) and 63.9 s (run 13); the re-synthesis took
+89.4 s in run 12 and did not finish in run 13. One sample over the deadline,
+one under: the envelope is not known yet.
+
+**What the firm did with it.** The deadline held (TD-102): the run left
+`running` at 180 s, retryable, with the label the record now keeps; the
+office's assignment went back to its queue with its returned reason intact;
+the desks' corrections stood (marked their predecessors obsolete); the case
+read `blocked · verification-correction-required · Research Office` with
+`activity.failed = 1`, and JARVIS said the fact-check demands corrections and
+that a desk could not complete its work. The round did not finish on the
+firm's own initiative: a timed-out run is re-commissioned on the next pass,
+and no pass follows a timeout unless the person speaks again — the same rule
+the desks have had since G1. The person's word resumes the office alone
+(`hostGovernanceLoop.test.ts`, planted timeout).
+
+**Measured 2026-09-23, outside the loop** (`npm run dev:measure-governance --
+--case case-4395e70f9a52d09516112791 --call synthesis`, added for this). The
+re-synthesis on the run-15 record answered in 107.5 s — and was REFUSED as
+malformed. The two "timeouts" were a refused first attempt whose retry the
+180 s deadline cut at the second attempt, not a slow answer. The cause was
+the office's correction prompt: it listed the findings by the ids of the
+claims Verification had examined — claims the desks had since replaced —
+under a contract that says every claim id given gets a disposition; the
+office obeyed and disposed of ids no longer in scope. The prompt now quotes
+the earlier claims' statements and says only the accepted contributions'
+claims are to be disposed of; re-measured directly, the same record answered
+in 99.5 s (3,580 in / 5,607 out), parsed, `explain`, 23 dispositions.
+
+**What stays open.** A valid re-synthesis fits the 180 s the aggregation
+entry has (89–107 s measured), but a refused first attempt leaves no room
+for a second inside it. A deadline of the office's own — a workflow version,
+since the deadline is inside `playbookContentHash` — and whether a timed-out
+run in the middle of an autonomous round earns one automatic retry (today it
+does not; the person's next word resumes it) are the ruling's to decide, from
+these numbers.

@@ -73,6 +73,14 @@ export interface ResultKeyInputs {
   /** Included where the playbook changes what was asked for. */
   playbookVersion?: string
   departmentId: string
+  /**
+   * The revision the work was scoped to, where it was. A desk's first
+   * contribution is unscoped; its correction work (TD-99) and the office's
+   * synthesis are scoped, and the same identity over the same evidence is a
+   * different result per revision — the desk was told something different.
+   * Absent, the key is exactly what it was before this field existed.
+   */
+  revisionId?: string
 }
 
 export function resultKey(inputs: ResultKeyInputs): string {
@@ -87,6 +95,7 @@ export function resultKey(inputs: ResultKeyInputs): string {
       inputs.canonicalizationVersion,
       inputs.agentImplementationVersion,
       inputs.playbookVersion ?? '',
+      ...(inputs.revisionId ? [inputs.revisionId] : []),
     ].join('|'),
   )
 }

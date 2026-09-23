@@ -43,11 +43,14 @@ import {
   type Organization,
   type OptionalInputRecord,
   inquiryKindOf,
+  latestApplicable,
   synthesisPermittedFor,
+  type AgentRunRecord,
+  type Assignment,
 } from '~/domain/analysis'
 import { requirePlaybook } from '../playbookRegistry'
 import { mintRevision } from '../revisions'
-import { unmetRequiredWork } from '../requiredWork'
+import { standingRunFor, unmetRequiredWork } from '../requiredWork'
 import { deriveAggregationId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
@@ -516,9 +519,14 @@ export function aggregateManagerConclusion(
        * Mechanical rather than a judgement call, and the one rule that makes
        * scope selection unusable as a way to lose a dissenting desk.
        */
+      const standingRunIds = new Set(
+        assignments
+          .map((assignment) => standingRunFor(assignment, runs)?.id)
+          .filter((id): id is string => id !== undefined),
+      )
       const opposing = runs.filter(
         (run) =>
-          run.state === 'completed' &&
+          standingRunIds.has(run.id) &&
           run.claims.some((claim) => claim.opposesThesisId === source.thesisId),
       )
       const hiddenOpposition = opposing
@@ -695,6 +703,20 @@ export function aggregateManagerConclusion(
       )
       if (!permitted.permitted) reject('invariant-violated', permitted.reason)
 
+      /*
+       * A synthesis onto a revision Verification sent back is a CORRECTION.
+       * The successor's cause and reason carry the lineage — which verdict,
+       * on which revision — so the record reads revision N → findings →
+       * correction work → revision N+1 without anyone narrating it (TD-99,
+       * ruled 2026-09-22). The examined revision is superseded, not edited.
+       */
+      const demanded = latestApplicable(
+        await repositories.reviews.verificationsForCase(input.caseId),
+        input.caseId,
+        source.revisionId,
+      )
+      const correcting = demanded?.status === 'correction-required'
+
       const revision = await mintRevision(repositories, context, {
         caseId: input.caseId,
         thesisId: source.thesisId,
@@ -708,8 +730,11 @@ export function aggregateManagerConclusion(
           supportingClaimIds: supporting,
           opposingClaimIds: opposingIds,
         },
-        cause: 'manager-aggregation',
-        reason: synthesis.rationale,
+        cause: correcting ? 'correction' : 'manager-aggregation',
+        reason: correcting
+          ? `Correction of revision ${source.revisionNumber} after Verification ` +
+            `${demanded!.reviewId} demanded corrections. ${synthesis.rationale}`
+          : synthesis.rationale,
         proposedByDepartmentId: input.departmentId,
         lifecycle: 'under-analysis',
         aggregationId,
@@ -771,8 +796,8 @@ function isDowngrade(
 function requiredContributionRunIds(
   playbook: ReturnType<typeof requirePlaybook>,
   entryKey: string,
-  assignments: readonly { id: string; playbookEntryKey?: string }[],
-  runs: readonly { id: string; assignmentId: string; state: string }[],
+  assignments: readonly Assignment[],
+  runs: readonly AgentRunRecord[],
   revisionId: string,
   resolutions: readonly Parameters<typeof unmetRequiredWork>[0]['resolutions'][number][],
 ): Set<string> {
@@ -797,29 +822,24 @@ function requiredContributionRunIds(
       ?.blockedBy.filter((key) => required.has(key)) ?? [],
   )
 
-  const assignmentIds = new Set(
-    assignments
-      .filter((a) => a.playbookEntryKey && closure.has(a.playbookEntryKey))
-      .map((a) => a.id),
-  )
-  return new Set(
-    runs
-      .filter((run) => assignmentIds.has(run.assignmentId) && run.state === 'completed')
-      .map((run) => run.id),
-  )
+  /* The run that STANDS for each required assignment — accepted, not returned, not replaced. */
+  const standing = new Set<string>()
+  for (const assignment of assignments) {
+    if (!assignment.playbookEntryKey || !closure.has(assignment.playbookEntryKey)) continue
+    const run = standingRunFor(assignment, runs)
+    if (run) standing.add(run.id)
+  }
+  return standing
 }
 
 function runIdForEntry(
   entryKey: string,
-  assignments: readonly { id: string; playbookEntryKey?: string }[],
-  runs: readonly { id: string; assignmentId: string; state: string }[],
+  assignments: readonly Assignment[],
+  runs: readonly AgentRunRecord[],
 ): string | null {
   const assignment = assignments.find((a) => a.playbookEntryKey === entryKey)
   if (!assignment) return null
-  const run = runs.find(
-    (r) => r.assignmentId === assignment.id && r.state === 'completed',
-  )
-  return run?.id ?? null
+  return standingRunFor(assignment, runs)?.id ?? null
 }
 
 /** The highest materiality each claim carries across this lineage's history. */

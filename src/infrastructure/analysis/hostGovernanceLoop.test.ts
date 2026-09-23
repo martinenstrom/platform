@@ -24,7 +24,7 @@ import {
 import type { HostResult } from '~/application/analysis/hostContract'
 import type { CommandDeps } from '~/application/analysis/commands/runCommand'
 import type { AnalysisRepositories } from '~/application/analysis/repositories'
-import type { ContributionProvider } from '~/application/analysis/contributionPort'
+import { ContributionFailure, type ContributionProvider } from '~/application/analysis/contributionPort'
 import type { SynthesisContext } from '~/application/analysis/synthesisContext'
 import type { GovernanceKind } from '~/application/analysis/governanceContext'
 import { standingForCase } from '~/application/analysis/caseStandingFor'
@@ -119,15 +119,20 @@ const synthesisStub = (loadContext: () => Promise<SynthesisContext>): Contributi
 })
 
 /** The firm as the product wires it, with every producer a stub. */
-function firm(): HostGateway {
+function firm(
+  over: {
+    deskProvider?: ContributionProvider
+    synthesisProvider?: (loadContext: () => Promise<SynthesisContext>) => ContributionProvider
+  } = {},
+): HostGateway {
   return createHostGateway({
     system: createFinancialOsSystem({
       repositories,
       commandDeps: async () => deps,
       now: () => AT,
       advance: {
-        provider: () => createStubContributionProvider(),
-        synthesisProvider: (loadContext) => synthesisStub(loadContext),
+        provider: () => over.deskProvider ?? createStubContributionProvider(),
+        synthesisProvider: (loadContext) => (over.synthesisProvider ?? synthesisStub)(loadContext),
         governanceProvider: (kind, loadContext) =>
           createStubGovernanceProvider({ kind, outcome: outcomes[kind], loadContext: () => loadContext() }),
         startWaitMs: 50,
@@ -251,6 +256,12 @@ describe('from the person’s word to the committee’s conclusion', () => {
     expect(investmentCase.stage).toBe('review')
     const standing = await standingForCase({ repositories, organization: TEST_ORGANIZATION, investmentCase, now: AT })
     expect(standing.nextAct.act).toBe('submit-for-cio-decision')
+
+    /* The no-correction path (ruled 2026-09-22): Verification passed, so no round was taken and revision 2 is the conclusion. */
+    expect(await repositories.commands.find(`${caseId}-return-correction-${revision.revisionId}`)).toBeNull()
+    expect(await repositories.theses.listForCase(caseId)).toHaveLength(2)
+    expect(answer.answer.thesis.revisionId).toBe(revision.revisionId)
+    expect(answer.answer.priorDissent).toEqual([])
   }, 20_000)
 })
 
@@ -369,5 +380,256 @@ describe('where the firm stops', () => {
       block: { reason: 'verification-required' },
       activity: { failed: 1 },
     })
+  }, 20_000)
+})
+
+/**
+ * The bounded correction round (TD-99, ruled 2026-09-22), on the firm's own
+ * initiative: Verification demands corrections on revision 2, the office
+ * returns the defective claim to the desk that produced it, the desk corrects,
+ * the office synthesises revision 3 as a correction, fresh governance examines
+ * the successor, and JARVIS answers with the scrutinised explanation — zero
+ * further turns, zero CIO acts, zero acts by the host.
+ */
+describe('the correction round', () => {
+  const requests: { departmentId: string; corrections?: readonly { claimId: string; correctionRequired: string }[] }[] = []
+  const observingDesks = (): ContributionProvider => {
+    /* Rates answers slower than Global Macro, so its correction is still in flight when Macro's is adopted (measured live, 2026-09-23). */
+    const inner = createStubContributionProvider({ outcomes: { rates: { kind: 'delayed', ms: 400 } } })
+    return {
+      ...inner,
+      async contribute(request) {
+        requests.push({ departmentId: request.departmentId, ...(request.corrections ? { corrections: request.corrections } : {}) })
+        return inner.contribute(request)
+      },
+    }
+  }
+
+  it('corrects once, by provenance, and reaches the explanation on the successor with the old dissent kept as history', async () => {
+    requests.length = 0
+    /* Both desks' claims found against, so both correct — and the office must wait for the slower one. */
+    outcomes.verification = { kind: 'verify', byRevisionNumber: { 2: 'correction-required', 3: 'verified' }, findings: 2 }
+    outcomes['devils-advocate'] = { kind: 'object', materiality: 'material' }
+    const gateway = firm({ deskProvider: observingDesks() })
+    const { caseId, reference } = await begun(gateway)
+
+    await until(
+      async () => (await gateway({ kind: 'status', reference })).state === 'answer-ready',
+      () => gateway({ kind: 'status', reference }),
+      10_000,
+    )
+    const answer = positive(await gateway({ kind: 'result', reference }))
+    if (answer.state !== 'answer-ready' || answer.answer?.kind !== 'committee-conclusion') {
+      throw new Error(JSON.stringify(answer))
+    }
+
+    /* Lineage: revision 2 → findings → correction work → revision 3, explicit on the record. */
+    const lineage = await repositories.theses.listForCase(caseId)
+    expect(lineage).toHaveLength(3)
+    const [, second, third] = lineage as [unknown, (typeof lineage)[number], (typeof lineage)[number]]
+    expect(second).toMatchObject({ revisionNumber: 2, lifecycle: 'superseded' })
+    expect(third).toMatchObject({ revisionNumber: 3, revisionCause: 'correction', supersedesRevisionId: second.revisionId, lifecycle: 'verified' })
+    expect(answer.answer.thesis.revisionId).toBe(third.revisionId)
+    expect(answer.answer.inquiry).toBe('explanation')
+    expect(answer.answer.scrutiny.verification).toBe('verified')
+
+    /* Verification's first verdict stands as history; its second stands for the successor. */
+    const verdicts = await repositories.reviews.verificationsForCase(caseId)
+    expect(verdicts).toHaveLength(2)
+    const verdictOn = (revisionId: string) =>
+      verdicts.find((review) => review.scope === 'thesis-revision' && review.revisionId === revisionId)!
+    const verdictOn2 = verdictOn(second.revisionId)
+    expect(verdictOn2.status).toBe('correction-required')
+    expect(verdictOn(third.revisionId).status).toBe('verified')
+    expect(third.revisionReason).toContain(`Correction of revision 2 after Verification ${verdictOn2.reviewId}`)
+
+    /* The return: the office's act, initiated by the orchestrator, exactly once. */
+    const returned = await repositories.commands.find(`${caseId}-return-correction-${second.revisionId}`)
+    expect(returned).not.toBeNull()
+    expect(returned!.intent.commandType).toBe('ReturnForCorrection')
+    expect(returned!.intent.actor).toMatchObject({ kind: 'institutional-agent', agentPrincipalId: 'research-office-agent' })
+    expect(returned!.intent.initiator).toEqual({ kind: 'orchestrator', orchestratorId: HOST_ORCHESTRATOR_ID })
+    expect(await repositories.commands.find(`${caseId}-return-correction-${third.revisionId}`)).toBeNull()
+
+    /* Targeted: each desk whose claim was found against worked again, briefed with its own finding; each replaced run is kept and marked obsolete. */
+    const runs = await runsOf(caseId)
+    const byEntry = (key: string) => runs.filter((run) => run.execution.playbookEntryKey === key)
+    expect(byEntry('macro-analysis')).toHaveLength(2)
+    expect(byEntry('rates-analysis')).toHaveLength(2)
+    for (const finding of verdictOn2.findings) {
+      const producer = runs.find((run) => run.claims.some((claim) => claim.id === finding.claimId))!
+      expect(producer.obsolete, finding.claimId).toBe(true)
+      const briefed = requests.find((request) => request.departmentId === producer.departmentId && request.corrections)
+      expect(briefed?.corrections, producer.departmentId).toEqual([
+        expect.objectContaining({ claimId: finding.claimId, correctionRequired: finding.correctionRequired }),
+      ])
+    }
+    for (const entryKey of ['macro-analysis', 'rates-analysis']) {
+      expect(byEntry(entryKey).find((run) => run.revisionId === second.revisionId)!.state, entryKey).toBe('completed')
+    }
+    /*
+     * The office waited for the slower desk: ONE re-synthesis, onto both
+     * corrected contributions, and no candidate refused at adoption for
+     * having been produced against work the firm no longer stands behind.
+     */
+    expect(byEntry('aggregation')).toHaveLength(2)
+    expect(trace.filter((line) => line.includes('institutionalises') && line.includes('rejected'))).toEqual([])
+    /* Every claim of the successor is a corrected or reused claim; the claim found against is gone. */
+    expect(third.supportingClaimIds).not.toContain(verdictOn2.findings[0]!.claimId)
+
+    /* Fresh governance on the successor: each control function examined revision 3 under its own principal. */
+    for (const [entryKey, principal] of [['verification', 'verification-agent'], ['challenge', 'devils-advocate-agent'], ['peer-examination', 'rates-agent']] as const) {
+      const examinations = byEntry(entryKey)
+      expect(examinations.map((run) => run.revisionId).sort(), entryKey).toEqual([second.revisionId, third.revisionId].sort())
+      for (const run of examinations) {
+        expect(run.agentPrincipalId, entryKey).toBe(principal)
+        expect(run.state, entryKey).toBe('completed')
+      }
+    }
+    /* Risk: not required on either revision of an explanation, resolved by its own principal each time. */
+    expect((await repositories.requirements.listForCase(caseId)).map((r) => r.state)).toEqual(['not-required', 'not-required'])
+
+    /* Retained dissent survives correction: the objection to revision 2 is history beside the conclusion, renewed by the fresh examination. */
+    expect(answer.answer.dissent).toHaveLength(1)
+    expect(answer.answer.dissent[0]).toMatchObject({ byDepartmentId: 'devils-advocate', materiality: 'material', outcome: 'open', revisionId: third.revisionId })
+    expect(answer.answer.priorDissent).toHaveLength(1)
+    expect(answer.answer.priorDissent[0]).toMatchObject({ byDepartmentId: 'devils-advocate', revisionId: second.revisionId, renewed: true })
+
+    /* Nobody was asked, nobody decided, and the host performed nothing. */
+    expect(await repositories.commands.find(`${caseId}-submit-cio`)).toBeNull()
+    expect((await repositories.cases.get(caseId))!.stage).toBe('review')
+  }, 20_000)
+
+  it('stops visibly when the office’s correction synthesis times out, and resumes on the person’s word without rerunning the desks', async () => {
+    /*
+     * Measured live (run 13, 2026-09-23): the re-synthesis hit its 180 s
+     * deadline and settled `timed-out / provider-timeout`. The round is a
+     * visible stop — a system failure, said as one — and the person's next
+     * word commissions the office alone; the desks' corrections stand.
+     */
+    outcomes.verification = { kind: 'verify', byRevisionNumber: { 2: 'correction-required', 3: 'verified' } }
+    let synthesisCalls = 0
+    const flaky = (loadContext: () => Promise<SynthesisContext>): ContributionProvider => {
+      const inner = synthesisStub(loadContext)
+      return {
+        ...inner,
+        async contribute(request) {
+          synthesisCalls += 1
+          /* The second synthesis — the correction — hangs on every attempt the run allows. */
+          if (synthesisCalls >= 2 && synthesisCalls <= 4) throw new ContributionFailure('provider-timeout')
+          return inner.contribute(request)
+        },
+      }
+    }
+    const gateway = firm({ synthesisProvider: flaky })
+    const { caseId, reference } = await begun(gateway)
+
+    await until(
+      async () => {
+        const status = await gateway({ kind: 'status', reference })
+        return status.state === 'blocked' && status.block.reason === 'verification-correction-required' && status.activity.failed === 1
+      },
+      () => gateway({ kind: 'status', reference }),
+      10_000,
+    )
+    const stopped = await runsOf(caseId)
+    const timedOut = stopped.find((run) => run.state === 'timed-out')!
+    expect(timedOut.execution.playbookEntryKey).toBe('aggregation')
+    expect(timedOut.failure).toMatchObject({ category: 'provider-timeout', retryable: true })
+    /* Nothing further starts on the firm's own initiative. */
+    await sleep(300)
+    expect((await runsOf(caseId)).length).toBe(stopped.length)
+    const deskRunsBefore = stopped.filter((run) => ['macro-analysis', 'rates-analysis'].includes(run.execution.playbookEntryKey)).length
+
+    /* The person's word resumes the round: the office alone is commissioned again, onto the corrections that stand. */
+    const again = positive(await gateway({ kind: 'begin', reference, requestId: 'req-again', opening: explanation }))
+    expect(again.commission!.started.map((desk) => desk.id)).toEqual(['research-office'])
+    await until(
+      async () => (await gateway({ kind: 'status', reference })).state === 'answer-ready',
+      () => gateway({ kind: 'status', reference }),
+      10_000,
+    )
+    const runs = await runsOf(caseId)
+    expect(runs.filter((run) => ['macro-analysis', 'rates-analysis'].includes(run.execution.playbookEntryKey))).toHaveLength(deskRunsBefore)
+    expect(runs.filter((run) => run.execution.playbookEntryKey === 'aggregation').map((run) => run.state).sort()).toEqual(['completed', 'completed', 'timed-out'])
+    const lineage = await repositories.theses.listForCase(caseId)
+    expect(lineage).toHaveLength(3)
+    const answer = positive(await gateway({ kind: 'result', reference }))
+    if (answer.state !== 'answer-ready' || answer.answer?.kind !== 'committee-conclusion') throw new Error(JSON.stringify(answer))
+    expect(answer.answer.thesis.revisionId).toBe(lineage[2]!.revisionId)
+  }, 20_000)
+
+  it('returns for correction even when a control function failed on the revision, and does not re-examine a revision being replaced', async () => {
+    /*
+     * Measured live (run 14, 2026-09-23): the Devil's Advocate's candidate was
+     * refused and its run failed AFTER Verification had demanded corrections;
+     * nothing advanced the case again, and the return it was holding up never
+     * came. A finished run advances the case whatever way it finished; a
+     * revision returned for correction is not examined again.
+     */
+    outcomes.verification = { kind: 'verify', byRevisionNumber: { 2: 'correction-required', 3: 'verified' } }
+    outcomes['devils-advocate'] = { kind: 'failure' }
+    const gateway = firm()
+    const { caseId, reference } = await begun(gateway)
+
+    await until(
+      async () => (await repositories.theses.listForCase(caseId)).length === 3 && (await repositories.reviews.verificationsForCase(caseId)).length === 2,
+      () => gateway({ kind: 'status', reference }),
+      10_000,
+    )
+    await sleep(300)
+    const lineage = await repositories.theses.listForCase(caseId)
+    expect(await repositories.commands.find(`${caseId}-return-correction-${lineage[1]!.revisionId}`)).not.toBeNull()
+    const challenges = (await runsOf(caseId)).filter((run) => run.execution.playbookEntryKey === 'challenge')
+    /* One failed examination of revision 2, never retried on the firm's own; one of revision 3, owed afresh. */
+    expect(challenges.filter((run) => run.revisionId === lineage[1]!.revisionId).map((run) => run.state)).toEqual(['failed'])
+    expect(challenges.filter((run) => run.revisionId === lineage[2]!.revisionId).map((run) => run.state)).toEqual(['failed'])
+    expect(await gateway({ kind: 'status', reference })).toMatchObject({
+      state: 'blocked',
+      block: { reason: 'challenge-required' },
+      activity: { failed: 2 },
+    })
+  }, 20_000)
+
+  it('stops visibly after the one automatic round, with what remains and whose it is', async () => {
+    outcomes.verification = { kind: 'verify', byRevisionNumber: { 2: 'correction-required', 3: 'correction-required' } }
+    const gateway = firm()
+    const { caseId, reference } = await begun(gateway)
+
+    await until(
+      async () => {
+        const status = await gateway({ kind: 'status', reference })
+        return status.state === 'blocked' && status.block.reason === 'verification-correction-required' && (status.block.corrections?.roundsTaken ?? 0) === 1
+      },
+      () => gateway({ kind: 'status', reference }),
+      10_000,
+    )
+    /* The firm's own passes take no second round: nothing further starts. */
+    await sleep(300)
+    const before = (await runsOf(caseId)).length
+    await sleep(300)
+    expect((await runsOf(caseId)).length).toBe(before)
+
+    const lineage = await repositories.theses.listForCase(caseId)
+    expect(lineage).toHaveLength(3)
+    expect(lineage[2]).toMatchObject({ revisionNumber: 3, revisionCause: 'correction' })
+    /* Targeted, not blind: one desk was found against and corrected; the other desk's work was reused. */
+    const runs = await runsOf(caseId)
+    const deskRuns = ['macro-analysis', 'rates-analysis'].map((key) => runs.filter((run) => run.execution.playbookEntryKey === key).length)
+    expect(deskRuns.sort()).toEqual([1, 2])
+    expect(await repositories.commands.find(`${caseId}-return-correction-${lineage[1]!.revisionId}`)).not.toBeNull()
+    expect(await repositories.commands.find(`${caseId}-return-correction-${lineage[2]!.revisionId}`)).toBeNull()
+    expect((await repositories.reviews.verificationsForCase(caseId)).map((review) => review.status)).toEqual(['correction-required', 'correction-required'])
+
+    const status = await gateway({ kind: 'status', reference })
+    expect(status).toMatchObject({
+      state: 'blocked',
+      block: {
+        reason: 'verification-correction-required',
+        owner: { id: 'research-office' },
+        corrections: { revisionNumber: 3, blockingFindings: 1, owners: [{ id: expect.stringMatching(/^(global-macro|rates)$/) }], roundsTaken: 1, automaticRoundAvailable: false },
+      },
+    })
+    expect(await repositories.commands.find(`${caseId}-submit-cio`)).toBeNull()
   }, 20_000)
 })

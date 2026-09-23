@@ -120,6 +120,7 @@ export const ACT_LABEL: Record<InstitutionalAct, string> = {
   'propose-thesis': 'Formulera en tes',
   'aggregate-conclusion': 'Sammanväg desken arbete',
   'submit-for-verification': 'Lämna in för granskning',
+  'return-for-correction': 'Återför för rättelse',
   'record-verification-review': 'Registrera faktagranskning',
   'record-peer-examination': 'Låt ett analysdesk granska slutsatsen',
   'record-devils-advocate-review': "Registrera Devil's Advocate-utlåtande",

@@ -16,8 +16,30 @@
  * is a second thing that can disagree with the record.
  */
 
-import type { AgentRunRecord, Assignment, InquiryKind, InvestmentThesis } from '~/domain/analysis'
+import type { AgentRunRecord, Assignment, CorrectionFinding, InquiryKind, InvestmentThesis } from '~/domain/analysis'
 import type { CasePlaybook } from './playbooks'
+import { standingRunFor } from './requiredWork'
+
+/** One finding of the verdict being corrected, with the desk whose claim it is about. */
+export interface SynthesisCorrection extends CorrectionFinding {
+  departmentId: string
+}
+
+/**
+ * The correction round the synthesis is part of (TD-99, 2026-09-22).
+ *
+ * Verification examined `revisionId` and demanded corrections; the desks named
+ * have since contributed corrected claims (the accepted contributions the
+ * context lists), and findings on the office's own claims are the office's
+ * to correct in this synthesis. The successor the office writes replaces the
+ * examined revision.
+ */
+export interface SynthesisCorrections {
+  reviewId: string
+  revisionId: string
+  revisionNumber: number
+  findings: readonly SynthesisCorrection[]
+}
 
 /** One accepted contribution the synthesis may reason over. */
 export interface SynthesisInput {
@@ -45,6 +67,8 @@ export interface SynthesisContext {
   currentPosition: string
   inputs: readonly SynthesisInput[]
   absentOptionalInputs: readonly AbsentOptionalInput[]
+  /** Present when this synthesis answers a verdict that demanded corrections. */
+  corrections?: SynthesisCorrections
 }
 
 export interface SynthesisContextInput {
@@ -57,6 +81,7 @@ export interface SynthesisContextInput {
   revision: InvestmentThesis
   assignments: readonly Assignment[]
   runs: readonly AgentRunRecord[]
+  corrections?: SynthesisCorrections
 }
 
 /**
@@ -100,11 +125,7 @@ export function synthesisContext(input: SynthesisContextInput): SynthesisContext
      * synthesis reasoning over unaccepted work would be citing what the firm
      * has not taken.
      */
-    const accepted = assignment
-      ? input.runs.find(
-          (run) => run.assignmentId === assignment.id && run.state === 'completed',
-        )
-      : undefined
+    const accepted = assignment ? standingRunFor(assignment, input.runs) : undefined
 
     if (!accepted) {
       /*
@@ -140,5 +161,6 @@ export function synthesisContext(input: SynthesisContextInput): SynthesisContext
     currentPosition: input.revision.position,
     inputs,
     absentOptionalInputs,
+    ...(input.corrections ? { corrections: input.corrections } : {}),
   }
 }

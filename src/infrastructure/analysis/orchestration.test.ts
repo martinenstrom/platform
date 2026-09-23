@@ -563,6 +563,47 @@ describe('when the provider does not deliver', () => {
     }
   })
 
+  it('refuses a late answer from an attempt whose deadline passed while the process stood still', async () => {
+    /*
+     * TD-102 as measured on 2026-09-22: the machine suspended mid-attempt,
+     * the timer stood still with the process, and the provider's answer
+     * arrived an hour past a 180 s deadline. Planted here with a clock that
+     * jumps while the desk answers — and answers well. The run settles
+     * `timed-out`, nothing of the answer is stored, and the work goes back
+     * on the queue; the late answer resurrects nothing.
+     */
+    let nowMs = 0
+    const inner = createStubContributionProvider()
+    const provider: ContributionProvider = {
+      ...inner,
+      async contribute(request) {
+        const result = await inner.contribute(request)
+        if (request.departmentId === 'global-macro') nowMs += 59 * 60_000
+        return result
+      },
+    }
+
+    const result = await runPlaybook(
+      MACRO_REGIME_PLAYBOOK,
+      provider,
+      context(),
+      { ...options, monotonicNowMs: () => nowMs },
+      deps,
+    )
+
+    expect(outcomeFor(result, 'macro-analysis')).toMatchObject({
+      state: 'timed-out',
+      failureCategory: 'provider-timeout',
+    })
+    const macro = (await repositories.runs.listForCase('case-1')).find(
+      (r) => r.departmentId === 'global-macro',
+    )
+    expect(macro!.state).toBe('timed-out')
+    expect(macro!.failure).toMatchObject({ category: 'provider-timeout', retryable: true })
+    expect(await repositories.claims.listForRun(macro!.id)).toEqual([])
+    expect((await repositories.assignments.get(macroAssignment()))!.status).toBe('queued')
+  })
+
   it('refuses inadmissible output and settles the run rather than storing it', async () => {
     const result = await run(
       createStubContributionProvider({

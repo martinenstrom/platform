@@ -526,6 +526,7 @@ describe('engaged', () => {
         },
         dissent: [],
         materialDissentCount: 0,
+        priorDissent: [],
       },
     })
     const user = userEvent.setup()

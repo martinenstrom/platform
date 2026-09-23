@@ -159,9 +159,11 @@ describe('the answer keeps its dissent', () => {
           byDepartmentId: 'devils-advocate',
           raisedAs: 'devils-advocate',
           superseded: false,
+          revisionId: null,
         },
       ],
       materialDissentCount: 1,
+      priorDissent: [],
     }
     const lines = answerLines(answer)
     expect(lines[0]).toContain('hold')

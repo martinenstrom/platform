@@ -233,6 +233,35 @@ export async function executeWithinRun<T>(
       }
     }
 
+    /*
+     * The deadline passed while the attempt was in flight and the timer did
+     * not fire — because the process was not running to fire it. Measured on
+     * 2026-09-22 (TD-102): the machine entered modern standby 26 s into a
+     * synthesis run, Node's timers stood still with the process, and the
+     * attempt settled 59 minutes later, an hour past a 180 s deadline. The
+     * clock consulted here is the one `deps` supplies — wall time in
+     * production — and it did move.
+     *
+     * What the attempt produced is refused whatever it is. An answer that
+     * arrived after the firm's window closed is a late answer, and a late
+     * answer never resurrects an expired run: the run settles `timed-out`,
+     * the assignment goes back on the queue, and the next run starts from
+     * the record, not from this result. Reported as `provider-timeout` for
+     * the same reason the aborted case is — the window ended because the
+     * provider did not answer inside it — and not as `budget-exhausted`,
+     * which says nothing external misbehaved and sends nobody back to the
+     * queue. Run 11 carried that label, and it was false.
+     */
+    const afterAttemptMs = remainingMs()
+    if (afterAttemptMs !== null && afterAttemptMs <= 0) {
+      return {
+        state: 'failed',
+        category: 'provider-timeout',
+        attempts: attemptNumber,
+        retryable: true,
+      }
+    }
+
     if (outcome.state === 'ok') {
       return { state: 'ok', value: outcome.value, attempts: attemptNumber }
     }

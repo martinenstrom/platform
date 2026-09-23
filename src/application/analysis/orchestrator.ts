@@ -44,6 +44,7 @@ import { budgetOverruns } from '~/domain/analysis'
 import type {
   AgentClaim,
   AgentRunRecord,
+  CorrectionFinding,
   RunFailureCategory,
   RunState,
   RunUsage,
@@ -280,6 +281,12 @@ export interface OrchestrationContext {
    * The orchestrator itself is never the actor. It is the `initiator`.
    */
   actorFor: (departmentId: string) => AssertedActor
+  /**
+   * The corrections Verification demands of an entry's accepted claims, when
+   * the entry is being commissioned as correction work (TD-99). Absent or
+   * empty otherwise; the request carries them only when there are any.
+   */
+  correctionsFor?: (entryKey: string) => readonly CorrectionFinding[] | undefined
   /**
    * The command id for one act on one entry.
    *
@@ -560,6 +567,7 @@ async function runEntry(
     if (claims) inputs[optional] = claims
   }
 
+  const corrections = context.correctionsFor?.(entry.key)
   const request: ContributionRequest = {
     caseId: context.caseId,
     assignmentId,
@@ -567,6 +575,7 @@ async function runEntry(
     accountablePrincipalId: accountablePrincipalOf(actor),
     ...(context.revisionId ? { revisionId: context.revisionId } : {}),
     brief: entry.brief,
+    ...(corrections && corrections.length > 0 ? { corrections } : {}),
     evidenceSetId: context.evidenceSetId,
     inputs,
     budget,
@@ -622,7 +631,9 @@ async function runEntry(
     return stage({
       state: 'blocked',
       failureCategory: 'upstream-failed',
-      ...(started.outcome === 'rejected' ? { rejection: started.rejection.code } : {}),
+      ...(started.outcome === 'rejected'
+        ? { rejection: started.rejection.code, rejectionDetail: started.rejection.detail }
+        : {}),
       completedAt: context.now().toISOString(),
     })
   }

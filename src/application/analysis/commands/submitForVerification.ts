@@ -42,7 +42,7 @@ import {
 } from '~/domain/analysis'
 import { requirePlaybook } from '../playbookRegistry'
 import { unmetRequiredWork } from '../requiredWork'
-import { GOVERNANCE_ENTRY_KEYS, RISK_ENTRY_KEY } from '../reviewRecording'
+import { GOVERNANCE_ENTRY_KEYS, PEER_EXAMINATION_ENTRY_KEY, RISK_ENTRY_KEY } from '../reviewRecording'
 import { deriveEventId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
@@ -206,8 +206,22 @@ export function submitForVerification(
       )
       const riskApplies = riskStatus.state === 'required'
 
-      const opening = [...GOVERNANCE_ENTRY_KEYS, ...(riskApplies ? [RISK_ENTRY_KEY] : [])]
-      const opened: Assignment[] = []
+      /*
+       * The peer examination is queued at instantiation and picked up by the
+       * examining desk, so a first submission leaves it alone. A SUCCESSOR
+       * revision reopens it: the examination filed for the predecessor stands
+       * for nothing on the successor (TD-99, ruled 2026-09-22), and the desk
+       * owes a fresh one.
+       */
+      const peer = assignments.find(
+        (candidate) => candidate.playbookEntryKey === PEER_EXAMINATION_ENTRY_KEY,
+      )
+      const opening = [
+        ...GOVERNANCE_ENTRY_KEYS,
+        ...(riskApplies ? [RISK_ENTRY_KEY] : []),
+        ...(peer?.status === 'completed' ? [PEER_EXAMINATION_ENTRY_KEY] : []),
+      ]
+      const opened: { assignment: Assignment; from: Assignment['status'] }[] = []
 
       for (const entryKey of opening) {
         const assignment = assignments.find(
@@ -222,16 +236,24 @@ export function submitForVerification(
         }
         // Already active is not an error: a retry re-opens the same queues.
         if (assignment.status === 'active') {
-          opened.push(assignment)
+          opened.push({ assignment, from: 'active' })
           continue
         }
-        opened.push(
-          await repositories.assignments.save({
+        /*
+         * `queued` the first time. `completed` when a successor revision
+         * reopens a queue the control function already worked for the
+         * predecessor: stale governance does not stand for the successor
+         * (TD-99, ruled 2026-09-22), so the verdict is owed again. The event
+         * records which it was.
+         */
+        opened.push({
+          from: assignment.status,
+          assignment: await repositories.assignments.save({
             ...assignment,
             status: 'active',
             startedAt: assignment.startedAt ?? context.occurredAt,
           }),
-        )
+        })
       }
 
       const submitted = await repositories.theses.save({
@@ -272,7 +294,23 @@ export function submitForVerification(
           at: context.occurredAt,
         })
       }
-      const savedCase = await repositories.cases.save(movedCase, context.expectedVersion!)
+      /*
+       * A successor revision is submitted with the case already in `review`:
+       * no movement, so no save — the store refuses a case that does not
+       * advance its version (measured live on run 17, 2026-09-23). The
+       * version guard the policy requires is applied here by hand instead.
+       */
+      if (movements.length === 0 && context.expectedVersion !== investmentCase.version) {
+        reject(
+          'illegal-prior-state',
+          `Case "${input.caseId}" is at version ${investmentCase.version}, not ` +
+            `${context.expectedVersion}. Read it again before submitting.`,
+        )
+      }
+      const savedCase =
+        movements.length === 0
+          ? investmentCase
+          : await repositories.cases.save(movedCase, context.expectedVersion!)
 
       for (const [ordinal, movement] of movements.entries()) {
         await repositories.events.append(
@@ -320,7 +358,7 @@ export function submitForVerification(
         }),
       )
 
-      for (const [ordinal, assignment] of opened.entries()) {
+      for (const [ordinal, { assignment, from }] of opened.entries()) {
         await repositories.events.append(
           buildTransitionEvent({
             eventId: deriveEventId({
@@ -332,7 +370,7 @@ export function submitForVerification(
             caseId: input.caseId,
             subject: 'assignment',
             assignmentId: assignment.id,
-            fromState: 'queued',
+            fromState: from,
             toState: 'active',
             occurredAt: context.occurredAt,
             actorEmployeeId: context.actor.employeeId ?? undefined,

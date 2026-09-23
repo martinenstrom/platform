@@ -521,6 +521,55 @@ describe('a revision and its aggregation', () => {
     ).rejects.toThrow(/thesis_revision_aggregation_where_synthesised/)
   })
 
+  it('accepts a correction that names the aggregation that produced it, and still refuses any other cause that names one (TD-99, migration 0054)', async () => {
+    /*
+     * Measured live on 2026-09-23 (run 16): the successor of a revision
+     * Verification sent back is a synthesis with cause `correction`, and the
+     * constraint from 0018 refused it at the store. A correction names its
+     * aggregation like any synthesis; any other cause with one is still refused.
+     */
+    const seeded = await seed()
+    await insertAggregation(seeded)
+    const third = id('rev')
+    const insertThird = (cause: string, aggregationId: string | null) =>
+      sql.query(
+        `INSERT INTO analysis.thesis_revisions
+           (revision_id, thesis_id, revision_number, supersedes_revision_id,
+            case_id, statement, position, lifecycle, invalidation_criteria,
+            implications, proposed_by_department_id, proposed_by_employee_id,
+            proposed_at, revised_at, revision_reason, revision_cause, aggregation_id)
+         VALUES ($1, $2, 3, $3, $4, 's', 'hold', 'under-analysis', 'i', '{}',
+                 'research-office', 'research-director', now(), now(),
+                 'Correction of revision 2 after Verification.', $5, $6)`,
+        [third, seeded.thesisId, seeded.second, seeded.caseId, cause, aggregationId],
+      )
+    /* The planted violation: a non-synthesis that names an aggregation. */
+    await expect(insertThird('new-evidence', id('agg'))).rejects.toThrow(/thesis_revision_aggregation_where_synthesised/)
+    /* The near miss that passes: the correction and its aggregation, committed together. */
+    const aggregationId = id('agg')
+    await sql.query('BEGIN')
+    try {
+      await insertThird('correction', aggregationId)
+      await sql.query(
+        `INSERT INTO analysis.aggregations
+           (id, case_id, tenant_id, thesis_id, source_revision_id, produced_revision_id,
+            manager_employee_id, department_id, rationale, aggregated_at, provenance_id)
+         VALUES ($1, $2, 'system', $3, $4, $5, 'research-director', 'research-office',
+                 'The corrected figure leaves the direction intact.', now(), 'c1c3-prov')`,
+        [aggregationId, seeded.caseId, seeded.thesisId, seeded.second, third],
+      )
+      await sql.query('COMMIT')
+    } catch (error) {
+      await sql.query('ROLLBACK')
+      throw error
+    }
+    const { rows } = await sql.query<{ revision_cause: string; aggregation_id: string }>(
+      'SELECT revision_cause, aggregation_id FROM analysis.thesis_revisions WHERE revision_id = $1',
+      [third],
+    )
+    expect(rows).toEqual([{ revision_cause: 'correction', aggregation_id: aggregationId }])
+  })
+
   it('lets only revision 1 be an initial proposal', async () => {
     const seeded = await seed()
     await expect(

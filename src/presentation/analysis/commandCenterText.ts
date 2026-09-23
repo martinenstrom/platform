@@ -46,6 +46,7 @@ export const ACT_SURFACE: Readonly<Record<InstitutionalAct, string | null>> =
     'propose-thesis': null,
     'aggregate-conclusion': null,
     'submit-for-verification': null,
+    'return-for-correction': null,
     'record-verification-review': null,
     'record-peer-examination': null,
     'record-devils-advocate-review': null,

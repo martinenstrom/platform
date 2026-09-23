@@ -33,6 +33,7 @@ import { recordRiskReview } from './recordRiskReview'
 import { submitForCioDecision } from './submitForCioDecision'
 import { recordCaseDecision } from './recordCaseDecision'
 import { returnFromCioReview } from './returnFromCioReview'
+import { returnForCorrection } from './returnForCorrection'
 import { reopenForReconsideration } from './reopenForReconsideration'
 import { assembleEvidenceSet } from './assembleEvidenceSet'
 import { amendCase } from './amendCase'
@@ -68,6 +69,7 @@ export function productionCommands(
     submitForCioDecision(organization),
     recordCaseDecision(organization),
     returnFromCioReview(organization),
+    returnForCorrection(organization),
     reopenForReconsideration(organization),
     assembleEvidenceSet(organization),
     amendCase(organization),

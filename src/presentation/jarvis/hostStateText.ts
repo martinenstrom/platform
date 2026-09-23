@@ -23,7 +23,9 @@
 
 import type {
   BlockedReason,
+  CommitteeConclusion,
   FailureReason,
+  HostBlock,
   HostClosure,
   HostDecision,
   HostInspection,
@@ -49,6 +51,8 @@ const BLOCKED: Record<BlockedReason, string> = {
   'verification-required': 'Faktagranskningen är inte gjord.',
   'verification-correction-required':
     'Faktagranskningen är gjord och kräver rättelser innan kommittén kan avsluta.',
+  'verification-insufficient-evidence':
+    'Faktagranskningen är gjord och bedömer underlaget som otillräckligt för en slutsats.',
   'challenge-required': "Devil's Advocate har inte prövat argumentet.",
   'risk-review-required': 'Riskgranskningen är inte gjord.',
   'objections-unresolved': 'En invändning som avgör svaret är fortfarande öppen.',
@@ -130,7 +134,7 @@ export function phrase(result: HostResult): Phrasing {
       const failed = result.activity.failed > 0 ? ' Ett bord kunde inte slutföra sitt arbete.' : ''
       return {
         headline: 'Analysen kan inte fortsätta just nu.',
-        detail: `${BLOCKED[result.block.reason]}${owner}${failed}`,
+        detail: `${BLOCKED[result.block.reason]}${owner}${failed}${correctionsLine(result.block)}`,
         tone: 'warning',
       }
     }
@@ -178,6 +182,44 @@ export function phrase(result: HostResult): Phrasing {
  * Said beside any state, because the one thing a person must hear about an
  * addition is whether the work already done took it into account.
  */
+/**
+ * What a verdict that demands corrections asks, in the record's numbers: how
+ * many findings block, whose claims they are about, and whether the firm may
+ * still correct on its own (TD-99). Empty where the block is not that.
+ */
+function correctionsLine(block: HostBlock): string {
+  const corrections = block.corrections
+  if (!corrections) return ''
+  const findings =
+    corrections.blockingFindings === 1 ? 'En brist' : `${corrections.blockingFindings} brister`
+  const owners = corrections.owners.map((desk) => desk.name).join(', ')
+  const whose = owners ? ` att rätta hos ${owners}` : ''
+  const rounds = corrections.automaticRoundAvailable
+    ? ''
+    : corrections.roundsTaken === 1
+      ? ' En rättelserunda är redan gjord; firman rättar inte igen på egen hand.'
+      : ` ${corrections.roundsTaken} rättelserundor är redan gjorda; firman rättar inte igen på egen hand.`
+  return ` ${findings}${whose} i revision ${corrections.revisionNumber}.${rounds}`
+}
+
+/**
+ * Dissent retained against an earlier revision of the same lineage, said as
+ * history beside the conclusion: how many objections, and how many the same
+ * function renewed against the corrected revision.
+ */
+function priorDissentLine(prior: CommitteeConclusion['priorDissent']): string {
+  const renewed = prior.filter((objection) => objection.renewed).length
+  const count =
+    prior.length === 1 ? 'En tidigare invändning' : `${prior.length} tidigare invändningar`
+  const kept =
+    renewed === 0
+      ? 'ingen förnyades mot den rättade versionen'
+      : renewed === 1
+        ? 'en förnyades mot den rättade versionen'
+        : `${renewed} förnyades mot den rättade versionen`
+  return `${count} mot en tidigare revision finns kvar på protokollet; ${kept}.`
+}
+
 export function amendmentLine(result: HostResult): string | null {
   if (!('amendments' in result) || result.amendments.count === 0) return null
   const count =
@@ -218,6 +260,7 @@ export function answerLines(answer: InstitutionalAnswer): string[] {
       ...answer.dissent.map(
         (objection) => `Invändning (${objection.byDepartmentId}): ${objection.argument}`,
       ),
+      ...(answer.priorDissent.length > 0 ? [priorDissentLine(answer.priorDissent)] : []),
     ]
   }
 

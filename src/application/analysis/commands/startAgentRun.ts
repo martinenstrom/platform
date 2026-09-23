@@ -36,6 +36,7 @@ import {
 } from '~/domain/analysis'
 import { actorFieldsOf, buildTransitionEvent } from '~/domain/analysis'
 import { requirePlaybook } from '../playbookRegistry'
+import { standingEntryKeys } from '../requiredWork'
 import { deriveEventId, deriveRunId } from './eventIdentity'
 import { reject } from './envelope'
 import type { CommandDefinition } from './definition'
@@ -196,10 +197,10 @@ export function startAgentRun(
 
       const runs = await repositories.runs.listForCase(input.caseId)
 
-      const completedEntryKeys = new Set(
-        runs
-          .filter((run) => run.state === 'completed')
-          .map((run) => run.execution.playbookEntryKey),
+      /* Work that STANDS: accepted, not returned for correction, not replaced (TD-99). */
+      const completedEntryKeys = standingEntryKeys(
+        await repositories.assignments.listForCase(input.caseId),
+        runs,
       )
 
       const unmetBlocking = entry.blockedBy.filter((key) => !completedEntryKeys.has(key))
@@ -232,9 +233,19 @@ export function startAgentRun(
             `${active.state}.`,
         )
       }
+      /*
+       * Per revision, where the work is revision-scoped: a control function's
+       * verdict on revision 2 does not work its queue for revision 3, which
+       * the successor's submission reopened (TD-99, 2026-09-22).
+       */
       const worked =
         assignment.status === 'active' &&
-        runs.find((run) => run.assignmentId === input.assignmentId && run.state === 'completed')
+        runs.find(
+          (run) =>
+            run.assignmentId === input.assignmentId &&
+            run.state === 'completed' &&
+            (!input.revisionId || run.revisionId === input.revisionId),
+        )
       if (worked) {
         reject(
           'illegal-prior-state',

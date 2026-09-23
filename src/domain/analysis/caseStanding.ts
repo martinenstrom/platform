@@ -99,6 +99,14 @@ export type InstitutionalAct =
   | 'propose-thesis'
   | 'aggregate-conclusion'
   | 'submit-for-verification'
+  /**
+   * Verification's filed verdict demands corrections: the office that owns
+   * the revision returns the defective work to whoever produced it (TD-99,
+   * ruled 2026-09-22). The institution's next act whether a person or the
+   * firm's own loop performs it; how many rounds the loop takes on its own is
+   * the loop's bound (`automaticCorrectionPermitted`), not the standing's.
+   */
+  | 'return-for-correction'
   | 'record-verification-review'
   | 'record-peer-examination'
   | 'record-devils-advocate-review'
@@ -370,7 +378,10 @@ function nextActFor(
    * different outstanding act from a missing review, and conflating them sends
    * the wrong desk a request.
    */
-  if (stage === 'aggregation' || (stage === 'research' && !input.revisionSubmitted)) {
+  if (
+    stage === 'aggregation' ||
+    ((stage === 'research' || stage === 'review') && !input.revisionSubmitted)
+  ) {
     /* The desk that synthesised the revision submits it — the same actor `submitForVerification` expects. */
     return {
       act: 'submit-for-verification',
@@ -383,6 +394,25 @@ function nextActFor(
    * Verification to check an argument the firm has not yet had a second
    * qualified opinion on inverts the workflow v5 describes.
    */
+  /*
+   * A verdict that demands corrections comes before the examinations still
+   * owed on this revision: they would examine work the firm is about to
+   * replace. Only a `correction-required` verdict names this act — a verdict
+   * of insufficient evidence is an analytical outcome, not a defect to fix,
+   * and the firm stands behind it as a blocker rather than sending anyone
+   * back to work.
+   */
+  if (
+    input.revisionSubmitted &&
+    input.blockers.some(
+      (blocker) =>
+        blocker.kind === 'verification-correction-required' &&
+        blocker.status === 'correction-required',
+    )
+  ) {
+    return { act: 'return-for-correction', owningDepartmentId: input.submittingDepartmentId }
+  }
+
   if (pending.has('peer-examination')) {
     return { act: 'record-peer-examination', owningDepartmentId: null }
   }

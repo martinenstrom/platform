@@ -322,7 +322,7 @@ describe('commissioning a desk from the product', () => {
     const foreign = await commission(V2_CASE, evidence.id, {
       actingEmployeeId: 'research-director',
     })
-    expect(foreign).toEqual({ outcome: 'declined', code: 'not-authorised' })
+    expect(foreign).toMatchObject({ outcome: 'declined', code: 'not-authorised' })
     expect(await repositories.runs.listForCase(V2_CASE)).toHaveLength(0)
 
     /* ------------------------------------------- commissioning the v1 case */

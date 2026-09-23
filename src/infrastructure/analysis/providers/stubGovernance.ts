@@ -19,7 +19,14 @@ import { ContributionFailure } from '~/application/analysis/contributionPort'
 import type { GovernanceContext, GovernanceKind } from '~/application/analysis/governanceContext'
 
 export type StubGovernanceOutcome =
-  | { kind: 'verify'; status?: VerificationStatus }
+  | {
+      kind: 'verify'
+      status?: VerificationStatus
+      /** A verdict per revision number, for planting a correction round: e.g. `{ 2: 'correction-required', 3: 'verified' }`. */
+      byRevisionNumber?: Readonly<Record<number, VerificationStatus>>
+      /** How many of the claims in scope a non-verified verdict finds against (default 1). */
+      findings?: number
+    }
   | { kind: 'object'; materiality: DisagreementMateriality; count?: number }
   /** The planted violation: a Devil's Advocate that says nothing. */
   | { kind: 'silent' }
@@ -57,7 +64,10 @@ export function createStubGovernanceProvider(options: {
         observedStates: ['running' as const],
       }
       if (kind === 'verification') {
-        const status = outcome.kind === 'verify' ? (outcome.status ?? 'verified') : 'verified'
+        const status =
+          outcome.kind === 'verify'
+            ? (outcome.byRevisionNumber?.[context.revision.revisionNumber] ?? outcome.status ?? 'verified')
+            : 'verified'
         return {
           ...base,
           governance: {
@@ -67,16 +77,14 @@ export function createStubGovernanceProvider(options: {
               findings:
                 status === 'verified'
                   ? []
-                  : [
-                      {
-                        kind: 'unresolved-citation',
-                        claimId: claims[0]!.id,
-                        detail: 'stub finding: the citation could not be checked',
-                        severity: 'material',
-                        blocking: true,
-                        correctionRequired: 'stub correction: cite the observation the claim rests on',
-                      },
-                    ],
+                  : claims.slice(0, outcome.kind === 'verify' ? (outcome.findings ?? 1) : 1).map((claim) => ({
+                      kind: 'unresolved-citation' as const,
+                      claimId: claim.id,
+                      detail: 'stub finding: the citation could not be checked',
+                      severity: 'material' as const,
+                      blocking: true,
+                      correctionRequired: 'stub correction: cite the observation the claim rests on',
+                    })),
               claimsReviewed: claims.map((claim) => claim.id),
             },
           },

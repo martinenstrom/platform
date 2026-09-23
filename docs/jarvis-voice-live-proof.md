@@ -1938,3 +1938,456 @@ Verification on this window (runs 6 and 10), the desks' claims failed the
 fact-check on citations and figures. That is a finding about the desks'
 claims against their evidence, not about the control function — and the
 correction round that would answer it is TD-99's design question.
+
+
+## 16. The firm corrects itself once — G3, the bounded correction round and the deadline that holds (run 2026-09-22/23)
+
+The ruling that accepted `f208a48` asked for two things in order: TD-102 fixed
+and proven before any autonomous correction round; then TD-99 as a bounded
+correction round — Verification's findings immutable on revision N, ownership
+of each correction from provenance, targeted work, a successor revision N+1
+with explicit lineage, fresh governance on the successor, one automatic round
+and a visible stop after it, retained dissent kept — and the live gold
+acceptance target: the same instruction, through the desks, the office,
+Verification's genuine findings, the correction, the successor, the fresh
+control functions, Risk `not-required`, to a scrutinised explanation JARVIS
+answers with; zero further user turns, zero CIO acts, zero acts by JARVIS.
+What changed is in contract v4 §14 and `docs/governance-production-path.md`
+§13; what the record shows is here.
+
+### 16.1 TD-102, diagnosed from the machine and fixed in the pipeline
+
+The power log of the workstation is the root cause: modern standby entered at
+19:42:48 local (Kernel-Power 506), 26 seconds after run 11's synthesis run
+started, and left at 20:41:07 (566); the run's `timed-out` event is stamped
+20:41:08. A frozen process fires no timer and writes no record. What the stall
+exposed in `executeWithinRun` was real: an attempt settling AFTER the deadline
+was accepted if it settled `ok` — a late answer could have resurrected an
+expired run — and one settling with a failure was labelled `budget-exhausted /
+not retryable`, which is what run 11 carries. Both are fixed: at the first
+moment the process runs again, an attempt whose deadline has passed settles
+the run `timed-out / provider-timeout`, retryable, and whatever it produced is
+discarded. Planted providers prove it — an answer arriving an hour late is
+refused and not retried, a failure arriving late is a timeout and not spent
+budget, an answer inside the window is accepted (`executionPipeline.test.ts`);
+at the institutional level the late desk's run is `timed-out`, no claim is
+stored, the work goes back on the queue (`orchestration.test.ts`). Remote
+cancellation stays a transport limitation; the host already reads a `running`
+row past its window as `execution-recovery-required`. TD-102 is closed from
+that measurement; a process that never resumes remains TD-92.
+
+### 16.2 Run 12 — the round runs live and finds its own ordering defect
+
+`case-8a9154d8592f92fa4a0fd5fa`, instruction at 00:02:35 local on 2026-09-23,
+on the restarted server. The probe itself died on the first turn — Vite's
+first-load dependency optimisation reloaded the HQ page and destroyed
+Playwright's execution context — so this run has no conversation to measure;
+the case it opened ran on, and its record is the measurement.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 33.7 s | 6,618 / 3,094 | adopted by `global-macro-agent` |
+| Rates | 63.9 s | 6,649 / 4,597 | adopted by `rates-agent` |
+| Research Office synthesis → revision 2 (`explain`, no implications) | 55.8 s | 2,048 / 4,272 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 66.3 s | 18,320 / 6,216 | `correction-required`: `unresolved-citation` on one Global Macro claim and one Rates claim |
+| Devil's Advocate on revision 2 | 72.0 s | 5,342 / 3,483 | filed |
+| Peer examination (Rates) on revision 2 | 65.4 s | 5,305 / 3,885 | filed |
+| `ReturnForCorrection` | — | — | `research-office-agent`, initiated by the host: Global Macro and Rates returned with the findings as reasons, the office's synthesis with them |
+| Global Macro, correction (scoped to revision 2, briefed) | 38.9 s | 7,486 / 3,563 | adopted; the replaced run marked obsolete |
+| Rates, correction (scoped to revision 2, briefed) | 72.1 s | 8,072 / 5,228 | adopted; the replaced run marked obsolete |
+| Research Office re-synthesis | 89.4 s | 3,373 / 5,726 | adopted, **refused at institutionalisation** |
+
+Verification's verdict came in 66 s on 18,320 input tokens — inside the
+180 s deadline this time (TD-101 stands as measured, not as a stop). The
+ownership derivation named both desks from the claims the findings cite; the
+return happened once, by the office's principal; each desk was commissioned
+again with its own findings in its prompt and nothing else was rerun.
+
+**What went wrong, on the record.** Global Macro's correction was adopted at
+00:06:29 while Rates' was still running; the office was commissioned in that
+same pass and synthesised onto Rates' OLD claims (its earlier accepted run
+still "stood": the rule then excused only work that was `returned`, and a
+desk whose correction run has started is `active` again). When Rates'
+correction was adopted 40 s later, the office's candidate had been produced
+against a set of accepted contributions the firm no longer held, and
+`AggregateManagerConclusion` refused it: _"The declared scope omits required
+contributions (run-ad226dc6…)"_. The office's assignment was then completed
+with nothing institutionalised, revision 2 stayed `awaiting-verification`
+with the verdict on it, and the case read `blocked ·
+verification-correction-required · Research Office · 2 brister att rätta hos
+Global Macro, Rates i revision 2`. The stop was visible and truthful; the
+round was not finished.
+
+**Fixed before run 13.** The one derivation of the work that STANDS for an
+assignment (`standingRunFor`) now also excludes work being re-done — an
+assignment with a run in flight — so a dependant is not ready until the
+slower desk's correction is adopted; the loop test plants exactly this
+ordering (Rates delayed, both desks found against) and asserts one
+re-synthesis and no candidate refused at adoption. And ownership follows
+provenance even after the replaced run is marked obsolete, so the block's
+owners and a replayed return read the same before and after the correction.
+
+### 16.3 Run 13 — the round waits for the slower desk, and the deadline stops the office
+
+`case-377285ab3f561b4cf3924092`, instruction at 00:14:49, the same two turns
+as every gold run (the focus line taken as an addition through
+`begin_delegation`), zero clarifications, work started at turn 1.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 40.7 s | 6,618 / 3,952 | adopted |
+| Rates | 65.1 s | 6,649 / 4,560 | adopted |
+| Research Office synthesis → revision 2 (`explain`, no implications) | 63.9 s | 2,128 / 4,761 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 81.7 s | 16,941 / 5,840 | `correction-required`: four blocking findings — `value-mismatch` and `unresolved-citation` — on Global Macro's and Rates' claims |
+| Devil's Advocate on revision 2 | 70.5 s | 5,604 / 3,831 | filed |
+| Peer examination (Rates) on revision 2 | 33.8 s | 5,567 / 2,609 | filed |
+| `ReturnForCorrection` | — | — | `research-office-agent`, initiated by the host, once |
+| Global Macro, correction | 56.0 s | 7,055 / 3,628 | adopted at 00:19:21; the replaced run marked obsolete |
+| Rates, correction | 51.3 s | 7,607 / 4,690 | adopted at 00:19:17; the replaced run marked obsolete |
+| Research Office re-synthesis, started 00:19:22 — after BOTH corrections | **180.1 s** | — | `timed-out / provider-timeout`, retryable |
+
+Loop settled after 524 s; tokens 58,169 in / 33,871 out; cost not recorded
+(TD-96). Every act's actor is its own principal; every initiator is the host
+or the run orchestrator; `SubmitForCioDecision` does not appear; the person
+was not asked anything.
+
+**What run 12's defect looked like fixed.** The office was commissioned only
+after the slower desk's correction had been adopted — the record shows the
+re-synthesis starting one second after the later adoption — because a desk
+whose assignment is not `completed` has no work that stands for a dependant.
+
+**Where it stopped, and how.** The re-synthesis did not answer inside the
+180 s the v8 workflow gives the aggregation entry. The deadline held to the
+tenth of a second — `executeWithinRun` aborted the call and the run left
+`running` as `timed-out / provider-timeout`, retryable — which is TD-102's
+fix doing on the live record exactly what the planted providers proved. The
+office's assignment went back to its queue with its returned reason intact;
+the desks' corrections stood; revision 2 stayed `awaiting-verification` with
+Verification's verdict on it. The case read `blocked ·
+verification-correction-required · Research Office · 4 brister att rätta hos
+Rates, Global Macro i revision 2`, with one run that could not complete its
+work. JARVIS, to _"Var står det?"_: "Analysen står still. Faktagranskningen
+kräver rättelser hos Rates och Global Macro, och det senaste tillägget har
+ännu inte arbetats in." — and to _"Vad kom de fram till?"_: "Analysen kan
+inte fortsätta just nu. Faktagranskningen är klar men kräver rättelser hos
+Research Office innan kommittén kan avsluta: fyra brister hos Rates och
+Global Macro." Truthful about the stop and about whose the work is; it did
+not yet say that a run had timed out, because `activity.failed` counted only
+`failed` runs — it counts timed-out runs since this run.
+
+**A system failure, kept apart from an institutional conclusion.** The round
+did not fail on the analysis; a provider call did not answer in time. The
+record says so in the run's own state, and nothing on the record pretends
+the correction happened. The round resumes on the person's next word — the
+office alone is commissioned again, onto the corrections that stand
+(`hostGovernanceLoop.test.ts`, planted timeout) — and not on the firm's own,
+which is the rule the desks have had since G1 and a question for the ruling
+(TD-103). Two things the stall exposed were fixed before run 14: a timed-out
+re-synthesis was not re-commissionable at all (the office's earlier adopted
+synthesis counted as "already worked"; revision-scoped work is now worked once
+per revision), and whether a desk's work stands is read off its assignment's
+status, not off an ordering of its runs by start time.
+
+### 16.4 Run 14 — a control function fails, and the return it was holding up never comes
+
+`case-b451671e6260b937c58cd982`, instruction at 00:31:34; two turns
+(acknowledgement visible after 6,747 ms, the focus line after 3,400 ms), zero
+clarifications, work at turn 1. Loop settled after 230 s; tokens 35,003 in /
+17,937 out.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 31.6 s | 6,618 / 2,900 | adopted |
+| Rates | 55.2 s | 6,649 / 4,013 | adopted |
+| Research Office synthesis → revision 2 | 47.2 s | 1,879 / 3,053 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 67.5 s | 15,172 / 4,598 | `correction-required`, five blocking findings on Global Macro's and Rates' claims |
+| Peer examination (Rates) on revision 2 | 47.1 s | 4,685 / 3,373 | filed |
+| Devil's Advocate on revision 2 | — | — | **`failed / malformed-output`**: _"Challenge 'candidate-4' cites no counter-evidence. The Devil's Advocate argues from evidence; disagreement alone is not a finding."_ |
+
+**Two defects, both in the loop's own liveness, neither in the round.** The
+Devil's Advocate's answer carried one objection of five with neither
+counter-evidence nor a statement of what would settle it; the live parser
+accepted it and the domain builder refused it at filing, so the run failed —
+a genuine system failure, said as one (`activity.failed = 1`). Verification
+had already demanded corrections and the standing already named
+`return-for-correction` as the next act; the pass that filed Verification's
+verdict found the Devil's Advocate still examining and, rightly, waited. But a
+pass followed only a run that produced work; a run that failed advanced
+nothing, so the return the failure was holding up never came, and the case
+read `blocked · verification-correction-required · Research Office · 5
+brister att rätta hos Global Macro, Rates i revision 2`. JARVIS, to _"Var står
+det?"_: "Det står still. Faktagranskningen kräver rättelser hos Research
+Office: fem brister i Global Macro och Rates, och det senaste tillägget om
+makro, flöden och specifika händelser är ännu inte inarbetat." Truthful; the
+firm simply did not take its next step.
+
+**Fixed before run 15.** A finished run advances the case again whatever way
+it finished — produced work is adopted, and work a failed or timed-out run was
+holding up is taken up — while a failed or timed-out run is still never
+re-commissioned on the firm's own initiative (timeouts now under the same
+rule as failures). A revision returned for correction is not examined again:
+the control functions examine its successor. And the live governance parser
+now judges an answer by the rule the builders apply at filing — an objection
+with no counter-evidence must say what would settle it; a blocking finding
+must say what would clear it — so such an answer is a malformed attempt,
+retried inside the run's deadline, rather than a candidate the run fails on
+once produced. Planted in the loop suite: the Devil's Advocate failing on
+revision 2 after Verification demanded corrections, the return happening
+anyway, revision 3 examined afresh and the failed function not re-run on
+revision 2.
+
+### 16.5 Run 15 — the round runs to the office's door, and the office's answer is refused twice
+
+`case-4395e70f9a52d09516112791`, instruction at 00:40:22; two turns
+(acknowledgement after 6,177 ms, the focus line after 3,326 ms), zero
+clarifications, work at turn 1. Loop settled after 501 s; tokens 57,385 in /
+32,779 out; cost not recorded.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 36.8 s | 6,618 / 3,373 | adopted |
+| Rates | 55.9 s | 6,649 / 4,073 | adopted |
+| Research Office synthesis → revision 2 | 61.2 s | 2,095 / 5,393 | institutionalised; Risk `not-required`; submitted |
+| Devil's Advocate on revision 2 | 52.8 s | 5,573 / 2,872 | filed — the parser now judges its answer by the filing rules |
+| Peer examination (Rates) on revision 2 | 68.0 s | 5,536 / 3,849 | filed |
+| Verification on revision 2 | 84.7 s | 16,162 / 5,701 | `correction-required`, four blocking findings on both desks |
+| `ReturnForCorrection` | — | — | `research-office-agent`, initiated by the host, one second after the verdict |
+| Global Macro, correction | 49.2 s | 7,680 / 3,325 | adopted at 00:44:38 |
+| Rates, correction | 60.7 s | 7,072 / 4,193 | adopted at 00:44:49 |
+| Research Office re-synthesis, started 00:44:50 — one second after the later adoption | **180.1 s** | — | `timed-out / provider-timeout` |
+
+Everything the ruling's lifecycle names happened on the firm's own
+initiative, in order and exactly once, up to the office's re-synthesis: the
+return the moment the last control function had filed, both desks
+commissioned with their own findings, nothing else rerun, the office waiting
+for the slower desk. Then the same stop as run 13.
+
+**Measured, not guessed.** The re-synthesis was timed outside the loop
+against this very record (`npm run dev:measure-governance -- --case
+case-4395e70f9a52d09516112791 --call synthesis`, added for this): the office
+answered in **107.5 s** and its answer was **refused as malformed**. That is
+what the two timeouts were: not a slow answer but a refused first attempt
+whose retry the 180 s deadline then cut at the second attempt. And the cause
+is in the correction prompt the office was given — it listed the findings by
+the ids of the claims Verification had examined, the claims the desks had
+since REPLACED, under a contract that says every claim id you are given gets a
+disposition; the office obeyed, disposed of ids no longer in scope, and the
+parser refused the answer, as it should. The prompt now quotes the earlier
+claims' statements instead of their ids and says in words that only the
+accepted contributions' claims are to be disposed of. Re-measured directly
+after the change: see §16.6.
+
+### 16.6 The office's answer, measured before run 16
+
+Re-measured directly against the run-15 record after the prompt change, the
+same re-synthesis call answered in **99.5 s** (3,580 in / 5,607 out), parsed:
+position `explain`, 23 dispositions, six reconciliation claims of the office's
+own. A valid re-synthesis fits the 180 s the aggregation entry has; a refused
+first attempt does not leave room for a second inside it, which is what
+TD-103 now records for the ruling, with these numbers.
+
+### 16.7 Run 16 — the office answers in time, and the store refuses the successor
+
+`case-c5fbcef0c37078a59415611d`, instruction at 00:57:55; two turns
+(acknowledgement after 6,046 ms, the focus line after 3,617 ms), zero
+clarifications, work at turn 1. Loop settled after 391 s.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 40.9 s | 6,618 / 3,840 | adopted |
+| Rates | 59.1 s | 6,649 / 4,269 | adopted |
+| Research Office synthesis → revision 2 | 51.9 s | 2,049 / 4,552 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 75.6 s | 15,909 / 7,024 | `correction-required`, six blocking findings on both desks |
+| Devil's Advocate on revision 2 | 69.9 s | 5,332 / 3,925 | filed |
+| Peer examination (Rates) on revision 2 | 81.5 s | 5,295 / 4,882 | filed |
+| `ReturnForCorrection` | — | — | `research-office-agent`, once: Global Macro (3 findings), Rates (3) |
+| Global Macro, correction | 68.8 s | 7,811 / 4,836 | adopted |
+| Rates, correction | 69.1 s | 7,496 / 4,953 | adopted |
+| Research Office re-synthesis, after both | 77.4 s | 4,227 / 6,277 | adopted — **institutionalisation failed at the store** |
+
+The corrected prompt did what the direct measurement said it would: the
+re-synthesis parsed and was adopted in 77 s. `AggregateManagerConclusion`
+then failed — not refused — with `InvariantViolationError` on `theses.save`:
+constraint `thesis_revision_aggregation_where_synthesised`, from migration
+0018, which ties a revision's aggregation to exactly one cause,
+`manager-aggregation`. The successor of a corrected revision is a synthesis
+with cause `correction`, and the store had never been told a synthesis could
+be one. The in-memory repositories enforce no such rule, which is why every
+stub proof of the round passed and why this could only be found here.
+Migration 0054 widens the constraint by exactly that one cause — a revision
+names an aggregation when it was synthesised, as a first conclusion or as a
+correction, and never otherwise — with a planted PostgreSQL test on both sides
+of it (`c1c3Schema.pg.test.ts`). The case itself ended `blocked ·
+verification-correction-required · Research Office · 6 brister`, truthfully:
+nothing on the record pretends the successor exists. JARVIS: "Analysen står
+still. Faktagranskningen är gjord, men sex brister hos Global Macro och Rates
+måste rättas innan kommittén kan avsluta."
+
+### 16.8 Run 17 — revision 3 exists, and the store refuses its submission
+
+`case-2e00c226f945ab3c13306b4e`, instruction at 01:10:33; two turns
+(acknowledgement after 7,294 ms, the focus line after 4,781 ms), zero
+clarifications, work at turn 1. Loop settled after 501 s; tokens 58,064 in /
+38,202 out.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 29.6 s | 6,618 / 2,677 | adopted |
+| Rates | 58.7 s | 6,649 / 4,231 | adopted |
+| Research Office synthesis → revision 2 | 42.1 s | 1,949 / 3,645 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 90.7 s | 14,388 / 6,137 | `correction-required` (`calculation-error`, `unresolved-citation`) on both desks |
+| Devil's Advocate on revision 2 | 66.8 s | 4,905 / 4,032 | filed |
+| Peer examination (Rates) on revision 2 | 54.0 s | 4,868 / 3,183 | filed |
+| `ReturnForCorrection` | — | — | `research-office-agent`, one second after Verification filed |
+| Global Macro, correction | 59.4 s | 7,506 / 4,080 | adopted |
+| Rates, correction | 163.4 s | 7,412 / 4,481 | adopted — inside its 180 s |
+| Research Office re-synthesis, after both | 95.6 s | 3,769 / 5,736 | adopted and **institutionalised → revision 3** |
+| Risk on revision 3 | — | — | `not-required`, resolved again by `risk-agent` |
+| `SubmitForVerification` of revision 3 | — | — | **failed at the store** |
+
+**Revision 3 exists.** `revision_cause: correction`, `supersedes_revision_id`
+= revision 2, revision 2 `superseded`, the reason naming Verification's
+verdict — the lineage the ruling asked for, on the live record for the first
+time. Its statement is the office's honest successor: _"Varför guld är upp
+idag kan inte fastställas av det underlag deskarna lämnat. Underlaget
+innehåller ingen guldprisobservation för det aktuella datumet…"_ — a
+correction that withdraws what the evidence could not support, which is the
+ruling's insufficient-evidence outcome reached by the institution itself.
+
+**Where it stopped.** `SubmitForVerification` failed — not refused — with
+`ImmutableRecordError` on `cases.save`: _"Case … cannot move from version 4
+to 4 — versions only advance"_. The first submission of a case moves it
+`research → aggregation → review` and saves it; a successor is submitted
+with the case already in `review`, the command moved nothing and saved the
+unchanged case anyway, and PostgreSQL's rule that a case version only
+advances refused the write. The in-memory store accepted the same write, so
+every stub proof passed. Fixed: a submission that moves nothing saves
+nothing and applies the version guard by hand; the in-memory store now holds
+PostgreSQL's rule too (a parity finding is a shared rule, not a one-store
+fix), and the two tests that had marked a run `completed` without completing
+its assignment now do what acceptance does. The case ended `blocked ·
+verification-required` — truthfully: revision 3 is unsubmitted, and JARVIS
+said "Faktagranskningen är inte gjord."
+
+### 16.9 Run 18 — the successor is submitted and examined afresh; the machine sleeps; the deadline holds
+
+`case-18af95444987f4b6a68bd8f3`, instruction at 01:26:00; two turns
+(acknowledgement after 6,913 ms, the focus line after 4,796 ms), zero
+clarifications, work at turn 1.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 39.4 s | 6,618 / 3,580 | adopted |
+| Rates | 71.0 s | 6,649 / 4,905 | adopted |
+| Research Office synthesis → revision 2 | 52.2 s | 2,011 / 3,484 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 98.6 s | 16,687 / 7,254 | `correction-required` on Rates' claims only |
+| Devil's Advocate on revision 2 | 51.5 s | 5,064 / 3,610 | filed |
+| Peer examination (Rates) on revision 2 | 59.2 s | 5,027 / 3,676 | filed |
+| `ReturnForCorrection` | — | — | `research-office-agent`: Rates returned; **Global Macro's work reused, not rerun** |
+| Rates, correction | 49.6 s | 8,238 / 3,406 | adopted; the replaced run marked obsolete |
+| Research Office re-synthesis | 81.2 s | 3,742 / 6,512 | institutionalised → **revision 3** (`correction`); Risk `not-required` again; **submitted** — the store accepted it |
+| Peer examination (Rates) on revision 3 | 24.2 s | 5,350 / 1,893 | filed |
+| Verification on revision 3 | — | — | `timed-out / provider-timeout` after 617 s |
+| Devil's Advocate on revision 3 | — | — | `timed-out / provider-timeout` after 617 s |
+
+**The round, complete on the firm's own initiative.** Everything the ruling's
+lifecycle names is on this record in order: revision 2 → Verification's
+findings → the return to the one desk whose claims they were about → its
+correction, briefed → the office's successor with explicit lineage →
+revision 2 superseded → Risk resolved again → the successor submitted → all
+three control functions reopened and started on revision 3, the peer
+examination filing within 24 s. Zero clarifying turns, zero CIO acts, zero
+acts by the host.
+
+**The machine slept.** The workstation entered modern standby at 01:31:42,
+eighteen seconds after the three examinations of revision 3 started
+(Kernel-Power 506), woke briefly at 01:42:17 (507) and slept again until
+03:09. The two runs still in flight settled `timed-out / provider-timeout`
+617 s after they started — that is, at the first wake — and left `running`
+then. Run 11 in the same situation stayed `running` for 59 minutes and was
+labelled `budget-exhausted`; this is TD-102's fix on the live record: no late
+result, no resurrection, the right label, retryable, the assignments back on
+their queues. The probe, frozen with the machine, reported the loop settled
+after 6,179 s — the probe's clock, not the firm's. A timed-out run is
+re-commissioned on the person's next word and not on the firm's own (TD-103);
+the case therefore ended `blocked · verification-required` on revision 3,
+truthfully, and JARVIS said so. Run 19 was started with the machine awake.
+
+### 16.10 Run 19 — a different verdict: the evidence is insufficient, and no round starts
+
+`case-9200af944a7dd6235cf8ee00`, instruction at 18:51:34 the same day, with
+the machine awake; two turns (acknowledgement after 8,785 ms, the focus line
+after 5,741 ms), zero clarifications, work at turn 1. Loop settled after
+230 s; tokens 29,925 in / 21,545 out.
+
+| step | provider | tokens in / out | outcome |
+|---|---|---|---|
+| Global Macro | 28.3 s | 3,624 / 2,010 | adopted |
+| Rates | 35.7 s | 3,655 / 2,746 | adopted |
+| Research Office synthesis → revision 2 | 55.0 s | 1,870 / 3,770 | institutionalised; Risk `not-required`; submitted |
+| Verification on revision 2 | 90.9 s | 12,423 / 6,134 | **`insufficient-evidence`**, eight findings, six blocking |
+| Devil's Advocate on revision 2 | 54.6 s | 4,195 / 3,912 | filed — seven objections, retained |
+| Peer examination (Rates) on revision 2 | 49.9 s | 4,158 / 2,973 | filed — four challenges |
+
+The evening's evidence window held fewer observations than the day's (the
+desks read 3,624 input tokens against 6,618 in every earlier run), and
+Verification's verdict was a different one: not that the claims must be
+corrected, but that the evidence does not support a conclusion. The standing
+read that as the blocker it is and named no return — the ruling's
+distinction, on the live record: insufficient evidence is an analytical
+outcome the firm stands behind, not a defect to send back. Nothing was
+rerun; the Devil's Advocate's seven objections stand as retained dissent.
+
+JARVIS, to _"Var står det?"_: "Analysen står still. Faktagranskningen kräver
+rättelser innan kommittén kan avsluta: sex brister hos Rates och Global Macro
+i revision två." — right about the stop, wrong about its nature: the verdict
+demanded nothing. The host had one reason for every blocking verification
+verdict; it now says `verification-insufficient-evidence` for this one, with
+no owners and no corrections, and JARVIS says "Faktagranskningen är gjord och
+bedömer underlaget som otillräckligt för en slutsats." (`hostStateText.corrections.test.ts`).
+Not exercised live.
+
+### 16.11 What eight runs proved, and what they did not
+
+**Proven live, on the firm's own initiative and with zero further turns, zero
+CIO acts and zero acts by JARVIS.** Verification's genuine findings on
+revision 2 (runs 12–18); the return of exactly the desks whose claims the
+findings were about, by the office's principal, once, with the findings in
+their briefs, and the untouched desk's work reused (run 18: Rates alone);
+correction runs scoped to the examined revision; the replaced contributions
+kept and marked obsolete; the office waiting for the slower desk (runs 13,
+15–18); the successor minted as `correction` with explicit lineage and the
+examined revision superseded (runs 17, 18); Risk resolving `not-required` on
+the successor (17, 18); the successor submitted and all three control
+functions reopened and started afresh on it, the peer examination filing
+(18). The deadline that holds: two examinations frozen with a sleeping
+machine settled `timed-out / provider-timeout` at the first wake, retryable,
+and nothing was resurrected (18) — TD-102 closed on the live record as well
+as in memory. And the ruling's other distinction: a verdict of insufficient
+evidence starts no round (19).
+
+**Not proven live.** The scrutinised explanatory conclusion after a
+correction round, and JARVIS answering with it. Run 18 came closest — fresh
+Verification and Devil's Advocate on revision 3 were in flight when the
+machine slept — and the evening's evidence window then produced a verdict of
+insufficient evidence rather than one demanding corrections (19), so no
+further run could reach it before this stop. The conclusion after correction
+is proven in memory (`hostGovernanceLoop.test.ts`: revision 3 verified, the
+explanation said with the objection to revision 2 kept as prior dissent).
+
+**What the runs cost.** Eight live runs, 12–19; roughly 400,000 input and
+250,000 output tokens on the record (cost not recorded, TD-96); each run 4–9
+minutes of provider time when the machine stayed awake.
+
+**What the record found, one defect per run — the pattern of §14 and §15
+again, each fixed and planted before the next run.** The office synthesising
+onto a desk's old claims while that desk's correction was in flight (12); the
+office's correction prompt inviting dispositions on replaced claim ids, read
+back as two timeouts until measured directly (13, 15); a run that failed
+advancing nothing, so the return it held up never came (14); the store's
+one-cause rule for synthesised revisions (16); a submission that moved
+nothing saving an unchanged case (17); the machine's sleep (18); and one
+sentence JARVIS said of the wrong verdict (19). None of them was visible to
+the stub loop, which passed throughout; two of them were visible only to
+PostgreSQL. The in-memory store now holds the rule it lacked, and every one
+of the seven is a planted test.

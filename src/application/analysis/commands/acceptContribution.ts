@@ -176,6 +176,25 @@ export function acceptContribution(
         context.provenance,
       )
 
+      /*
+       * A corrected contribution replaces the one it corrects (TD-99, ruled
+       * 2026-09-22). An assignment returned for correction and worked again
+       * carries two accepted runs; the earlier one is marked obsolete — kept
+       * on the record with its claims, no longer standing for the desk — so
+       * every reader that asks which run is this desk's contribution gets one
+       * answer from the record rather than from an ordering.
+       */
+      const replaced = (await repositories.runs.listForCase(input.caseId)).filter(
+        (candidate) =>
+          candidate.assignmentId === run.assignmentId &&
+          candidate.id !== run.id &&
+          candidate.state === 'completed' &&
+          !candidate.obsolete,
+      )
+      for (const earlier of replaced) {
+        await repositories.runs.save(buildRunRecord({ ...earlier, obsolete: true }), context.provenance)
+      }
+
       const inputs = {
         caseId: run.caseId,
         evidenceSetId: run.evidenceSetId,
@@ -186,6 +205,8 @@ export function acceptContribution(
         agentImplementationVersion: run.execution.providerVersion,
         playbookVersion: run.execution.playbookVersion,
         departmentId: run.departmentId,
+        /* Scoped work is a different result per revision: correction work, and the synthesis. */
+        ...(run.revisionId ? { revisionId: run.revisionId } : {}),
       }
       await repositories.results.put(
         {

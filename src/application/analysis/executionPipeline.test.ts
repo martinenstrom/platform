@@ -202,7 +202,13 @@ describe('executeWithinRun', () => {
       )
 
       expect(calls).toBe(2)
-      expect(result).toMatchObject({ state: 'failed', category: 'budget-exhausted' })
+      /*
+       * The second attempt itself ran past the run's deadline — under a real
+       * clock the timer would have cut it at 10 s — so what the record says is
+       * that the provider did not answer inside the window (TD-102), not that
+       * the authorised time was spent between attempts.
+       */
+      expect(result).toMatchObject({ state: 'failed', category: 'provider-timeout' })
     })
 
     it('counts the time spent waiting between attempts against the run', async () => {
@@ -285,6 +291,87 @@ describe('executeWithinRun', () => {
       )
 
       expect(result).toMatchObject({ state: 'failed', category: 'provider-timeout' })
+    })
+
+    it('refuses an answer that arrived after the deadline, even a good one', async () => {
+      /*
+       * The planted stall of TD-102, in the shape the record measured: the
+       * timer never fires — the process was not running to fire it — but the
+       * clock moved on, and the attempt settles `ok` 59 minutes late. The
+       * answer is a late answer, and a late answer never resurrects an
+       * expired run.
+       */
+      const clock = fakeClock()
+      let attempts = 0
+      const result = await executeWithinRun(
+        180_000,
+        async () => {
+          attempts += 1
+          clock.advance(59 * 60_000)
+          return ok('an answer the firm cannot use')
+        },
+        {
+          random: fixedRandom(0),
+          monotonicNowMs: clock.monotonicNowMs,
+          sleep: clock.sleep,
+        },
+      )
+
+      expect(result).toEqual({
+        state: 'failed',
+        category: 'provider-timeout',
+        attempts: 1,
+        retryable: true,
+      })
+      // Not retried in this run: the window is spent. The queue is where it is tried again.
+      expect(attempts).toBe(1)
+    })
+
+    it('names a failure that settled after the deadline a timeout, not spent budget', async () => {
+      /*
+       * Run 11 as recorded: the call errored on resume, an hour late, and the
+       * pipeline called it `budget-exhausted / not retryable` — a label that
+       * says nothing external misbehaved and leaves the assignment where it
+       * is. The deadline passed mid-attempt; that is a provider timeout.
+       */
+      const clock = fakeClock()
+      const result = await executeWithinRun(
+        180_000,
+        async () => {
+          clock.advance(59 * 60_000)
+          return failed('provider-error')
+        },
+        {
+          random: fixedRandom(0),
+          monotonicNowMs: clock.monotonicNowMs,
+          sleep: clock.sleep,
+        },
+      )
+
+      expect(result).toEqual({
+        state: 'failed',
+        category: 'provider-timeout',
+        attempts: 1,
+        retryable: true,
+      })
+    })
+
+    it('accepts an answer that arrived with time to spare', async () => {
+      // The near miss: the same clock, the same attempt, inside the window.
+      const clock = fakeClock()
+      const result = await executeWithinRun(
+        180_000,
+        async () => {
+          clock.advance(179_999)
+          return ok('claims')
+        },
+        {
+          random: fixedRandom(0),
+          monotonicNowMs: clock.monotonicNowMs,
+          sleep: clock.sleep,
+        },
+      )
+      expect(result).toEqual({ state: 'ok', value: 'claims', attempts: 1 })
     })
 
     it('runs unbounded only when the producer has no deadline at all', async () => {

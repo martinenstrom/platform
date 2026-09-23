@@ -56,7 +56,10 @@
  */
 
 import {
+  automaticCorrectionPermitted,
   closureOf,
+  correctionRoundsTaken,
+  correctionsOwed,
   dissentRequiresAcknowledgement,
   type AgentRunRecord,
   type Blocker,
@@ -89,6 +92,7 @@ import type {
   HostBlock,
   HostClosure,
   HostCommission,
+  HostCorrections,
   HostDecision,
   HostDesk,
   HostInspection,
@@ -216,9 +220,47 @@ function reasonFor(kind: Blocker['kind']): BlockedReason {
 function blockedBy(overview: CaseOverview, blockers: readonly Blocker[]): HostBlock {
   const first = blockers[0]
   const owning = blockers.find((blocker) => blocker.owningDepartmentId)
+  const corrections = correctionsFor(overview, blockers)
+  /* A verdict of insufficient evidence is an outcome, not a demand for corrections; the block says which. */
+  const reason =
+    first?.kind === 'verification-correction-required' && first.status === 'insufficient-evidence'
+      ? 'verification-insufficient-evidence'
+      : first
+        ? reasonFor(first.kind)
+        : 'institutional-requirement-outstanding'
   return {
-    reason: first ? reasonFor(first.kind) : 'institutional-requirement-outstanding',
+    reason,
     owner: deskOf(overview, owning?.owningDepartmentId ?? null),
+    ...(corrections ? { corrections } : {}),
+  }
+}
+
+/**
+ * The corrections a standing verdict demands, read off the record: the
+ * verdict's blocking findings, their owners by provenance, and the rounds
+ * the lineage has already taken (TD-99). Null where no verdict demands any.
+ */
+function correctionsFor(overview: CaseOverview, blockers: readonly Blocker[]): HostCorrections | null {
+  const demanding = blockers.find((blocker) => blocker.kind === 'verification-correction-required')
+  if (!demanding || demanding.kind !== 'verification-correction-required') return null
+  const review = overview.verification.find((candidate) => candidate.reviewId === demanding.reviewId)
+  /* Only a verdict that DEMANDS corrections has corrections to report; insufficient evidence asks nothing of a desk. */
+  if (!review || review.status !== 'correction-required') return null
+  const examined =
+    review.scope === 'thesis-revision'
+      ? overview.revisions.find((candidate) => candidate.revisionId === review.revisionId)
+      : undefined
+  const ownership = correctionsOwed(review, overview.runs)
+  const roundsTaken = correctionRoundsTaken(overview.revisions, examined?.thesisId)
+  return {
+    reviewId: review.reviewId,
+    revisionNumber: examined?.revisionNumber ?? 0,
+    blockingFindings: review.findings.filter((finding) => finding.blocking).length,
+    owners: ownership.owed
+      .map((owed) => deskOf(overview, owed.departmentId))
+      .filter((desk): desk is HostDesk => desk !== null),
+    roundsTaken,
+    automaticRoundAvailable: automaticCorrectionPermitted(roundsTaken),
   }
 }
 
@@ -340,6 +382,19 @@ export function productStateFor(overview: CaseOverview, now: string): ProductSta
     }
     case 'submit-for-verification':
       return { state: 'blocked', block: { reason: 'verification-required', owner: null } }
+    case 'return-for-correction':
+      /*
+       * Verification's verdict demands corrections and the office has not yet
+       * returned the work: blocked on the correction, which is the office's
+       * to start. The block carries the verdict's numbers and owners.
+       */
+      return {
+        state: 'blocked',
+        block: {
+          ...blockedBy(overview, overview.standing.blockers),
+          owner: governanceOwner(next.owningDepartmentId),
+        },
+      }
     case 'record-peer-examination':
       return {
         state: 'blocked',
@@ -412,7 +467,8 @@ export function activityFor(overview: CaseOverview, now: string): HostActivity {
     inFlight: overview.runs.filter((run) => withinExecutionWindow(run, now)).length,
     expired: expiredRuns(overview, now).length,
     awaitingAdoption: heldRuns(overview).length,
-    failed: overview.runs.filter((run) => run.state === 'failed').length,
+    /* A run that timed out could not complete its work either; the record says which (TD-102, 2026-09-23). */
+    failed: overview.runs.filter((run) => run.state === 'failed' || run.state === 'timed-out').length,
   }
 }
 
@@ -440,6 +496,7 @@ function objectionsOf(timeline: BoardroomTimeline): HostObjection[] {
         ...objection,
         reviewId: entry.id,
         byDepartmentId: entry.byDepartmentId,
+        revisionId: entry.revisionId ?? null,
         raisedAs,
         superseded: entry.superseded === true,
       })
@@ -516,8 +573,19 @@ export function institutionalAnswerFor(
     reviews.filter((review) => review.revisionId === current.revisionId)
   const latest = <T>(reviews: readonly T[]) => reviews[reviews.length - 1] ?? null
   const timeline = boardroomTimeline(overview)
-  const open = objectionsOf(timeline).filter(
+  const standingObjections = objectionsOf(timeline).filter(
     (objection) => objection.outcome === 'open' && !objection.superseded,
+  )
+  /*
+   * Dissent against THIS revision is the conclusion's; dissent against a
+   * superseded revision of the lineage is kept beside it as prior dissent
+   * (ruled 2026-09-22) — neither folded into the conclusion nor dropped.
+   */
+  const open = standingObjections.filter(
+    (objection) => objection.revisionId === null || objection.revisionId === current.revisionId,
+  )
+  const prior = standingObjections.filter(
+    (objection) => objection.revisionId !== null && objection.revisionId !== current.revisionId,
   )
   const synthesis = overview.aggregations.find(
     (aggregation) => aggregation.producedRevisionId === current.revisionId,
@@ -538,6 +606,13 @@ export function institutionalAnswerFor(
     materialDissentCount: open.filter((objection) =>
       dissentRequiresAcknowledgement(objection.materiality),
     ).length,
+    priorDissent: prior.map((objection) => ({
+      ...objection,
+      revisionId: objection.revisionId!,
+      renewed: open.some(
+        (fresh) => fresh.byDepartmentId === objection.byDepartmentId && fresh.raisedAs === objection.raisedAs,
+      ),
+    })),
   }
 }
 

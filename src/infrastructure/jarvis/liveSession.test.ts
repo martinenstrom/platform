@@ -230,6 +230,7 @@ describe('a live session', () => {
       byDepartmentId: 'devils-advocate',
       raisedAs: 'devils-advocate' as const,
       superseded: false,
+      revisionId: null,
       challengeId: 'challenge-1',
       contests: 'claim-1',
       argument: 'Realräntorna föll först efter att guldet steg.',

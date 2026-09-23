@@ -89,7 +89,7 @@ describe('the database must be able to hold the firm’s text (2026-09-22)', () 
 
   it('accepts the UTF8 database every test runs against', async () => {
     const container = await build()
-    expect(container.provenance.schemaVersion).toBe('0053')
+    expect(container.provenance.schemaVersion).toBe('0054')
   })
 })
 
@@ -155,7 +155,7 @@ describe('the runtime refuses to start when it cannot do its job', () => {
 
   it('names both versions so the mismatch is actionable', async () => {
     await expect(build({ expectedSchemaVersion: '9999' })).rejects.toThrow(
-      /expects schema version 9999.*is at 0053/s,
+      /expects schema version 9999.*is at 0054/s,
     )
   })
 
@@ -196,7 +196,7 @@ describe('storage provenance', () => {
     const container = await build()
 
     expect(container.provenance.buildId).toBe('test-build')
-    expect(container.provenance.schemaVersion).toBe('0053')
+    expect(container.provenance.schemaVersion).toBe('0054')
     expect(container.provenance.commandContractVersion).toBe('2')
     // Derived: nobody types this, so it cannot drift from what it describes.
     expect(container.provenance.adapterVersion).toMatch(/^[0-9a-f]{16}$/)

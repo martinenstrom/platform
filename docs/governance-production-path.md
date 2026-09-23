@@ -448,3 +448,59 @@ legitimately participates), TD-99 (the examination round, to be designed
 around the three categories the record now keeps apart: correction required,
 retained dissent, hard blocker), TD-101 (Verification's live envelope),
 TD-96, TD-97.
+
+
+## 13. G3 — the bounded correction round, and a run that leaves `running` on time, 2026-09-22
+
+**The ruling** that accepted `f208a48` put TD-102 first — a provider run with
+a 180 s deadline must not stay `running` for 59 minutes — and then asked for
+TD-99 as a bounded correction round: Verification files `correction-required`
+on revision N, the institution determines the owner of each correction from
+provenance, the owner does targeted work, the office synthesises revision
+N+1, governance examines the successor afresh, once, and the firm stops
+visibly if corrections are still demanded.
+
+**TD-102, measured and fixed.** The machine's power log shows modern standby
+from 26 s into the synthesis run until one second before it settled: a frozen
+process fires no timer. What the stall exposed in the pipeline was real and is
+fixed: an attempt that settled after the deadline was accepted if it settled
+`ok`, and one that settled with a failure was labelled `budget-exhausted /
+not retryable`. Now the deadline is enforced at the first moment the process
+runs again, whichever way the attempt settled; a late answer is discarded and
+never resurrects an expired run; the run leaves `running` as `timed-out /
+provider-timeout`, retryable. Proven with planted providers at the pipeline
+and at the orchestration level. Remote cancellation stays a transport
+limitation, and the host's reader already says `execution-recovery-required`
+of a running row whose window has passed.
+
+**TD-99, built.** One domain rule for ownership (`correctionsOwed`: finding
+→ claim → the one accepted run that produced it → its desk; synthesis-only
+defects to the Research Office; unattributable findings refuse the act); one
+bound (`MAX_AUTOMATIC_CORRECTION_ROUNDS = 1`, counted off the lineage); one
+new act (`ReturnForCorrection`, the office's, under the same mandate as
+submitting); and the notion of the work that STANDS for an assignment
+(`standingRunFor`: accepted, not returned, not replaced) used by every reader
+that asks which run is a desk's contribution — synthesis context, required
+work, adoption's scope checks, readiness. Correction work is scoped to the
+revision it corrects and briefed with the findings; the corrected
+contribution marks the replaced one `obsolete` on adoption; the successor is
+minted with cause `correction` and a reason naming the verdict; its
+submission reopens all three control functions, the peer examination
+included; per-revision "worked" rules let the same queues be worked once per
+revision. A successor invalidates stale governance: the standing counts only
+reviews that apply to the current revision, and eligibility already did.
+Retained dissent survives: the conclusion's `dissent` is the current
+revision's and `priorDissent` keeps the objections to superseded revisions,
+each saying whether the same function renewed it.
+
+**Proven in memory.** Ownership by provenance with planted findings
+(`corrections.test.ts`); the acts one by one, refusals included — Verification
+cannot return work, an insufficient-evidence verdict starts no round, a
+successor with stale governance is not ready, the spent bound is the visible
+stop (`correctionRound.test.ts`); the loop on its own: revision 2 →
+verdict → return → one desk corrected, the other reused → revision 3 →
+fresh Verification, Devil's Advocate, peer, Risk → the explanation, with the
+objection to revision 2 kept as prior dissent; the stop after one round; and
+the no-correction path taking no round (`hostGovernanceLoop.test.ts`).
+
+**Proven live.** See `docs/jarvis-voice-live-proof.md` §16.

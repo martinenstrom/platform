@@ -579,3 +579,69 @@ evaluate it as "should we increase gold exposure".
 Verification's hard blocks (an unsupported claim, stale evidence, a citation
 mismatch); the human path; the CIO's gate. Risk's own candidate boundary stays
 open as TD-98, and the round that would answer a retained objection as TD-99.
+
+## 14. The correction round — `return-for-correction`, `corrections`, `priorDissent` (contract v4, ruled 2026-09-22)
+
+**The ruling.** Verification's `correction-required` verdict is a hard block
+an explanation cannot pass; the firm answers it with ONE correction round on
+its own initiative — targeted, with ownership by provenance — and then a
+fresh examination of the successor revision. If the successor still demands
+corrections, the firm stops visibly with exactly what remains. JARVIS is never
+the correcting actor; Verification never corrects its own findings; the CIO
+is not asked. And a verdict of `insufficient-evidence` is an analytical
+outcome the firm stands behind, not a defect: it blocks, and starts no round.
+
+**What the host sees.** Three additive fields, nothing renamed:
+
+- `HostBlock.corrections` — present when the block is
+  `verification-correction-required`: `{ reviewId, revisionNumber,
+  blockingFindings, owners, roundsTaken, automaticRoundAvailable }`. The
+  owners are the desks whose accepted claims the blocking findings are about,
+  derived from the record (`correctionsOwed`), never chosen. `roundsTaken`
+  is read off the lineage — one per successor minted with cause `correction`
+  — and `automaticRoundAvailable` is the ruled bound (one) applied to it.
+  While a round is in progress the case reads `working`, as any run in its
+  window does; between passes it reads `blocked` with this detail, owned by
+  the Research Office, whose act the return is.
+- `HostObjection.revisionId` — the revision the objection's review examined
+  (`null` for a case-wide review).
+- `verification-insufficient-evidence` — a filed verdict that judged the
+  evidence insufficient for a conclusion. An analytical outcome the firm
+  stands behind, not a demand for corrections: it starts no round, names no
+  owners and carries no `corrections`. Measured live on run 19, where the
+  host had said "kräver rättelser" of it; JARVIS now says "Faktagranskningen
+  är gjord och bedömer underlaget som otillräckligt för en slutsats."
+- `HostActivity.failed` now also counts runs that TIMED OUT: a run that did
+  not answer inside its deadline could not complete its work either, and the
+  record says which. JARVIS says "Ett bord kunde inte slutföra sitt arbete."
+  for both; a timed-out run is re-commissioned on the person's next word,
+  never on the firm's own (measured live, run 13).
+- `CommitteeConclusion.priorDissent` — objections still open against
+  SUPERSEDED revisions of the lineage, each with its `revisionId` and
+  `renewed`: whether the same function, under the same mandate, raised an
+  open objection against the current revision too. `dissent` is the current
+  revision's alone. Retained dissent survives correction on the record; the
+  conclusion says so as history, not as its own objection.
+
+**What the record shows.** Revision N `superseded`, its verdict as filed;
+each owner's assignment `returned` with the findings as its reason; a second
+run per corrected desk, scoped to revision N and briefed with the findings;
+the replaced run kept and marked `obsolete`; a second synthesis run; revision
+N+1 with `revisionCause: 'correction'` and a reason naming the verdict; the
+successor's own Verification, Devil's Advocate and peer examination, each by
+its own principal; Risk resolved again, `not-required` for an explanation. The
+one new act, `ReturnForCorrection`, is the office's, initiated by the host's
+orchestrator, and appears exactly once per lineage on the automatic path.
+
+**What JARVIS says.** Blocked on corrections: "Faktagranskningen är gjord och
+kräver rättelser innan kommittén kan avsluta. Ligger hos Research Office.
+N brister att rätta hos <desks> i revision N." — and, when the round is
+spent, "En rättelserunda är redan gjord; firman rättar inte igen på egen
+hand." The conclusion, when there was prior dissent: "N tidigare invändningar
+mot en tidigare revision finns kvar på protokollet; k förnyades mot den
+rättade versionen." Every number and name is the record's.
+
+**What did not change.** `committee-conclusion` is still the answer's shape;
+no CIO act for an explanation; the materiality threshold; Verification's hard
+blocks; TD-98. The objection round — a material Devil's Advocate objection on
+a judgement — is not this round and stays open under TD-99.

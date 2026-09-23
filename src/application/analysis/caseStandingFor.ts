@@ -45,6 +45,13 @@ import {
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
 import { revisionEligibility } from './eligibility'
+import {
+  latestApplicable,
+  type ReviewAttribution,
+  type ReviewOrder,
+  type ReviewRecordId,
+  type ReviewScope,
+} from '~/domain/analysis'
 
 export interface StandingFacts {
   investmentCase: InvestmentCase
@@ -189,6 +196,25 @@ export async function standingFrom(input: {
   })
 }
 
+/**
+ * Whether a review of this kind stands for the CURRENT revision.
+ *
+ * A successor revision invalidates stale governance (ruled 2026-09-22): a
+ * verdict filed on revision 2 is history once revision 3 exists, and the step
+ * is owed again. Case-wide reviews apply to every revision, by their own
+ * scope rule; with no revision at all, any review counts.
+ */
+export function reviewStandsForCurrent<
+  T extends ReviewScope & ReviewAttribution & ReviewRecordId & ReviewOrder,
+>(
+  reviews: readonly T[],
+  caseId: string,
+  current: { revisionId: string } | null | undefined,
+): boolean {
+  if (!current) return reviews.length > 0
+  return latestApplicable(reviews, caseId, current.revisionId) !== undefined
+}
+
 /** Reads what standing needs for one case, then derives it. */
 export async function standingForCase(input: {
   repositories: AnalysisRepositories
@@ -241,9 +267,9 @@ export async function standingForCase(input: {
       revisions,
       submissions,
       hasAggregation: revisions.some((revision) => revision.aggregationId),
-      hasVerification: verification.length > 0,
-      hasDevilsAdvocate: devilsAdvocate.length > 0,
-      hasRisk: risk.length > 0,
+      hasVerification: reviewStandsForCurrent(verification, caseId, revisions[revisions.length - 1]),
+      hasDevilsAdvocate: reviewStandsForCurrent(devilsAdvocate, caseId, revisions[revisions.length - 1]),
+      hasRisk: reviewStandsForCurrent(risk, caseId, revisions[revisions.length - 1]),
       hasDecision: decision !== null,
       assignments,
       peerExaminations,

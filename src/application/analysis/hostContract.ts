@@ -175,9 +175,10 @@ export interface HostActivity {
   /** Produced work the firm holds that its desk has not yet adopted. */
   awaitingAdoption: number
   /**
-   * Runs that failed and were not retried: a provider that did not deliver,
-   * output the firm refused, a budget overrun. Reported beside the step they
-   * left owed, never hidden behind it (G1, 2026-09-17).
+   * Runs that failed or timed out and were not retried: a provider that did
+   * not deliver or did not answer inside the run's deadline, output the firm
+   * refused, a budget overrun. Reported beside the step they left owed, never
+   * hidden behind it (G1, 2026-09-17; timeouts counted since 2026-09-23).
    */
   failed: number
 }
@@ -222,6 +223,13 @@ export type BlockedReason =
    * a verdict that had been filed an hour earlier.
    */
   | 'verification-correction-required'
+  /**
+   * Verification filed its verdict and judged the evidence INSUFFICIENT for a
+   * conclusion. An analytical outcome the firm stands behind, not a defect to
+   * fix: it starts no correction round (ruled 2026-09-22; measured live on
+   * run 19, 2026-09-23, where the host had said 'kräver rättelser' of it).
+   */
+  | 'verification-insufficient-evidence'
   /** The Devil's Advocate has not reviewed the argument. */
   | 'challenge-required'
   | 'risk-review-required'
@@ -235,6 +243,26 @@ export type BlockedReason =
 export interface HostBlock {
   reason: BlockedReason
   owner: HostDesk | null
+  /** Present when the block is a verification verdict that demands corrections. */
+  corrections?: HostCorrections
+}
+
+/**
+ * A verification verdict that demands corrections, as the record shows it
+ * (TD-99, 2026-09-22): how many findings block, whose claims they are about
+ * — by provenance — and whether the firm may still correct on its own under
+ * the ruled bound of one automatic round.
+ */
+export interface HostCorrections {
+  reviewId: string
+  /** The revision the verdict examined. */
+  revisionNumber: number
+  blockingFindings: number
+  /** The desks that own the defective claims. */
+  owners: readonly HostDesk[]
+  /** Correction rounds the lineage has already taken on its own. */
+  roundsTaken: number
+  automaticRoundAvailable: boolean
 }
 
 /** The revision the firm stands behind, as it was written. */
@@ -263,6 +291,8 @@ export interface HostClaim {
 export interface HostObjection extends BoardroomObjection {
   reviewId: string
   byDepartmentId: string
+  /** The revision the review examined; null for a case-wide review. */
+  revisionId: string | null
   /** Under which mandate it was raised. */
   raisedAs: 'peer-examination' | 'devils-advocate'
   /** True when a later act of the same kind replaced the review it came from. */
@@ -302,6 +332,26 @@ export interface CommitteeConclusion {
   dissent: readonly HostObjection[]
   /** How many of those are material or above — the count a host must not hide. */
   materialDissentCount: number
+  /**
+   * Dissent retained against superseded revisions of this lineage — what was
+   * objected to before a correction round replaced the revision, kept beside
+   * the conclusion rather than folded into it or dropped (ruled 2026-09-22).
+   * Empty for a lineage that was never corrected.
+   */
+  priorDissent: readonly HostPriorObjection[]
+}
+
+/**
+ * An objection against a superseded revision, kept on the record.
+ *
+ * `renewed` is read off the fresh examination: whether the same function,
+ * under the same mandate, raised an open objection against the current
+ * revision too. It says the dissent was repeated, not that it is the same
+ * argument — the record does not match arguments.
+ */
+export interface HostPriorObjection extends HostObjection {
+  revisionId: string
+  renewed: boolean
 }
 
 /**

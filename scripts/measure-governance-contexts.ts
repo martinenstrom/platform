@@ -35,6 +35,10 @@ import {
 } from '../src/domain/analysis/index.ts'
 import type { ContributionRequest } from '../src/application/analysis/contributionPort.ts'
 import { requirePlaybook } from '../src/application/analysis/playbookRegistry.ts'
+import { synthesisContext } from '../src/application/analysis/synthesisContext.ts'
+import { synthesisEntryFor } from '../src/application/analysis/opening.ts'
+import { correctionsOwed, inquiryKindOf, latestApplicable } from '../src/domain/analysis/index.ts'
+import { createLiveSynthesisProvider, LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS } from '../src/infrastructure/analysis/providers/liveSynthesis.ts'
 import { systemClock } from '../src/domain/shared/clock.ts'
 
 function option(name: string): string | undefined {
@@ -105,6 +109,70 @@ try {
    * this revision, timed, its usage printed, and its candidate judged by the
    * same domain builders the firm files with. Spends one call; writes nothing.
    */
+  /*
+   * --call synthesis: one real Research Office synthesis call against this
+   * revision — with the corrections Verification's standing verdict demands,
+   * where one does (TD-103) — timed, its usage printed, and whether the
+   * candidate parsed. Spends one call; writes nothing.
+   */
+  if (option('call') === 'synthesis') {
+    const [assignments, runs, reviews] = await Promise.all([
+      repositories.assignments.listForCase(caseId),
+      repositories.runs.listForCase(caseId),
+      repositories.reviews.verificationsForCase(caseId),
+    ])
+    const entryKey = synthesisEntryFor(investmentCase.playbookId!)
+    const entry = playbook?.entries.find((candidate) => candidate.key === entryKey)
+    const demanding = latestApplicable(reviews, caseId, revision.revisionId)
+    const ownership = demanding?.status === 'correction-required' ? correctionsOwed(demanding, runs) : null
+    const context = synthesisContext({
+      caseId,
+      question: investmentCase.question,
+      inquiry: inquiryKindOf(revisions, revision.thesisId),
+      playbook: playbook!,
+      entryKey,
+      revision,
+      assignments,
+      runs,
+      ...(ownership && demanding
+        ? {
+            corrections: {
+              reviewId: demanding.reviewId,
+              revisionId: revision.revisionId,
+              revisionNumber: revision.revisionNumber,
+              findings: ownership.owed.flatMap((owed) => owed.findings.map((finding) => ({ ...finding, departmentId: owed.departmentId }))),
+            },
+          }
+        : {}),
+    })
+    const provider = createLiveSynthesisProvider({ apiKey, model: LIVE_MODEL_ID, maxTokens: LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS, loadContext: async () => context })
+    const request: ContributionRequest = {
+      caseId,
+      assignmentId: 'measure',
+      departmentId: 'research-office',
+      accountablePrincipalId: 'research-office-agent',
+      revisionId: revision.revisionId,
+      brief: entry?.brief ?? '',
+      evidenceSetId: 'measure',
+      inputs: {},
+      budget: resolveExecutionBudget('live', { ...(entry?.budget ? { proposed: entry.budget } : {}), firmCeiling: {} }),
+      signal: AbortSignal.timeout(900_000),
+    }
+    console.log(`\n  Calling synthesis on ${caseId} r${revision.revisionNumber} (${LIVE_MODEL_ID}, cap ${LIVE_SYNTHESIS_MAX_OUTPUT_TOKENS}) · inputs ${context.inputs.length} · corrections ${context.corrections?.findings.length ?? 0}…`)
+    const started = Date.now()
+    try {
+      const result = await provider.contribute(request)
+      const ms = Date.now() - started
+      const usage = result.usage.state === 'measured' ? `${result.usage.inputTokens} in / ${result.usage.outputTokens} out` : result.usage.state
+      console.log(`  answered in ${ms} ms · tokens ${usage} · candidate ${result.synthesis ? 'PARSED' : 'ABSENT'} · claims ${result.claims.length}`)
+      if (result.synthesis) console.log(`  position ${result.synthesis.position} · dispositions ${result.synthesis.dispositions.length} · statement ${result.synthesis.statement.slice(0, 160)}…`)
+    } catch (error) {
+      console.log(`  call FAILED after ${Date.now() - started} ms: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`)
+    }
+    await container.close()
+    process.exit(0)
+  }
+
   const call = option('call') as GovernanceKind | undefined
   if (call) {
     const entryKey = call === 'verification' ? 'verification' : call === 'devils-advocate' ? 'challenge' : 'peer-examination'

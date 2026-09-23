@@ -29,6 +29,7 @@ import {
   citeFrom,
   type AgentClaim,
   type ClaimType,
+  type CorrectionFinding,
   type ConfidenceLevel,
   type EvidenceItem,
   type EvidenceSet,
@@ -182,11 +183,44 @@ export function renderSystemPrompt(): string {
  * Citation identity is unchanged — the ids shown are the canonical ones, and
  * `citeFrom` still refuses anything outside the set.
  */
-export function renderUserPrompt(brief: string, evidence: EvidenceSet): string {
+export function renderUserPrompt(
+  brief: string,
+  evidence: EvidenceSet,
+  corrections?: readonly CorrectionFinding[],
+): string {
   return [
     `Brief:\n${brief}`,
+    ...(corrections && corrections.length > 0 ? ['', renderCorrections(corrections)] : []),
     '',
     renderEvidenceBriefing(briefEvidenceSet(evidence)),
+  ].join('\n')
+}
+
+/**
+ * What Verification found wrong with this desk's accepted claims, as the desk
+ * is told it (TD-99, 2026-09-22).
+ *
+ * The desk answers with a COMPLETE fresh set of claims: the corrected
+ * contribution replaces the earlier one in full, so the successor revision
+ * is synthesised from one contribution per desk, not from a patchwork. A
+ * figure or a citation Verification could not confirm is corrected from the
+ * evidence, withdrawn, or stated as insufficient-evidence — never restated.
+ * Every field here is read off the verdict and the claim as recorded.
+ */
+export function renderCorrections(corrections: readonly CorrectionFinding[]): string {
+  return [
+    'CORRECTIONS REQUIRED. Verification examined your earlier claims and found the defects',
+    'below. Produce a complete, fresh set of claims for the brief; it replaces your earlier',
+    'contribution in full. Address every finding: correct the claim from the cited',
+    'observations, cite the observation that actually supports it, or withdraw the claim',
+    'or state it as insufficient-evidence. Never restate a figure or a citation that',
+    'Verification could not confirm.',
+    ...corrections.flatMap((finding, index) => [
+      '',
+      `${index + 1}. Your claim: "${finding.statement}"`,
+      `   Finding (${finding.kind}, ${finding.severity}): ${finding.detail}`,
+      `   Required: ${finding.correctionRequired}`,
+    ]),
   ].join('\n')
 }
 
@@ -279,7 +313,12 @@ export function createLiveContributionProvider(
          * so "which prompt produced this claim" is answerable years later even
          * though the brief varies per entry.
          */
-        contentHash: stableHashHex(`${renderSystemPrompt()}\n\n${request.brief}`),
+        contentHash: stableHashHex(
+          `${renderSystemPrompt()}\n\n${request.brief}` +
+            (request.corrections && request.corrections.length > 0
+              ? `\n\n${renderCorrections(request.corrections)}`
+              : ''),
+        ),
       },
       model: {
         id: config.model,
@@ -304,7 +343,7 @@ export function createLiveContributionProvider(
         {
           model: config.model,
           system: renderSystemPrompt(),
-          user: renderUserPrompt(request.brief, evidence),
+          user: renderUserPrompt(request.brief, evidence, request.corrections),
           maxTokens: config.maxTokens,
         },
         config,

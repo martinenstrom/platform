@@ -47,11 +47,13 @@
  * `runCommand`, via the orchestrator. Same rule as the orchestrator's own.
  */
 
+import { standingEntryKeys, standingRunFor } from './requiredWork'
 import {
   budgetPermitsStart,
   unmeasuredBudgetDimensions,
   type AgentClaim,
   type AgentRunRecord,
+  type CorrectionFinding,
   type Assignment,
   type AssignmentStatus,
   type CaseStage,
@@ -136,11 +138,20 @@ export function commissionEligibility(input: {
   /** The entry as the case's PINNED version states it, or null if it has none. */
   entry: PlaybookEntry | null
   assignment: Assignment | null
+  /** Every assignment the case holds: a dependency is satisfied by work that STANDS, which a returned assignment's does not. */
+  assignments: readonly Assignment[]
   /** Every run the case holds, for the readiness derivation. */
   runs: readonly AgentRunRecord[]
   providerKind: ProviderKind
+  /**
+   * The revision the work is scoped to, where it is. Decides what "already
+   * worked" means: a control function's verdict on revision 2 does not work
+   * its queue for revision 3, which the submission of the successor reopened
+   * (TD-99, 2026-09-22).
+   */
+  revisionId?: string
 }): CommissionEligibility {
-  const { investmentCase, entry, assignment, runs, providerKind } = input
+  const { investmentCase, entry, assignment, assignments, runs, providerKind, revisionId } = input
 
   if (investmentCase.stage === 'published' || investmentCase.stage === 'withdrawn') {
     return {
@@ -166,7 +177,9 @@ export function commissionEligibility(input: {
     runs.some(
       (run) =>
         run.assignmentId === assignment.id &&
-        (!isRunTerminal(run.state) || run.state === 'completed'),
+        (!isRunTerminal(run.state) ||
+          (run.state === 'completed' &&
+            (revisionId === undefined || run.revisionId === revisionId))),
     )
   if ((assignment.status !== 'queued' && assignment.status !== 'returned' && assignment.status !== 'active') || worked) {
     return {
@@ -182,11 +195,7 @@ export function commissionEligibility(input: {
    * acceptance boundary and is why this reads `completed` rather than
    * "something ran".
    */
-  const completedEntryKeys = new Set(
-    runs
-      .filter((run) => run.state === 'completed')
-      .map((run) => run.execution.playbookEntryKey),
-  )
+  const completedEntryKeys = standingEntryKeys(assignments, runs)
   const unmet = entry.blockedBy.filter((key) => !completedEntryKeys.has(key))
   if (unmet.length > 0) return { kind: 'refused', reason: 'dependencies-not-met', unmet }
 
@@ -436,6 +445,7 @@ async function commissionableCase(input: {
       investmentCase,
       entry,
       assignment,
+      assignments,
       runs,
       providerKind,
     }),
@@ -549,7 +559,7 @@ export type CommissionResult =
    * as does anything else the firm decided at `StartAgentRun`. Not a failure:
    * an answer, with the code that says which rule.
    */
-  | { outcome: 'declined'; code: DomainRejection['code'] }
+  | { outcome: 'declined'; code: DomainRejection['code']; detail?: string }
   /**
    * A run exists. What came of it is on the run, which is where to read it.
    *
@@ -607,6 +617,13 @@ export interface CommissionAnalysisInput {
    * the work was in flight.
    */
   revisionId?: string
+  /**
+   * Corrections Verification demands of this desk's accepted claims, when the
+   * commission is correction work (TD-99). Handed to the provider with the
+   * brief; the institution derived them from the record, the caller did not
+   * write them.
+   */
+  corrections?: readonly CorrectionFinding[]
   now: () => Date
 }
 
@@ -659,8 +676,10 @@ export async function commissionAnalysis(
     investmentCase,
     entry,
     assignment,
+    assignments,
     runs: priorRuns,
     providerKind: provider.kind,
+    ...(input.revisionId ? { revisionId: input.revisionId } : {}),
   })
   if (eligibility.kind === 'refused') {
     return { outcome: 'refused', reason: eligibility.reason }
@@ -728,8 +747,17 @@ export async function commissionAnalysis(
    * those claims would reconcile an argument nobody is having any more.
    */
   const satisfiedClaims = new Map<string, AgentClaim[]>()
-  for (const run of priorRuns) {
-    if (run.state !== 'completed' || run.obsolete) continue
+  for (const candidate of assignments) {
+    /*
+     * The entry being commissioned is never satisfied by its own earlier run:
+     * work returned for correction has an adopted run on record, and that run
+     * is exactly what is being replaced (TD-99). Listing it here would tell the
+     * orchestrator the entry is done, and nothing would start.
+     */
+    if (candidate.id === readyAssignment.id) continue
+    /* The run that STANDS for the assignment — after a correction, the corrected one, never both. */
+    const run = standingRunFor(candidate, priorRuns)
+    if (!run) continue
     const key = run.execution.playbookEntryKey
     satisfiedClaims.set(key, [...(satisfiedClaims.get(key) ?? []), ...run.claims])
   }
@@ -774,6 +802,8 @@ export async function commissionAnalysis(
        * too. Where none is targeted there is nothing that could be superseded.
        */
       revisionIsCurrent: () => true,
+      /* Correction work carries what Verification found, for the one entry commissioned here. */
+      correctionsFor: () => input.corrections,
     },
     {
       stageDeadlineMs: deadlineMs,
@@ -818,7 +848,11 @@ export async function commissionAnalysis(
    * to fail.
    */
   if (stage.state === 'blocked' && stage.rejection) {
-    return { outcome: 'declined', code: stage.rejection }
+    return {
+      outcome: 'declined',
+      code: stage.rejection,
+      ...(stage.rejectionDetail ? { detail: stage.rejectionDetail } : {}),
+    }
   }
 
   /*

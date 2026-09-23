@@ -212,7 +212,7 @@ describe('the queue a submission opened', () => {
 
   it('refuses a principal that is not the control function, before anything runs', async () => {
     const result = await commission('verification', { kind: 'verify' }, { principal: 'devils-advocate-agent' })
-    expect(result).toEqual({ outcome: 'declined', code: 'not-authorised' })
+    expect(result).toMatchObject({ outcome: 'declined', code: 'not-authorised' })
     expect(await runsOf('verification')).toEqual([])
   })
 

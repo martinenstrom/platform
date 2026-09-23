@@ -77,6 +77,7 @@ import {
 } from '~/domain/analysis'
 import {
   ConcurrencyConflictError,
+  ImmutableRecordError,
   InvariantViolationError,
   ReferentialIntegrityError,
   type DecisionRepository,
@@ -423,6 +424,18 @@ function caseRepository(store: Store, scope: Scope): CaseRepository {
           investmentCase.id,
           expectedVersion,
           stored.version,
+        )
+      }
+      /*
+       * Versions only advance — the PostgreSQL adapter's rule, held here too
+       * since 2026-09-23: a submission that moved nothing saved an unchanged
+       * case, this store accepted it, and the live record refused it (run 17).
+       * Parity findings become shared rules, not one-store fixes.
+       */
+      if (stored && investmentCase.version <= stored.version) {
+        throw new ImmutableRecordError(
+          `Case "${investmentCase.id}" cannot move from version ${stored.version} to ${investmentCase.version} — versions only advance`,
+          'cases.save',
         )
       }
       store.cases.set(investmentCase.id, investmentCase)

@@ -297,6 +297,7 @@ describe('command declarations', () => {
       'RejectContribution',
       'ReopenForReconsideration',
       'ResolveConditionalRequirement',
+      'ReturnForCorrection',
       'ReturnFromCioReview',
       'ReviseThesis',
       'StartAgentRun',

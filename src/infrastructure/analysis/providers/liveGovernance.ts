@@ -322,6 +322,14 @@ function parseVerification(value: unknown, context: GovernanceContext, refsByCla
       ...(evidence ? { evidence } : {}),
       ...(hashBearing && evidence ? { citedContentHash: evidence.contentHash } : {}),
     })
+    /*
+     * Judged here by the rule the builder applies at filing: a blocking finding
+     * that says nothing about what would clear it is a malformed answer — an
+     * attempt to retry inside the deadline — not a candidate the run fails on
+     * once it is produced.
+     */
+    const pushed = findings[findings.length - 1]!
+    if (pushed.blocking && !pushed.correctionRequired) return null
   }
   const claimsReviewed = value.claimsReviewed.filter((id): id is string => nonEmpty(id) && claimIds.has(id))
   /* A claim a finding was made on was examined, whatever the list says: the candidate rule reads it so. */
@@ -348,6 +356,15 @@ function parseChallenges(value: unknown, context: GovernanceContext, refsByClaim
         }
       }
     }
+    /*
+     * The rule `buildChallenge` applies at filing, applied here: an objection
+     * with no counter-evidence must say what would settle it, or it is not a
+     * finding. Measured live on 2026-09-23 (run 14): one challenge of five
+     * carried neither, the candidate was refused at filing and the run
+     * failed. Judged at parse time it is a malformed answer, and the run
+     * tries again inside its deadline.
+     */
+    if (counterEvidence.length === 0 && !nonEmpty(given.wouldBeResolvedBy)) return null
     challenges.push({
       contests: given.contests,
       contestsThesis: context.revision.thesisId,

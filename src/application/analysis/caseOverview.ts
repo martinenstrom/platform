@@ -53,7 +53,7 @@ import {
   type VerificationReview,
 } from '~/domain/analysis'
 import type { AnalysisRepositories } from './repositories'
-import { standingFrom } from './caseStandingFor'
+import { reviewStandsForCurrent, standingFrom } from './caseStandingFor'
 
 /**
  * What the firm concluded at submission, and under which policy.
@@ -297,9 +297,10 @@ export async function caseOverview(input: {
         revisions,
         submissions,
         hasAggregation: aggregations.length > 0,
-        hasVerification: verification.length > 0,
-        hasDevilsAdvocate: devilsAdvocate.length > 0,
-        hasRisk: risk.length > 0,
+        /* For the CURRENT revision: a successor invalidates stale governance (ruled 2026-09-22). */
+        hasVerification: reviewStandsForCurrent(verification, caseId, current),
+        hasDevilsAdvocate: reviewStandsForCurrent(devilsAdvocate, caseId, current),
+        hasRisk: reviewStandsForCurrent(risk, caseId, current),
         hasDecision: decision !== null,
         assignments,
         peerExaminations,

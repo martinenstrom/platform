@@ -324,6 +324,12 @@ describe('StartAgentRun', () => {
       { ...macroRun!, state: 'completed', completedAt: AT },
       deps.provenance,
     )
+    /* As acceptance does: the desk's assignment is completed with its run, and only completed work stands for a dependant. */
+    await repositories.assignments.save({
+      ...(await repositories.assignments.get(macroRun!.assignmentId))!,
+      status: 'completed',
+      completedAt: AT,
+    })
 
     const result = await runCommand(
       startAgentRun(organization),
@@ -751,6 +757,12 @@ describe('FailAgentRun', () => {
       { ...macroRun!, state: 'completed', completedAt: AT },
       deps.provenance,
     )
+    /* As acceptance does: the desk's assignment is completed with its run, and only completed work stands for a dependant. */
+    await repositories.assignments.save({
+      ...(await repositories.assignments.get(macroRun!.assignmentId))!,
+      status: 'completed',
+      completedAt: AT,
+    })
 
     const aggregationId = deriveAssignmentId('cmd-inst', 'aggregation')
     const aggregation = await runCommand(

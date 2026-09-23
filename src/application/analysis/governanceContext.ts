@@ -86,6 +86,8 @@ export interface GovernanceContext {
   inquiry: InquiryKind
   revision: {
     id: string
+    /** Its number in the lineage — 3 for the successor a correction round produced. */
+    revisionNumber: number
     thesisId: string
     statement: string
     position: string
@@ -190,6 +192,7 @@ export async function governanceContext(input: GovernanceContextInput): Promise<
     inquiry,
     revision: {
       id: revision.revisionId,
+      revisionNumber: revision.revisionNumber,
       thesisId: revision.thesisId,
       statement: revision.statement,
       position: revision.position,
