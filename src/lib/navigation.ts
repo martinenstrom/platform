@@ -2,6 +2,7 @@ import {
   Landmark,
   LayoutDashboard,
   Library,
+  Radar,
   Settings,
   Users,
   type LucideIcon,
@@ -58,6 +59,11 @@ export const primaryNav: NavItem[] = [
    * with Client Intelligence Phase 1 (`docs/client-intelligence.md`).
    */
   { to: '/clients', label: 'Klienter', icon: Users },
+  /*
+   * Sentinel `/sentinel` — who needs the advisor today, why, and what to
+   * prepare: the cross-client work queue over the same relationships.
+   */
+  { to: '/sentinel', label: 'Sentinel', icon: Radar },
   { to: '/evidence', label: 'Underlag', icon: Library },
 ]
 

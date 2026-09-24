@@ -30,6 +30,7 @@ import type {
   MemoryCandidate,
   Opportunity,
   Portfolio,
+  SentinelDisposition,
 } from '~/domain/advisory'
 import type { Clock } from '~/domain/shared/clock'
 
@@ -86,6 +87,13 @@ export interface OpportunityRepository {
   opportunitiesOf(clientId: ClientId): Promise<readonly Opportunity[]>
 }
 
+/** What the advisor decided about Sentinel priorities — the only state Sentinel keeps. */
+export interface SentinelRepository {
+  dispositions(): Promise<readonly SentinelDisposition[]>
+  dispositionsOf(clientId: ClientId): Promise<readonly SentinelDisposition[]>
+  addDisposition(disposition: SentinelDisposition): Promise<void>
+}
+
 export type MintedKind = 'interaction' | 'candidate' | 'fact' | 'commitment' | 'event'
 
 /** The record mints every identity. A caller never supplies one. */
@@ -103,6 +111,7 @@ export interface AdvisoryRepositories {
   commitments: CommitmentRepository
   events: EventRepository
   opportunities: OpportunityRepository
+  sentinel: SentinelRepository
   ids: IdentityMint
 }
 

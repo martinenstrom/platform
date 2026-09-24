@@ -59,6 +59,8 @@ import {
 } from '~/presentation/marketData/viewModels'
 import { hasData, SERIES_RANGES, type SeriesRange } from '~/domain/market'
 import type { OverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
+import type { SentinelBrief } from '~/application/advisory/sentinel'
+import { SentinelBriefList, SentinelGreeting } from '~/components/sentinel/SentinelBrief'
 import type { CountryMacroData, CountryRegistryEntry } from '~/types/countryExplorer'
 import type { CurrentOperator } from '~/application/analysis/currentOperator'
 
@@ -207,7 +209,16 @@ function useClock(): Date | null {
   return now
 }
 
-function Header({ asOf, operator }: { asOf: string; operator?: CurrentOperator }) {
+function Header({
+  asOf,
+  operator,
+  sentinel,
+}: {
+  asOf: string
+  operator?: CurrentOperator
+  /** The client half of the morning: present only when the advisory record answered. */
+  sentinel?: SentinelBrief
+}) {
   const now = useClock()
   // Before mount the snapshot's own timestamp stands in, so the greeting and
   // date come from real data rather than a frozen mock clock (defect D3).
@@ -245,6 +256,8 @@ function Header({ asOf, operator }: { asOf: string; operator?: CurrentOperator }
         <p className="mt-1 text-sm text-[#9aa7b7]">
           Här är din globala marknadsöversikt för idag, {dateText}.
         </p>
+        {/* The client half of the morning, in three counts. Restrained by design. */}
+        {sentinel && <SentinelGreeting brief={sentinel} />}
       </div>
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-2 rounded-[10px] border border-[rgba(70,130,163,0.2)] bg-[rgba(4,14,23,0.7)] px-3.5 py-2 text-[11px] font-medium tracking-[0.12em] text-[#9aa7b7] uppercase">
@@ -357,10 +370,17 @@ function SectionCard({
 export function LightCommandCenter({
   snapshot,
   operator,
+  sentinel,
 }: {
   snapshot: OverviewSnapshot
   /** Who the product is addressing; absent when no operator is configured. */
   operator?: CurrentOperator
+  /**
+   * The morning's client priorities, beside the markets. Absent when the
+   * advisory record did not answer, and then nothing about clients renders —
+   * the market screen is complete without it.
+   */
+  sentinel?: SentinelBrief
 }) {
   const [mounted, setMounted] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -593,7 +613,7 @@ export function LightCommandCenter({
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 pt-6 pb-16">
-          <Header asOf={snapshot.asOf} operator={operator} />
+          <Header asOf={snapshot.asOf} operator={operator} sentinel={sentinel} />
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             {/* Market overview cards. */}
@@ -775,6 +795,32 @@ export function LightCommandCenter({
               </SectionCard>
             </div>
           </div>
+
+          {/*
+           * Klientprioriteringar — Sentinel. The client half of the morning,
+           * placed between the market overview and the market detail as one
+           * more module of the same screen, in the same card. Rendered only
+           * when the advisory record answered; the market screen is complete
+           * without it.
+           */}
+          {sentinel && (
+            <SectionCard
+              title="Klientprioriteringar"
+              action={
+                <span className="flex items-center gap-4">
+                  <span className={LABEL}>Sentinel</span>
+                  <Link
+                    to="/sentinel"
+                    className="text-[11px] font-medium tracking-[0.12em] text-[#7f97ad] uppercase hover:text-[#f4f7fb]"
+                  >
+                    Visa alla →
+                  </Link>
+                </span>
+              }
+            >
+              <SentinelBriefList brief={sentinel} limit={4} />
+            </SectionCard>
+          )}
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             {/* Intraday chart. */}

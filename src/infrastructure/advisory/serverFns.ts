@@ -32,6 +32,13 @@ import {
   type ItemDecision,
 } from '~/application/advisory/confirmClientUpdate'
 import { prepareMeeting } from '~/application/advisory/meetingPrep'
+import {
+  disposePriority,
+  sentinelBrief,
+  type DisposeInput,
+  type DisposeResult,
+  type SentinelBrief,
+} from '~/application/advisory/sentinel'
 import type { AdvisoryContext } from '~/application/advisory/ports'
 import {
   recordClientUpdate,
@@ -186,6 +193,38 @@ export const askAboutClientFn = createServerFn({ method: 'POST' })
     try {
       const context = await getContext()
       return await askAboutClient(context, data)
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/* --------------------------------------------------------------- Sentinel */
+
+export type SentinelBriefResponse =
+  { ok: true; brief: SentinelBrief } | { ok: false; code: AdvisoryReadFailure }
+
+/** The morning brief: every client's one priority, ranked, on the advisory clock. */
+export const getSentinelBriefFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<SentinelBriefResponse> => {
+    try {
+      const context = await getContext()
+      return { ok: true, brief: await sentinelBrief(context) }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  },
+)
+
+export type DisposePriorityResponse =
+  DisposeResult | { ok: false; code: 'SERVICE_UNAVAILABLE' }
+
+/** The advisor's word on a priority: reviewed, snoozed until a date, or dismissed. */
+export const disposePriorityFn = createServerFn({ method: 'POST' })
+  .validator((input: DisposeInput) => input)
+  .handler(async ({ data }): Promise<DisposePriorityResponse> => {
+    try {
+      const context = await getContext()
+      return await disposePriority(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
     }

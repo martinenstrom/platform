@@ -15,6 +15,7 @@ import { Route as HeadquartersRouteImport } from './routes/headquarters'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as SentinelRouteImport } from './routes/sentinel'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as AgentsIndexRouteImport } from './routes/agents.index'
@@ -55,6 +56,11 @@ const PortfolioRoute = PortfolioRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SentinelRoute = SentinelRouteImport.update({
+  id: '/sentinel',
+  path: '/sentinel',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
+  '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
+  '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
+  '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/reports'
+    | '/sentinel'
     | '/settings'
     | '/watchlist'
     | '/agents/$departmentId'
@@ -200,6 +210,7 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/reports'
+    | '/sentinel'
     | '/settings'
     | '/watchlist'
     | '/agents/$departmentId'
@@ -219,6 +230,7 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/reports'
+    | '/sentinel'
     | '/settings'
     | '/watchlist'
     | '/agents/$departmentId'
@@ -239,6 +251,7 @@ export interface RootRouteChildren {
   MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
   ReportsRoute: typeof ReportsRoute
+  SentinelRoute: typeof SentinelRoute
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
@@ -294,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sentinel': {
+      id: '/sentinel'
+      path: '/sentinel'
+      fullPath: '/sentinel'
+      preLoaderRoute: typeof SentinelRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -383,6 +403,7 @@ const rootRouteChildren: RootRouteChildren = {
   MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
   ReportsRoute: ReportsRoute,
+  SentinelRoute: SentinelRoute,
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,

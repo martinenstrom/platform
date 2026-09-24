@@ -130,6 +130,8 @@ function ytdOf(series: readonly PerformancePoint[], today: string): number {
 export function syntheticClients(today: string): AdvisorySeed {
   const d = (days: number) => addDays(today, days)
   const valuedAt = d(-1)
+  /* Her birthday falls three days from today, whatever today is, so the relationship prompt stays demonstrable. */
+  const forsellDateOfBirth = `1949-${d(3).slice(5)}`
 
   const clients: Client[] = [
     {
@@ -204,7 +206,7 @@ export function syntheticClients(today: string): AdvisorySeed {
       segment: 'private-banking',
       relationshipSince: '2008-06-30',
       primaryAdvisorId: 'adv-sofia',
-      dateOfBirth: '1949-10-05',
+      dateOfBirth: forsellDateOfBirth,
       riskProfile: 2,
       preferredChannel: 'in-person',
       annualIncome: 540_000,
@@ -2686,7 +2688,7 @@ export function syntheticClients(today: string): AdvisorySeed {
       clientId: 'cl-ekstrand',
       type: 'planned-withdrawal',
       title: 'Kapitalanrop private equity',
-      date: d(35),
+      date: d(120),
       recurring: 'none',
       importance: 'normal',
       notes: 'Cirka 1 MSEK.',
@@ -2694,7 +2696,7 @@ export function syntheticClients(today: string): AdvisorySeed {
       status: 'upcoming',
       provenance: seedProvenance(d(-75)),
     },
-    birthday('ev-for-bday', 'cl-forsell', '1949-10-05', '2008-06-30', 'adv-sofia'),
+    birthday('ev-for-bday', 'cl-forsell', forsellDateOfBirth, '2008-06-30', 'adv-sofia'),
     {
       id: 'ev-for-meeting',
       clientId: 'cl-forsell',

@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LightCommandCenter } from '~/components/lightDashboard/LightCommandCenter'
 import { getOverviewSnapshotFn } from '~/infrastructure/marketData/serverFns'
 import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
+import { getSentinelBriefFn } from '~/infrastructure/advisory/serverFns'
 
 /**
  * Kommandocentralen — the Financial OS home, and the answer to *what is
@@ -44,21 +45,29 @@ import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
  */
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [snapshot, operator] = await Promise.all([
+    const [snapshot, operator, sentinel] = await Promise.all([
       getOverviewSnapshotFn(),
       getCurrentOperatorFn(),
+      /*
+       * The client half of the morning. Client truth, not institutional
+       * state: which relationships need the advisor today, from the advisory
+       * record on the advisory clock. Absent when that record cannot answer,
+       * and the market screen renders complete without it.
+       */
+      getSentinelBriefFn(),
     ])
-    return { snapshot, operator }
+    return { snapshot, operator, sentinel }
   },
   component: HomePage,
 })
 
 function HomePage() {
-  const { snapshot, operator } = Route.useLoaderData()
+  const { snapshot, operator, sentinel } = Route.useLoaderData()
   return (
     <LightCommandCenter
       snapshot={snapshot}
       operator={operator.ok ? operator.operator : undefined}
+      sentinel={sentinel.ok ? sentinel.brief : undefined}
     />
   )
 }

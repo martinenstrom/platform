@@ -33,6 +33,7 @@ import type {
   MemoryCandidate,
   Opportunity,
   Portfolio,
+  SentinelDisposition,
 } from '~/domain/advisory'
 import type { AdvisoryRepositories, MintedKind } from '~/application/advisory/ports'
 import type { AdvisorySeed } from './syntheticClients'
@@ -81,6 +82,8 @@ export function createSyntheticAdvisoryRepositories(
 
   /* Sequences per kind, like a database would keep. */
   const sequences = new Map<MintedKind, number>()
+  /* What the advisor decided about Sentinel priorities, in the order decided. Empty at seed. */
+  const dispositions: SentinelDisposition[] = []
 
   return {
     clients: {
@@ -189,6 +192,17 @@ export function createSyntheticAdvisoryRepositories(
         return ofClient(opportunities, clientId).sort(
           (a, b) => b.potentialValue - a.potentialValue || (a.id < b.id ? -1 : 1),
         )
+      },
+    },
+    sentinel: {
+      async dispositions() {
+        return [...dispositions]
+      },
+      async dispositionsOf(clientId) {
+        return dispositions.filter((d) => d.clientId === clientId)
+      },
+      async addDisposition(disposition) {
+        dispositions.push(disposition)
       },
     },
     ids: {
