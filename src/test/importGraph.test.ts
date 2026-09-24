@@ -203,7 +203,7 @@ describe('T4 — dependency direction', () => {
     // is exactly how the wiring is meant to be exercised.
     const COMPOSITION_ROOTS = [
       'infrastructure/marketData/container.ts',
-      'infrastructure/marketData/serverFns.ts',
+      'infrastructure/marketData/containerInstance.ts',
     ]
     const callers = FILES.filter(
       (f) =>
@@ -354,7 +354,7 @@ describe('P11 — only approved providers are connected', () => {
 
   it('registers only approved providers at the composition root', () => {
     const serverFns = readFileSync(
-      join(SRC, 'infrastructure/marketData/serverFns.ts'),
+      join(SRC, 'infrastructure/marketData/containerInstance.ts'),
       'utf8',
     )
     const imported = [

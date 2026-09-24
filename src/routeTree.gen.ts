@@ -21,6 +21,8 @@ import { Route as AgentsIndexRouteImport } from './routes/agents.index'
 import { Route as AgentsDepartmentIdRouteImport } from './routes/agents.$departmentId'
 import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
+import { Route as ClientsIndexRouteImport } from './routes/clients.index'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId_.underlag'
@@ -85,6 +87,16 @@ const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   path: '/cases/$caseId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsIndexRoute = ClientsIndexRouteImport.update({
+  id: '/clients/',
+  path: '/clients/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
+  id: '/clients/$clientId',
+  path: '/clients/$clientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RunsRunIdRoute = RunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
@@ -113,9 +125,11 @@ export interface FileRoutesByFullPath {
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
+  '/clients/': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
 }
@@ -130,9 +144,11 @@ export interface FileRoutesByTo {
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents': typeof AgentsIndexRoute
   '/cases': typeof CasesIndexRoute
+  '/clients': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
 }
@@ -148,9 +164,11 @@ export interface FileRoutesById {
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
+  '/clients/': typeof ClientsIndexRoute
   '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId_/underlag': typeof CasesCaseIdUnderlagRoute
 }
@@ -167,9 +185,11 @@ export interface FileRouteTypes {
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
+    | '/clients/$clientId'
     | '/runs/$runId'
     | '/agents/'
     | '/cases/'
+    | '/clients/'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
   fileRoutesByTo: FileRoutesByTo
@@ -184,9 +204,11 @@ export interface FileRouteTypes {
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
+    | '/clients/$clientId'
     | '/runs/$runId'
     | '/agents'
     | '/cases'
+    | '/clients'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
   id:
@@ -201,9 +223,11 @@ export interface FileRouteTypes {
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
+    | '/clients/$clientId'
     | '/runs/$runId'
     | '/agents/'
     | '/cases/'
+    | '/clients/'
     | '/agents_/$departmentId/commission'
     | '/cases/$caseId_/underlag'
   fileRoutesById: FileRoutesById
@@ -219,9 +243,11 @@ export interface RootRouteChildren {
   WatchlistRoute: typeof WatchlistRoute
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
+  ClientsClientIdRoute: typeof ClientsClientIdRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   CasesIndexRoute: typeof CasesIndexRoute
+  ClientsIndexRoute: typeof ClientsIndexRoute
   AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
   CasesCaseIdUnderlagRoute: typeof CasesCaseIdUnderlagRoute
 }
@@ -312,6 +338,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/': {
+      id: '/clients/'
+      path: '/clients'
+      fullPath: '/clients/'
+      preLoaderRoute: typeof ClientsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
+      path: '/clients/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/runs/$runId': {
       id: '/runs/$runId'
       path: '/runs/$runId'
@@ -347,9 +387,11 @@ const rootRouteChildren: RootRouteChildren = {
   WatchlistRoute: WatchlistRoute,
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
+  ClientsClientIdRoute: ClientsClientIdRoute,
   RunsRunIdRoute: RunsRunIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   CasesIndexRoute: CasesIndexRoute,
+  ClientsIndexRoute: ClientsIndexRoute,
   AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,
   CasesCaseIdUnderlagRoute: CasesCaseIdUnderlagRoute,
 }

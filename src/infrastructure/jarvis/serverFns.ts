@@ -28,7 +28,7 @@ import {
   type MarketBrief,
   type MarketScope,
 } from '~/application/jarvis/marketBrief'
-import { getContainer } from '~/infrastructure/marketData/serverFns'
+import type { Container } from '~/infrastructure/marketData/container'
 import {
   createLiveRuntime,
   type LiveConfig,
@@ -43,13 +43,25 @@ import { createOpenAiLiveProvider, LiveProviderRefusal } from './openaiLive'
 /* ------------------------------------------------------------- config */
 
 /** Measured 2026-09-15: the names the API accepts for gpt-live-1. `sol` exists but is gated. */
-export const LIVE_VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
+export const LIVE_VOICES = [
+  'marin',
+  'cedar',
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+] as const
 
 /** Per 1M tokens, from the pricing page on 2026-09-15. Other backends fall back to terra's, the dearer. */
-const BACKEND_PRICES: Record<string, { input: number; cached: number; output: number }> = {
-  'gpt-5.6-luna': { input: 0.2, cached: 0.02, output: 1.2 },
-  'gpt-5.6-terra': { input: 2.0, cached: 0.2, output: 12.0 },
-}
+const BACKEND_PRICES: Record<string, { input: number; cached: number; output: number }> =
+  {
+    'gpt-5.6-luna': { input: 0.2, cached: 0.02, output: 1.2 },
+    'gpt-5.6-terra': { input: 2.0, cached: 0.2, output: 12.0 },
+  }
 
 function liveConfig(): LiveConfig {
   const backendModel = process.env.JARVIS_LIVE_BACKEND_MODEL ?? 'gpt-5.6-luna'
@@ -68,8 +80,15 @@ function liveConfig(): LiveConfig {
   return {
     model: process.env.JARVIS_LIVE_MODEL ?? 'gpt-live-1',
     backendModel,
-    ...(tier === 'auto' || tier === 'default' || tier === 'flex' || tier === 'priority' ? { backendServiceTier: tier } : {}),
-    ...(effort === 'none' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max'
+    ...(tier === 'auto' || tier === 'default' || tier === 'flex' || tier === 'priority'
+      ? { backendServiceTier: tier }
+      : {}),
+    ...(effort === 'none' ||
+    effort === 'low' ||
+    effort === 'medium' ||
+    effort === 'high' ||
+    effort === 'xhigh' ||
+    effort === 'max'
       ? { backendReasoningEffort: effort }
       : {}),
     voices: LIVE_VOICES,
@@ -97,7 +116,8 @@ async function host(request: HostRequest): Promise<HostResult> {
     const gateway = await productHostGateway()
     return await gateway(request)
   } catch (error) {
-    if (error instanceof NotConfiguredError) return { state: 'failed', reason: 'not-configured' }
+    if (error instanceof NotConfiguredError)
+      return { state: 'failed', reason: 'not-configured' }
     console.error('[jarvis/live] host gateway failed', error)
     return { state: 'failed', reason: 'service-unavailable' }
   }
@@ -108,15 +128,28 @@ async function host(request: HostRequest): Promise<HostResult> {
  * and the same symbol sets the Overview resolves, so a question inside the
  * page's cache TTL costs no provider call.
  */
-async function marketBrief(scope: MarketScope): Promise<MarketBrief> {
+/**
+ * The market-data container is handed in by each handler, which imports it
+ * dynamically inside its own body. Nothing at module level names the
+ * container module: a module-level import, static or dynamic, is loaded by
+ * the client build and pulls the providers — and the MCP stdio client — into
+ * the browser bundle.
+ */
+type ContainerGetter = () => Promise<Container>
+
+async function marketBrief(
+  scope: MarketScope,
+  getContainer: ContainerGetter,
+): Promise<MarketBrief> {
   const container = await getContainer()
-  const { createOverviewDataSource } = await import('~/infrastructure/marketData/overviewDataSource')
+  const { createOverviewDataSource } =
+    await import('~/infrastructure/marketData/overviewDataSource')
   const source = createOverviewDataSource(container, container.newCorrelationId())
   const parts = await fetchMarketBriefParts(source, scope)
   return composeMarketBrief(parts, scope, source.now())
 }
 
-function runtime(): LiveRuntime | null {
+function runtime(getContainer: ContainerGetter): LiveRuntime | null {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return null
   if (!live) {
@@ -126,7 +159,7 @@ function runtime(): LiveRuntime | null {
         networkDisabled: process.env.JARVIS_LIVE_NETWORK_DISABLED === '1',
       }),
       host,
-      market: marketBrief,
+      market: (scope) => marketBrief(scope, getContainer),
       config: liveConfig(),
       log: (line) => console.log(`[jarvis/live] ${line}`),
     })
@@ -138,14 +171,20 @@ function runtime(): LiveRuntime | null {
 
 export type LiveOpenResponse =
   | { ok: true; sessionId: string; sdp: string }
-  | { ok: false; code: 'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'; field?: string }
+  | {
+      ok: false
+      code:
+        'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'
+      field?: string
+    }
 
 export const openLiveSessionFn = createServerFn({ method: 'POST' })
   .validator((input: unknown) => input)
   .handler(async ({ data }): Promise<LiveOpenResponse> => {
     const parsed = parseLiveOpenRequest(data)
     if (!parsed.ok) return { ok: false, code: 'INVALID_REQUEST', field: parsed.field }
-    const rt = runtime()
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
     if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
     try {
       const opened = await rt.open(parsed.request)
@@ -160,12 +199,14 @@ export const openLiveSessionFn = createServerFn({ method: 'POST' })
     }
   })
 
-export type LiveStateResponse = { ok: true } & LiveSessionState | { ok: false; code: 'NOT_FOUND' | 'NOT_CONFIGURED' }
+export type LiveStateResponse =
+  ({ ok: true } & LiveSessionState) | { ok: false; code: 'NOT_FOUND' | 'NOT_CONFIGURED' }
 
 export const liveSessionStateFn = createServerFn({ method: 'POST' })
   .validator((input: { sessionId: string }) => ({ sessionId: String(input.sessionId) }))
   .handler(async ({ data }): Promise<LiveStateResponse> => {
-    const rt = runtime()
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
     if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
     const state = rt.state(data.sessionId)
     return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
@@ -174,12 +215,20 @@ export const liveSessionStateFn = createServerFn({ method: 'POST' })
 /** What a typed line came back with: the answer as text, and the case it may have bound. */
 export type AskJarvisResponse =
   | ({ ok: true } & TypedTurnResult)
-  | { ok: false; code: 'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'; field?: string }
+  | {
+      ok: false
+      code:
+        'NOT_CONFIGURED' | 'INVALID_REQUEST' | 'PROVIDER_REFUSED' | 'SERVICE_UNAVAILABLE'
+      field?: string
+    }
 
-async function typedTurn(input: unknown): Promise<AskJarvisResponse> {
+async function typedTurn(
+  input: unknown,
+  getContainer: ContainerGetter,
+): Promise<AskJarvisResponse> {
   const parsed = parseAskJarvisRequest(input)
   if (!parsed.ok) return { ok: false, code: 'INVALID_REQUEST', field: parsed.field }
-  const rt = runtime()
+  const rt = runtime(getContainer)
   if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
   try {
     return { ok: true, ...(await rt.respond(parsed.request)) }
@@ -200,7 +249,10 @@ async function typedTurn(input: unknown): Promise<AskJarvisResponse> {
  */
 export const askJarvisFn = createServerFn({ method: 'POST' })
   .validator((input: unknown) => input)
-  .handler(async ({ data }): Promise<AskJarvisResponse> => typedTurn(data))
+  .handler(async ({ data }): Promise<AskJarvisResponse> => {
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    return typedTurn(data, getContainer)
+  })
 
 /**
  * A typed line while a session is live: the same router, and the answer is
@@ -208,18 +260,31 @@ export const askJarvisFn = createServerFn({ method: 'POST' })
  * on its own, so it cannot answer it on its own.
  */
 export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
-  .validator((input: { sessionId: string; text: string; history?: unknown; marketContext?: unknown }) => ({
-    sessionId: String(input.sessionId),
-    text: String(input.text),
-    ...(input.history !== undefined ? { history: input.history } : {}),
-    ...(input.marketContext !== undefined ? { marketContext: input.marketContext } : {}),
-  }))
-  .handler(async ({ data }): Promise<AskJarvisResponse> => typedTurn(data))
+  .validator(
+    (input: {
+      sessionId: string
+      text: string
+      history?: unknown
+      marketContext?: unknown
+    }) => ({
+      sessionId: String(input.sessionId),
+      text: String(input.text),
+      ...(input.history !== undefined ? { history: input.history } : {}),
+      ...(input.marketContext !== undefined
+        ? { marketContext: input.marketContext }
+        : {}),
+    }),
+  )
+  .handler(async ({ data }): Promise<AskJarvisResponse> => {
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    return typedTurn(data, getContainer)
+  })
 
 export const closeLiveSessionFn = createServerFn({ method: 'POST' })
   .validator((input: { sessionId: string }) => ({ sessionId: String(input.sessionId) }))
   .handler(async ({ data }): Promise<LiveStateResponse> => {
-    const rt = runtime()
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
     if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
     const state = await rt.close(data.sessionId)
     return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
@@ -230,8 +295,11 @@ export type LiveTelemetryResponse =
   | { ok: false; code: 'NOT_CONFIGURED' }
 
 /** Every session's counts and money, and the typed turns outside sessions. Never a word of any conversation. */
-export const liveTelemetryFn = createServerFn({ method: 'POST' }).handler(async (): Promise<LiveTelemetryResponse> => {
-  const rt = runtime()
-  if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
-  return { ok: true, sessions: rt.telemetry(), typed: rt.typedTelemetry() }
-})
+export const liveTelemetryFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<LiveTelemetryResponse> => {
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
+    if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
+    return { ok: true, sessions: rt.telemetry(), typed: rt.typedTelemetry() }
+  },
+)

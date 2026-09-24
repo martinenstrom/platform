@@ -73,7 +73,7 @@ export function isHealthAuthorized(input: AuthorizationInput): boolean {
 export const getMarketDataHealthFn = createServerFn({ method: 'POST' })
   .validator((token: string | undefined) => token)
   .handler(async ({ data: presentedToken }): Promise<HealthResponse> => {
-    const { getContainer } = await import('./serverFns')
+    const { getContainer } = await import('./containerInstance')
     const container = await getContainer()
 
     const authorized = isHealthAuthorized({
@@ -98,7 +98,7 @@ export const getMarketDataMetricsFn = createServerFn({ method: 'POST' })
   .validator((token: string | undefined) => token)
   .handler(async ({ data: presentedToken }): Promise<string> => {
     const [{ getContainer }, { renderPrometheus }] = await Promise.all([
-      import('./serverFns'),
+      import('./containerInstance'),
       import('./metrics/prometheus'),
     ])
     const container = await getContainer()

@@ -2993,7 +2993,6 @@ claim, and puts the work back on the queue (`orchestration.test.ts`). A
 process that never resumes leaves what TD-92 describes; that is the one
 remaining recovery path, and it is TD-92's.
 
-
 ## TD-103 · the office's correction synthesis has no envelope of its own · open
 
 **Opened 2026-09-23**, measured on live run 13 of the gold case
@@ -3039,3 +3038,98 @@ since the deadline is inside `playbookContentHash` — and whether a timed-out
 run in the middle of an autonomous round earns one automatic retry (today it
 does not; the person's next word resumes it) are the ruling's to decide, from
 these numbers.
+
+## TD-104 · the relationship record lives in one server process · open
+
+Opened 2026-09-23 with Client Intelligence Phase 1 (`docs/client-intelligence.md`).
+
+**What.** `infrastructure/advisory/container.ts` composes the advisory
+context over in-memory repositories seeded from `syntheticClients(today)`.
+A confirmed client update, a completed promise and every candidate live in
+that process's maps: they survive page loads and vanish when the server
+restarts or the dev server re-evaluates the module.
+
+**Why it is debt and not a design.** The ports (`application/advisory/ports.ts`)
+are the seam a PostgreSQL adapter fills, tenant-scoped, behind the same
+container; the surfaces and use cases do not change. It is not built because
+no real client data may enter before the privacy posture is ruled
+(`advisor-os-architecture.md` §6), and a durable store of synthetic
+relationships would only be a store to migrate.
+
+**What closes it.** PostgreSQL repositories for the advisory ports, migrated
+through the runner, with the contract tests the analysis adapter already
+has (in-memory and PostgreSQL judged by one contract), and a ruling on the
+privacy posture before the first non-synthetic client.
+
+## TD-105 · _Fråga JARVIS om klienten_ is a door of its own, not a JARVIS intent · open
+
+Opened 2026-09-23.
+
+**What.** The client page answers questions about the relationship through
+`askAboutClientFn` → `searchClientMemory`, deterministic, from structured
+memory. The presence's router (`application/jarvis`) knows no advisory
+intent: asking JARVIS in the presence _"Vad lovade vi Henrik?"_ does not
+reach the record.
+
+**Why.** The Advisor OS design (`advisor-os-architecture.md` §1, §4.2) says
+advisory intents become tools of the one router, Tier 0, with the fast-path
+rule extended to the new recogniser — never a second assistant. Building
+the client-scoped door first proves the memory and its answer shape; wiring
+it into the router is the next slice, and it is a router change with its own
+routing acceptance and `fast-path-meets-no-model` coverage, not a client
+page change.
+
+**What closes it.** An advisory Tier-0 recogniser and formatter in the
+router (`client_context`, `list_commitments`, `next_meeting`…), the fitness
+rule extended to them, and the six-line routing acceptance re-run with
+advisory lines planted.
+
+## TD-106 · the advisor recording a note is the client's primary advisor · open
+
+Opened 2026-09-23.
+
+**What.** `recordClientUpdate` attributes a note, and every record confirmed
+from it, to `client.primaryAdvisorId`. There is no session, so nothing else
+is honest; but Sofia recording a note on Martin's client would be recorded
+as Martin.
+
+**Why.** The configured operator (`FINANCIAL_OS_OPERATOR_EMPLOYEE_ID`) is an
+employee of the seeded investment organisation, not an advisor in the
+advisory record, and inventing a mapping between the two would be the
+simulated identity the 2026-08-13 ruling forbids. TD-8 (no authentication)
+is the root.
+
+**What closes it.** An advisor identity resolved server-side — the operator
+extended to advisory roles, or an authenticated session under TD-8 — and
+`createdBy` read from it rather than from the client.
+
+## TD-107 · `vite build` failed: the MCP stdio client reached the browser bundle — CLOSED 2026-09-24
+
+Opened and closed in the Client Intelligence review. The C2-2 gate (§8.3)
+recorded the failure as pre-existing since `988a327` and left it without a
+cause; this entry records the cause and the cut.
+
+**Cause, measured.** `infrastructure/marketData/serverFns.ts` exported
+`getContainer`, a plain async function whose body dynamically imported the
+providers and `~/services/avanzaMcp/client` →
+`@modelcontextprotocol/sdk/dist/esm/client/stdio.js` → `node:stream`.
+Every route imports `serverFns`. TanStack Start strips `createServerFn`
+handler bodies from the client build and nothing else, so rollup loaded
+that dynamic-import chain for the browser and failed linking `PassThrough`.
+Neutralising that one function's body made the build pass; restoring it
+made it fail.
+
+**The cut.** The factory now lives in
+`infrastructure/marketData/containerInstance.ts`, imported statically by
+nothing. Handlers in `marketData/serverFns.ts`, `marketData/healthFns.ts`
+and `jarvis/serverFns.ts` reach it with `await import('./containerInstance')`
+inside their own bodies; the JARVIS door hands the getter into its runtime
+so no module-level code names the module. A module-level helper wrapping
+the same dynamic import re-introduces the failure — measured — which is why
+the import is repeated at each call site rather than shared. The two
+fitness pins (`COMPOSITION_ROOTS`, "registers only approved providers")
+moved with the factory.
+
+**What did not change.** One container per process, memoised; the same
+providers registered under the same modes; the health token gate; the live
+JARVIS runtime's use of the market brief.

@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Library,
   Settings,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -50,6 +51,13 @@ export interface NavItem {
 export const primaryNav: NavItem[] = [
   { to: '/', label: 'Kommandocentral', icon: LayoutDashboard },
   { to: '/headquarters', label: 'Huvudkontor', icon: Landmark },
+  /*
+   * Klienter `/clients` — whom the firm serves, and what each relationship
+   * needs. A fourth question beside the three above: not the world, not the
+   * firm, not its evidence, but the people the advisor answers to. Added
+   * with Client Intelligence Phase 1 (`docs/client-intelligence.md`).
+   */
+  { to: '/clients', label: 'Klienter', icon: Users },
   { to: '/evidence', label: 'Underlag', icon: Library },
 ]
 
