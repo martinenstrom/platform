@@ -56,10 +56,12 @@ timely financing opportunity as its drivers. Never three items.
 | 5   | Meeting within 14 days                                                          | high if there is something to prepare, else normal | today if ≤ 7 days and something to prepare, else upcoming |
 | 6   | Material event within 14 days                                                   | high                                               | today if ≤ 3 days, else upcoming                          |
 | 7   | Relationship risk: health at-risk, silence ≥ 90 days, or a complaint within 180 | high                                               | today                                                     |
+| 7b  | Market impact: a _major_ market move at _high_ relevance (Market-to-Client V1)  | high                                               | today                                                     |
 | 8   | Material event within 30 days                                                   | normal                                             | upcoming                                                  |
 | 9   | Silence ≥ 60 days                                                               | normal                                             | upcoming                                                  |
 | 10  | Concern recorded within 30 days                                                 | normal                                             | upcoming                                                  |
 | 11  | Excess cash or allocation drift ≥ 5 pp                                          | normal                                             | watch                                                     |
+| 11b | Market impact: a _notable_ market move at _high_ relevance                      | normal                                             | upcoming                                                  |
 | 12  | Material event within 90 days                                                   | low                                                | watch                                                     |
 | 13  | Birthday within 7 days                                                          | low                                                | upcoming                                                  |
 | 14  | Soft event (annual review, family) within 30 days                               | low                                                | upcoming                                                  |
@@ -153,10 +155,26 @@ Two seed changes made this honest: Ekstrand's capital call moved from 35 to
 days from _today_, whatever today is, so the relationship prompt stays
 demonstrable.
 
+### Market-to-Client (added 2026-09-24)
+
+A `market` driver carries Market-to-Client's verdict for the client: the
+event, its relevance and directness, and the record ids the impact rests on
+(`docs/market-to-client.md`). Only medium and high relevance reach Sentinel
+(weights 6 and 12); low relevance stays on the client page. A high-relevance
+impact anchors a `market-impact` theme only at rows 7b and 11b above — when no
+promise, meeting, event or relationship risk already calls. Otherwise it
+strengthens the one priority the record already has: as a driver, and by
+lifting a _normal_ priority to _high_ (`strengthenedByMarket`; a _watch_
+horizon becomes _upcoming_). Critical is never lifted, nothing lifts twice,
+and a second priority is never opened. The fingerprint carries the event's
+key (`rates:rate:se10y:daily`), not its values, so a dismissal holds while
+the episode lasts and lapses when it fades or expires.
+
 ## 6. Not built
 
-No market-triggered signals, no competitor or fee intelligence, no
-notifications, no calendar or e-mail, no production AI, no persistence.
+No competitor or fee intelligence, no notifications, no calendar or e-mail,
+no production AI, no persistence. Market-triggered relevance arrived with
+Market-to-Client V1 (`docs/market-to-client.md`).
 _Fråga JARVIS_ does not yet answer "why is Henrik a priority" (TD-105); the
 priority object already carries the deterministic explanation the surfaces
 show.

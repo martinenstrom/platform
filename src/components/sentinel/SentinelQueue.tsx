@@ -12,6 +12,7 @@ import {
   preparation,
   priorityTitle,
   SEVERITY_LABEL,
+  STRENGTHENED_BY_MARKET,
   whyItMatters,
   whyNow,
 } from '~/presentation/advisory/sentinelText'
@@ -305,6 +306,9 @@ function PriorityRow({
             {SEVERITY_LABEL[priority.severity]}
           </span>
           {entry.status === 'reviewed' && <span className="type-machine">granskad</span>}
+          {priority.strengthenedByMarket && (
+            <span className="type-machine text-accent">{STRENGTHENED_BY_MARKET}</span>
+          )}
         </div>
         <Link
           to="/clients/$clientId"

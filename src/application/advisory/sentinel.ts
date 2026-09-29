@@ -10,6 +10,7 @@
  */
 
 import {
+  assessClient,
   comparePriorities,
   daysBetween,
   isIsoDate,
@@ -28,6 +29,7 @@ import {
   type SentinelPriority,
 } from '~/domain/advisory'
 import { assembleClientFacts } from './clientFacts'
+import { activeMarketEvents } from './marketImpact'
 import { todayOf, type AdvisoryContext } from './ports'
 
 export interface SentinelClient {
@@ -100,6 +102,8 @@ export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelB
   const today = todayOf(context)
   const clients = await repositories.clients.list()
   const dispositions = await repositories.sentinel.dispositions()
+  /* The market, once for the whole brief: the same events every client is judged against. */
+  const events = await activeMarketEvents(context)
   const entries: SentinelEntry[] = []
   const quiet: { id: string; displayName: string }[] = []
   let meetingsWithin7Days = 0
@@ -117,7 +121,7 @@ export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelB
         c.status === 'open' && c.dueDate !== null && daysBetween(c.dueDate, today) > 0,
     ).length
 
-    const priority = prioritiseClient(facts, health, signals)
+    const priority = prioritiseClient(facts, health, signals, assessClient(events, facts))
     if (!priority) {
       quiet.push({ id: client.id, displayName: client.displayName })
       continue
@@ -208,7 +212,15 @@ export async function disposePriority(
   if (!clientId) return { ok: false, code: 'NOT_FOUND' }
   const facts = await assembleClientFacts(context, clientId)
   if (!facts) return { ok: false, code: 'NOT_FOUND' }
-  const priority = prioritiseClient(facts)
+  /* Re-derived against the same market the brief saw, so a market-anchored or market-lifted priority is found as shown. */
+  const events = await activeMarketEvents(context)
+  const health = relationshipHealth(facts)
+  const priority = prioritiseClient(
+    facts,
+    health,
+    signalsFor(facts, health),
+    assessClient(events, facts),
+  )
   if (!priority || priority.id !== input.priorityId)
     return { ok: false, code: 'NOT_FOUND' }
 

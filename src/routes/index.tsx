@@ -2,7 +2,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LightCommandCenter } from '~/components/lightDashboard/LightCommandCenter'
 import { getOverviewSnapshotFn } from '~/infrastructure/marketData/serverFns'
 import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
-import { getSentinelBriefFn } from '~/infrastructure/advisory/serverFns'
+import {
+  getMarketImpactFn,
+  getSentinelBriefFn,
+} from '~/infrastructure/advisory/serverFns'
 
 /**
  * Kommandocentralen — the Financial OS home, and the answer to *what is
@@ -45,7 +48,7 @@ import { getSentinelBriefFn } from '~/infrastructure/advisory/serverFns'
  */
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [snapshot, operator, sentinel] = await Promise.all([
+    const [snapshot, operator, sentinel, marketImpact] = await Promise.all([
       getOverviewSnapshotFn(),
       getCurrentOperatorFn(),
       /*
@@ -55,19 +58,25 @@ export const Route = createFileRoute('/')({
        * and the market screen renders complete without it.
        */
       getSentinelBriefFn(),
+      /*
+       * Market-to-Client: which clients the material moves touch. Read from
+       * the same market snapshot and the same record, on the same clock.
+       */
+      getMarketImpactFn(),
     ])
-    return { snapshot, operator, sentinel }
+    return { snapshot, operator, sentinel, marketImpact }
   },
   component: HomePage,
 })
 
 function HomePage() {
-  const { snapshot, operator, sentinel } = Route.useLoaderData()
+  const { snapshot, operator, sentinel, marketImpact } = Route.useLoaderData()
   return (
     <LightCommandCenter
       snapshot={snapshot}
       operator={operator.ok ? operator.operator : undefined}
       sentinel={sentinel.ok ? sentinel.brief : undefined}
+      marketImpact={marketImpact.ok ? marketImpact.brief : undefined}
     />
   )
 }

@@ -13,13 +13,9 @@ import type {
   ConfirmClientUpdateResult,
   ItemDecision,
 } from '~/application/advisory/confirmClientUpdate'
+import type { MeetingPrepView } from '~/application/advisory/meetingPrep'
 import type { RecordClientUpdateResult } from '~/application/advisory/recordClientUpdate'
-import type {
-  Importance,
-  InteractionSource,
-  InteractionType,
-  MeetingPrep,
-} from '~/domain/advisory'
+import type { Importance, InteractionSource, InteractionType } from '~/domain/advisory'
 
 export interface RecordUpdateInput {
   noteText: string
@@ -42,7 +38,7 @@ export interface ClientActions {
   ): Promise<CompleteCommitmentResult | Unavailable>
   ask(question: string): Promise<AskAboutClientResult | Unavailable>
   prepareMeeting(): Promise<
-    | { ok: true; prep: MeetingPrep }
+    | { ok: true; prep: MeetingPrepView }
     | { ok: false; code: 'NOT_FOUND' | 'SERVICE_UNAVAILABLE' }
   >
 }

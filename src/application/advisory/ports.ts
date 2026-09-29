@@ -27,6 +27,9 @@ import type {
   ImportantEvent,
   Interaction,
   Liability,
+  MarketLedgerState,
+  MarketObservation,
+  MaterialityPolicy,
   MemoryCandidate,
   Opportunity,
   Portfolio,
@@ -94,6 +97,31 @@ export interface SentinelRepository {
   addDisposition(disposition: SentinelDisposition): Promise<void>
 }
 
+/**
+ * The market events Market-to-Client holds — the open episodes, one per
+ * instrument and horizon, and the closed ones kept as history. Active
+ * events feed current urgency; history answers "what happened since the
+ * last meeting" and boosts nothing. Derived state, never a record: rebuilt
+ * from the next observation and lost without harm when the process ends
+ * (TD-110).
+ */
+export interface MarketEventLedger {
+  state(): Promise<MarketLedgerState>
+  replace(state: MarketLedgerState): Promise<void>
+}
+
+/**
+ * What the market pipeline reports now, in the advisory domain's own
+ * observation shape. Optional on the context: without it, no event opens
+ * and every client's market impact is empty — the record is complete
+ * without the market.
+ */
+export interface MarketObservationSource {
+  observe(): Promise<readonly MarketObservation[]>
+  /** The example scenario the observations were shaped by, where one is — never null for invented moves. */
+  scenario: string | null
+}
+
 export type MintedKind = 'interaction' | 'candidate' | 'fact' | 'commitment' | 'event'
 
 /** The record mints every identity. A caller never supplies one. */
@@ -112,13 +140,17 @@ export interface AdvisoryRepositories {
   events: EventRepository
   opportunities: OpportunityRepository
   sentinel: SentinelRepository
+  marketEvents: MarketEventLedger
   ids: IdentityMint
 }
 
-/** Everything an advisory use case needs: the record and the time. */
+/** Everything an advisory use case needs: the record, the time, and — where wired — the market. */
 export interface AdvisoryContext {
   repositories: AdvisoryRepositories
   clock: Clock
+  market?: MarketObservationSource
+  /** The materiality lines events are judged against; V1's fixed `MATERIALITY` when absent. */
+  materiality?: MaterialityPolicy
 }
 
 /** The calendar date the context's clock reads, as the domain wants it. */

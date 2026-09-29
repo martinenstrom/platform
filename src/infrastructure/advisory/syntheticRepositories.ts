@@ -30,6 +30,7 @@ import type {
   ImportantEvent,
   Interaction,
   Liability,
+  MarketLedgerState,
   MemoryCandidate,
   Opportunity,
   Portfolio,
@@ -84,6 +85,8 @@ export function createSyntheticAdvisoryRepositories(
   const sequences = new Map<MintedKind, number>()
   /* What the advisor decided about Sentinel priorities, in the order decided. Empty at seed. */
   const dispositions: SentinelDisposition[] = []
+  /* The open market events and the closed ones kept as history. Derived state, rebuilt on every read. */
+  let marketLedger: MarketLedgerState = { active: [], history: [] }
 
   return {
     clients: {
@@ -203,6 +206,14 @@ export function createSyntheticAdvisoryRepositories(
       },
       async addDisposition(disposition) {
         dispositions.push(disposition)
+      },
+    },
+    marketEvents: {
+      async state() {
+        return { active: [...marketLedger.active], history: [...marketLedger.history] }
+      },
+      async replace(state) {
+        marketLedger = { active: [...state.active], history: [...state.history] }
       },
     },
     ids: {

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EvidenceRouteImport } from './routes/evidence'
 import { Route as HeadquartersRouteImport } from './routes/headquarters'
+import { Route as MarketImpactRouteImport } from './routes/market-impact'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -41,6 +42,11 @@ const EvidenceRoute = EvidenceRouteImport.update({
 const HeadquartersRoute = HeadquartersRouteImport.update({
   id: '/headquarters',
   path: '/headquarters',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketImpactRoute = MarketImpactRouteImport.update({
+  id: '/market-impact',
+  path: '/market-impact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketsRoute = MarketsRouteImport.update({
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/evidence': typeof EvidenceRoute
   '/headquarters': typeof HeadquartersRoute
+  '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/evidence': typeof EvidenceRoute
   '/headquarters': typeof HeadquartersRoute
+  '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/evidence': typeof EvidenceRoute
   '/headquarters': typeof HeadquartersRoute
+  '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/reports': typeof ReportsRoute
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/'
     | '/evidence'
     | '/headquarters'
+    | '/market-impact'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/'
     | '/evidence'
     | '/headquarters'
+    | '/market-impact'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/'
     | '/evidence'
     | '/headquarters'
+    | '/market-impact'
     | '/markets'
     | '/portfolio'
     | '/reports'
@@ -248,6 +260,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EvidenceRoute: typeof EvidenceRoute
   HeadquartersRoute: typeof HeadquartersRoute
+  MarketImpactRoute: typeof MarketImpactRoute
   MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
   ReportsRoute: typeof ReportsRoute
@@ -286,6 +299,13 @@ declare module '@tanstack/react-router' {
       path: '/headquarters'
       fullPath: '/headquarters'
       preLoaderRoute: typeof HeadquartersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/market-impact': {
+      id: '/market-impact'
+      path: '/market-impact'
+      fullPath: '/market-impact'
+      preLoaderRoute: typeof MarketImpactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/markets': {
@@ -400,6 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EvidenceRoute: EvidenceRoute,
   HeadquartersRoute: HeadquartersRoute,
+  MarketImpactRoute: MarketImpactRoute,
   MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
   ReportsRoute: ReportsRoute,

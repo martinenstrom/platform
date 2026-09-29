@@ -10,6 +10,7 @@
 
 import {
   allocationDeviations,
+  assessClient,
   clientFlags,
   currencyExposure,
   daysBetween,
@@ -32,6 +33,7 @@ import {
   type Client,
   type ClientFlags,
   type ClientId,
+  type ClientMarketImpact,
   type Commitment,
   type ContextFact,
   type Goal,
@@ -50,6 +52,12 @@ import {
   type Signal,
 } from '~/domain/advisory'
 import { assembleClientFacts } from './clientFacts'
+import {
+  marketChangesSince,
+  marketLedger,
+  marketWindowStart,
+  type MarketChangeSince,
+} from './marketImpact'
 import type { AdvisoryContext } from './ports'
 
 export type UpcomingEvent = ImportantEvent & { occursOn: string; daysAhead: number }
@@ -87,6 +95,14 @@ export interface Client360 {
   signals: readonly Signal[]
   nextBestAction: NextBestAction | null
   flags: ClientFlags
+  /** Market-to-Client: the open market events this record is exposed to, most relevant first. Empty is an answer. */
+  marketImpacts: readonly ClientMarketImpact[]
+  /**
+   * The client-relevant moves that have already closed within the standing
+   * window: history, quoted at peak, contributing to no priority — so the
+   * page can answer "what happened lately" after the urgency has passed.
+   */
+  recentMarketHistory: readonly MarketChangeSince[]
   lastContact: Interaction | null
   lastMeeting: Interaction | null
   nextMeeting: UpcomingEvent | null
@@ -105,12 +121,18 @@ export async function client360(
   const facts = await assembleClientFacts(context, clientId)
   if (!facts) return null
   const { repositories } = context
-  const [assets, household, advisor, candidates] = await Promise.all([
+  const [assets, household, advisor, candidates, ledger] = await Promise.all([
     repositories.wealth.assetsOf(clientId),
     repositories.clients.householdById(facts.client.householdId),
     repositories.clients.advisorById(facts.client.primaryAdvisorId),
     repositories.interactions.candidatesOf(clientId),
+    marketLedger(context),
   ])
+  const marketHistory = marketChangesSince(
+    ledger,
+    facts,
+    marketWindowStart(null, facts.today),
+  ).filter((change) => change.status === 'closed')
   const health = relationshipHealth(facts)
   const signals = signalsFor(facts, health)
   const meeting = nextMeeting(facts)
@@ -146,6 +168,8 @@ export async function client360(
     signals,
     nextBestAction: nextBestAction(facts, signals),
     flags: clientFlags(facts, signals, health),
+    marketImpacts: assessClient(ledger.active, facts),
+    recentMarketHistory: marketHistory,
     lastContact: lastContact(facts),
     lastMeeting: lastMeeting(facts),
     nextMeeting: meeting

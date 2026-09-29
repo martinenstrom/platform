@@ -3133,3 +3133,65 @@ moved with the factory.
 **What did not change.** One container per process, memoised; the same
 providers registered under the same modes; the health token gate; the live
 JARVIS runtime's use of the market brief.
+
+---
+
+## TD-108 · Market-to-Client coverage is the overview's coverage · open
+
+Opened 2026-09-24 with Market-to-Client V1 (`docs/market-to-client.md` §8).
+
+The engine judges clients against the series the overview snapshot carries:
+four government yields, six indices, the nine S&P 500 sectors, USD/SEK and
+EUR/USD, Brent and Gold, and the cross-asset score. Three gaps follow. A
+Swedish energy or bank holding is judged against the US sector, because no
+Swedish sector series exists. FX carries a currency tag only for pairs
+quoted in SEK, so EUR/USD opens events that reach nobody, and a EUR holding
+is reachable only once EUR/SEK is served. Gold reaches nobody by design (no
+holding is tagged as a metal theme). None of this is wrong; it is narrower
+than the product claims once a Nordic sector feed or EUR/SEK arrives.
+
+**Resolution.** Add the series to the overview under the existing provider
+discipline, then extend `SECTOR_OF` / `FX_CURRENCY` in
+`application/advisory/marketImpact.ts` — the domain pathways need no change.
+
+---
+
+## TD-109 · Materiality thresholds are fixed constants · open
+
+Opened 2026-09-24.
+
+`MATERIALITY` states one enter/exit/major line per category (10/6/20 bp for
+rates, 1.5/1.0/3 % for indices, and so on). They are documented and tested,
+but not scaled to realised volatility: a 12 bp day is _notable_ whether the
+curve has moved 2 bp a day for a month or 15. V1 chose stated constants
+over a volatility model deliberately — a threshold the advisor can quote
+beats one that moves — but a calm-regime / stressed-regime pair, or a
+z-score against a trailing window, is the natural next version.
+
+**Resolution.** Version the rule (`method: 'market-to-client-v2'`), keep the
+constants as the floor, and measure on recorded history before widening
+anything (`[[measured-need-earns-budget]]`).
+
+---
+
+## TD-110 · the market-event ledger is per process · open
+
+Opened 2026-09-24. A consequence of TD-104, recorded separately because its
+failure mode differs.
+
+`repositories.marketEvents` holds the open events between reads so
+hysteresis, expiry and first-seen times hold across requests, and — since
+the 2026-09-29 hardening pass — the closed episodes as history (180 days,
+at peak, with close reason), which the meeting briefing and Client 360 read
+for "what happened since the last meeting". It lives in the synthetic
+repository with everything else, so a server restart forgets every open
+episode and every closed one: the next read re-opens events on the enter
+line with a fresh `firstSeenAt`, a dismissal bound to an event that was
+mid-fade (below enter, above exit) lapses because the event does not
+re-open, and the briefing's market window is empty until new moves open.
+Derived state, harmless in a demonstration, wrong for an advisor who
+dismissed something at 09:00 and sees it back at 09:05 after a deploy, or
+who prepares a meeting the morning after a deploy.
+
+**Resolution.** Persist the ledger beside the dispositions when TD-104 is
+resolved; the port is already the seam.

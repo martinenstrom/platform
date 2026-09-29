@@ -23,6 +23,7 @@ import {
   formatMsek,
   formatPoints,
 } from './format'
+import { DIRECTNESS_LABEL, marketMoveText, RELEVANCE_LABEL } from './marketImpactText'
 import {
   ASSET_CLASS_LABEL,
   EVENT_LABEL,
@@ -75,7 +76,11 @@ export const THEME_LABEL: Record<SentinelTheme, string> = {
   birthday: 'Födelsedag',
   'stale-valuation': 'Föråldrad värdering',
   opportunity: 'Möjlighet',
+  'market-impact': 'Marknadspåverkan',
 }
+
+/** "förstärkt av marknadsläget" — the chip beside a priority a market impact lifted. */
+export const STRENGTHENED_BY_MARKET = 'förstärkt av marknadsläget'
 
 const has = <K extends SentinelDriver['kind']>(priority: SentinelPriority, kind: K) =>
   priority.drivers.find((d): d is Extract<SentinelDriver, { kind: K }> => d.kind === kind)
@@ -151,6 +156,10 @@ export function priorityTitle(entry: SentinelEntry): string {
       return 'Föråldrad värdering inför genomgången'
     case 'opportunity':
       return p.kind === 'opportunity' ? p.title : 'Möjlighet'
+    case 'market-impact':
+      return p.kind === 'market'
+        ? `Marknadspåverkan: ${marketMoveText(p)}`
+        : 'Marknadspåverkan'
   }
 }
 
@@ -201,6 +210,8 @@ export function driverText(driver: SentinelDriver): string {
       return driver.sinceDays === null
         ? 'Ingen finansieringsdiskussion finns registrerad.'
         : `Finansiering diskuterades senast för ${driver.sinceDays} dagar sedan.`
+    case 'market':
+      return `Marknad: ${marketMoveText(driver)} – ${RELEVANCE_LABEL[driver.relevance].toLowerCase()} relevans, ${DIRECTNESS_LABEL[driver.directness].toLowerCase()}.`
   }
 }
 
@@ -294,6 +305,10 @@ export function preparation(priority: SentinelPriority): string {
       return 'Uppdatera värderingen före genomgången.'
     case 'opportunity':
       return 'Bedöm om tidpunkten är rätt att ta upp möjligheten.'
+    case 'market-impact':
+      return has(priority, 'concern')
+        ? 'Gå igenom hur rörelsen berör klientens exponering och förbered ett svar på den oro som finns registrerad.'
+        : 'Gå igenom hur rörelsen berör klientens exponering och förbered ett samtalsunderlag – kontakten är rådgivarens beslut.'
   }
 }
 

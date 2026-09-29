@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { MeetingPrep } from '~/domain/advisory'
+import type { MeetingPrepView } from '~/application/advisory/meetingPrep'
 import { cn } from '~/lib/cn'
 import {
   formatDayMonth,
@@ -9,6 +9,13 @@ import {
   formatPoints,
 } from '~/presentation/advisory/format'
 import { signalText } from '~/presentation/advisory/intelligenceText'
+import {
+  changeStatusText,
+  marketMoveText,
+  peakMoveText,
+  RELEVANCE_LABEL,
+  relevanceText,
+} from '~/presentation/advisory/marketImpactText'
 import {
   ASSET_CLASS_LABEL,
   EVENT_LABEL,
@@ -30,7 +37,7 @@ export function MeetingPrepPanel({
   error,
   onClose,
 }: {
-  prep: MeetingPrep | null
+  prep: MeetingPrepView | null
   loading: boolean
   error: string | null
   onClose: () => void
@@ -122,6 +129,43 @@ export function MeetingPrepPanel({
                         {formatDayMonth(f.provenance.sourceDate)}
                       </span>
                       Nytt: {f.statement}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Block>
+            <Block title="Marknad sedan senaste mötet">
+              {prep.marketSinceLastMeeting.length === 0 ? (
+                <p className="type-inst-sub">
+                  Inga klientrelevanta marknadsrörelser sedan{' '}
+                  {formatDayMonth(prep.marketWindowStart)}.
+                </p>
+              ) : (
+                <ul className="space-y-1 text-[12px]">
+                  {prep.marketSinceLastMeeting.map((change) => (
+                    <li
+                      key={change.impact.event.id + change.impact.event.firstSeenAt}
+                      className="text-content-muted"
+                    >
+                      <span className="text-content">
+                        {change.status === 'closed'
+                          ? peakMoveText(change.impact.event)
+                          : marketMoveText(change.impact.event)}
+                      </span>
+                      <span
+                        className={cn(
+                          'type-machine ml-1.5',
+                          change.impact.relevance === 'high' && 'text-warning',
+                        )}
+                      >
+                        {RELEVANCE_LABEL[change.impact.relevance].toLowerCase()} relevans
+                      </span>
+                      <span className="block leading-snug">
+                        {relevanceText(change.impact)}
+                      </span>
+                      <span className="type-machine block">
+                        {changeStatusText(change)}
+                      </span>
                     </li>
                   ))}
                 </ul>

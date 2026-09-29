@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Client360 as Client360View } from '~/application/advisory/client360'
-import type { MeetingPrep } from '~/domain/advisory'
+import type { MeetingPrepView } from '~/application/advisory/meetingPrep'
 import { AskJarvisClient } from './AskJarvisClient'
 import type { ClientActions } from './clientActions'
 import { ClientContextPanel } from './ClientContextPanel'
@@ -14,6 +14,7 @@ import { GoalsPanel } from './GoalsPanel'
 import { HouseholdPanel } from './HouseholdPanel'
 import { IntelligenceRail } from './IntelligenceRail'
 import { JarvisIntelligence } from './JarvisIntelligence'
+import { MarketImpactPanel } from './MarketImpactPanel'
 import { MeetingPrepPanel } from './MeetingPrepPanel'
 import { OpportunitiesPanel } from './OpportunitiesPanel'
 import { PortfolioPanel } from './PortfolioPanel'
@@ -45,7 +46,7 @@ export function Client360({
   onChanged: () => Promise<void>
 }) {
   const [door, setDoor] = useState<'update' | 'prep' | null>(null)
-  const [prep, setPrep] = useState<MeetingPrep | null>(null)
+  const [prep, setPrep] = useState<MeetingPrepView | null>(null)
   const [prepLoading, setPrepLoading] = useState(false)
   const [prepError, setPrepError] = useState<string | null>(null)
 
@@ -103,6 +104,11 @@ export function Client360({
           <FinancialSnapshot view={view} />
           <WealthStructure view={view} />
           <PortfolioPanel view={view} />
+          {/* Market-to-Client: what the market moved that this record is exposed to. */}
+          <MarketImpactPanel
+            impacts={view.marketImpacts}
+            history={view.recentMarketHistory}
+          />
           <GoalsPanel goals={view.goals} />
 
           <h2 className="type-section mt-2 px-1 text-institution">

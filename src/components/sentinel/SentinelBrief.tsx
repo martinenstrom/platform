@@ -10,6 +10,7 @@ import {
   preparation,
   priorityTitle,
   SEVERITY_LABEL,
+  STRENGTHENED_BY_MARKET,
   whyNow,
 } from '~/presentation/advisory/sentinelText'
 
@@ -135,6 +136,11 @@ function BriefTile({ entry, index }: { entry: SentinelEntry; index: number }) {
         {priorityTitle(entry)}
       </p>
       <p className="mt-1 text-[12px] leading-snug text-[#9aa7b7]">{whyNow(priority)}</p>
+      {priority.strengthenedByMarket && (
+        <p className="mt-1 text-[10px] font-medium tracking-[0.1em] text-[#73c8ff] uppercase">
+          {STRENGTHENED_BY_MARKET}
+        </p>
+      )}
       <p className="mt-2 text-[11px] text-[#6f88a0]">{contextLine(entry)}</p>
       <p className="mt-2 flex-1 text-[12px] leading-snug text-[#c7d0dc]">
         <span className={cn(LABEL, 'mr-1.5 text-[10px]')}>Förberedelse</span>

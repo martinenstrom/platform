@@ -60,7 +60,15 @@ import {
 import { hasData, SERIES_RANGES, type SeriesRange } from '~/domain/market'
 import type { OverviewSnapshot } from '~/application/marketData/getOverviewSnapshot'
 import type { SentinelBrief } from '~/application/advisory/sentinel'
+import type { MarketImpactBrief } from '~/application/advisory/marketImpact'
 import { SentinelBriefList, SentinelGreeting } from '~/components/sentinel/SentinelBrief'
+import {
+  AffectedClientsMark,
+  GlyphWithAffectedClients,
+  MarketImpactList,
+  meaningfulEvents,
+} from '~/components/marketImpact/MarketImpactModule'
+import { dashboardEpisodes } from '~/presentation/advisory/marketImpactText'
 import type { CountryMacroData, CountryRegistryEntry } from '~/types/countryExplorer'
 import type { CurrentOperator } from '~/application/analysis/currentOperator'
 
@@ -371,6 +379,7 @@ export function LightCommandCenter({
   snapshot,
   operator,
   sentinel,
+  marketImpact,
 }: {
   snapshot: OverviewSnapshot
   /** Who the product is addressing; absent when no operator is configured. */
@@ -381,6 +390,12 @@ export function LightCommandCenter({
    * the market screen is complete without it.
    */
   sentinel?: SentinelBrief
+  /**
+   * Market-to-Client: which clients the material moves touch. Absent when
+   * the advisory record did not answer; then no row carries a client count
+   * and no module renders, and the market screen is complete without it.
+   */
+  marketImpact?: MarketImpactBrief
 }) {
   const [mounted, setMounted] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -488,10 +503,22 @@ export function LightCommandCenter({
   ].map(({ quote, disclosure }) => ({ ...toMarketRowViewModel(quote), disclosure }))
   const rates = dataOr(snapshot.yields, []).map((entry) => ({
     ...toYieldViewModel(entry),
+    id: String(entry.symbol),
     disclosure: discloseObservation(entry.provenance, snapshot.yields, {
       symbol: entry.symbol,
     }),
   }))
+  /*
+   * The client count beside a market row: which open event this series
+   * belongs to, when at least one client is meaningfully exposed. Keyed by
+   * the symbol the row already carries; the row itself computes nothing.
+   */
+  const affectedBySymbol = new Map(
+    (marketImpact ? meaningfulEvents(marketImpact) : []).map((entry) => [
+      entry.event.symbol,
+      entry,
+    ]),
+  )
   const rateCurve = toYieldCurveValues(
     hasData(snapshot.yieldCurve) ? snapshot.yieldCurve.data : undefined,
   )
@@ -624,6 +651,10 @@ export function LightCommandCenter({
                     <p className="flex items-center text-[12px] font-medium text-[#7f97ad]">
                       <span className="truncate">{card.label}</span>
                       <MarketDisclosure disclosure={card.disclosure} />
+                      <AffectedClientsMark
+                        entry={affectedBySymbol.get(card.id)}
+                        variant="compact"
+                      />
                     </p>
                     <p className="mt-1.5 text-[21px] font-semibold text-[#f4f7fb] tabular-nums">
                       {card.value}
@@ -713,9 +744,11 @@ export function LightCommandCenter({
                       className="flex items-center justify-between gap-3 border-t border-[rgba(70,130,163,0.12)] py-2.5 first:border-t-0"
                     >
                       <span className="flex min-w-0 items-center gap-2.5 text-sm text-[#c9d6e2]">
-                        <span aria-hidden="true" className="text-base leading-none">
-                          {row.icon}
-                        </span>
+                        <GlyphWithAffectedClients entry={affectedBySymbol.get(row.id)}>
+                          <span aria-hidden="true" className="text-base leading-none">
+                            {row.icon}
+                          </span>
+                        </GlyphWithAffectedClients>
                         <span className="truncate">{row.label}</span>
                         <MarketDisclosure disclosure={row.disclosure} />
                       </span>
@@ -819,6 +852,30 @@ export function LightCommandCenter({
               }
             >
               <SentinelBriefList brief={sentinel} limit={4} />
+            </SectionCard>
+          )}
+
+          {/*
+           * Marknadspåverkan — Market-to-Client. Which clients the market's
+           * material moves touch, in the same card as everything else, and
+           * only when a move touches somebody: a calm market earns no module.
+           */}
+          {marketImpact && dashboardEpisodes(marketImpact.episodes).length > 0 && (
+            <SectionCard
+              title="Marknadspåverkan"
+              action={
+                <span className="flex items-center gap-4">
+                  <span className={LABEL}>Market-to-Client</span>
+                  <Link
+                    to="/market-impact"
+                    className="text-[11px] font-medium tracking-[0.12em] text-[#7f97ad] uppercase hover:text-[#f4f7fb]"
+                  >
+                    Vilka klienter berörs? →
+                  </Link>
+                </span>
+              }
+            >
+              <MarketImpactList brief={marketImpact} />
             </SectionCard>
           )}
 
@@ -928,6 +985,10 @@ export function LightCommandCenter({
                       <MarketDisclosure disclosure={rate.disclosure} />
                     </span>
                     <span className="flex shrink-0 items-center gap-3">
+                      <AffectedClientsMark
+                        entry={affectedBySymbol.get(rate.id)}
+                        variant="compact"
+                      />
                       <span className="text-sm font-semibold text-[#f4f7fb] tabular-nums">
                         {rate.value}
                       </span>
@@ -954,10 +1015,12 @@ export function LightCommandCenter({
                   const Icon = SECTOR_ICONS[sector.id] ?? Cpu
                   return (
                     <li key={sector.label} className="flex items-center gap-2">
-                      <Icon
-                        className="h-3 w-3 shrink-0 text-[#6b7d90]"
-                        aria-hidden="true"
-                      />
+                      <GlyphWithAffectedClients entry={affectedBySymbol.get(sector.id)}>
+                        <Icon
+                          className="h-3 w-3 shrink-0 text-[#6b7d90]"
+                          aria-hidden="true"
+                        />
+                      </GlyphWithAffectedClients>
                       <span className="w-16 shrink-0 truncate text-[11px] text-[#9aa7b7]">
                         {sector.label}
                       </span>

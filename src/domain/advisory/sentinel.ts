@@ -49,6 +49,13 @@ import {
   type RelationshipHealth,
   type Signal,
 } from './intelligence'
+import type {
+  ClientMarketImpact,
+  Directness,
+  MarketCategory,
+  MarketSeverity,
+  Relevance,
+} from './marketToClient'
 import type { AssetClass } from './portfolio'
 import type {
   DiscussionTopic,
@@ -122,6 +129,8 @@ export type SentinelTheme =
   | 'birthday'
   | 'stale-valuation'
   | 'opportunity'
+  /** A material market move the client's record is highly exposed to, when nothing else calls. */
+  | 'market-impact'
 
 export type SentinelSeverity = 'critical' | 'high' | 'normal' | 'low'
 export type SentinelHorizon = 'today' | 'upcoming' | 'watch'
@@ -213,6 +222,27 @@ export type SentinelDriver =
   | { kind: 'complaint'; interactionId: string; date: string }
   /** An approaching matter the record shows no recent conversation about. */
   | { kind: 'undiscussed'; topic: DiscussionTopic; sinceDays: number | null }
+  /**
+   * A material market move the client's record is exposed to, or has context
+   * for — Market-to-Client's verdict, carried as evidence. Only medium and
+   * high relevance reach Sentinel; low relevance stays on the client page.
+   */
+  | {
+      kind: 'market'
+      eventId: string
+      impactId: string
+      category: MarketCategory
+      symbol: string
+      label: string
+      change: number
+      changeUnit: 'bp' | 'percent' | 'points'
+      direction: 'up' | 'down'
+      eventSeverity: MarketSeverity
+      relevance: Relevance
+      directness: Directness
+      /** The record ids the impact rests on: holdings, loans, facts, events. */
+      sourceIds: readonly string[]
+    }
 
 export interface SentinelPriority {
   /** Stable while the theme persists: `${clientId}:${theme}`. */
@@ -230,6 +260,8 @@ export interface SentinelPriority {
   dueAt: string | null
   /** Every record id the priority rests on, sorted. */
   sourceIds: readonly string[]
+  /** True when a high-relevance market impact lifted a normal priority to high. */
+  strengthenedByMarket: boolean
   /** Changes when the facts change; a dismissal is bound to it. */
   fingerprint: string
   /** ISO date the priority was derived for. */
@@ -288,6 +320,8 @@ function driverWeight(driver: SentinelDriver): number {
       return driver.daysOld <= SENTINEL_THRESHOLDS.concernRecentDays ? 12 : 8
     case 'event':
       return driver.material ? 10 : 4
+    case 'market':
+      return driver.relevance === 'high' ? 12 : 6
     case 'health':
       return driver.band === 'at-risk' ? 15 : driver.band === 'watch' ? 6 : 0
     case 'silence':
@@ -336,6 +370,9 @@ function sourceIdOf(driver: SentinelDriver): string | null {
       return driver.interactionId
     case 'stale-valuation':
       return driver.reviewEventId
+    /* The event key, not the impact id: the same episode keeps the same fingerprint while its values update. */
+    case 'market':
+      return driver.eventId
     case 'health':
     case 'allocation-drift':
     case 'excess-cash':
@@ -571,7 +608,8 @@ const meaningfulForMeeting = (d: SentinelDriver) =>
   (d.kind === 'event' && d.material) ||
   d.kind === 'stale-valuation' ||
   d.kind === 'health' ||
-  d.kind === 'undiscussed'
+  d.kind === 'undiscussed' ||
+  d.kind === 'market'
 
 /** The one thing to do, by precedence. Null when the record calls for nothing. */
 function chooseAnchor(drivers: readonly SentinelDriver[], today: string): Anchor | null {
@@ -671,6 +709,24 @@ function chooseAnchor(drivers: readonly SentinelDriver[], today: string): Anchor
     }
   }
 
+  /*
+   * A market move stands on its own only at high relevance, and only when no
+   * promise, meeting, event or relationship risk already calls: a major move
+   * is today's work, a notable one is upcoming. Medium relevance is evidence
+   * beneath whatever else anchors, never a reason by itself.
+   */
+  const marketHigh = find('market').filter((m) => m.relevance === 'high')
+  const marketMajor = marketHigh.find((m) => m.eventSeverity === 'major')
+  if (marketMajor) {
+    return {
+      theme: 'market-impact',
+      severity: 'high',
+      horizon: 'today',
+      primary: marketMajor,
+      dueAt: null,
+    }
+  }
+
   if (material[0] && material[0].daysAhead <= t.eventUpcomingDays) {
     return {
       theme: 'event-approaching',
@@ -712,6 +768,17 @@ function chooseAnchor(drivers: readonly SentinelDriver[], today: string): Anchor
       severity: 'normal',
       horizon: 'watch',
       primary: (cash ?? drift)!,
+      dueAt: null,
+    }
+  }
+
+  /* A notable move at high relevance outranks the low anchors below, and nothing above. */
+  if (marketHigh[0]) {
+    return {
+      theme: 'market-impact',
+      severity: 'normal',
+      horizon: 'upcoming',
+      primary: marketHigh[0],
       dueAt: null,
     }
   }
@@ -803,16 +870,17 @@ const DRIVER_ORDER: Record<SentinelDriver['kind'], number> = {
   meeting: 3,
   event: 4,
   concern: 5,
-  silence: 6,
-  health: 7,
-  undiscussed: 8,
-  'large-withdrawal': 9,
-  'allocation-drift': 10,
-  'excess-cash': 11,
-  'open-commitment': 12,
-  'stale-valuation': 13,
-  opportunity: 14,
-  birthday: 15,
+  market: 6,
+  silence: 7,
+  health: 8,
+  undiscussed: 9,
+  'large-withdrawal': 10,
+  'allocation-drift': 11,
+  'excess-cash': 12,
+  'open-commitment': 13,
+  'stale-valuation': 14,
+  opportunity: 15,
+  birthday: 16,
 }
 
 function orderDrivers(
@@ -830,18 +898,57 @@ function orderDrivers(
 
 /* ------------------------------------------------------------- the rule */
 
+/** Market-to-Client's verdicts as Sentinel evidence: medium and high relevance only, in relevance order. */
+function marketDrivers(impacts: readonly ClientMarketImpact[]): SentinelDriver[] {
+  return impacts
+    .filter((impact) => impact.relevance !== 'low')
+    .map((impact) => ({
+      kind: 'market',
+      eventId: impact.eventId,
+      impactId: impact.id,
+      category: impact.event.category,
+      symbol: impact.event.symbol,
+      label: impact.event.label,
+      change: impact.event.change,
+      changeUnit: impact.event.changeUnit,
+      direction: impact.event.direction,
+      eventSeverity: impact.event.severity,
+      relevance: impact.relevance,
+      directness: impact.directness,
+      sourceIds: impact.sourceIds,
+    }))
+}
+
 /**
  * The client's one priority, or null when the record calls for nothing —
  * a quiet, healthy relationship earns no line on the morning brief.
+ *
+ * Market impacts never open a second priority: a high-relevance impact
+ * anchors only when nothing else does, and otherwise strengthens the one
+ * priority the record already calls for — as a weighted driver, and by
+ * lifting a normal priority to high. Nothing lifts critical, and nothing
+ * lifts twice.
  */
 export function prioritiseClient(
   facts: ClientFacts,
   health: RelationshipHealth = relationshipHealth(facts),
   signals: readonly Signal[] = signalsFor(facts, health),
+  marketImpacts: readonly ClientMarketImpact[] = [],
 ): SentinelPriority | null {
-  const collected = collectDrivers(facts, health, signals)
+  const collected = [
+    ...collectDrivers(facts, health, signals),
+    ...marketDrivers(marketImpacts),
+  ]
   const anchor = chooseAnchor(collected, facts.today)
   if (!anchor) return null
+
+  const strengthenedByMarket =
+    anchor.theme !== 'market-impact' &&
+    anchor.severity === 'normal' &&
+    collected.some((d) => d.kind === 'market' && d.relevance === 'high')
+  const severity: SentinelSeverity = strengthenedByMarket ? 'high' : anchor.severity
+  const horizon: SentinelHorizon =
+    strengthenedByMarket && anchor.horizon === 'watch' ? 'upcoming' : anchor.horizon
 
   /* Opportunities ride along as evidence only when they are timely, or when the anchor is one. */
   const drivers = orderDrivers(
@@ -865,26 +972,27 @@ export function prioritiseClient(
           return ahead < 0 ? 30 + Math.min(-ahead, 30) : Math.max(0, 30 - ahead)
         })()
   const score =
-    SEVERITY_BASE[anchor.severity] +
+    SEVERITY_BASE[severity] +
     urgency +
     drivers.reduce((sum, d) => sum + driverWeight(d), 0)
 
   const sourceIds = [
     ...new Set(drivers.map(sourceIdOf).filter((id): id is string => id !== null)),
   ].sort()
-  const fingerprint = `${anchor.theme}|${anchor.severity}|${sourceIds.join(',')}`
+  const fingerprint = `${anchor.theme}|${severity}|${sourceIds.join(',')}`
 
   return {
     id: `${facts.client.id}:${anchor.theme}`,
     clientId: facts.client.id,
     theme: anchor.theme,
-    severity: anchor.severity,
-    horizon: anchor.horizon,
+    severity,
+    horizon,
     score,
     primary: drivers[0]!,
     drivers,
     dueAt: anchor.dueAt,
     sourceIds,
+    strengthenedByMarket,
     fingerprint,
     assessedAt: facts.today,
     method: 'sentinel-v1',
