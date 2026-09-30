@@ -26,11 +26,13 @@ import {
   type ClientSegment,
   type InteractionType,
   type NextBestAction,
+  type OfficeId,
   type RelationshipHealth,
   type RiskProfile,
   type Signal,
 } from '~/domain/advisory'
 import { assembleClientFacts } from './clientFacts'
+import { directoryMetricsOf, officeBooksOf, type OfficeBook } from './officeBook'
 import { todayOf, type AdvisoryContext } from './ports'
 
 export interface ClientDirectoryRow {
@@ -38,6 +40,9 @@ export interface ClientDirectoryRow {
   displayName: string
   segment: ClientSegment
   advisorName: string
+  /** The office the relationship originates from, and how a surface names it. */
+  officeId: OfficeId
+  officeName: string
   /** ISO date. */
   relationshipSince: string
   riskProfile: RiskProfile
@@ -83,6 +88,8 @@ export interface ClientDirectoryMetrics {
 export interface ClientDirectory {
   rows: readonly ClientDirectoryRow[]
   metrics: ClientDirectoryMetrics
+  /** The book office by office, in the register's order; the same rows summed per office. */
+  offices: readonly OfficeBook[]
   /** ISO date every derivation used. */
   today: string
   /** ISO timestamp. */
@@ -90,13 +97,15 @@ export interface ClientDirectory {
   method: 'rule-based-v1'
 }
 
-const MEETING_WINDOW_DAYS = 30
-
 export async function clientDirectory(
   context: AdvisoryContext,
 ): Promise<ClientDirectory> {
   const { repositories } = context
-  const clients = await repositories.clients.list()
+  const [clients, offices] = await Promise.all([
+    repositories.clients.list(),
+    repositories.clients.offices(),
+  ])
+  const officeNames = new Map(offices.map((o) => [o.id, o.displayName]))
   const rows: ClientDirectoryRow[] = []
 
   for (const client of [...clients].sort((a, b) =>
@@ -120,6 +129,8 @@ export async function clientDirectory(
       displayName: client.displayName,
       segment: client.segment,
       advisorName: advisor?.displayName ?? client.primaryAdvisorId,
+      officeId: client.officeId,
+      officeName: officeNames.get(client.officeId) ?? client.officeId,
       relationshipSince: client.relationshipSince,
       riskProfile: client.riskProfile,
       estimatedWealth: facts.balanceSheet.totalAssets,
@@ -147,25 +158,11 @@ export async function clientDirectory(
   }
 
   const today = todayOf(context)
-  const metrics: ClientDirectoryMetrics = {
-    totalClients: rows.length,
-    totalAum: rows.reduce((sum, r) => sum + r.aum, 0),
-    estimatedWealth: rows.reduce((sum, r) => sum + r.estimatedWealth, 0),
-    needingAttention: rows.filter((r) => r.flags.needsAttention).length,
-    upcomingMeetings: rows.filter(
-      (r) =>
-        r.nextMeeting !== null &&
-        daysBetween(today, r.nextMeeting) <= MEETING_WINDOW_DAYS,
-    ).length,
-    openCommitments: rows.reduce((sum, r) => sum + r.openCommitments, 0),
-    overdueCommitments: rows.reduce((sum, r) => sum + r.overdueCommitments, 0),
-    activeOpportunities: rows.reduce((sum, r) => sum + r.activeOpportunities, 0),
-    opportunityValue: rows.reduce((sum, r) => sum + r.opportunityValue, 0),
-  }
 
   return {
     rows,
-    metrics,
+    metrics: directoryMetricsOf(rows, today),
+    offices: officeBooksOf(offices, rows, today),
     today,
     generatedAt: context.clock.isoNow(),
     method: 'rule-based-v1',

@@ -28,6 +28,8 @@ import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId_.underlag'
+import { Route as ClientsClientIdMeetingPrepRouteImport } from './routes/clients.$clientId_.meeting-prep'
+import { Route as ClientsOfficeOfficeIdRouteImport } from './routes/clients.office.$officeId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -125,6 +127,17 @@ const CasesCaseIdUnderlagRoute = CasesCaseIdUnderlagRouteImport.update({
   path: '/cases/$caseId/underlag',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsClientIdMeetingPrepRoute =
+  ClientsClientIdMeetingPrepRouteImport.update({
+    id: '/clients/$clientId_/meeting-prep',
+    path: '/clients/$clientId/meeting-prep',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ClientsOfficeOfficeIdRoute = ClientsOfficeOfficeIdRouteImport.update({
+  id: '/clients/office/$officeId',
+  path: '/clients/office/$officeId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -146,6 +159,8 @@ export interface FileRoutesByFullPath {
   '/clients/': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
+  '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -167,6 +182,8 @@ export interface FileRoutesByTo {
   '/clients': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
+  '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -189,6 +206,8 @@ export interface FileRoutesById {
   '/clients/': typeof ClientsIndexRoute
   '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId_/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId_/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
+  '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -212,6 +231,8 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
+    | '/clients/$clientId/meeting-prep'
+    | '/clients/office/$officeId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -233,6 +254,8 @@ export interface FileRouteTypes {
     | '/clients'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
+    | '/clients/$clientId/meeting-prep'
+    | '/clients/office/$officeId'
   id:
     | '__root__'
     | '/'
@@ -254,6 +277,8 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/agents_/$departmentId/commission'
     | '/cases/$caseId_/underlag'
+    | '/clients/$clientId_/meeting-prep'
+    | '/clients/office/$officeId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -276,6 +301,8 @@ export interface RootRouteChildren {
   ClientsIndexRoute: typeof ClientsIndexRoute
   AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
   CasesCaseIdUnderlagRoute: typeof CasesCaseIdUnderlagRoute
+  ClientsClientIdMeetingPrepRoute: typeof ClientsClientIdMeetingPrepRoute
+  ClientsOfficeOfficeIdRoute: typeof ClientsOfficeOfficeIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -413,6 +440,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdUnderlagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/$clientId_/meeting-prep': {
+      id: '/clients/$clientId_/meeting-prep'
+      path: '/clients/$clientId/meeting-prep'
+      fullPath: '/clients/$clientId/meeting-prep'
+      preLoaderRoute: typeof ClientsClientIdMeetingPrepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/office/$officeId': {
+      id: '/clients/office/$officeId'
+      path: '/clients/office/$officeId'
+      fullPath: '/clients/office/$officeId'
+      preLoaderRoute: typeof ClientsOfficeOfficeIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -436,6 +477,8 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsIndexRoute: ClientsIndexRoute,
   AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,
   CasesCaseIdUnderlagRoute: CasesCaseIdUnderlagRoute,
+  ClientsClientIdMeetingPrepRoute: ClientsClientIdMeetingPrepRoute,
+  ClientsOfficeOfficeIdRoute: ClientsOfficeOfficeIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

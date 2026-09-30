@@ -48,11 +48,14 @@ export function meaningfulEvents(brief: MarketImpactBrief): MarketEventEntry[] {
 
 /**
  * "3 klienter" beside a market row — only when someone is meaningfully
- * exposed. Three shapes for three widths: `text` where a card has room,
- * `compact` (a glyph and the number) where a disclosure badge already
- * competes for the row, and `badge` — a count pinned to the corner of the
- * row's own glyph, taking no width at all — for the narrowest rows. The
- * full text is the link's accessible name in every shape.
+ * exposed, and as quiet as a mark can be: muted blue-grey text with no
+ * border and no fill, lit only under the pointer. It is the market command
+ * centre's one pointer into the JARVIS workspace, not a module of it. Three
+ * shapes for three widths: `text` where a card has room, `compact` (a glyph
+ * and the number) where a disclosure badge already competes for the row,
+ * and `badge` — a count pinned to the corner of the row's own glyph, taking
+ * no width at all — for the narrowest rows. The full text is the link's
+ * accessible name in every shape.
  */
 export function AffectedClientsMark({
   entry,
@@ -73,7 +76,7 @@ export function AffectedClientsMark({
     return (
       <Link
         {...shared}
-        className="absolute -top-1.5 -right-2 flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-[rgba(72,167,232,0.5)] bg-[rgba(9,32,50,0.95)] px-0.5 text-[9px] leading-none font-medium text-[#73c8ff] transition-colors duration-200 hover:bg-[rgba(72,167,232,0.2)]"
+        className="absolute -top-1.5 -right-2 flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-[rgba(70,130,163,0.3)] bg-[rgba(6,14,23,0.95)] px-0.5 text-[9px] leading-none font-medium text-[#8fa6bb] transition-colors duration-200 hover:border-[rgba(70,130,163,0.55)] hover:text-[#e8edf7]"
       >
         {entry.meaningful}
       </Link>
@@ -83,8 +86,8 @@ export function AffectedClientsMark({
     <Link
       {...shared}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 rounded-full border border-[rgba(72,167,232,0.35)] py-[1px] text-[10px] font-medium tracking-[0.08em] whitespace-nowrap text-[#73c8ff] transition-colors duration-200 hover:bg-[rgba(72,167,232,0.12)]',
-        variant === 'compact' ? 'px-1' : 'ml-2 px-1.5',
+        'inline-flex shrink-0 items-center gap-1 text-[10px] font-medium tracking-[0.1em] whitespace-nowrap text-[#6f88a0] uppercase transition-colors duration-200 hover:text-[#e8edf7]',
+        variant === 'compact' ? 'ml-1.5' : 'ml-2',
       )}
     >
       {variant === 'compact' ? (

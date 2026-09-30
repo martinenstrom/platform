@@ -27,6 +27,8 @@ import {
   type ImportantEvent,
   type Interaction,
   type Liability,
+  type MeetingSnapshot,
+  type Office,
   type Opportunity,
   type PerformancePoint,
   type Portfolio,
@@ -36,6 +38,7 @@ import { SeededRandom } from '~/domain/shared/random'
 
 export interface AdvisorySeed {
   advisors: readonly Advisor[]
+  offices: readonly Office[]
   clients: readonly Client[]
   households: readonly Household[]
   assets: readonly Asset[]
@@ -47,11 +50,48 @@ export interface AdvisorySeed {
   commitments: readonly Commitment[]
   events: readonly ImportantEvent[]
   opportunities: readonly Opportunity[]
+  /** The baselines captured at each client's last recorded meeting; none where no meeting is recorded. */
+  meetingSnapshots: readonly MeetingSnapshot[]
 }
 
 export const SEED_ADVISORS: readonly Advisor[] = [
   { id: 'adv-martin', displayName: 'Martin' },
   { id: 'adv-sofia', displayName: 'Sofia' },
+]
+
+/**
+ * The offices the advisor answers for. Fictional demo offices with
+ * street-style labels for the prototype; every relationship below is
+ * synthetic, and nothing here is a real office's book.
+ */
+export const SEED_OFFICES: readonly Office[] = [
+  {
+    id: 'of-strandvagen',
+    name: 'Strandvägen',
+    city: 'Stockholm',
+    displayName: 'Strandvägen',
+    shortName: 'Strandv.',
+    status: 'active',
+    description: 'Private Banking-kontoret på Östermalm.',
+  },
+  {
+    id: 'of-arbetargatan',
+    name: 'Arbetargatan',
+    city: 'Stockholm',
+    displayName: 'Arbetargatan',
+    shortName: 'Arbetarg.',
+    status: 'active',
+    description: 'Private Banking-kontoret på Kungsholmen.',
+  },
+  {
+    id: 'of-avenyn',
+    name: 'Avenyn',
+    city: 'Göteborg',
+    displayName: 'Avenyn',
+    shortName: 'Avenyn',
+    status: 'active',
+    description: 'Private Banking-kontoret i Göteborg.',
+  },
 ]
 
 /* ----------------------------------------------------------------- helpers */
@@ -137,6 +177,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-alvarsson',
       householdId: 'hh-alvarsson',
+      officeId: 'of-strandvagen',
       displayName: 'Henrik Alvarsson',
       segment: 'entrepreneur',
       relationshipSince: '2024-03-12',
@@ -150,6 +191,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-berglund',
       householdId: 'hh-berglund',
+      officeId: 'of-strandvagen',
       displayName: 'Margareta Berglund',
       segment: 'private-banking',
       relationshipSince: '2011-05-20',
@@ -163,6 +205,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-ceder',
       householdId: 'hh-ceder',
+      officeId: 'of-avenyn',
       displayName: 'Johan Ceder',
       segment: 'private-banking',
       relationshipSince: '2019-09-03',
@@ -176,6 +219,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-dahlqvist',
       householdId: 'hh-dahlqvist',
+      officeId: 'of-arbetargatan',
       displayName: 'Anna & Per Dahlqvist',
       segment: 'private-banking',
       relationshipSince: '2016-02-08',
@@ -189,6 +233,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-ekstrand',
       householdId: 'hh-ekstrand',
+      officeId: 'of-strandvagen',
       displayName: 'Viktor Ekstrand',
       segment: 'wealth-management',
       relationshipSince: '2014-11-17',
@@ -202,6 +247,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-forsell',
       householdId: 'hh-forsell',
+      officeId: 'of-arbetargatan',
       displayName: 'Ingrid Forsell',
       segment: 'private-banking',
       relationshipSince: '2008-06-30',
@@ -215,6 +261,7 @@ export function syntheticClients(today: string): AdvisorySeed {
     {
       id: 'cl-grahn',
       householdId: 'hh-grahn',
+      officeId: 'of-arbetargatan',
       displayName: 'Lars Grahn',
       segment: 'private-banking',
       relationshipSince: '2021-08-24',
@@ -2896,8 +2943,221 @@ export function syntheticClients(today: string): AdvisorySeed {
     },
   ]
 
+  /*
+   * Baselines captured at each client's last recorded meeting — the structured
+   * state as it stood then, so the next preparation compares against what was
+   * known rather than against a reconstruction of it. Synthetic and explicit:
+   * every figure is authored, none is derived from today's state. Ceder and
+   * Grahn have no recorded meeting and therefore no baseline — the case the
+   * cockpit must say out loud.
+   */
+  const meetingSnapshots: MeetingSnapshot[] = [
+    {
+      id: 'snap-in-alv-3',
+      clientId: 'cl-alvarsson',
+      meetingInteractionId: 'in-alv-3',
+      meetingDate: d(-11),
+      capturedAt: `${d(-11)}T16:40:00.000Z`,
+      financial: {
+        totalAssets: 50_500_000,
+        totalLiabilities: 6_500_000,
+        netWorth: 44_000_000,
+        assetsWithBank: 19_900_000,
+        liquidity: 5_900_000,
+      },
+      portfolio: { valuedAt: d(-12), totalValue: 14_000_000, performanceYtdPercent: 5.1 },
+      allocation: [
+        { assetClass: 'equities', currentPercent: 65, strategicPercent: 60 },
+        { assetClass: 'fixed-income', currentPercent: 23, strategicPercent: 25 },
+        { assetClass: 'alternatives', currentPercent: 8, strategicPercent: 10 },
+        { assetClass: 'cash', currentPercent: 4, strategicPercent: 5 },
+      ],
+      loans: [
+        {
+          id: 'li-alv-mortgage',
+          outstandingBalance: 6_500_000,
+          interestType: 'fixed',
+          ratePercent: 3.45,
+          maturityDate: d(53),
+        },
+      ],
+      goals: [
+        { id: 'go-alv-1', status: 'on-track', progressPercent: 46 },
+        { id: 'go-alv-2', status: 'achieved', progressPercent: 100 },
+        { id: 'go-alv-3', status: 'on-track', progressPercent: 58 },
+      ],
+      relationship: { healthScore: 84, healthBand: 'strong' },
+      openCommitmentIds: ['co-alv-1', 'co-alv-2'],
+      importantEventIds: [
+        'ev-alv-bday',
+        'ev-alv-meeting',
+        'ev-alv-refi',
+        'ev-alv-annual',
+      ],
+      activeConcernIds: ['cf-alv-1'],
+      method: 'meeting-snapshot-v1',
+    },
+    {
+      id: 'snap-in-ber-2',
+      clientId: 'cl-berglund',
+      meetingInteractionId: 'in-ber-2',
+      meetingDate: d(-64),
+      capturedAt: `${d(-64)}T15:10:00.000Z`,
+      financial: {
+        totalAssets: 34_300_000,
+        totalLiabilities: 1_800_000,
+        netWorth: 32_500_000,
+        assetsWithBank: 9_400_000,
+        liquidity: 900_000,
+      },
+      portfolio: { valuedAt: d(-65), totalValue: 8_500_000, performanceYtdPercent: 2.9 },
+      allocation: [
+        { assetClass: 'equities', currentPercent: 42, strategicPercent: 40 },
+        { assetClass: 'fixed-income', currentPercent: 44, strategicPercent: 45 },
+        { assetClass: 'alternatives', currentPercent: 5, strategicPercent: 5 },
+        { assetClass: 'cash', currentPercent: 9, strategicPercent: 10 },
+      ],
+      loans: [
+        {
+          id: 'li-ber-mortgage',
+          outstandingBalance: 1_800_000,
+          interestType: 'variable',
+          ratePercent: 3.9,
+          maturityDate: null,
+        },
+      ],
+      goals: [
+        { id: 'go-ber-1', status: 'on-track', progressPercent: 90 },
+        { id: 'go-ber-2', status: 'on-track', progressPercent: 38 },
+      ],
+      relationship: { healthScore: 68, healthBand: 'stable' },
+      openCommitmentIds: ['co-ber-1', 'co-ber-2'],
+      importantEventIds: ['ev-ber-bday', 'ev-ber-annual', 'ev-ber-tax'],
+      activeConcernIds: [],
+      method: 'meeting-snapshot-v1',
+    },
+    {
+      id: 'snap-in-dah-1',
+      clientId: 'cl-dahlqvist',
+      meetingInteractionId: 'in-dah-1',
+      meetingDate: d(-200),
+      capturedAt: `${d(-200)}T14:30:00.000Z`,
+      financial: {
+        totalAssets: 41_600_000,
+        totalLiabilities: 17_000_000,
+        netWorth: 24_600_000,
+        assetsWithBank: 4_500_000,
+        liquidity: 600_000,
+      },
+      portfolio: { valuedAt: d(-201), totalValue: 3_900_000, performanceYtdPercent: 1.4 },
+      allocation: [
+        { assetClass: 'equities', currentPercent: 52, strategicPercent: 50 },
+        { assetClass: 'fixed-income', currentPercent: 33, strategicPercent: 35 },
+        { assetClass: 'alternatives', currentPercent: 5, strategicPercent: 5 },
+        { assetClass: 'cash', currentPercent: 10, strategicPercent: 10 },
+      ],
+      loans: [
+        {
+          id: 'li-dah-mortgage',
+          outstandingBalance: 9_200_000,
+          interestType: 'fixed',
+          ratePercent: 3.6,
+          maturityDate: d(140),
+        },
+        {
+          id: 'li-dah-property',
+          outstandingBalance: 7_800_000,
+          interestType: 'variable',
+          ratePercent: 4.4,
+          maturityDate: d(600),
+        },
+      ],
+      goals: [
+        { id: 'go-dah-1', status: 'not-started', progressPercent: 10 },
+        { id: 'go-dah-2', status: 'on-track', progressPercent: 38 },
+      ],
+      relationship: { healthScore: 74, healthBand: 'stable' },
+      openCommitmentIds: [],
+      importantEventIds: ['ev-dah-bday', 'ev-dah-refi'],
+      activeConcernIds: [],
+      method: 'meeting-snapshot-v1',
+    },
+    {
+      id: 'snap-in-eks-3',
+      clientId: 'cl-ekstrand',
+      meetingInteractionId: 'in-eks-3',
+      meetingDate: d(-8),
+      capturedAt: `${d(-8)}T17:05:00.000Z`,
+      financial: {
+        totalAssets: 75_700_000,
+        totalLiabilities: 4_000_000,
+        netWorth: 71_700_000,
+        assetsWithBank: 32_700_000,
+        liquidity: 1_200_000,
+      },
+      portfolio: { valuedAt: d(-9), totalValue: 31_500_000, performanceYtdPercent: 9.4 },
+      allocation: [
+        { assetClass: 'equities', currentPercent: 72, strategicPercent: 70 },
+        { assetClass: 'fixed-income', currentPercent: 13, strategicPercent: 15 },
+        { assetClass: 'alternatives', currentPercent: 12, strategicPercent: 12 },
+        { assetClass: 'cash', currentPercent: 3, strategicPercent: 3 },
+      ],
+      loans: [
+        {
+          id: 'li-eks-investment',
+          outstandingBalance: 4_000_000,
+          interestType: 'variable',
+          ratePercent: 4.1,
+          maturityDate: null,
+        },
+      ],
+      goals: [
+        { id: 'go-eks-1', status: 'on-track', progressPercent: 63 },
+        { id: 'go-eks-2', status: 'not-started', progressPercent: 10 },
+      ],
+      relationship: { healthScore: 100, healthBand: 'strong' },
+      openCommitmentIds: ['co-eks-1'],
+      importantEventIds: ['ev-eks-bday', 'ev-eks-meeting', 'ev-eks-pe'],
+      activeConcernIds: [],
+      method: 'meeting-snapshot-v1',
+    },
+    {
+      id: 'snap-in-for-2',
+      clientId: 'cl-forsell',
+      meetingInteractionId: 'in-for-2',
+      meetingDate: d(-70),
+      capturedAt: `${d(-70)}T13:20:00.000Z`,
+      financial: {
+        totalAssets: 19_800_000,
+        totalLiabilities: 0,
+        netWorth: 19_800_000,
+        assetsWithBank: 10_700_000,
+        liquidity: 1_050_000,
+      },
+      portfolio: { valuedAt: d(-71), totalValue: 9_650_000, performanceYtdPercent: 1.7 },
+      allocation: [
+        { assetClass: 'equities', currentPercent: 19, strategicPercent: 20 },
+        { assetClass: 'fixed-income', currentPercent: 66, strategicPercent: 65 },
+        { assetClass: 'alternatives', currentPercent: 0, strategicPercent: 0 },
+        { assetClass: 'cash', currentPercent: 15, strategicPercent: 15 },
+      ],
+      loans: [],
+      goals: [
+        { id: 'go-for-1', status: 'on-track', progressPercent: 95 },
+        { id: 'go-for-2', status: 'on-track', progressPercent: 80 },
+      ],
+      relationship: { healthScore: 80, healthBand: 'strong' },
+      openCommitmentIds: ['co-for-1'],
+      importantEventIds: ['ev-for-bday', 'ev-for-meeting', 'ev-for-bond'],
+      activeConcernIds: [],
+      method: 'meeting-snapshot-v1',
+    },
+  ]
+
   return {
     advisors: SEED_ADVISORS,
+    offices: SEED_OFFICES,
+    meetingSnapshots,
     clients,
     households,
     assets,

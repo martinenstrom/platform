@@ -80,14 +80,14 @@ Every threshold is stated once, in `MATERIALITY`. `enter` opens an event;
 (hysteresis); `major` marks severity; the event lapses `expiryHours` after
 its last observation.
 
-| Category      | Series (V1)                                                                                | Metric                            | enter | exit | major | expiry |
-| ------------- | ------------------------------------------------------------------------------------------ | --------------------------------- | ----- | ---- | ----- | ------ |
-| rates         | US 10Y, US 2Y, DE 10Y, SE 10Y                                                              | yield change, bp                  | 10    | 6    | 20    | 72 h   |
-| equities      | OMXS30, S&P 500, Nasdaq 100, DAX, FTSE 100, Nikkei 225                                     | index change, %                   | 1.5   | 1.0  | 3     | 24 h   |
-| sectors       | the nine S&P 500 sectors                                                                   | change **relative to S&P 500**, % | 2     | 1.2  | 4     | 24 h   |
-| fx            | USD/SEK, EUR/USD (EUR/USD opens events but reaches no client — see §8)                     | change, %                         | 1.0   | 0.6  | 2     | 48 h   |
-| commodities   | Brent (energy), Gold (metal — reaches no client)                                           | change, %                         | 3     | 2    | 6     | 48 h   |
-| risk-appetite | Cross-Asset Risk Appetite score                                                            | points **below** neutral 50       | 20    | 12   | 30    | 24 h   |
+| Category      | Series (V1)                                                            | Metric                            | enter | exit | major | expiry |
+| ------------- | ---------------------------------------------------------------------- | --------------------------------- | ----- | ---- | ----- | ------ |
+| rates         | US 10Y, US 2Y, DE 10Y, SE 10Y                                          | yield change, bp                  | 10    | 6    | 20    | 72 h   |
+| equities      | OMXS30, S&P 500, Nasdaq 100, DAX, FTSE 100, Nikkei 225                 | index change, %                   | 1.5   | 1.0  | 3     | 24 h   |
+| sectors       | the nine S&P 500 sectors                                               | change **relative to S&P 500**, % | 2     | 1.2  | 4     | 24 h   |
+| fx            | USD/SEK, EUR/USD (EUR/USD opens events but reaches no client — see §8) | change, %                         | 1.0   | 0.6  | 2     | 48 h   |
+| commodities   | Brent (energy), Gold (metal — reaches no client)                       | change, %                         | 3     | 2    | 6     | 48 h   |
+| risk-appetite | Cross-Asset Risk Appetite score                                        | points **below** neutral 50       | 20    | 12   | 30    | 24 h   |
 
 A series without a comparable prior (`change: null`) opens nothing — never
 a fabricated zero. Risk appetite opens only on the risk-off side: a calm
@@ -186,20 +186,20 @@ materiality = 1 (notable) | 2 (major)
 relevance   = high ≥ 7 · medium ≥ 4 · low otherwise
 ```
 
-| Reason                 | Kind       | Points                                  |
-| ---------------------- | ---------- | --------------------------------------- |
-| fixed-income-duration  | direct     | 1 / 2 (≥ 30 %) / 3 (≥ 50 %)             |
-| equity-allocation      | direct     | 1 / 2 (≥ 55 %) / 3 (≥ 70 %)             |
-| sector-holding         | direct     | 1 / 2 (≥ 10 %) / 3 (≥ 15 %)             |
-| commodity-theme        | direct     | as sector-holding (energy only)         |
-| currency-holding       | direct     | 1 / 2 (≥ 25 %) / 3 (≥ 40 %)             |
-| related-concern        | contextual | 3 — the client raised the theme         |
-| refinancing-approaching| contextual | 2 / 3 (≤ 30 days)                       |
-| strategy-deviation     | contextual | 2                                       |
-| drawdown-sensitivity   | contextual | 2 (down moves only)                     |
-| variable-rate-debt     | contextual | 1                                       |
-| meeting-approaching    | contextual | 1                                       |
-| concentration          | contextual | 1                                       |
+| Reason                  | Kind       | Points                          |
+| ----------------------- | ---------- | ------------------------------- |
+| fixed-income-duration   | direct     | 1 / 2 (≥ 30 %) / 3 (≥ 50 %)     |
+| equity-allocation       | direct     | 1 / 2 (≥ 55 %) / 3 (≥ 70 %)     |
+| sector-holding          | direct     | 1 / 2 (≥ 10 %) / 3 (≥ 15 %)     |
+| commodity-theme         | direct     | as sector-holding (energy only) |
+| currency-holding        | direct     | 1 / 2 (≥ 25 %) / 3 (≥ 40 %)     |
+| related-concern         | contextual | 3 — the client raised the theme |
+| refinancing-approaching | contextual | 2 / 3 (≤ 30 days)               |
+| strategy-deviation      | contextual | 2                               |
+| drawdown-sensitivity    | contextual | 2 (down moves only)             |
+| variable-rate-debt      | contextual | 1                               |
+| meeting-approaching     | contextual | 1                               |
+| concentration           | contextual | 1                               |
 
 Pathways:
 
@@ -310,15 +310,15 @@ Grouping rules, in precedence; an event joins the first rule it matches and
 a cluster forms only when the rule's condition holds, otherwise its members
 fall through:
 
-| Kind             | Members                                             | Forms when                                   |
-| ---------------- | --------------------------------------------------- | -------------------------------------------- |
-| global-risk-off  | the risk-appetite event + equity indices down       | a risk-off event and ≥ 1 index down          |
-| equity-selloff   | equity indices down                                 | ≥ 2                                          |
-| equity-rally     | equity indices up                                   | ≥ 2                                          |
-| rates-up / down  | yields in one direction                             | ≥ 2, same direction                          |
-| energy-selloff / rally | the energy sector (relative) and Brent, one direction | ≥ 2                                    |
-| sek-weaker / stronger | SEK-quoted pairs, one direction                | ≥ 2                                          |
-| single           | anything else, or a cluster that did not form       | always                                       |
+| Kind                   | Members                                               | Forms when                          |
+| ---------------------- | ----------------------------------------------------- | ----------------------------------- |
+| global-risk-off        | the risk-appetite event + equity indices down         | a risk-off event and ≥ 1 index down |
+| equity-selloff         | equity indices down                                   | ≥ 2                                 |
+| equity-rally           | equity indices up                                     | ≥ 2                                 |
+| rates-up / down        | yields in one direction                               | ≥ 2, same direction                 |
+| energy-selloff / rally | the energy sector (relative) and Brent, one direction | ≥ 2                                 |
+| sek-weaker / stronger  | SEK-quoted pairs, one direction                       | ≥ 2                                 |
+| single                 | anything else, or a cluster that did not form         | always                              |
 
 A cluster holds only events whose `observedAt` lie within 24 hours of the
 cluster's earliest (`EPISODE_WINDOW_HOURS`): a rates move from Monday and
@@ -333,17 +333,17 @@ conversation relevance likewise), `meaningful` (medium/high clients) and
 
 ## 6. Surfaces
 
-- **Dashboard.** A restrained _N klienter_ mark beside a market card, rate,
+- **Dashboard.** A muted _N klienter_ mark beside a market card, rate,
   FX/commodity row or sector bar — only when at least one client is
   meaningfully (medium/high) exposed — linking to the event on
-  `/market-impact`. One _Marknadspåverkan · Market-to-Client_ module in the
-  dashboard's own card and tile language, after the Sentinel module: at
-  most three **episodes** that touch somebody (`dashboardEpisodes`), each
-  with severity, headline (_Bred aktienedgång_, _Ränteuppgång på bred
-  front_, or the single move), the underlying moves, freshness, _N berörda
-  klienter · M hög relevans_, the names, the events on request, and _Varför
-  det är relevant →_. A calm market, or a day whose moves reach nobody,
-  earns no module and no mark.
+  `/market-impact`: blue-grey text, no border, no fill; the market command
+  centre's one pointer into the JARVIS workspace. The _Marknadspåverkan ·
+  Market-to-Client_ module that stood on the home page for one stage (at
+  most three episodes, `dashboardEpisodes`) was removed by the navigation
+  pass of 2026-09-29: the home page is the market, and the episodes are
+  `/market-impact`'s. `MarketImpactList` and `dashboardEpisodes` remain for
+  the workspace. A calm market, or a day whose moves reach nobody, earns no
+  mark.
 - **`/market-impact`.** Counts (material moves, affected clients, high
   relevance, clients assessed); _Marknadsepisoder_ with each episode's
   events and clients (financial and conversation relevance beside the
@@ -353,8 +353,9 @@ conversation relevance likewise), `meaningful` (medium/high clients) and
   directness, _Varför det är relevant_, Sentinel standing (created /
   strengthened / carried as evidence / not reaching the priority) and the
   five-section explanation on request. An event nobody holds anything
-  against is listed with its zero. Not a primary destination: the market
-  screen links to it where a move touches somebody.
+  against is listed with its zero. A destination of the JARVIS workspace
+  (JARVIS → Klienter / Sentinel / Marknadspåverkan in the rail); the market
+  screen also links to it where a move touches somebody.
 - **Client 360.** _Marknadspåverkan_ after the portfolio: the open moves this
   record is exposed to, most relevant first, each with both relevance
   verdicts and the explanation on request; beneath them _Tidigare rörelser ·
@@ -379,16 +380,16 @@ reshapes the reported series for demonstration, stamped _Exempeldata_:
 What the seed shows on the frozen clock (2026-09-23), as tested in
 `application/advisory/marketImpact.test.ts`:
 
-| Scenario       | Outcome                                                                                                                                                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| calm           | no event, no client, Sentinel exactly as Client Intelligence left it; a context without a market source is complete                                                            |
-| rates-up       | Dahlqvist **high** (fixed income 36 %, bridge loan in 45 days, their own concern, meeting in 3 days); Alvarsson medium; Ceder untouched; Dahlqvist's one critical priority carries the driver, no second priority |
+| Scenario       | Outcome                                                                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| calm           | no event, no client, Sentinel exactly as Client Intelligence left it; a context without a market source is complete                                                                                                 |
+| rates-up       | Dahlqvist **high** (fixed income 36 %, bridge loan in 45 days, their own concern, meeting in 3 days); Alvarsson medium; Ceder untouched; Dahlqvist's one critical priority carries the driver, no second priority   |
 | energy-down    | Alvarsson **high** on the sector (energy 12 %, his concern, meeting in 10 days — _klienten har själv tagit upp ämnet_) and medium on Brent; Ekstrand's 4 % is below the line; Client 360 and meeting prep show both |
-| gold-up        | one material event, zero relevant clients, Sentinel unchanged                                                                                                                  |
-| equity-selloff | Ekstrand — quiet until now — gets a market-created priority (high, today) he can dispose of; Berglund via drawdown sensitivity; Forsell (19 % equities) reached only as context |
-| usd-up         | USD holders only, low or medium; Forsell (all SEK) untouched                                                                                                                   |
-| risk-off       | Ceder direct (84 % equities), Berglund contextual (drawdown sensitivity), Grahn (58 %) untouched                                                                                |
-| stability      | two reads keep one event per key with its first-seen time; when the move fades the events, the driver and the created priority are gone; a failing source leaves open events standing |
+| gold-up        | one material event, zero relevant clients, Sentinel unchanged                                                                                                                                                       |
+| equity-selloff | Ekstrand — quiet until now — gets a market-created priority (high, today) he can dispose of; Berglund via drawdown sensitivity; Forsell (19 % equities) reached only as context                                     |
+| usd-up         | USD holders only, low or medium; Forsell (all SEK) untouched                                                                                                                                                        |
+| risk-off       | Ceder direct (84 % equities), Berglund contextual (drawdown sensitivity), Grahn (58 %) untouched                                                                                                                    |
+| stability      | two reads keep one event per key with its first-seen time; when the move fades the events, the driver and the created priority are gone; a failing source leaves open events standing                               |
 
 ## 8. Known limitations
 

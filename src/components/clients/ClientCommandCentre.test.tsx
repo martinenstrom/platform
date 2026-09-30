@@ -1,12 +1,13 @@
 /**
- * The command centre, rendered against a directory the application derived
- * from the synthetic seed — the same read model the route receives, so the
- * page is held to numbers the rules produced rather than rows written here.
+ * The relationship book, rendered against a directory the application
+ * derived from the synthetic seed — the same read model the route receives,
+ * so the page is held to numbers the rules produced rather than rows written
+ * here. Office by office first; every relationship on request.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   clientDirectory,
   type ClientDirectory,
@@ -14,8 +15,10 @@ import {
 import { FakeClock } from '~/domain/shared/clock'
 import { createSyntheticAdvisoryRepositories } from '~/infrastructure/advisory/syntheticRepositories'
 import { syntheticClients } from '~/infrastructure/advisory/syntheticClients'
+import { formatMsek } from '~/presentation/advisory/format'
 import { renderInRouter } from '~/test/renderInRouter'
 import { ClientCommandCentre } from './ClientCommandCentre'
+import { resetDirectoryState } from './directoryState'
 
 const TODAY = '2026-09-23'
 
@@ -26,10 +29,13 @@ async function directoryAt(today = TODAY): Promise<ClientDirectory> {
   })
 }
 
-const STUBS = ['/clients/$clientId'] as const
+const STUBS = ['/clients/$clientId', '/clients', '/clients/office/$officeId'] as const
 
-describe('the client command centre', () => {
-  it('shows the metrics and one row per client, each linking to its page', async () => {
+/* The book remembers its selection across mounts; each test starts it fresh. */
+afterEach(() => resetDirectoryState())
+
+describe('the relationship book, office by office', () => {
+  it('opens on the office folders and the whole book’s figures, and no client cards', async () => {
     const directory = await directoryAt()
     const view = await renderInRouter(
       <ClientCommandCentre directory={directory} />,
@@ -37,33 +43,85 @@ describe('the client command centre', () => {
     )
 
     expect(
-      screen.getByRole('heading', { level: 1, name: /klientintelligens/i }),
+      screen.getByRole('heading', { level: 1, name: 'Klienter' }),
     ).toBeInTheDocument()
+    expect(screen.getByText('Client Intelligence')).toBeInTheDocument()
     const metrics = screen.getByRole('region', { name: 'Nyckeltal' })
     expect(within(metrics).getByText('Klienter').nextElementSibling).toHaveTextContent(
       '7',
     )
-    expect(
-      within(metrics).getByText('Försenade åtaganden').nextElementSibling,
-    ).toHaveTextContent(String(directory.metrics.overdueCommitments))
+    expect(within(metrics).getAllByRole('term')).toHaveLength(6)
 
+    const offices = screen.getByRole('region', { name: 'Kontor' })
+    const folders = within(offices).getAllByRole('link')
+    expect(folders).toHaveLength(directory.offices.length)
+    expect(folders[0]).toHaveAccessibleName('Öppna kontor Strandvägen')
+    expect(folders[0]).toHaveAttribute('href', '/clients/office/of-strandvagen')
+    expect(screen.queryByRole('region', { name: 'Klientlista' })).toBeNull()
+
+    /* The folder carries the book's own sums. */
+    const strandvagen = directory.offices.find((b) => b.office.id === 'of-strandvagen')!
+    expect(folders[0]).toHaveTextContent('3 klienter')
+    expect(folders[0]).toHaveTextContent(formatMsek(strandvagen.metrics.totalAum))
+    expect(folders[0]).toHaveTextContent('behöver uppmärksamhet')
+    expect(folders[0]).toHaveTextContent('Öppna kontor')
+
+    const switcher = screen.getByRole('navigation', { name: 'Vy' })
+    expect(within(switcher).getByRole('link', { name: 'Kontor' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(switcher).getByRole('link', { name: 'Alla klienter' })).toHaveAttribute(
+      'href',
+      '/clients?view=alla',
+    )
+    view.unmount()
+  })
+})
+
+describe('the whole book', () => {
+  it('shows one card per client, each naming its office and linking to its page', async () => {
+    const directory = await directoryAt()
+    const view = await renderInRouter(
+      <ClientCommandCentre directory={directory} view="alla" />,
+      STUBS,
+    )
+    expect(screen.queryByRole('region', { name: 'Kontor' })).toBeNull()
     const list = screen.getByRole('region', { name: 'Klientlista' })
     const links = within(list).getAllByRole('link')
     expect(links).toHaveLength(7)
+    const berglund = links.find((link) =>
+      link.textContent?.includes('Margareta Berglund'),
+    )
+    expect(berglund).toHaveAttribute('href', '/clients/cl-berglund')
+    expect(berglund).toHaveTextContent('Private Banking · Strandvägen · PB sedan 2011')
     const alvarsson = links.find((link) => link.textContent?.includes('Henrik Alvarsson'))
-    expect(alvarsson).toHaveAttribute('href', '/clients/cl-alvarsson')
     expect(alvarsson).toHaveTextContent('21,0 MSEK')
+    expect(within(list).getAllByText('JARVIS rekommenderar')).toHaveLength(7)
     view.unmount()
   })
 
-  it('carries JARVIS’s next best action on every row', async () => {
+  it('searches across offices, by name and by office', async () => {
     const directory = await directoryAt()
+    const user = userEvent.setup()
     const view = await renderInRouter(
-      <ClientCommandCentre directory={directory} />,
+      <ClientCommandCentre directory={directory} view="alla" />,
       STUBS,
     )
     const list = screen.getByRole('region', { name: 'Klientlista' })
-    expect(within(list).getAllByText('JARVIS rekommenderar')).toHaveLength(7)
+    const search = screen.getByRole('searchbox', { name: 'Sök klient' })
+
+    await user.type(search, 'Arbetargatan')
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map((l) => l.getAttribute('href'))
+        .sort(),
+    ).toEqual(['/clients/cl-dahlqvist', '/clients/cl-forsell', '/clients/cl-grahn'])
+
+    await user.clear(search)
+    await user.type(search, 'Forsell')
+    expect(within(list).getAllByRole('link')).toHaveLength(1)
     view.unmount()
   })
 
@@ -71,54 +129,41 @@ describe('the client command centre', () => {
     const directory = await directoryAt()
     const user = userEvent.setup()
     const view = await renderInRouter(
-      <ClientCommandCentre directory={directory} />,
+      <ClientCommandCentre directory={directory} view="alla" />,
       STUBS,
     )
     const list = screen.getByRole('region', { name: 'Klientlista' })
 
     await user.click(screen.getByRole('button', { name: /Försenat åtagande/ }))
-    const overdue = within(list)
-      .getAllByRole('link')
-      .map((link) => link.getAttribute('href'))
-    expect(overdue.sort()).toEqual([
-      '/clients/cl-berglund',
-      '/clients/cl-dahlqvist',
-      '/clients/cl-grahn',
-    ])
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+        .sort(),
+    ).toEqual(['/clients/cl-berglund', '/clients/cl-dahlqvist', '/clients/cl-grahn'])
 
     await user.click(screen.getByRole('button', { name: /Hög kassa/ }))
-    expect(
-      within(list)
-        .getAllByRole('link')
-        .map((l) => l.getAttribute('href')),
-    ).toContain('/clients/cl-grahn')
-    expect(
-      within(list)
-        .getAllByRole('link')
-        .map((l) => l.getAttribute('href')),
-    ).not.toContain('/clients/cl-forsell')
+    const hrefs = within(list)
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/clients/cl-grahn')
+    expect(hrefs).not.toContain('/clients/cl-forsell')
     view.unmount()
   })
 
-  it('searches and sorts', async () => {
+  it('sorts', async () => {
     const directory = await directoryAt()
     const user = userEvent.setup()
     const view = await renderInRouter(
-      <ClientCommandCentre directory={directory} />,
+      <ClientCommandCentre directory={directory} view="alla" />,
       STUBS,
     )
     const list = screen.getByRole('region', { name: 'Klientlista' })
-
-    await user.type(screen.getByRole('searchbox', { name: 'Sök klient' }), 'Forsell')
-    expect(within(list).getAllByRole('link')).toHaveLength(1)
-    await user.clear(screen.getByRole('searchbox', { name: 'Sök klient' }))
-
     await user.selectOptions(screen.getByRole('combobox', { name: /Sortera/ }), 'aum')
     expect(within(list).getAllByRole('link')[0]).toHaveAttribute(
       'href',
       '/clients/cl-ekstrand',
     )
-
     await user.selectOptions(
       screen.getByRole('combobox', { name: /Sortera/ }),
       'last-contact',
@@ -130,10 +175,32 @@ describe('the client command centre', () => {
     view.unmount()
   })
 
+  it('remembers the search, the filter and the order when the page comes back', async () => {
+    const directory = await directoryAt()
+    const user = userEvent.setup()
+    const first = await renderInRouter(
+      <ClientCommandCentre directory={directory} view="alla" />,
+      STUBS,
+    )
+    await user.type(screen.getByRole('searchbox', { name: 'Sök klient' }), 'Gra')
+    await user.selectOptions(screen.getByRole('combobox', { name: /Sortera/ }), 'aum')
+    first.unmount()
+
+    const second = await renderInRouter(
+      <ClientCommandCentre directory={directory} view="alla" />,
+      STUBS,
+    )
+    expect(screen.getByRole('searchbox', { name: 'Sök klient' })).toHaveValue('Gra')
+    expect(screen.getByRole('combobox', { name: /Sortera/ })).toHaveValue('aum')
+    const list = screen.getByRole('region', { name: 'Klientlista' })
+    expect(within(list).getAllByRole('link')).toHaveLength(1)
+    second.unmount()
+  })
+
   it('says the clients are synthetic and which date the derivations used', async () => {
     const directory = await directoryAt()
     const view = await renderInRouter(
-      <ClientCommandCentre directory={directory} />,
+      <ClientCommandCentre directory={directory} view="alla" />,
       STUBS,
     )
     expect(screen.getByText(/syntetiska klienter/)).toBeInTheDocument()
@@ -143,9 +210,10 @@ describe('the client command centre', () => {
 })
 
 describe('an unavailable directory', () => {
-  it('renders nothing invented', () => {
+  it('renders nothing invented', async () => {
     const empty: ClientDirectory = {
       rows: [],
+      offices: [],
       metrics: {
         totalClients: 0,
         totalAum: 0,
@@ -161,8 +229,14 @@ describe('an unavailable directory', () => {
       generatedAt: `${TODAY}T10:00:00.000Z`,
       method: 'rule-based-v1',
     }
-    const view = render(<ClientCommandCentre directory={empty} />)
-    expect(screen.getByText('Inga klienter matchar urvalet.')).toBeInTheDocument()
+    const view = await renderInRouter(<ClientCommandCentre directory={empty} />, STUBS)
+    expect(screen.getByText('Inga kontor i registret.')).toBeInTheDocument()
     view.unmount()
+    const all = await renderInRouter(
+      <ClientCommandCentre directory={empty} view="alla" />,
+      STUBS,
+    )
+    expect(screen.getByText('Inga klienter matchar urvalet.')).toBeInTheDocument()
+    all.unmount()
   })
 })

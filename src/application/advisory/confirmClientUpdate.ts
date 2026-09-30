@@ -23,6 +23,7 @@ import {
   type Provenance,
   type ReminderRule,
 } from '~/domain/advisory'
+import { captureMeetingSnapshot } from './meetingCockpit'
 import type { AdvisoryContext } from './ports'
 
 export interface ItemDecision {
@@ -215,6 +216,21 @@ export async function confirmClientUpdate(
     resolvedAt: now,
     interactionId,
   })
+
+  /*
+   * A confirmed meeting closes with its baseline: the record as it stands
+   * now, promises and events of the meeting included, kept for the next
+   * preparation to compare against. Any other interaction leaves the
+   * baseline alone.
+   */
+  if (interaction.type === 'meeting') {
+    await captureMeetingSnapshot(
+      context,
+      candidate.clientId,
+      interactionId,
+      interaction.date,
+    )
+  }
   return { ok: true, interactionId, created }
 }
 

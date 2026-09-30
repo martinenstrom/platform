@@ -245,6 +245,36 @@ export const HEALTH_BAND_LABEL: Record<HealthBand, string> = {
   'at-risk': 'I riskzonen',
 }
 
+/** The band as the dossier's pill states it: one phrase, uppercase in the UI. */
+export const HEALTH_PILL_LABEL: Record<HealthBand, string> = {
+  strong: 'Hög relationshälsa',
+  stable: 'Stabil relation',
+  watch: 'Relation att bevaka',
+  'at-risk': 'Relation i riskzonen',
+}
+
+/** The segment as the dossier's pill states it. */
+export const SEGMENT_PILL_LABEL: Record<ClientSegment, string> = {
+  'private-banking': 'PB-kund',
+  'wealth-management': 'WM-kund',
+  entrepreneur: 'Entreprenör',
+  'family-office': 'Family Office',
+}
+
+/**
+ * The firm's seven-step risk scale, named. A label per step and nothing
+ * derived: the step is the client's recorded profile.
+ */
+export const RISK_PROFILE_LABEL: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, string> = {
+  1: 'Mycket försiktig',
+  2: 'Försiktig',
+  3: 'Balanserad',
+  4: 'Balanserad tillväxt',
+  5: 'Tillväxt',
+  6: 'Offensiv',
+  7: 'Mycket offensiv',
+}
+
 export const CONFIDENCE_LABEL: Record<Confidence, string> = {
   high: 'Hög säkerhet',
   medium: 'Medelhög säkerhet',

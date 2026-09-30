@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import {
   RouterProvider,
   createMemoryHistory,
@@ -103,7 +103,7 @@ describe('one navigation language per screen', () => {
         </AppLayout>
       ),
     })
-    const children = ['/headquarters', '/evidence'].map((path) =>
+    const children = ['/headquarters', '/evidence', '/clients', '/sentinel'].map((path) =>
       createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
     )
     const router = createRouter({
@@ -137,6 +137,50 @@ describe('one navigation language per screen', () => {
     expect(
       screen.getByRole('navigation', { name: 'Huvudnavigation' }),
     ).toBeInTheDocument()
+    /* Outside the JARVIS workspace the rail is one band: no doors, no menu. */
+    expect(screen.queryByRole('navigation', { name: 'JARVIS' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'JARVIS' })).toHaveAttribute(
+      'href',
+      '/clients',
+    )
     view.unmount()
+  })
+
+  it('unfolds the JARVIS doors only inside the workspace, and marks the gateway current there', async () => {
+    const view = await shellAt('/sentinel')
+    const doors = screen.getByRole('navigation', { name: 'JARVIS' })
+    for (const [label, href] of [
+      ['Klienter', '/clients'],
+      ['Sentinel', '/sentinel'],
+      ['Marknadspåverkan', '/market-impact'],
+    ]) {
+      expect(within(doors).getByRole('link', { name: label })).toHaveAttribute(
+        'href',
+        href,
+      )
+    }
+    const rail = screen.getByRole('navigation', { name: 'Huvudnavigation' })
+    expect(within(rail).getByRole('link', { name: 'JARVIS' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      within(rail).getByRole('link', { name: 'Kommandocentral' }),
+    ).not.toHaveAttribute('aria-current')
+    view.unmount()
+  })
+
+  it('mounts the environment once, in the shell, and not on the market landing page', async () => {
+    /*
+     * The photograph behind Klienter, Client 360, Sentinel and the cockpit is
+     * the shell's: one element beside the routed page, never inside it. The
+     * market landing page paints its own hero and gets none from the shell.
+     */
+    const shell = await shellAt('/clients')
+    expect(document.querySelectorAll('[data-environment]')).toHaveLength(1)
+    shell.unmount()
+    const home = await shellAt('/')
+    expect(document.querySelectorAll('[data-environment]')).toHaveLength(0)
+    home.unmount()
   })
 })

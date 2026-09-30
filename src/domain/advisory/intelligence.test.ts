@@ -29,6 +29,7 @@ const TODAY = '2026-09-23'
 const client: Client = {
   id: 'c1',
   householdId: 'h1',
+  officeId: 'o1',
   displayName: 'Test Klient',
   segment: 'private-banking',
   relationshipSince: '2020-01-01',

@@ -15,13 +15,19 @@ import { describe, expect, it } from 'vitest'
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
-const ROUTES = ['src/routes/clients.index.tsx', 'src/routes/clients.$clientId.tsx']
+const ROUTES = [
+  'src/routes/clients.index.tsx',
+  'src/routes/clients.$clientId.tsx',
+  'src/routes/clients.office.$officeId.tsx',
+]
 
 describe('the client routes', () => {
   it('exist in the generated tree, beside each other rather than nested', () => {
     const tree = read('src/routeTree.gen.ts')
     expect(tree).toMatch(/id: '\/clients\/',/)
     expect(tree).toMatch(/id: '\/clients\/\$clientId',/)
+    /* The office book is a destination of its own, deep-linkable. */
+    expect(tree).toMatch(/id: '\/clients\/office\/\$officeId',/)
   })
 
   it('reach the record only through the advisory door', () => {
@@ -37,9 +43,14 @@ describe('the client routes', () => {
     }
   })
 
-  it('shows the client through the command centre and the 360 view', () => {
+  it('shows the client through the command centre, the office book and the 360 view', () => {
     expect(read('src/routes/clients.index.tsx')).toMatch(/ClientCommandCentre/)
+    expect(read('src/routes/clients.office.$officeId.tsx')).toMatch(/OfficeBook/)
     expect(read('src/routes/clients.$clientId.tsx')).toMatch(/Client360/)
+  })
+
+  it('keeps the view of the book in the URL, so a book can be linked', () => {
+    expect(read('src/routes/clients.index.tsx')).toMatch(/validateSearch/)
   })
 })
 

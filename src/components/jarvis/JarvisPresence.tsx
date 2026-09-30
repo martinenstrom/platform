@@ -56,18 +56,31 @@
  */
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { ChevronLeft, Mic, Send, Sparkles } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { toneText } from '~/lib/tone'
-import { primaryNav, utilityNav } from '~/lib/navigation'
+import { shortcutNav } from '~/lib/navigation'
 import {
   financialOsHostFn,
   getCurrentOperatorFn,
 } from '~/infrastructure/analysis/serverFns'
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
+import { resolveJarvisContext, type JarvisContext } from '~/application/jarvis/context'
 /* The typed door: one line through the same router the voice delegates to. */
 import { askJarvisFn } from '~/infrastructure/jarvis/serverFns'
+import { answerHeadline } from '~/presentation/jarvis/advisoryAnswerText'
+import {
+  composePlaceholder,
+  contextChip,
+  contextLabel,
+  contextNamesOf,
+  emptyHint,
+  jarvisKnows,
+  quickActions,
+  type ContextNames,
+  type KnownFact,
+} from '~/presentation/jarvis/contextText'
 import {
   amendmentLine,
   answerLines,
@@ -75,6 +88,7 @@ import {
   phrase,
 } from '~/presentation/jarvis/hostStateText'
 import { ContextualSurface, SURFACE_TEXT } from './ContextualSurface'
+import { JarvisAnswerView } from './JarvisAnswerView'
 import {
   resetPresence,
   updatePresence,
@@ -82,10 +96,22 @@ import {
   type ContextualSurface as SurfaceKind,
   type PresenceTurn,
 } from './presenceStore'
-import { VoiceSession, VOICE_STATUS_TEXT, type VoiceFragment, type VoiceSnapshot } from './voiceSession'
+import {
+  VoiceSession,
+  VOICE_STATUS_TEXT,
+  type VoiceFragment,
+  type VoiceSnapshot,
+} from './voiceSession'
 
-const IDLE_VOICE: VoiceSnapshot = { status: 'idle', sessionId: null, notice: null, seconds: 0, costUsd: 0 }
-const voiceActive = (voice: VoiceSnapshot) => voice.status !== 'idle' && voice.status !== 'unavailable'
+const IDLE_VOICE: VoiceSnapshot = {
+  status: 'idle',
+  sessionId: null,
+  notice: null,
+  seconds: 0,
+  costUsd: 0,
+}
+const voiceActive = (voice: VoiceSnapshot) =>
+  voice.status !== 'idle' && voice.status !== 'unavailable'
 
 /** The strip's width at rest; `AppLayout` reserves the same on every shell route. */
 export const PRESENCE_STRIP_WIDTH = 'w-16'
@@ -131,6 +157,29 @@ function moodOf(busy: boolean, last: PresenceTurn | undefined): Mood {
 
 export function JarvisPresence() {
   const presence = usePresence()
+  /*
+   * Where the advisor is. The route on screen resolves to the context —
+   * the client, the office, the meeting — and travels with every typed
+   * line; the names come from what the page already loaded. Read from the
+   * resolved location, so the presence names the page that is on screen.
+   */
+  const route = useRouterState({
+    select: (state) => {
+      const location = state.resolvedLocation ?? state.location
+      return `${location.pathname}${location.searchStr ?? ''}`
+    },
+  })
+  const namesKey = useRouterState({
+    select: (state) =>
+      JSON.stringify(contextNamesOf(state.matches.map((match) => match.loaderData))),
+  })
+  const knowsKey = useRouterState({
+    select: (state) =>
+      JSON.stringify(jarvisKnows(state.matches.map((match) => match.loaderData))),
+  })
+  const context = resolveJarvisContext(route)
+  const names = JSON.parse(namesKey) as ContextNames
+  const knows = JSON.parse(knowsKey) as KnownFact[]
   const [mounted, setMounted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [operator, setOperator] = useState<string | null>(null)
@@ -172,7 +221,10 @@ export function JarvisPresence() {
              * and an answer are one response, not three messages.
              */
             const continues =
-              last && last.by === by && last.via === 'voice' && lastEnd !== undefined &&
+              last &&
+              last.by === by &&
+              last.via === 'voice' &&
+              lastEnd !== undefined &&
               (by === 'jarvis' || fragment.startMs - lastEnd < 1200)
             if (continues) {
               voiceTurnEnds.current.set(last.id, Math.max(lastEnd, fragment.endMs))
@@ -194,7 +246,12 @@ export function JarvisPresence() {
           updatePresence((state) =>
             state.reference?.id === reference.id
               ? state
-              : { ...state, reference, subject: ask?.subject ?? state.subject, question: ask?.question ?? state.question },
+              : {
+                  ...state,
+                  reference,
+                  subject: ask?.subject ?? state.subject,
+                  question: ask?.question ?? state.question,
+                },
           )
         },
       },
@@ -292,7 +349,14 @@ export function JarvisPresence() {
       if (!reply?.ok) {
         updatePresence((state) => ({
           ...state,
-          turns: [...state.turns, turn('jarvis', 'Röstsessionen tog inte emot det. Skriv igen när rösten är av.', { tone: 'warning' })],
+          turns: [
+            ...state.turns,
+            turn(
+              'jarvis',
+              'Röstsessionen tog inte emot det. Skriv igen när rösten är av.',
+              { tone: 'warning' },
+            ),
+          ],
         }))
         return
       }
@@ -303,7 +367,10 @@ export function JarvisPresence() {
         subject: reply.lastAsk?.subject ?? state.subject,
         question: reply.lastAsk?.question ?? state.question,
         marketContextAt: reply.marketContext?.at ?? state.marketContextAt,
-        turns: [...state.turns, turn('jarvis', reply.say || 'JARVIS svarade inte på det.')],
+        turns: [
+          ...state.turns,
+          turn('jarvis', reply.say || 'JARVIS svarade inte på det.'),
+        ],
       }))
     } finally {
       setBusy(false)
@@ -330,12 +397,26 @@ export function JarvisPresence() {
           ...(reference ? { reference } : {}),
           ...(history.length > 0 ? { history } : {}),
           ...(marketContext ? { marketContext } : {}),
+          /* Where the advisor is: the server resolves the workspace from it. */
+          context: { route },
         },
       })
       if (!result.ok) {
         updatePresence((state) => ({
           ...state,
-          turns: [...state.turns, turn('jarvis', 'JARVIS kunde inte svara just nu.', { tone: 'warning' })],
+          turns: [
+            ...state.turns,
+            turn('jarvis', 'JARVIS kunde inte svara just nu.', { tone: 'warning' }),
+          ],
+        }))
+        return
+      }
+      /* The record answered: a structured answer, rendered as its sections. */
+      if ('advisory' in result) {
+        const answer = result.advisory
+        updatePresence((state) => ({
+          ...state,
+          turns: [...state.turns, turn('jarvis', answerHeadline(answer), { answer })],
         }))
         return
       }
@@ -345,12 +426,18 @@ export function JarvisPresence() {
         subject: result.lastAsk?.subject ?? state.subject,
         question: result.lastAsk?.question ?? state.question,
         marketContextAt: result.marketContext?.at ?? state.marketContextAt,
-        turns: [...state.turns, turn('jarvis', result.say || 'JARVIS svarade inte på det.')],
+        turns: [
+          ...state.turns,
+          turn('jarvis', result.say || 'JARVIS svarade inte på det.'),
+        ],
       }))
     } catch {
       updatePresence((state) => ({
         ...state,
-        turns: [...state.turns, turn('jarvis', 'Jag fick inte kontakt med JARVIS.', { tone: 'warning' })],
+        turns: [
+          ...state.turns,
+          turn('jarvis', 'Jag fick inte kontakt med JARVIS.', { tone: 'warning' }),
+        ],
       }))
     } finally {
       setBusy(false)
@@ -443,6 +530,9 @@ export function JarvisPresence() {
             operator={operator}
             mood={moodOf(busy, lastFromJarvis)}
             voice={voice}
+            context={context}
+            contextName={contextLabel(context, names)}
+            knows={knows}
             onCollapse={() => setOpen(false)}
             onConsult={consult}
             onSay={say}
@@ -452,7 +542,14 @@ export function JarvisPresence() {
             onForget={forget}
           />
         ) : (
-          <RestingStrip mood={moodOf(busy, lastFromJarvis)} voice={voice} onOpen={() => setOpen(true)} onToggleVoice={toggleVoice} />
+          <RestingStrip
+            mood={moodOf(busy, lastFromJarvis)}
+            voice={voice}
+            chip={contextChip(context, names)}
+            contextName={contextLabel(context, names)}
+            onOpen={() => setOpen(true)}
+            onToggleVoice={toggleVoice}
+          />
         )}
         {/* JARVIS's voice plays here; the element is the session's speaker and nothing else. */}
         <audio ref={audioRef} autoPlay aria-hidden="true" className="hidden" />
@@ -549,11 +646,16 @@ function MicrophoneButton({
 function RestingStrip({
   mood,
   voice,
+  chip,
+  contextName,
   onOpen,
   onToggleVoice,
 }: {
   mood: Mood
   voice: VoiceSnapshot
+  /** The context in at most seven characters: a client's initials, an office's stub. */
+  chip: string
+  contextName: string
   onOpen: () => void
   onToggleVoice: () => void
 }) {
@@ -569,6 +671,16 @@ function RestingStrip({
         <Mark mood={mood} />
       </button>
       <span className="type-machine mt-2 text-content-muted">JARVIS</span>
+      {/* What JARVIS is looking at, at a glance: quiet, and named in full on hover. */}
+      {chip && (
+        <span
+          className="type-machine mt-1 max-w-[3.5rem] truncate text-institution"
+          aria-label={`Kontext: ${contextName}`}
+          title={contextName}
+        >
+          {chip}
+        </span>
+      )}
       <div className="mt-auto">
         <MicrophoneButton compact voice={voice} onToggle={onToggleVoice} />
       </div>
@@ -584,6 +696,9 @@ function ExpandedPanel({
   operator,
   mood,
   voice,
+  context,
+  contextName,
+  knows,
   onCollapse,
   onConsult,
   onSay,
@@ -597,6 +712,11 @@ function ExpandedPanel({
   operator: string | null
   mood: Mood
   voice: VoiceSnapshot
+  /** Where the advisor is, and what to call it. */
+  context: JarvisContext
+  contextName: string
+  /** The few things JARVIS already knows about the client on screen. */
+  knows: readonly KnownFact[]
   onCollapse: () => void
   onConsult: (request: HostRequest, said?: string) => Promise<void>
   onSay: (text: string) => Promise<void>
@@ -641,6 +761,10 @@ function ExpandedPanel({
         <Mark mood={mood} />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-content">JARVIS</p>
+          {/* What JARVIS is looking at: the same Financial OS the advisor is. */}
+          <p className="type-machine truncate text-institution" aria-label="Kontext">
+            {contextName}
+          </p>
           <p className="type-metadata truncate">{operator ?? '…'}</p>
         </div>
         <button
@@ -661,9 +785,7 @@ function ExpandedPanel({
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3"
       >
         {presence.turns.length === 0 && (
-          <li className="type-metadata">
-            Ställ en investeringsfråga så låter jag investeringsteamet ta den.
-          </li>
+          <li className="type-metadata">{emptyHint(context)}</li>
         )}
         {presence.turns.map((entry) => (
           <li
@@ -677,14 +799,21 @@ function ExpandedPanel({
                 : 'self-start border border-line bg-surface text-content',
             )}
           >
-            <p className={cn('font-medium', entry.tone ? toneText[entry.tone] : '')}>
-              {entry.text}
-              {entry.via === 'voice' && (
-                <span className="type-machine ml-1.5 text-content-subtle" aria-label="sagt">
-                  röst
-                </span>
-              )}
-            </p>
+            {entry.answer ? (
+              <JarvisAnswerView answer={entry.answer} />
+            ) : (
+              <p className={cn('font-medium', entry.tone ? toneText[entry.tone] : '')}>
+                {entry.text}
+                {entry.via === 'voice' && (
+                  <span
+                    className="type-machine ml-1.5 text-content-subtle"
+                    aria-label="sagt"
+                  >
+                    röst
+                  </span>
+                )}
+              </p>
+            )}
             {entry.detail && (
               <p className="mt-1 whitespace-pre-line text-content-muted">
                 {entry.detail}
@@ -766,6 +895,40 @@ function ExpandedPanel({
         </section>
       )}
 
+      {/* ------------------------------------------- what JARVIS knows */}
+      {knows.length > 0 && (
+        <section aria-label="JARVIS vet" className="border-t border-line px-3 py-2">
+          <p className="type-section text-[9.5px]">JARVIS vet</p>
+          <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+            {knows.map((fact) => (
+              <li key={fact.key} className="type-machine normal-case text-content-muted">
+                {fact.text}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* ---------------------------------------------- quick actions */}
+      {!live && quickActions(context).length > 0 && (
+        <nav
+          aria-label="Snabbfrågor"
+          className="flex flex-wrap gap-1.5 border-t border-line px-3 py-2"
+        >
+          {quickActions(context).map((action) => (
+            <button
+              key={action}
+              type="button"
+              disabled={busy}
+              onClick={() => void onAsk(action, '')}
+              className="rounded-[3px] border border-line px-2 py-0.5 text-[11.5px] text-content-muted transition-colors hover:border-institution-line hover:text-institution disabled:opacity-40"
+            >
+              {action}
+            </button>
+          ))}
+        </nav>
+      )}
+
       {/* ------------------------------------------------------ compose */}
       <form
         onSubmit={submit}
@@ -776,7 +939,11 @@ function ExpandedPanel({
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder={live ? 'Skriv in i samtalet — JARVIS svarar med rösten' : 'Hur ser amerikanska börsen ut idag?'}
+            placeholder={
+              live
+                ? 'Skriv in i samtalet — JARVIS svarar med rösten'
+                : composePlaceholder(context)
+            }
             rows={2}
             className="hq-field resize-none"
           />
@@ -815,8 +982,8 @@ function ExpandedPanel({
         )}
         {live && (
           <p className="type-metadata" aria-label="Röstsession">
-            Röst · {Math.floor(voice.seconds / 60)}:{String(voice.seconds % 60).padStart(2, '0')} · $
-            {voice.costUsd.toFixed(3)}
+            Röst · {Math.floor(voice.seconds / 60)}:
+            {String(voice.seconds % 60).padStart(2, '0')} · ${voice.costUsd.toFixed(3)}
           </p>
         )}
       </form>
@@ -826,7 +993,7 @@ function ExpandedPanel({
         aria-label="Genvägar"
         className="flex flex-wrap gap-x-3 gap-y-1 border-t border-line px-3 py-2"
       >
-        {[...primaryNav, ...utilityNav].map((item) => (
+        {shortcutNav.map((item) => (
           <Link key={item.to} to={item.to} className="type-machine hover:text-content">
             {item.label}
           </Link>

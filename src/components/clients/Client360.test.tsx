@@ -15,7 +15,6 @@ import { askAboutClient } from '~/application/advisory/askAboutClient'
 import { client360 } from '~/application/advisory/client360'
 import { completeCommitment } from '~/application/advisory/completeCommitment'
 import { confirmClientUpdate } from '~/application/advisory/confirmClientUpdate'
-import { prepareMeeting } from '~/application/advisory/meetingPrep'
 import type { AdvisoryContext } from '~/application/advisory/ports'
 import { recordClientUpdate } from '~/application/advisory/recordClientUpdate'
 import { FakeClock } from '~/domain/shared/clock'
@@ -44,10 +43,6 @@ function actionsOver(context: AdvisoryContext): ClientActions {
       confirmClientUpdate(context, { candidateId, decisions }),
     completeCommitment: (id) => completeCommitment(context, id),
     ask: (question) => askAboutClient(context, { clientId: CLIENT, question }),
-    prepareMeeting: async () => {
-      const prep = await prepareMeeting(context, CLIENT)
-      return prep ? { ok: true, prep } : { ok: false, code: 'NOT_FOUND' }
-    },
   }
 }
 
@@ -62,7 +57,12 @@ async function renderClient(context: AdvisoryContext) {
         changed += 1
       }}
     />,
-    ['/clients/$clientId', '/clients'],
+    [
+      '/clients/$clientId',
+      '/clients',
+      '/clients/$clientId/meeting-prep',
+      '/clients/office/$officeId',
+    ],
   )
   return { rendered, view, changes: () => changed }
 }
@@ -73,9 +73,17 @@ describe('understanding the client in ten seconds', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Henrik Alvarsson' }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/Entreprenör · Relation sedan 2024 · Ansvarig rådgivare Martin/),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Entreprenör sedan 2024')).toBeInTheDocument()
+    expect(screen.getByText('Rådgivare Martin')).toBeInTheDocument()
+    /* The office, as relationship metadata beside the identity, and a door to its book. */
+    expect(screen.getByRole('link', { name: 'Strandvägen' })).toHaveAttribute(
+      'href',
+      '/clients/office/of-strandvagen',
+    )
+    /* Three facts as pills: what the firm holds, who they are, how the relationship stands. */
+    const pills = screen.getByRole('list', { name: 'Nyckelfakta' })
+    expect(within(pills).getByText('AUM 21,0 MSEK')).toBeInTheDocument()
+    expect(within(pills).getByText('Hög relationshälsa')).toBeInTheDocument()
     expect(screen.getByText('Senaste kontakt').nextElementSibling).toHaveTextContent(
       '12 sep',
     )
@@ -84,7 +92,11 @@ describe('understanding the client in ten seconds', () => {
     expect(
       screen.getAllByText('Pröva om överskottslikviditeten ska placeras.').length,
     ).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Förbered möte' })).toBeInTheDocument()
+    /* The door to the Meeting Cockpit: a page of its own, so a link. */
+    expect(screen.getByRole('link', { name: 'Förbered möte' })).toHaveAttribute(
+      'href',
+      '/clients/cl-alvarsson/meeting-prep',
+    )
     expect(
       screen.getByRole('button', { name: 'Lägg till klientuppdatering' }),
     ).toBeInTheDocument()
@@ -234,24 +246,7 @@ describe('the daily workflow: add what happened, confirm, see it in memory', () 
   })
 })
 
-describe('prepare the meeting and ask the memory', () => {
-  it('opens a briefing with suggested topics', async () => {
-    const user = userEvent.setup()
-    const { rendered } = await renderClient(contextAt())
-    await user.click(screen.getByRole('button', { name: 'Förbered möte' }))
-    const prep = screen.getByRole('region', { name: 'Mötesförberedelse' })
-    await waitFor(() =>
-      expect(within(prep).getByText('Föreslagna samtalsämnen')).toBeInTheDocument(),
-    )
-    expect(
-      within(prep).getByText(/Portföljgenomgång med jämförelse · 3 okt 2026/),
-    ).toBeInTheDocument()
-    expect(
-      within(prep).getAllByText(/Orolig över energiexponeringen efter nedgången/).length,
-    ).toBeGreaterThan(0)
-    rendered.unmount()
-  })
-
+describe('ask the memory', () => {
   it('answers "vad har jag lovat" from the record, and says how', async () => {
     const user = userEvent.setup()
     const { rendered } = await renderClient(contextAt())

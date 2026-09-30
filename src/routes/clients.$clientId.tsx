@@ -9,7 +9,6 @@ import {
   completeCommitmentFn,
   confirmClientUpdateFn,
   getClient360Fn,
-  getMeetingPrepFn,
   recordClientUpdateFn,
 } from '~/infrastructure/advisory/serverFns'
 
@@ -65,16 +64,11 @@ function ClientPage() {
       confirmClientUpdateFn({ data: { candidateId, decisions } }),
     completeCommitment: (commitmentId) => completeCommitmentFn({ data: commitmentId }),
     ask: (question) => askAboutClientFn({ data: { clientId, question } }),
-    prepareMeeting: () => getMeetingPrepFn({ data: clientId }),
   }
 
   return (
     <PageShell className="gap-2">
-      <nav aria-label="Brödsmulor" className="px-1">
-        <Link to="/clients" className="type-machine hover:text-content">
-          ← Klienter
-        </Link>
-      </nav>
+      {/* The way back is the shell's breadcrumb; the dossier carries none of its own. */}
       <Client360
         view={response.view}
         actions={actions}

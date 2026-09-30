@@ -30,7 +30,10 @@ import type {
   MarketLedgerState,
   MarketObservation,
   MaterialityPolicy,
+  MeetingSnapshot,
   MemoryCandidate,
+  Office,
+  OfficeId,
   Opportunity,
   Portfolio,
   SentinelDisposition,
@@ -42,6 +45,9 @@ export interface ClientRepository {
   byId(id: ClientId): Promise<Client | null>
   householdById(id: HouseholdId): Promise<Household | null>
   advisorById(id: AdvisorId): Promise<Advisor | null>
+  /** Every office in the register, in a stable order. */
+  offices(): Promise<readonly Office[]>
+  officeById(id: OfficeId): Promise<Office | null>
 }
 
 export interface WealthRepository {
@@ -122,6 +128,20 @@ export interface MarketObservationSource {
   scenario: string | null
 }
 
+/**
+ * The meeting baselines: one per recorded meeting, the client's structured
+ * state as it stood when the meeting was confirmed, read by the next
+ * preparation to say what changed. Synthetic in Phase 1, seeded and held
+ * in memory with the rest of the record.
+ */
+export interface MeetingSnapshotRepository {
+  /** The baseline of the most recent recorded meeting, by meeting date. */
+  latestFor(clientId: ClientId): Promise<MeetingSnapshot | null>
+  allFor(clientId: ClientId): Promise<readonly MeetingSnapshot[]>
+  /** Insert or replace by id. */
+  save(snapshot: MeetingSnapshot): Promise<void>
+}
+
 export type MintedKind = 'interaction' | 'candidate' | 'fact' | 'commitment' | 'event'
 
 /** The record mints every identity. A caller never supplies one. */
@@ -141,6 +161,7 @@ export interface AdvisoryRepositories {
   opportunities: OpportunityRepository
   sentinel: SentinelRepository
   marketEvents: MarketEventLedger
+  meetingSnapshots: MeetingSnapshotRepository
   ids: IdentityMint
 }
 

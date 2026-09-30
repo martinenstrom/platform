@@ -2,10 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LightCommandCenter } from '~/components/lightDashboard/LightCommandCenter'
 import { getOverviewSnapshotFn } from '~/infrastructure/marketData/serverFns'
 import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
-import {
-  getMarketImpactFn,
-  getSentinelBriefFn,
-} from '~/infrastructure/advisory/serverFns'
+import { getMarketImpactFn } from '~/infrastructure/advisory/serverFns'
 
 /**
  * Kommandocentralen — the Financial OS home, and the answer to *what is
@@ -33,6 +30,14 @@ import {
  * rendering them in both places is what made the two pages one page twice
  * over. Market context is the whole subject here.
  *
+ * **Nor the client work.** Sentinel's priorities and Market-to-Client's
+ * affected clients stood here as modules for one stage, and the market
+ * command centre became a client page with a globe on it. They live in the
+ * JARVIS workspace now — `/sentinel`, `/market-impact` — behind the gateway
+ * in the rail. What remains of them here is the quietest possible pointer:
+ * a muted "3 klienter" beside a market row a client is meaningfully exposed
+ * to, linking into that workspace. Nothing else about clients renders here.
+ *
  * ## The one thing read from the firm: who is here
  *
  * The greeting used to address a literal — *Anders*, of *Private Banking* —
@@ -48,34 +53,28 @@ import {
  */
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [snapshot, operator, sentinel, marketImpact] = await Promise.all([
+    const [snapshot, operator, marketImpact] = await Promise.all([
       getOverviewSnapshotFn(),
       getCurrentOperatorFn(),
       /*
-       * The client half of the morning. Client truth, not institutional
-       * state: which relationships need the advisor today, from the advisory
-       * record on the advisory clock. Absent when that record cannot answer,
+       * Market-to-Client: which clients the material moves touch, for the
+       * row marks only. Read from the same market snapshot and the same
+       * record, on the same clock; absent when the record cannot answer,
        * and the market screen renders complete without it.
-       */
-      getSentinelBriefFn(),
-      /*
-       * Market-to-Client: which clients the material moves touch. Read from
-       * the same market snapshot and the same record, on the same clock.
        */
       getMarketImpactFn(),
     ])
-    return { snapshot, operator, sentinel, marketImpact }
+    return { snapshot, operator, marketImpact }
   },
   component: HomePage,
 })
 
 function HomePage() {
-  const { snapshot, operator, sentinel, marketImpact } = Route.useLoaderData()
+  const { snapshot, operator, marketImpact } = Route.useLoaderData()
   return (
     <LightCommandCenter
       snapshot={snapshot}
       operator={operator.ok ? operator.operator : undefined}
-      sentinel={sentinel.ok ? sentinel.brief : undefined}
       marketImpact={marketImpact.ok ? marketImpact.brief : undefined}
     />
   )

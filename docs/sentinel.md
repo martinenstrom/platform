@@ -25,9 +25,10 @@ infrastructure/advisory          dispositions in the synthetic repositories; the
 presentation/advisory/sentinelText.ts
                                  titles, why now, why it matters, preparation, driver
                                  sentences, severity and section labels — Swedish, once
-components/sentinel              SentinelBriefList + SentinelGreeting (dashboard),
-                                 SentinelQueue (/sentinel)
-routes/sentinel.tsx, routes/index.tsx (loader), lib/navigation.ts (Sentinel destination)
+components/sentinel              SentinelQueue (/sentinel); SentinelBriefList + SentinelGreeting
+                                 remain as components but no surface renders them since the
+                                 navigation pass of 2026-09-29
+routes/sentinel.tsx, lib/navigation.ts (a JARVIS workspace destination)
 ```
 
 Sentinel consumes `assembleClientFacts`, `relationshipHealth`, `signalsFor`,
@@ -120,15 +121,15 @@ synthetic repository with everything else (per process, TD-104).
 
 ## 4. Surfaces
 
-- **Dashboard.** Under _God morgon_, one restrained line: _Sentinel · 5
-  klienter behöver din uppmärksamhet i dag · 2 möten kommande 7 dagar · 4
-  försenade åtaganden_, with a door to the queue. Between the market
-  overview and the market detail, a _Klientprioriteringar · Sentinel_ module
-  in the dashboard's own card and tile language: the four highest-ranked
-  priorities, each with severity, client, title, why now, last and next
-  contact, preparation and _Öppna klient_; _Visa alla_ to the queue. Both
-  render only when the advisory record answered; the market screen is
-  complete without them.
+- **Dashboard — none, since 2026-09-29.** For one stage the home page
+  carried a Sentinel line under _God morgon_ and a _Klientprioriteringar ·
+  Sentinel_ module between the market overview and the market detail, and
+  the market command centre became a client page with a globe on it. The
+  navigation pass removed both: the home page is the market, and Sentinel
+  is reached through the JARVIS gateway in the rail (JARVIS → Klienter /
+  Sentinel / Marknadspåverkan). The engine, the route and the tests are
+  unchanged; the components `SentinelBriefList` and `SentinelGreeting`
+  remain but no surface renders them.
 - **`/sentinel`.** Six counts (act today, meetings within 7 days, overdue
   promises, relationship risks, opportunities, quiet clients), then
   _Behöver åtgärd nu_, _Kommande_, _Bevaka_, _Möjligheter_. A row carries
@@ -187,4 +188,6 @@ collisions, dedupe, resolution, dispositions, a quiet client),
 snooze/review/dismiss, the dismissal that lapses, silence removed by a call),
 `components/sentinel/SentinelQueue.test.tsx` (module, greeting, queue
 sections, explanation, snooze, refusal, set-aside), `routes/sentinel.test.tsx`
-(door, navigation, dashboard guard). Browser probe: `.probe/sentinel-probe.mjs`.
+(door, workspace navigation, the guard that the home page carries no Sentinel
+module). Browser probe: `.probe/sentinel-probe.mjs` (its dashboard section
+predates the navigation pass).

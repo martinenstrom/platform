@@ -109,12 +109,24 @@ class FakePeerConnection extends EventTarget {
   }
 }
 const track = { kind: 'audio', stop: vi.fn() }
-const getUserMedia = vi.fn(async () => ({ getAudioTracks: () => [track], getTracks: () => [track] }))
+const getUserMedia = vi.fn(async () => ({
+  getAudioTracks: () => [track],
+  getTracks: () => [track],
+}))
 
 beforeAll(() => {
-  Object.defineProperty(globalThis, 'RTCPeerConnection', { value: FakePeerConnection, configurable: true })
-  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true })
-  Object.defineProperty(HTMLMediaElement.prototype, 'play', { value: vi.fn(async () => {}), configurable: true })
+  Object.defineProperty(globalThis, 'RTCPeerConnection', {
+    value: FakePeerConnection,
+    configurable: true,
+  })
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia },
+    configurable: true,
+  })
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    value: vi.fn(async () => {}),
+    configurable: true,
+  })
 })
 
 const channel = () => FakePeerConnection.last!.channel!
@@ -125,7 +137,9 @@ async function goLive(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
   await user.click(screen.getByRole('button', { name: 'Starta röst' }))
   await screen.findByRole('button', { name: 'Avsluta röst' })
-  await act(async () => channel().emit({ type: 'session.started', session: { id: 'live-1' } }))
+  await act(async () =>
+    channel().emit({ type: 'session.started', session: { id: 'live-1' } }),
+  )
 }
 
 /**
@@ -276,7 +290,10 @@ beforeEach(() => {
   closeLive.mockReset()
   closeLive.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
   getUserMedia.mockClear()
-  getUserMedia.mockResolvedValue({ getAudioTracks: () => [track], getTracks: () => [track] })
+  getUserMedia.mockResolvedValue({
+    getAudioTracks: () => [track],
+    getTracks: () => [track],
+  })
   track.stop.mockClear()
   FakePeerConnection.last = null
 })
@@ -317,13 +334,20 @@ describe('engaged', () => {
     expect(askJarvis).toHaveBeenCalledTimes(1)
     expect(host).not.toHaveBeenCalled()
     const sent = askJarvis.mock.calls[0]![0] as { data: Record<string, unknown> }
-    expect(sent.data).toEqual({ text: 'Är Nvidia köpvärd?', subject: 'Nvidia' })
+    /* The line, the hint, and where the advisor is — the route, never an id of the browser's choosing. */
+    expect(sent.data).toEqual({
+      text: 'Är Nvidia köpvärd?',
+      subject: 'Nvidia',
+      context: { route: '/' },
+    })
     /* No actor of any name crosses the door. */
-    expect(Object.keys(sent.data).sort()).toEqual(['subject', 'text'])
+    expect(Object.keys(sent.data).sort()).toEqual(['context', 'subject', 'text'])
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText('Är Nvidia köpvärd?')).toBeInTheDocument()
-    expect(within(log).getByText('Kommittén är sammankallad men saknar en utgångstes.')).toBeInTheDocument()
+    expect(
+      within(log).getByText('Kommittén är sammankallad men saknar en utgångstes.'),
+    ).toBeInTheDocument()
   })
 
   it('answers a market question with fresh words and opens no case', async () => {
@@ -338,16 +362,23 @@ describe('engaged', () => {
     expect(askJarvis).toHaveBeenCalledTimes(1)
     expect((askJarvis.mock.calls[0]![0] as { data: unknown }).data).toEqual({
       text: 'Hur ser amerikanska börsen ut idag?',
+      context: { route: '/' },
     })
     expect(host).not.toHaveBeenCalled()
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText(/S&P 500 är upp 0,4 procent/)).toBeInTheDocument()
-    expect(within(presence()).queryByRole('region', { name: 'Aktivt ärende' })).not.toBeInTheDocument()
-    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain('"id":"case-1"')
+    expect(
+      within(presence()).queryByRole('region', { name: 'Aktivt ärende' }),
+    ).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain(
+      '"id":"case-1"',
+    )
   })
 
   it('sends the conversation so far with a follow-up, so "varför?" is about something', async () => {
-    askJarvis.mockResolvedValueOnce(marketAnswer).mockResolvedValueOnce({ ...marketAnswer, say: 'För att räntan steg.' })
+    askJarvis
+      .mockResolvedValueOnce(marketAnswer)
+      .mockResolvedValueOnce({ ...marketAnswer, say: 'För att räntan steg.' })
     const user = userEvent.setup()
     await mountApp()
     await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
@@ -358,7 +389,10 @@ describe('engaged', () => {
 
     expect(askJarvis).toHaveBeenCalledTimes(2)
     const first = (askJarvis.mock.calls[0]![0] as { data: Record<string, unknown> }).data
-    expect(first).toEqual({ text: 'Hur ser amerikanska börsen ut idag?' })
+    expect(first).toEqual({
+      text: 'Hur ser amerikanska börsen ut idag?',
+      context: { route: '/' },
+    })
     const second = (askJarvis.mock.calls[1]![0] as { data: Record<string, unknown> }).data
     expect(second).toEqual({
       text: 'Varför?',
@@ -368,6 +402,7 @@ describe('engaged', () => {
       ],
       /* The brief's time goes back with the follow-up, so it is answered over the same numbers. */
       marketContext: { at: marketAnswer.marketContext.at },
+      context: { route: '/' },
     })
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
       `"marketContextAt":"${marketAnswer.marketContext.at}"`,
@@ -424,7 +459,9 @@ describe('engaged', () => {
 
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText('Ärendet är stängt.')).toBeInTheDocument()
-    expect(within(log).getByText(/Pågående arbete avbröts — Behövs inte längre\./)).toBeInTheDocument()
+    expect(
+      within(log).getByText(/Pågående arbete avbröts — Behövs inte längre\./),
+    ).toBeInTheDocument()
     expect(within(log).queryByText(/återkommer/)).not.toBeInTheDocument()
   })
 
@@ -563,7 +600,9 @@ describe('engaged', () => {
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
     expect(within(log).getByText(/ingen operatör är konfigurerad/)).toBeInTheDocument()
     expect(within(presence()).queryByRole('region', { name: 'Aktivt ärende' })).toBeNull()
-    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain('"id":"case-1"')
+    expect(window.sessionStorage.getItem('jarvis:presence')).not.toContain(
+      '"id":"case-1"',
+    )
   })
 
   it('collapses on Escape inside the panel, and only inside it', async () => {
@@ -598,7 +637,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
-    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await user.click(
+      screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }),
+    )
 
     /* The canonical room: the fixture's investment question is its heading. */
     const room = surface('Styrelserummet')
@@ -614,7 +655,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     /* The page beneath is still there, and so is the conversation. */
     expect(screen.getByText('/')).toBeInTheDocument()
     expect(within(presence()).getByRole('list', { name: 'Samtal' })).toBeInTheDocument()
-    expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"surface":"boardroom"')
+    expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
+      '"surface":"boardroom"',
+    )
   })
 
   it('opens the record the same way', async () => {
@@ -628,7 +671,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     expect(
       await within(record).findByRole('heading', { name: 'Underlag' }),
     ).toBeInTheDocument()
-    expect(within(record).getByRole('heading', { name: /Händelseförlopp/ })).toBeInTheDocument()
+    expect(
+      within(record).getByRole('heading', { name: /Händelseförlopp/ }),
+    ).toBeInTheDocument()
     expect(within(record).getByRole('link', { name: /Öppna som sida/ })).toHaveAttribute(
       'href',
       '/cases/case-1/underlag',
@@ -640,7 +685,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
-    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await user.click(
+      screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }),
+    )
     await within(surface('Styrelserummet')).findByRole('heading', {
       name: /Does the ECB cut before Q2\?/,
     })
@@ -665,7 +712,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
-    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await user.click(
+      screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }),
+    )
     await within(surface('Styrelserummet')).findByRole('heading', {
       name: /Does the ECB cut before Q2\?/,
     })
@@ -680,7 +729,9 @@ describe('the deeper surfaces, opened beside the conversation', () => {
     const user = userEvent.setup()
     await mountApp()
     await askNvidia(user)
-    await user.click(screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }))
+    await user.click(
+      screen.getByRole('button', { name: /Visa hur ni kom fram till det/ }),
+    )
     expect(
       await within(surface('Styrelserummet')).findByText('Ärendet finns inte.'),
     ).toBeInTheDocument()
@@ -717,12 +768,24 @@ describe('the microphone', () => {
     const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
     expect(Object.keys(sent)).toEqual(['sdp'])
     expect(sent.sdp).toBe('v=0 offer')
-    expect(FakePeerConnection.last!.setRemoteDescription).toHaveBeenCalledWith({ type: 'answer', sdp: 'v=0 answer' })
+    expect(FakePeerConnection.last!.setRemoteDescription).toHaveBeenCalledWith({
+      type: 'answer',
+      sdp: 'v=0 answer',
+    })
     expect(mic).toHaveTextContent('Ansluter…')
 
-    await act(async () => channel().emit({ type: 'session.started', session: { id: 'live-1' } }))
+    await act(async () =>
+      channel().emit({ type: 'session.started', session: { id: 'live-1' } }),
+    )
     expect(micButton()).toHaveTextContent('Lyssnar')
-    await act(async () => channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 3000, end_ms: 3600 }))
+    await act(async () =>
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Ett ögonblick.',
+        start_ms: 3000,
+        end_ms: 3600,
+      }),
+    )
     expect(micButton()).toHaveTextContent('Talar')
   })
 
@@ -731,12 +794,29 @@ describe('the microphone', () => {
     await mountApp()
     await goLive(user)
     await act(async () => {
-      channel().emit({ type: 'session.input_transcript.delta', delta: ' Jarvis, hur ser du', start_ms: 1000, end_ms: 1600 })
-      channel().emit({ type: 'session.input_transcript.delta', delta: ' på Nvidia?', start_ms: 1600, end_ms: 2400 })
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 2400, end_ms: 3000 })
+      channel().emit({
+        type: 'session.input_transcript.delta',
+        delta: ' Jarvis, hur ser du',
+        start_ms: 1000,
+        end_ms: 1600,
+      })
+      channel().emit({
+        type: 'session.input_transcript.delta',
+        delta: ' på Nvidia?',
+        start_ms: 1600,
+        end_ms: 2400,
+      })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Ett ögonblick.',
+        start_ms: 2400,
+        end_ms: 3000,
+      })
     })
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
-    const items = within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by'))
+    const items = within(log)
+      .getAllByRole('listitem')
+      .filter((item) => item.getAttribute('data-by'))
     expect(items.map((item) => item.getAttribute('data-by'))).toEqual(['user', 'jarvis'])
     expect(items[0]).toHaveTextContent('Jarvis, hur ser du på Nvidia?')
     expect(items[1]).toHaveTextContent('Ett ögonblick.')
@@ -750,17 +830,49 @@ describe('the microphone', () => {
     await mountApp()
     await goLive(user)
     await act(async () => {
-      channel().emit({ type: 'session.input_transcript.delta', delta: ' Hur ser du på Nvidia?', start_ms: 1000, end_ms: 2400 })
+      channel().emit({
+        type: 'session.input_transcript.delta',
+        delta: ' Hur ser du på Nvidia?',
+        start_ms: 1000,
+        end_ms: 2400,
+      })
       /* An acknowledgement, a pause of seconds, then the answer: one reply. */
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'Ett ögonblick.', start_ms: 2400, end_ms: 3000 })
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'Jag behöver ditt beslut först.', start_ms: 6500, end_ms: 8000 })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Ett ögonblick.',
+        start_ms: 2400,
+        end_ms: 3000,
+      })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Jag behöver ditt beslut först.',
+        start_ms: 6500,
+        end_ms: 8000,
+      })
       /* The person speaks again: what follows is a new reply. */
-      channel().emit({ type: 'session.input_transcript.delta', delta: ' Okej.', start_ms: 9000, end_ms: 9400 })
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'Bra.', start_ms: 9600, end_ms: 9900 })
+      channel().emit({
+        type: 'session.input_transcript.delta',
+        delta: ' Okej.',
+        start_ms: 9000,
+        end_ms: 9400,
+      })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Bra.',
+        start_ms: 9600,
+        end_ms: 9900,
+      })
     })
     const log = within(presence()).getByRole('list', { name: 'Samtal' })
-    const items = within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by'))
-    expect(items.map((item) => item.getAttribute('data-by'))).toEqual(['user', 'jarvis', 'user', 'jarvis'])
+    const items = within(log)
+      .getAllByRole('listitem')
+      .filter((item) => item.getAttribute('data-by'))
+    expect(items.map((item) => item.getAttribute('data-by'))).toEqual([
+      'user',
+      'jarvis',
+      'user',
+      'jarvis',
+    ])
     expect(items[1]).toHaveTextContent('Ett ögonblick. Jag behöver ditt beslut först.')
     expect(items[3]).toHaveTextContent('Bra.')
     expect(items[3]).not.toHaveTextContent('Ett ögonblick.')
@@ -772,7 +884,9 @@ describe('the microphone', () => {
     await goLive(user)
     await user.type(screen.getByLabelText('Fråga'), 'Hur går börsen?')
     await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
-    expect(typeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1', text: 'Hur går börsen?' } })
+    expect(typeLive).toHaveBeenCalledWith({
+      data: { sessionId: 'live-1', text: 'Hur går börsen?' },
+    })
     /* And the brief's time the reply carried is remembered for the next line. */
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
       `"marketContextAt":"${marketAnswer.marketContext.at}"`,
@@ -785,16 +899,38 @@ describe('the microphone', () => {
     expect(within(log).getByText(/S&P 500 är upp 0,4 procent/)).toBeInTheDocument()
     /* The voice then says the same answer; its transcript is not a second bubble. */
     await act(async () => {
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'S&P 500 är upp', start_ms: 5000, end_ms: 5600 })
-      channel().emit({ type: 'session.output_transcript.delta', delta: ' 0,4 procent.', start_ms: 5600, end_ms: 6200 })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'S&P 500 är upp',
+        start_ms: 5000,
+        end_ms: 5600,
+      })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: ' 0,4 procent.',
+        start_ms: 5600,
+        end_ms: 6200,
+      })
     })
     const jarvisBubbles = () =>
-      within(log).getAllByRole('listitem').filter((item) => item.getAttribute('data-by') === 'jarvis')
+      within(log)
+        .getAllByRole('listitem')
+        .filter((item) => item.getAttribute('data-by') === 'jarvis')
     expect(jarvisBubbles()).toHaveLength(1)
     /* The person speaking again ends the echo: the next reply is shown. */
     await act(async () => {
-      channel().emit({ type: 'session.input_transcript.delta', delta: ' Och tech?', start_ms: 9000, end_ms: 9500 })
-      channel().emit({ type: 'session.output_transcript.delta', delta: 'Tech leder.', start_ms: 9700, end_ms: 10200 })
+      channel().emit({
+        type: 'session.input_transcript.delta',
+        delta: ' Och tech?',
+        start_ms: 9000,
+        end_ms: 9500,
+      })
+      channel().emit({
+        type: 'session.output_transcript.delta',
+        delta: 'Tech leder.',
+        start_ms: 9700,
+        end_ms: 10200,
+      })
     })
     expect(jarvisBubbles()).toHaveLength(2)
 
@@ -825,13 +961,25 @@ describe('the microphone', () => {
       closed: false,
       reference,
       lastAsk: { question: 'Hur ser du på Nvidia?', subject: 'Nvidia' },
-      telemetry: { voiceSeconds: 12, voiceCostUsd: 0.01, backend: { costUsd: 0.001 }, reason: null } as never,
+      telemetry: {
+        voiceSeconds: 12,
+        voiceCostUsd: 0.01,
+        backend: { costUsd: 0.001 },
+        reason: null,
+      } as never,
     })
     const user = userEvent.setup()
     await mountApp()
     await goLive(user)
-    await act(async () => channel().emit({ type: 'session.delegation.created', delegation: { id: 'd1', target: 'responses' } }))
-    const active = await within(presence()).findByRole('region', { name: 'Aktivt ärende' })
+    await act(async () =>
+      channel().emit({
+        type: 'session.delegation.created',
+        delegation: { id: 'd1', target: 'responses' },
+      }),
+    )
+    const active = await within(presence()).findByRole('region', {
+      name: 'Aktivt ärende',
+    })
     expect(within(active).getByText('Nvidia')).toBeInTheDocument()
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain('"id":"case-1"')
   })
@@ -844,7 +992,10 @@ describe('the microphone', () => {
     expect(closeLive).toHaveBeenCalledWith({ data: { sessionId: 'live-1' } })
     expect(track.stop).toHaveBeenCalled()
     expect(FakePeerConnection.last!.close).toHaveBeenCalled()
-    expect(await screen.findByRole('button', { name: 'Starta röst' })).toHaveAttribute('aria-pressed', 'false')
+    expect(await screen.findByRole('button', { name: 'Starta röst' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
 
     closeLive.mockClear()
     await user.click(screen.getByRole('button', { name: 'Starta röst' }))
@@ -861,12 +1012,16 @@ describe('the microphone', () => {
   })
 
   it('leaves JARVIS usable when the microphone is blocked', async () => {
-    getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+    getUserMedia.mockRejectedValueOnce(
+      Object.assign(new Error('denied'), { name: 'NotAllowedError' }),
+    )
     const user = userEvent.setup()
     await mountApp()
     await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
     await user.click(screen.getByRole('button', { name: 'Starta röst' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Mikrofonen är blockerad i webbläsaren. Skriv i stället.')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Mikrofonen är blockerad i webbläsaren. Skriv i stället.',
+    )
     expect(openLive).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('Fråga'), 'Är Nvidia köpvärd?')
@@ -881,7 +1036,9 @@ describe('the microphone', () => {
     await mountApp()
     await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
     await user.click(screen.getByRole('button', { name: 'Starta röst' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Rösttjänsten avböjde just nu. Skriv i stället.')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Rösttjänsten avböjde just nu. Skriv i stället.',
+    )
     expect(track.stop).toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
     expect(within(presence()).getByRole('list', { name: 'Samtal' })).toBeInTheDocument()
@@ -891,8 +1048,16 @@ describe('the microphone', () => {
     const user = userEvent.setup()
     await mountApp()
     await goLive(user)
-    await act(async () => channel().emit({ type: 'session.closed', reason: 'idle 90 s', usage: { seconds: 95 } }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Röstsessionen stängdes efter tystnad.')
+    await act(async () =>
+      channel().emit({
+        type: 'session.closed',
+        reason: 'idle 90 s',
+        usage: { seconds: 95 },
+      }),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Röstsessionen stängdes efter tystnad.',
+    )
     expect(screen.getByRole('button', { name: 'Starta röst' })).toBeInTheDocument()
     expect(track.stop).toHaveBeenCalled()
   })
@@ -953,8 +1118,13 @@ describe('across navigation', () => {
     await mountApp()
     await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
     const doors = within(presence()).getByRole('navigation', { name: 'Genvägar' })
+    /* The JARVIS gateway is unfolded here: the presence is JARVIS, and offers its doors, not itself. */
+    expect(within(doors).queryByRole('link', { name: 'JARVIS' })).toBeNull()
     for (const [label, href] of [
       ['Huvudkontor', '/headquarters'],
+      ['Klienter', '/clients'],
+      ['Sentinel', '/sentinel'],
+      ['Marknadspåverkan', '/market-impact'],
       ['Underlag', '/evidence'],
       ['Inställningar', '/settings'],
     ]) {
@@ -963,6 +1133,281 @@ describe('across navigation', () => {
         href,
       )
     }
+  })
+})
+
+/* ------------------------------------------------------- context awareness */
+
+describe('it looks at the same Financial OS the advisor does', () => {
+  /** A client page's loaded view, as the route would hand it to the shell. */
+  const view = (displayName: string, clientId: string) => ({
+    ok: true,
+    view: {
+      client: { id: clientId, displayName },
+      today: '2026-09-23',
+      nextMeeting:
+        clientId === 'cl-dahlqvist' ? { occursOn: '2026-10-02', daysAhead: 9 } : null,
+      openCommitments: clientId === 'cl-dahlqvist' ? [{ overdue: true }] : [],
+      liabilities: [],
+      contextFacts: [{ category: 'concern', status: 'active' }],
+    },
+  })
+  const advisoryAnswer = {
+    scope: 'CLIENT',
+    intent: 'OPEN_COMMITMENTS',
+    about: {
+      kind: 'client',
+      id: 'cl-dahlqvist',
+      label: 'Anna & Per Dahlqvist',
+      href: '/clients/cl-dahlqvist',
+      switched: false,
+    },
+    sections: [
+      {
+        key: 'promises',
+        items: [
+          {
+            kind: 'commitment',
+            nature: 'fact',
+            sourceIds: ['co-1'],
+            overdue: true,
+            daysToDue: -6,
+            commitment: {
+              id: 'co-1',
+              clientId: 'cl-dahlqvist',
+              title: 'Skicka samlat finansieringsförslag',
+              createdAt: '2026-09-02',
+              dueDate: '2026-09-17',
+              status: 'open',
+              priority: 'high',
+              ownerAdvisorId: 'adv-sofia',
+              completedAt: null,
+              provenance: {
+                origin: 'seed',
+                sourceInteractionId: null,
+                sourceText: null,
+                sourceDate: '2026-09-02',
+                createdAt: '2026-09-02T09:00:00.000Z',
+                createdBy: 'adv-sofia',
+                confidence: 'high',
+                confirmedByAdvisor: true,
+                confirmedAt: '2026-09-02T09:00:00.000Z',
+              },
+            },
+          },
+        ],
+      },
+    ],
+    sources: [
+      {
+        id: 'co-1',
+        type: 'commitment',
+        label: 'Skicka samlat finansieringsförslag',
+        date: '2026-09-17',
+      },
+    ],
+    actions: [],
+    titles: { 'co-1': 'Skicka samlat finansieringsförslag' },
+    today: '2026-09-23',
+    confidence: 'high',
+    method: 'advisory-rules-v1',
+    askedAt: '2026-09-23T10:00:00.000Z',
+  } as const
+
+  async function mountClients(initial: string) {
+    const rootRoute = createRootRoute({
+      component: () => (
+        <>
+          <AppLayout>
+            <Outlet />
+          </AppLayout>
+          <JarvisPresence />
+        </>
+      ),
+    })
+    const clients = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/clients/$clientId',
+      loader: ({ params }) =>
+        Promise.resolve(
+          params.clientId === 'cl-dahlqvist'
+            ? view('Anna & Per Dahlqvist', 'cl-dahlqvist')
+            : view('Henrik Alvarsson', 'cl-alvarsson'),
+        ),
+      component: () => <p>klient</p>,
+    })
+    const office = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/clients/office/$officeId',
+      loader: () =>
+        Promise.resolve({
+          ok: true,
+          book: { office: { id: 'of-strandvagen', displayName: 'Strandvägen' } },
+        }),
+      component: () => <p>kontor</p>,
+    })
+    const plain = ['/', '/clients', '/sentinel'].map((path) =>
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path,
+        component: () => <p>{path}</p>,
+      }),
+    )
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([clients, office, ...plain]),
+      history: createMemoryHistory({ initialEntries: [initial] }),
+    })
+    await router.load()
+    render(<RouterProvider router={router as never} />)
+    return router
+  }
+
+  it('names the client on screen, knows the few things the page loaded, and offers the client’s questions', async () => {
+    const user = userEvent.setup()
+    await mountClients('/clients/cl-dahlqvist')
+    /* At rest: the client's initials, named in full for assistive technology. */
+    expect(screen.getByLabelText('Kontext: Anna & Per Dahlqvist')).toHaveTextContent('AD')
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent(
+      'Anna & Per Dahlqvist',
+    )
+    const knows = within(presence()).getByRole('region', { name: 'JARVIS vet' })
+    expect(knows).toHaveTextContent('Möte om 9 dagar')
+    expect(knows).toHaveTextContent('1 försenat åtagande')
+    expect(knows).toHaveTextContent('1 aktiv oro')
+    const quick = within(presence()).getByRole('navigation', { name: 'Snabbfrågor' })
+    expect(
+      within(quick).getByRole('button', { name: 'Vad har jag lovat?' }),
+    ).toBeInTheDocument()
+    expect(within(quick).queryByRole('button', { name: /börsen/ })).toBeNull()
+  })
+
+  it('asks about the client on screen without the name, and renders the record’s answer as its sections', async () => {
+    askJarvis.mockResolvedValue({
+      ok: true,
+      advisory: advisoryAnswer,
+      context: {
+        scope: 'CLIENT',
+        route: '/clients/cl-dahlqvist',
+        clientId: 'cl-dahlqvist',
+        capabilities: [],
+      },
+    } as never)
+    const user = userEvent.setup()
+    await mountClients('/clients/cl-dahlqvist')
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.click(screen.getByRole('button', { name: 'Vad har jag lovat?' }))
+    expect(askJarvis).toHaveBeenCalledTimes(1)
+    expect(
+      (askJarvis.mock.calls[0]![0] as { data: Record<string, unknown> }).data,
+    ).toEqual({
+      text: 'Vad har jag lovat?',
+      context: { route: '/clients/cl-dahlqvist' },
+    })
+    expect(host).not.toHaveBeenCalled()
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    /* The headline, and the section of the same name beneath it. */
+    expect(await within(log).findAllByText('Du lovade')).toHaveLength(2)
+    const section = within(log).getByRole('region', { name: 'Du lovade' })
+    expect(section).toHaveTextContent('Skicka samlat finansieringsförslag')
+    expect(section).toHaveTextContent(/försenat 6 dagar/)
+    /* The evidence, on request — never a chain of thought. */
+    expect(
+      within(log).getByText(/Varför säger JARVIS detta\? · 1 underlag/),
+    ).toBeInTheDocument()
+    expect(
+      within(log).getByText(/Åtagande · Skicka samlat finansieringsförslag/),
+    ).toBeInTheDocument()
+  })
+
+  it('says when it answers about another client than the one on screen, and offers the door', async () => {
+    askJarvis.mockResolvedValue({
+      ok: true,
+      advisory: {
+        ...advisoryAnswer,
+        intent: 'CLIENT_SUMMARY',
+        about: {
+          kind: 'client',
+          id: 'cl-alvarsson',
+          label: 'Henrik Alvarsson',
+          href: '/clients/cl-alvarsson',
+          switched: true,
+        },
+        actions: [{ kind: 'open-client', href: '/clients/cl-alvarsson' }],
+      },
+      context: {
+        scope: 'CLIENT',
+        route: '/clients/cl-dahlqvist',
+        clientId: 'cl-dahlqvist',
+        capabilities: [],
+      },
+    } as never)
+    const user = userEvent.setup()
+    const router = await mountClients('/clients/cl-dahlqvist')
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    await user.type(screen.getByLabelText('Fråga'), 'Vad är viktigast med Henrik?')
+    await user.click(screen.getByRole('button', { name: 'Ställ frågan' }))
+    const log = within(presence()).getByRole('list', { name: 'Samtal' })
+    expect(await within(log).findByText(/Svarar om:/)).toHaveTextContent(
+      'Henrik Alvarsson',
+    )
+    expect(within(log).getByRole('link', { name: /Öppna klient/ })).toHaveAttribute(
+      'href',
+      '/clients/cl-alvarsson',
+    )
+    /* The screen did not move. */
+    expect(router.state.location.pathname).toBe('/clients/cl-dahlqvist')
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent(
+      'Anna & Per Dahlqvist',
+    )
+  })
+
+  it('changes context with the route, without a reload: another client, an office, the book', async () => {
+    const user = userEvent.setup()
+    const router = await mountClients('/clients/cl-dahlqvist')
+    await user.click(screen.getByRole('button', { name: 'Öppna JARVIS' }))
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent(
+      'Anna & Per Dahlqvist',
+    )
+
+    await act(async () => {
+      await router.navigate({
+        to: '/clients/$clientId',
+        params: { clientId: 'cl-alvarsson' },
+      })
+    })
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent(
+      'Henrik Alvarsson',
+    )
+
+    await act(async () => {
+      await router.navigate({
+        to: '/clients/office/$officeId',
+        params: { officeId: 'of-strandvagen' },
+      })
+    })
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent('Strandvägen')
+    const quick = within(presence()).getByRole('navigation', { name: 'Snabbfrågor' })
+    expect(
+      within(quick).getByRole('button', { name: 'Vilka kunder här behöver mig?' }),
+    ).toBeInTheDocument()
+    expect(within(presence()).queryByRole('region', { name: 'JARVIS vet' })).toBeNull()
+
+    await act(async () => {
+      await router.navigate({ to: '/clients' })
+    })
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent('Klienter')
+    expect(
+      within(quick).getByRole('button', { name: 'Vem borde jag ringa idag?' }),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      await router.navigate({ to: '/' })
+    })
+    expect(within(presence()).getByLabelText('Kontext')).toHaveTextContent('Marknaden')
+    expect(
+      within(presence()).queryByRole('navigation', { name: 'Snabbfrågor' }),
+    ).toBeNull()
   })
 })
 
@@ -988,6 +1433,13 @@ describe('it talks to one thing', () => {
       /^~\/infrastructure\/jarvis\/serverFns$/,
       /^~\/application\/analysis\/hostContract$/,
       /^~\/application\/analysis\/domainSystem$/,
+      /*
+       * Context awareness: the typed context the route resolves to, and the
+       * typed answer the record returns — projections, like the host
+       * contract's, never the record itself.
+       */
+      /^~\/application\/jarvis\/context$/,
+      /^~\/application\/jarvis\/answer$/,
       /*
        * Slice F: the two canonical pages, and only those, so the contextual
        * surfaces are the Boardroom and the record rather than a rendering of
@@ -1020,7 +1472,8 @@ describe('it talks to one thing', () => {
      * speak, or record — those would be a second voice stack, or a recording
      * nobody asked for.
      */
-    const read = (file: string) => readFileSync(resolve(process.cwd(), 'src/components/jarvis', file), 'utf8')
+    const read = (file: string) =>
+      readFileSync(resolve(process.cwd(), 'src/components/jarvis', file), 'utf8')
     expect(read('JarvisPresence.tsx')).not.toMatch(
       /getUserMedia|SpeechRecognition|speechSynthesis|MediaRecorder|AudioContext/,
     )

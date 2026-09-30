@@ -2,9 +2,24 @@ import type { ReactNode } from 'react'
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { AppLayout } from '~/components/layout/AppLayout'
 import { JarvisPresence } from '~/components/jarvis/JarvisPresence'
+import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
 import appCss from '~/styles/app.css?url'
 
+/*
+ * The dossier's display serif. Fetched from Google Fonts; where it does not
+ * arrive, `--font-display` falls back to Georgia and nothing breaks.
+ */
+const DISPLAY_FONT_URL =
+  'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&display=swap'
+
 export const Route = createRootRoute({
+  /*
+   * Who is here, for the shell's identity mark. The same server-asserted
+   * operator the home page greets; read once and kept, since it does not
+   * change within a session.
+   */
+  loader: () => getCurrentOperatorFn(),
+  staleTime: Infinity,
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -23,7 +38,12 @@ export const Route = createRootRoute({
           'Stack är ett operativsystem för analysagenter, med portfölj- och marknadsöversikt. Delar av innehållet är fördröjda marknadsnoteringar, övrigt är exempeldata.',
       },
     ],
-    links: [{ rel: 'stylesheet', href: appCss }],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+      { rel: 'stylesheet', href: DISPLAY_FONT_URL },
+    ],
   }),
   component: RootComponent,
 })

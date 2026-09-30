@@ -27,9 +27,16 @@ export interface AskJarvisRequest {
   history?: AskJarvisTurn[]
   /** When the conversation last carried a market brief; the server re-reads the numbers, never this. */
   marketContext?: { at: string }
+  /**
+   * Where the advisor is: the route on screen. The server resolves the
+   * workspace from it — the client, the office, the meeting — the way it
+   * re-reads a case reference; the browser never sends an id it chose.
+   */
+  context?: { route: string }
 }
 
 const MAX_TEXT = 2_000
+const MAX_ROUTE = 400
 /** How much of the conversation travels with a line: enough for "varför?", not a transcript. */
 export const MAX_HISTORY_TURNS = 12
 export const MAX_HISTORY_TURN_CHARS = 600
@@ -61,21 +68,48 @@ export function parseAskJarvisRequest(
       key !== 'reference' &&
       key !== 'sessionId' &&
       key !== 'history' &&
-      key !== 'marketContext'
+      key !== 'marketContext' &&
+      key !== 'context'
     )
       return { ok: false, field: key }
+  }
+  let context: { route: string } | undefined
+  if (input.context !== undefined && input.context !== null) {
+    const value = input.context
+    if (
+      !isRecord(value) ||
+      typeof value.route !== 'string' ||
+      !value.route.startsWith('/') ||
+      value.route.length > MAX_ROUTE ||
+      Object.keys(value).length !== 1
+    )
+      return { ok: false, field: 'context' }
+    context = { route: value.route }
   }
   let marketContext: { at: string } | undefined
   if (input.marketContext !== undefined && input.marketContext !== null) {
     const value = input.marketContext
-    if (!isRecord(value) || typeof value.at !== 'string' || Number.isNaN(Date.parse(value.at)) || Object.keys(value).length !== 1)
+    if (
+      !isRecord(value) ||
+      typeof value.at !== 'string' ||
+      Number.isNaN(Date.parse(value.at)) ||
+      Object.keys(value).length !== 1
+    )
       return { ok: false, field: 'marketContext' }
     marketContext = { at: value.at }
   }
-  if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > MAX_TEXT)
+  if (
+    typeof input.text !== 'string' ||
+    input.text.trim().length === 0 ||
+    input.text.length > MAX_TEXT
+  )
     return { ok: false, field: 'text' }
-  if (input.subject !== undefined && typeof input.subject !== 'string') return { ok: false, field: 'subject' }
-  if (input.sessionId !== undefined && (typeof input.sessionId !== 'string' || !input.sessionId))
+  if (input.subject !== undefined && typeof input.subject !== 'string')
+    return { ok: false, field: 'subject' }
+  if (
+    input.sessionId !== undefined &&
+    (typeof input.sessionId !== 'string' || !input.sessionId)
+  )
     return { ok: false, field: 'sessionId' }
   let reference: DomainReference | undefined
   if (input.reference !== undefined) {
@@ -99,6 +133,7 @@ export function parseAskJarvisRequest(
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(history ? { history } : {}),
       ...(marketContext ? { marketContext } : {}),
+      ...(context ? { context } : {}),
     },
   }
 }

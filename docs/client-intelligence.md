@@ -211,3 +211,137 @@ per process, memoised, the same providers.
 - Below 1024 the client page stacks its rail beneath the content; the
   command centre keeps a horizontal scroll below 760 px. Desktop first, by
   design.
+
+## 7. The dossier, 2026-09-29
+
+Client 360 was recomposed to the master visual reference the product owner
+locked for the client workspace: a Private Banking dossier inside an
+institutional wealth terminal. Nothing beneath the surface changed — every
+read model, rule, route and door is the one Phase 1 built — and the first
+viewport now carries what a banker needs in ten seconds.
+
+### The shell around it
+
+- **Left column on the environment.** The firm's identity (Financial OS,
+  Handelsbanken), the destinations, and the JARVIS doors unfolded while the
+  reader is behind the gateway; icon-only below `xl`. The photograph is
+  behind the column, not behind the work.
+- **Workspace bar.** A breadcrumb derived from the route (JARVIS › KLIENTER
+  › CLIENT 360 › FÖRBERED MÖTE), the client search that hands its words to
+  the relationship book, the clock, and the server-asserted operator where
+  one is configured. No notification bell: nothing produces notifications.
+- The environment, the route transitions and the presence are the
+  navigation pass's, unchanged.
+
+### The first viewport
+
+- **Cover.** Portrait or monogram in a gold frame (`presentation/advisory/portraits.ts`,
+  empty for synthetic clients — TD-117), CLIENT 360, the name in the
+  display serif (Playfair Display, Georgia fallback — TD-116), _segment
+  sedan år | Rådgivare | hushåll_, three pills (AUM, segment, relationship
+  band), and the two dates beside them.
+- **Financial strip.** One panel cut by hairlines: total wealth first and
+  gold, what the firm holds with its share ring, net worth, liquidity, debt
+  with the loan behind it, the risk step named (`RISK_PROFILE_LABEL`). One
+  row from `2xl`, three by two beneath.
+- **Förmögenhetsstruktur** (donut, legend, the three totals) beside
+  **Största innehav** (kind icon, source and valuation date, value, share);
+  side by side from `2xl`.
+- **Portfölj & strategi.** Actual, target and deviation on thin bars, and
+  JARVIS's reading in the gold material at low volume: the allocation-drift
+  rule and nothing else — a deviation of five points is a signal, a smaller
+  one is _inom mandat_.
+- **The rail.** JARVIS rekommenderar in the gold material — the next best
+  action, its signal, why, when, and the two doors (_Förbered möte_,
+  _Lägg till klientuppdatering_); **Attention** — the five highest-ranked
+  signals and every open promise not among them, a promise closable in
+  place, everything else with _Visa_ to its section; **Kommande
+  aktiviteter**; **Relation & möjligheter** — the health ring with its
+  drivers and the openings.
+
+Below the fold the deeper modules continue unchanged: the market, the
+goals, the relationship intelligence, financing and household, the
+openings, JARVIS's full reading, the client-scoped question. The
+relationship book's cards carry the monogram and the serif name so the
+dossier is foreshadowed; the Meeting Cockpit's cover inherits both.
+
+Verified in the browser: `.probe/dossier-probe.mjs` at 1600, 1440 and
+1024, with the card → dossier → cockpit sequence, browser back, keyboard,
+reduced motion, and every door exercised.
+
+## 8. The office layer, 2026-09-29
+
+Private Banking is organised by office. The advisor answers for
+relationships that originate from several offices, and the book is read
+office by office before it is read client by client:
+
+```
+PRIVATE BANKING BOOK   /clients                 the whole book's figures, then one folder per office
+  → OFFICE BOOK        /clients/office/:officeId  the office's figures, JARVIS's reading, its clients
+    → CLIENT DOSSIER   /clients/:clientId         Client 360, with the office in its meta line
+```
+
+### The model
+
+`Office` (`domain/advisory/client.ts`: id, name, city, displayName,
+shortName, status, description) and `Client.officeId`. The client
+repository answers `offices()` and `officeById()`. The seed carries three
+fictional offices — Strandvägen and Arbetargatan in Stockholm, Avenyn in
+Göteborg — and assigns the seven synthetic relationships across them; the
+labels are prototype labels, and nothing in the record is a real office's
+book.
+
+**V1 assumption: one primary office per relationship.** A household whose
+members belong to different offices, or a relationship shared between
+offices, is not modelled. The household architecture can carry that later
+without changing the office layer, which reads only `Client.officeId`.
+
+### No new rule
+
+`application/advisory/officeBook.ts` adds no derivation: an office's book
+is the directory rows that belong to it, summed — AUM, total wealth,
+clients, attention, meetings within 14 and 30 days, open and overdue
+promises, opportunities — and the office books add up to the whole book
+exactly (`officeBook.test.ts`). The office's one-line reading
+(`presentation/advisory/officeText.ts`) is composed from those counts:
+_4 klienter behöver uppmärksamhet. 2 försenade åtaganden och 1 kommande
+finansieringshändelse driver prioriteringen._ — or _Inga kritiska
+klientärenden._ Never a score.
+
+### The surfaces
+
+- **`/clients`** opens on the office folders under the whole book's figures;
+  `?view=alla` shows every relationship with its office on the card. The
+  switch is two links, so a view can be bookmarked.
+- **`/clients/office/:officeId`** is a real destination: OFFICE BOOK, the
+  office's name in the display face (carried in from the folder), seven
+  figures, JARVIS · office, and the same client cards scoped to the office.
+  The first row of filters answers the office's questions; the rest stand
+  behind _Fler filter_. The sorts are the book's.
+- **Search.** The bar's search inside an office searches that office and
+  stays there; anywhere else it hands its words to the whole book and opens
+  it. The office book offers _Sök i alla klienter_ beside its own search,
+  carrying the words across. The whole book's search also matches office
+  names.
+- **Breadcrumb.** JARVIS › KLIENTER › STRANDVÄGEN › CLIENT 360 › FÖRBERED
+  MÖTE, from the route and the office the loaded page belongs to — the
+  same for the way in through the office and for a direct link.
+- **Back.** Each book keeps its own search, filter and order
+  (`directoryState`, scoped), so Klienter → Strandvägen → client → back
+  finds Strandvägen as it was left, and a client opened from _Alla
+  klienter_ returns there. The router restores the scroll position.
+- **Sentinel.** One filter, _Kontor_, over the existing entries; nothing is
+  re-ranked.
+
+Verified in the browser: `.probe/office-probe.mjs`.
+
+## 9. JARVIS knows the workspace, 2026-09-30
+
+The presence resolves a typed context from the route — the client, the
+meeting, the office, the book, Sentinel, Marknadspåverkan — and answers
+_"Vad ska jag ta upp på mötet?"_ about the client on screen from the same
+evidence services these pages read, before any model and without one.
+The contract, the scopes, the V1 intents, the typed answer with its
+sources and the presence's context indicator, _JARVIS vet_ block and
+quick actions are in `docs/jarvis-context.md`. Verified in the browser:
+`.probe/jarvis-context-probe.mjs`.

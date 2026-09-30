@@ -16,6 +16,7 @@
 import { useSyncExternalStore } from 'react'
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import type { HostResult } from '~/application/analysis/hostContract'
+import type { JarvisAnswer } from '~/application/jarvis/answer'
 import type { Tone } from '~/types'
 
 export interface PresenceTurn {
@@ -30,6 +31,8 @@ export interface PresenceTurn {
   state?: HostResult['state']
   /** Spoken rather than typed. One conversation either way. */
   via?: 'voice'
+  /** A structured answer from the relationship record, rendered as its sections. */
+  answer?: JarvisAnswer
 }
 
 /**
@@ -89,8 +92,11 @@ function load(): PresenceState {
       question: typeof parsed.question === 'string' ? parsed.question : null,
       turns: Array.isArray(parsed.turns) ? parsed.turns : [],
       surface:
-        parsed.surface === 'boardroom' || parsed.surface === 'underlag' ? parsed.surface : null,
-      marketContextAt: typeof parsed.marketContextAt === 'string' ? parsed.marketContextAt : null,
+        parsed.surface === 'boardroom' || parsed.surface === 'underlag'
+          ? parsed.surface
+          : null,
+      marketContextAt:
+        typeof parsed.marketContextAt === 'string' ? parsed.marketContextAt : null,
     }
   } catch {
     return EMPTY_PRESENCE

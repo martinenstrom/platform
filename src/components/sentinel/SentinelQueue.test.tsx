@@ -116,6 +116,42 @@ describe('the queue', () => {
     view.unmount()
   })
 
+  it('groups the queue by office on request, without re-ranking anything', async () => {
+    /*
+     * Sentinel decides nothing per office: the same entries, shown for one
+     * office at a time. "Alla kontor" is the queue as ranked.
+     */
+    const context = contextAt()
+    const brief = await sentinelBrief(context)
+    const user = userEvent.setup()
+    const view = await renderInRouter(
+      <SentinelQueue
+        brief={brief}
+        actions={actionsOver(context)}
+        onChanged={async () => {}}
+      />,
+      STUBS,
+    )
+    const section = (name: string) =>
+      screen.getByRole('heading', { level: 2, name }).closest('section')!
+    const office = screen.getByRole('combobox', { name: 'Kontor' })
+    expect(
+      within(office).getByRole('option', { name: 'Alla kontor' }),
+    ).toBeInTheDocument()
+
+    await user.selectOptions(office, 'of-arbetargatan')
+    const now = within(section('Behöver åtgärd nu')).getAllByRole('listitem')
+    expect(now.map((li) => li.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Anna & Per Dahlqvist')]),
+    )
+    expect(section('Behöver åtgärd nu')).not.toHaveTextContent('Margareta Berglund')
+    expect(now.length).toBeLessThan(4)
+
+    await user.selectOptions(office, 'all')
+    expect(within(section('Behöver åtgärd nu')).getAllByRole('listitem')).toHaveLength(4)
+    view.unmount()
+  })
+
   it('explains a combined priority on request, with every driver and its sources', async () => {
     const context = contextAt()
     const brief = await sentinelBrief(context)

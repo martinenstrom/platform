@@ -22,6 +22,8 @@ import { NotConfiguredError, productHostGateway } from '~/infrastructure/analysi
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
 import { parseLiveOpenRequest } from '~/application/jarvis/liveOpen'
 import { parseAskJarvisRequest } from '~/application/jarvis/askJarvis'
+import { advisoryTurn, type AdvisoryTurnResult } from '~/application/jarvis/advisoryTurn'
+import type { AdvisoryContext } from '~/application/advisory/ports'
 import {
   composeMarketBrief,
   fetchMarketBriefParts,
@@ -212,8 +214,13 @@ export const liveSessionStateFn = createServerFn({ method: 'POST' })
     return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
   })
 
-/** What a typed line came back with: the answer as text, and the case it may have bound. */
+/**
+ * What a typed line came back with: a structured answer from the
+ * relationship record when the workspace made the line the record's, else
+ * the model's answer as text and the case it may have bound.
+ */
 export type AskJarvisResponse =
+  | ({ ok: true } & AdvisoryTurnResult)
   | ({ ok: true } & TypedTurnResult)
   | {
       ok: false
@@ -222,12 +229,29 @@ export type AskJarvisResponse =
       field?: string
     }
 
+type AdvisoryGetter = () => Promise<AdvisoryContext>
+
 async function typedTurn(
   input: unknown,
   getContainer: ContainerGetter,
+  advisory?: AdvisoryGetter,
 ): Promise<AskJarvisResponse> {
   const parsed = parseAskJarvisRequest(input)
   if (!parsed.ok) return { ok: false, code: 'INVALID_REQUEST', field: parsed.field }
+  /*
+   * The advisory tier first: on a client, an office, the book, Sentinel or
+   * Marknadspåverkan the record answers what it can, with no model and no
+   * key. What it cannot answer goes on to the router below, unchanged.
+   */
+  if (advisory) {
+    try {
+      const turn = await advisoryTurn(parsed.request, advisory)
+      if (turn) return { ok: true, ...turn }
+    } catch (error) {
+      console.error('[jarvis/advisory] failed', error)
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  }
   const rt = runtime(getContainer)
   if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
   try {
@@ -251,7 +275,11 @@ export const askJarvisFn = createServerFn({ method: 'POST' })
   .validator((input: unknown) => input)
   .handler(async ({ data }): Promise<AskJarvisResponse> => {
     const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
-    return typedTurn(data, getContainer)
+    /* The relationship record's one context, reached the way its own doors reach it (TD-107 discipline). */
+    const { advisoryContext } = await import('~/infrastructure/advisory/serverFns')
+    return typedTurn(data, getContainer, () =>
+      advisoryContext(() => import('~/infrastructure/advisory/marketSource')),
+    )
   })
 
 /**

@@ -21,6 +21,7 @@ export type ClientFilter =
   | 'open-commitment'
   | 'overdue-commitment'
   | 'event-approaching'
+  | 'has-opportunity'
 
 export const CLIENT_FILTERS: readonly { id: ClientFilter; label: string }[] = [
   { id: 'all', label: 'Alla klienter' },
@@ -35,12 +36,40 @@ export const CLIENT_FILTERS: readonly { id: ClientFilter; label: string }[] = [
   { id: 'open-commitment', label: 'Öppet åtagande' },
   { id: 'overdue-commitment', label: 'Försenat åtagande' },
   { id: 'event-approaching', label: 'Viktig händelse nära' },
+  { id: 'has-opportunity', label: 'Möjligheter' },
 ]
+
+/**
+ * The office book's first row of filters — the questions an advisor asks
+ * of an office in five seconds — with the rest behind "Fler filter". The
+ * relationship book as a whole offers every filter on one row.
+ */
+export const OFFICE_PRIMARY_FILTERS: readonly ClientFilter[] = [
+  'all',
+  'needs-attention',
+  'upcoming-meeting',
+  'overdue-commitment',
+  'financing-opportunity',
+  'investment-opportunity',
+  'has-opportunity',
+  'no-recent-contact',
+]
+
+export const OFFICE_SECONDARY_FILTERS: readonly ClientFilter[] = CLIENT_FILTERS.map(
+  (f) => f.id,
+).filter((id) => !OFFICE_PRIMARY_FILTERS.includes(id))
+
+/** The label for a filter id, as the chips print it. */
+export function filterLabel(filter: ClientFilter): string {
+  return CLIENT_FILTERS.find((f) => f.id === filter)?.label ?? filter
+}
 
 export function matchesFilter(row: ClientDirectoryRow, filter: ClientFilter): boolean {
   switch (filter) {
     case 'all':
       return true
+    case 'has-opportunity':
+      return row.activeOpportunities > 0
     case 'needs-attention':
       return row.flags.needsAttention
     case 'upcoming-meeting':
@@ -121,7 +150,7 @@ export function compareRows(
   }
 }
 
-/** Free-text search over the name, the advisor and the segment label given. */
+/** Free-text search over the name, the advisor, the office and the segment label given. */
 export function matchesSearch(
   row: ClientDirectoryRow,
   query: string,
@@ -129,8 +158,8 @@ export function matchesSearch(
 ): boolean {
   const q = query.trim().toLowerCase()
   if (q.length === 0) return true
-  return [row.displayName, row.advisorName, segmentLabel, row.id].some((field) =>
-    field.toLowerCase().includes(q),
+  return [row.displayName, row.advisorName, row.officeName, segmentLabel, row.id].some(
+    (field) => field.toLowerCase().includes(q),
   )
 }
 

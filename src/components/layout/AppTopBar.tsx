@@ -1,76 +1,275 @@
-import { useEffect, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
+import type { CurrentOperator } from '~/application/analysis/currentOperator'
+import { officeScope, updateDirectoryState } from '~/components/clients/directoryState'
 import { cn } from '~/lib/cn'
-import { primaryNav } from '~/lib/navigation'
+import { initialsOf } from '~/presentation/advisory/portraits'
 
 /**
- * The institutional top rail.
+ * The workspace bar: where the reader is, in the product's own words, and
+ * the two things a terminal's chrome carries — a way to find a client and
+ * who is at the desk. Shallow, quiet, never a page.
  *
- * Matched to the reference's geometry: a shallow full-width band, the firm's
- * wordmark in bronze at the upper left, compact uppercase sections in the
- * middle, and the clock at the right. Nothing about it scrolls and nothing
- * about it is a page — it is the edge of the environment.
+ * **The breadcrumb is derived from the route**, not assembled by pages, so
+ * every surface of the workspace reads the same hierarchy: JARVIS › KLIENTER
+ * › CLIENT 360 › FÖRBERED MÖTE. The client search hands its words to the
+ * relationship book — the same search the book carries — and opens it.
+ *
+ * **What it does not carry, and why.** No notification bell: nothing in the
+ * product produces notifications yet, and a bell that is never lit is the
+ * smallest possible fabrication. The identity is the server-asserted
+ * operator the home page greets, from the root loader; when none is
+ * configured, nobody is shown.
  *
  * **Huvudkontoret does not render this at all.** That page carries the firm's
- * identity and its destinations in its own institutional rail, and a
- * horizontal band of sections above it made the investment floor read as a
- * web application with a navbar. The shell decides; see `AppLayout`.
- *
- * **What it does not carry, and why.** The reference has a market-session pill
- * and a "● LIVE" indicator. This rail shows the clock, which is the browser's
- * and says which zone it is in, and no status light at all: the firm holds no
- * session state, and a dot that is always green is the smallest possible
- * fabrication. It once also carried search, alert and mail buttons; none of
- * them had a handler, and a control that does nothing when pressed teaches the
- * reader that the rail is decorative. They are gone rather than wired, because
- * the thing that will answer a question or carry a notification here is the
- * presence the shell is about to gain, not three more buttons.
+ * identity and its destinations in its own institutional rail. The shell
+ * decides; see `AppLayout`.
  */
 export function AppTopBar() {
-  return (
-    <header className="sticky top-0 z-30 h-12 border-b border-line bg-[#070c14]/95 backdrop-blur-md">
-      <div className="flex h-full items-center gap-5 pl-4 pr-3">
-        <Link
-          to="/"
-          className="shrink-0 text-[17px] font-semibold leading-none tracking-[-0.015em] text-institution"
-          aria-label="Financial OS — till kommandocentralen"
-        >
-          Financial<span className="font-normal text-content"> OS</span>
-        </Link>
+  /*
+   * The resolved location, not the pending one: the crumb names the page
+   * that is on screen, and a page whose loader is still reading stays
+   * named until it arrives.
+   */
+  const pathname = useRouterState({
+    select: (state) => (state.resolvedLocation ?? state.location).pathname,
+  })
+  const operator = useRouterState({
+    select: (state) => operatorOf(state.matches[0]?.loaderData),
+  })
+  /* The office the loaded page belongs to, as "id|label" so the selection stays a primitive. */
+  const officeKey = useRouterState({
+    select: (state) => officeOf(state.matches.map((match) => match.loaderData)),
+  })
+  const office = officeKey
+    ? {
+        id: officeKey.slice(0, officeKey.indexOf('|')),
+        label: officeKey.slice(officeKey.indexOf('|') + 1),
+      }
+    : null
+  const crumbs = breadcrumbs(pathname, office)
 
-        <nav aria-label="Huvudnavigation" className="min-w-0 flex-1">
-          <ul className="flex items-center gap-0.5 overflow-x-auto">
-            {primaryNav.map((item) => (
-              <li key={item.to}>
-                <Link
-                  to={item.to}
-                  className={cn(
-                    'type-section block whitespace-nowrap rounded-[4px] px-3 py-1.5',
-                    'transition-colors hover:text-content',
-                  )}
-                  activeProps={{
-                    /*
-                     * The active section is the one place the rail carries
-                     * bronze: a filled ground and a lit underline, exactly the
-                     * emphasis the reference gives its current tab.
-                     */
-                    className:
-                      'bg-institution-soft text-institution shadow-[inset_0_-2px_0_0_var(--color-institution)]',
-                  }}
-                  activeOptions={{ exact: item.to === '/' }}
-                >
-                  {item.label}
-                </Link>
+  return (
+    <header className="app-rail sticky top-0 z-30 border-b border-line bg-[#070c14]/92 backdrop-blur-md">
+      <div className="flex h-12 items-center gap-4 pl-4 pr-3">
+        <nav aria-label="Var du är" className="min-w-0 flex-1">
+          <ol className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+            {crumbs.map((crumb, index) => (
+              <li key={`${index}-${crumb.label}`} className="flex items-center gap-2">
+                {index > 0 && (
+                  <span aria-hidden="true" className="type-machine text-content-subtle">
+                    ›
+                  </span>
+                )}
+                {crumb.to && index < crumbs.length - 1 ? (
+                  <Link
+                    to={crumb.to}
+                    className={cn(
+                      'type-machine text-[10.5px] tracking-[0.14em] uppercase transition-colors hover:text-content',
+                      index === 0 && 'text-institution',
+                    )}
+                  >
+                    {crumb.label}
+                  </Link>
+                ) : (
+                  <span
+                    aria-current={index === crumbs.length - 1 ? 'page' : undefined}
+                    className={cn(
+                      'type-machine text-[10.5px] tracking-[0.14em] uppercase',
+                      index === crumbs.length - 1 ? 'text-content' : undefined,
+                      index === 0 && crumbs.length === 1 && 'text-institution',
+                    )}
+                  >
+                    {crumb.label}
+                  </span>
+                )}
               </li>
             ))}
-          </ul>
+          </ol>
         </nav>
 
+        <ClientSearch pathname={pathname} />
         <Clock />
+        {operator && <Identity operator={operator} />}
       </div>
     </header>
   )
 }
+
+/* ------------------------------------------------------------ breadcrumb */
+
+interface Crumb {
+  label: string
+  to?: string
+}
+
+/**
+ * The hierarchy for a pathname, in the workspace's own words: JARVIS ›
+ * KLIENTER › STRANDVÄGEN › CLIENT 360 › FÖRBERED MÖTE. The office is the
+ * one the loaded page belongs to — an office book's own, or the client's —
+ * so a direct link to a client reads the same as the way in through the
+ * office.
+ */
+export function breadcrumbs(
+  pathname: string,
+  office: { id: string; label: string } | null = null,
+): Crumb[] {
+  const parts = pathname.split('/').filter(Boolean)
+  const head = parts[0]
+  if (head === 'clients') {
+    const crumbs: Crumb[] = [
+      { label: 'JARVIS', to: '/clients' },
+      { label: 'Klienter', to: '/clients' },
+    ]
+    if (parts[1] === 'office') {
+      crumbs.push({
+        label: office?.label ?? parts[2] ?? 'Kontor',
+        to: parts[2] ? `/clients/office/${parts[2]}` : undefined,
+      })
+      return crumbs
+    }
+    if (parts[1]) {
+      if (office) crumbs.push({ label: office.label, to: `/clients/office/${office.id}` })
+      crumbs.push({ label: 'Client 360', to: `/clients/${parts[1]}` })
+    }
+    if (parts[2] === 'meeting-prep') crumbs.push({ label: 'Förbered möte' })
+    return crumbs
+  }
+  if (head === 'sentinel') {
+    return [{ label: 'JARVIS', to: '/clients' }, { label: 'Sentinel' }]
+  }
+  if (head === 'market-impact') {
+    return [{ label: 'JARVIS', to: '/clients' }, { label: 'Marknadspåverkan' }]
+  }
+  const NAMED: Record<string, string> = {
+    evidence: 'Underlag',
+    settings: 'Inställningar',
+    watchlist: 'Bevakning',
+    portfolio: 'Portfölj',
+    reports: 'Rapporter',
+    agents: 'Agenter',
+    runs: 'Körningar',
+    cases: 'Ärenden',
+  }
+  const label = head ? (NAMED[head] ?? head) : 'Kommandocentral'
+  return [{ label }]
+}
+
+/* ------------------------------------------------------------ the office */
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** "id|label" of the office the loaded page belongs to, from any route's data; '' when none. */
+function officeOf(loaded: readonly unknown[]): string {
+  for (const data of loaded) {
+    if (!isRecord(data) || data.ok !== true) continue
+    const book = isRecord(data.book) ? data.book : null
+    const view = isRecord(data.view) ? data.view : null
+    const cockpit = isRecord(data.cockpit) ? data.cockpit : null
+    const identity = cockpit && isRecord(cockpit.identity) ? cockpit.identity : null
+    const office = book?.office ?? view?.office ?? identity?.office
+    if (
+      isRecord(office) &&
+      typeof office.id === 'string' &&
+      typeof office.displayName === 'string'
+    ) {
+      return `${office.id}|${office.displayName}`
+    }
+  }
+  return ''
+}
+
+/* ---------------------------------------------------------- client search */
+
+const OFFICE_PATH = /^\/clients\/office\/([^/]+)$/
+
+/**
+ * The search in the bar: inside an office book it searches that office and
+ * stays there; anywhere else it hands its words to the whole book and opens
+ * it. The office book offers "Sök i alla klienter" beside its own search.
+ */
+function ClientSearch({ pathname }: { pathname: string }) {
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const officeId = OFFICE_PATH.exec(pathname)?.[1] ?? null
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const words = query.trim()
+    if (officeId) {
+      updateDirectoryState(officeScope(officeId), { query: words, filter: 'all' })
+      return
+    }
+    updateDirectoryState('all', { query: words, filter: 'all' })
+    void navigate({ to: '/clients', search: { view: 'alla' } })
+  }
+  return (
+    <form
+      role="search"
+      aria-label="Sök klient"
+      onSubmit={submit}
+      className="hidden items-center md:flex"
+    >
+      <label htmlFor="shell-client-search" className="sr-only">
+        Sök klient
+      </label>
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-content-subtle"
+          aria-hidden="true"
+          strokeWidth={1.6}
+        />
+        <input
+          id="shell-client-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={
+            officeId ? 'Sök klient på kontoret…' : 'Sök klient, person, bolag…'
+          }
+          className="hq-field h-8 w-52 rounded-full py-1 pr-3 pl-8 text-[12px] lg:w-64"
+        />
+      </div>
+    </form>
+  )
+}
+
+/* -------------------------------------------------------------- identity */
+
+function operatorOf(loaderData: unknown): CurrentOperator | null {
+  if (!loaderData || typeof loaderData !== 'object') return null
+  const data = loaderData as { ok?: boolean; operator?: CurrentOperator }
+  return data.ok && data.operator ? data.operator : null
+}
+
+/** Who is at the desk: a monogram and the name, the role beneath it. */
+function Identity({ operator }: { operator: CurrentOperator }) {
+  return (
+    <div
+      className="flex items-center gap-2.5 border-l border-line pl-3"
+      aria-label={`Inloggad: ${operator.displayName}, ${operator.roleTitle}`}
+    >
+      <span
+        aria-hidden="true"
+        className="portrait-frame flex h-7 w-7 items-center justify-center bg-[#1a1913] font-display text-[11px] text-[#e6c987]"
+      >
+        {initialsOf(operator.displayName)}
+      </span>
+      <span className="hidden min-w-0 leading-tight lg:block">
+        <span className="block truncate text-[12px] font-medium text-content">
+          {operator.displayName}
+        </span>
+        <span className="block truncate text-[10.5px] text-content-subtle">
+          {operator.roleTitle}
+        </span>
+      </span>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------- clock */
 
 /**
  * The wall clock.

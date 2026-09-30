@@ -1,110 +1,92 @@
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import type { Client360 } from '~/application/advisory/client360'
-import { AllocationChart } from '~/components/charts/AllocationChart'
 import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import { wealthSlices } from '~/presentation/advisory/chartData'
-import { formatLongDate, formatMsek } from '~/presentation/advisory/format'
-import { ASSET_KIND_LABEL, LIABILITY_KIND_LABEL } from '~/presentation/advisory/text'
-
-const SOURCE_LABEL: Record<Client360['assets'][number]['source'], string> = {
-  bank: 'Banken',
-  'client-stated': 'Enligt klienten',
-  'external-register': 'Externt register',
-  estimate: 'Uppskattning',
-}
+import { formatLongDate, formatMsek, formatPct } from '~/presentation/advisory/format'
 
 /**
- * The whole financial situation, not only the portfolio the firm holds:
- * composition by asset kind on the left, every asset and liability with its
- * source and valuation date on the right, and the three totals the balance
- * sheet derives. An estimate says it is an estimate.
+ * The whole financial situation by kind — property, portfolio, pension,
+ * company, cash — as a donut with the total in its centre, the legend
+ * beside it with the share and the amount, and the three totals the
+ * balance sheet derives beneath. The assets themselves stand in the
+ * holdings panel beside this one.
  */
 export function WealthStructure({ view }: { view: Client360 }) {
-  const { balanceSheet, assets, liabilities } = view
+  const { balanceSheet } = view
+  const slices = wealthSlices(balanceSheet)
+  /* "34,2" and "MSEK": the amount in the centre, the unit beneath it. */
+  const [amount, unit] = formatMsek(balanceSheet.totalAssets).split(' ')
   return (
     <Panel
       title="Förmögenhetsstruktur"
-      meta={`Nettoförmögenhet ${formatMsek(balanceSheet.netWorth)}`}
-      bodyClassName="p-3"
+      meta={
+        balanceSheet.oldestValuationAt
+          ? `Äldsta värdering ${formatLongDate(balanceSheet.oldestValuationAt)}`
+          : undefined
+      }
+      bodyClassName="p-4"
     >
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div>
-          <AllocationChart
-            data={wealthSlices(balanceSheet)}
-            total={balanceSheet.totalAssets}
-          />
-          <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-2.5">
-            <Total label="Tillgångar" value={balanceSheet.totalAssets} />
-            <Total label="Skulder" value={balanceSheet.totalLiabilities} negative />
-            <Total label="Netto" value={balanceSheet.netWorth} />
-          </dl>
-        </div>
-        <div className="min-w-0">
-          <table
-            className="w-full border-collapse text-[12px]"
-            aria-label="Tillgångar och skulder"
-          >
-            <thead>
-              <tr>
-                <th scope="col" className="type-section pb-1.5 text-left font-semibold">
-                  Post
-                </th>
-                <th scope="col" className="type-section pb-1.5 text-left font-semibold">
-                  Källa
-                </th>
-                <th scope="col" className="type-section pb-1.5 text-right font-semibold">
-                  Värderad
-                </th>
-                <th scope="col" className="type-section pb-1.5 text-right font-semibold">
-                  Värde
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map((asset) => (
-                <tr key={asset.id} className="border-t border-line">
-                  <td className="py-1.5 pr-2">
-                    <span className="type-inst block truncate">{asset.title}</span>
-                    <span className="type-inst-sub">
-                      {ASSET_KIND_LABEL[asset.kind]}
-                      {asset.withBank ? ' · hos banken' : ''}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pr-2 text-content-muted">
-                    {SOURCE_LABEL[asset.source]}
-                  </td>
-                  <td className="type-machine py-1.5 pr-2 text-right">
-                    {formatLongDate(asset.valuedAt)}
-                  </td>
-                  <td className="tabular py-1.5 text-right text-content">
-                    {formatMsek(asset.value)}
-                  </td>
-                </tr>
-              ))}
-              {liabilities.map((liability) => (
-                <tr key={liability.id} className="border-t border-line">
-                  <td className="py-1.5 pr-2">
-                    <span className="type-inst block truncate">{liability.title}</span>
-                    <span className="type-inst-sub">
-                      {LIABILITY_KIND_LABEL[liability.kind]}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pr-2 text-content-muted">
-                    {liability.withBank ? 'Banken' : 'Extern'}
-                  </td>
-                  <td className="type-machine py-1.5 pr-2 text-right">
-                    {formatLongDate(liability.valuedAt)}
-                  </td>
-                  <td className="tabular py-1.5 text-right text-negative">
-                    {'−'}
-                    {formatMsek(liability.outstandingBalance)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+        <figure className="relative m-0 h-[156px] w-[156px] shrink-0 self-center">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={slices}
+                dataKey="value"
+                nameKey="label"
+                innerRadius="72%"
+                outerRadius="100%"
+                paddingAngle={1.5}
+                stroke="#0b111c"
+                strokeWidth={2}
+                isAnimationActive={false}
+              >
+                {slices.map((slice) => (
+                  <Cell key={slice.id} fill={slice.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="type-display-figure-sm text-[26px]">{amount}</span>
+            <span className="type-section mt-1">{unit}</span>
+          </div>
+          <figcaption className="sr-only">
+            Fördelning av tillgångarna per slag. Syntetiska klienter.
+          </figcaption>
+        </figure>
+
+        <ul className="min-w-0 flex-1 space-y-2" aria-label="Tillgångar per slag">
+          {slices.map((slice) => (
+            <li key={slice.id} className="flex items-center gap-2 text-[12px]">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: slice.color }}
+              />
+              <span
+                className="min-w-0 flex-1 truncate text-content-muted"
+                title={slice.label}
+              >
+                {slice.label}
+              </span>
+              <span className="tabular w-12 shrink-0 text-right font-semibold text-content">
+                {formatPct(slice.percent, 1)}
+              </span>
+              <span className="tabular w-[74px] shrink-0 text-right text-content-subtle">
+                {formatMsek(slice.value)}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
+
+      <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3">
+        <Total label="Tillgångar" value={balanceSheet.totalAssets} />
+        <Total label="Skulder" value={balanceSheet.totalLiabilities} negative />
+        <Total label="Netto" value={balanceSheet.netWorth} />
+      </dl>
     </Panel>
   )
 }
@@ -123,7 +105,7 @@ function Total({
       <dt className="type-section">{label}</dt>
       <dd
         className={cn(
-          'tabular mt-0.5 text-[15px] font-semibold',
+          'type-display-figure-sm mt-1 text-[20px]',
           negative && value > 0 ? 'text-negative' : 'text-content',
         )}
       >

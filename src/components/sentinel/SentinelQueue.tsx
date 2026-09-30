@@ -56,11 +56,26 @@ export function SentinelQueue({
   actions: SentinelActions
   onChanged: () => Promise<void>
 }) {
+  /*
+   * The queue office by office, on request. Sentinel decides nothing per
+   * office: the same entries, grouped by the office each relationship
+   * belongs to. "Alla kontor" is the queue as ranked.
+   */
+  const [officeFilter, setOfficeFilter] = useState<string>('all')
+  const offices = [
+    ...new Map(
+      brief.entries.flatMap((e) =>
+        e.client.office ? [[e.client.office.id, e.client.office]] : [],
+      ),
+    ).values(),
+  ].sort((a, b) => a.displayName.localeCompare(b.displayName, 'sv'))
+  const inOffice = (e: SentinelEntry) =>
+    officeFilter === 'all' || e.client.office?.id === officeFilter
   const visible = brief.entries.filter(
-    (e) => e.status === 'active' || e.status === 'reviewed',
+    (e) => (e.status === 'active' || e.status === 'reviewed') && inOffice(e),
   )
   const setAside = brief.entries.filter(
-    (e) => e.status === 'snoozed' || e.status === 'dismissed',
+    (e) => (e.status === 'snoozed' || e.status === 'dismissed') && inOffice(e),
   )
   const sections: Section[] = [
     {
@@ -133,10 +148,29 @@ export function SentinelQueue({
               {' · '}en prioritet per klient, med sina skäl
             </p>
           </div>
-          <p className="type-machine">
-            derivat per {formatLongDate(brief.today)} · {brief.method} · syntetiska
-            klienter
-          </p>
+          <div className="flex flex-col items-end gap-1.5">
+            {offices.length > 1 && (
+              <label className="flex items-center gap-2">
+                <span className="type-section">Kontor</span>
+                <select
+                  value={officeFilter}
+                  onChange={(e) => setOfficeFilter(e.target.value)}
+                  className="hq-field h-7 py-0.5 text-[12px]"
+                >
+                  <option value="all">Alla kontor</option>
+                  {offices.map((office) => (
+                    <option key={office.id} value={office.id}>
+                      {office.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <p className="type-machine">
+              derivat per {formatLongDate(brief.today)} · {brief.method} · syntetiska
+              klienter
+            </p>
+          </div>
         </div>
         <dl className="mt-3 grid grid-cols-3 gap-y-2 border-t border-line pt-3 md:grid-cols-6">
           {tiles.map((tile) => (

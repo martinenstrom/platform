@@ -86,6 +86,14 @@
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  /*
+   * The dossier's display face: a high-contrast serif for a client's name,
+   * the one figure that carries the page and the sentence JARVIS leads
+   * with. Loaded in the document head; Georgia stands in where it has not
+   * arrived. Used inside Client Intelligence only — the market screen and
+   * the institution keep their sans.
+   */
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
 
   /* One letter-spacing value for every uppercase mono label/heading. */
   --tracking-label: 0.14em;
@@ -1422,8 +1430,12 @@
    */
   .brd-join {
     height: 2.25rem;
-    background:
-      linear-gradient(180deg, transparent 0%, rgb(255 255 255 / 0.14) 55%, transparent 100%);
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.14) 55%,
+      transparent 100%
+    );
     width: 1px;
   }
   .brd-join-rail {
@@ -1594,23 +1606,21 @@
     justify-content: center;
     /* Rounded at the top, square where it sits in the base. */
     border-radius: 3px 3px 1px 1px;
-    background:
-      linear-gradient(
-        180deg,
-        rgb(54 45 33 / 0.95) 0%,
-        rgb(26 22 18 / 0.96) 38%,
-        rgb(13 12 11 / 0.97) 100%
-      );
+    background: linear-gradient(
+      180deg,
+      rgb(54 45 33 / 0.95) 0%,
+      rgb(26 22 18 / 0.96) 38%,
+      rgb(13 12 11 / 0.97) 100%
+    );
     border: 1px solid rgb(0 0 0 / 0.55);
     border-top-color: rgb(var(--plate-light) / 0.4);
     box-shadow:
       /* the cove on the top bevel */
       inset 0 1px 0 0 rgb(var(--plate-light) / 0.28),
       inset 0 -1px 0 0 rgb(0 0 0 / 0.6),
-      /* state light bleeding off the edges */
-      0 0 16px -2px rgb(var(--plate-light) / var(--plate-glow)),
-      /* where the object meets the stone */
-      0 7px 12px -6px rgb(0 0 0 / 0.95),
+      /* state light bleeding off the edges */ 0 0 16px -2px
+        rgb(var(--plate-light) / var(--plate-glow)),
+      /* where the object meets the stone */ 0 7px 12px -6px rgb(0 0 0 / 0.95),
       0 2px 3px -1px rgb(0 0 0 / 0.8);
     backdrop-filter: blur(1px);
   }
@@ -2277,7 +2287,12 @@
   /* The room becoming the record. A gradient, never a rule. */
   .brd-room-seam {
     pointer-events: none;
-    background: linear-gradient(180deg, transparent 0%, rgb(4 4 6 / 0.9) 62%, #040406 100%);
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(4 4 6 / 0.9) 62%,
+      #040406 100%
+    );
   }
 
   /* ==================================================== the fallback room ==
@@ -2323,7 +2338,7 @@
   .brd-window-wall {
     position: absolute;
     inset: 14% 0 46% 0;
-    background-image: url("/data/wall-street.jpg");
+    background-image: url('/data/wall-street.jpg');
     background-size: cover;
     background-position: center 42%;
     opacity: 0.5;
@@ -2480,5 +2495,375 @@
 
   .hq-field::placeholder {
     color: rgb(236 222 200 / 0.32);
+  }
+}
+
+/* ==================================================== the dossier ======== */
+
+/*
+ * Client Intelligence's own material: the private-banking dossier.
+ *
+ * Display type for what carries the page; pills that state a fact in one
+ * word; one gold surface, reserved for JARVIS's primary recommendation; and
+ * the shell's left column standing on the environment. Everything else is
+ * the workstation's ordinary panel.
+ */
+@layer components {
+  .type-display-name {
+    font-family: var(--font-display);
+    font-size: 40px;
+    line-height: 1.02;
+    font-weight: 500;
+    letter-spacing: -0.008em;
+    color: var(--color-content);
+  }
+  .type-display-figure {
+    font-family: var(--font-display);
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    font-variant-numeric: lining-nums tabular-nums;
+    color: var(--color-content);
+  }
+  .type-display-figure-sm {
+    font-family: var(--font-display);
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    font-variant-numeric: lining-nums tabular-nums;
+    color: var(--color-content);
+  }
+  .type-display-statement {
+    font-family: var(--font-display);
+    font-size: 21px;
+    line-height: 1.25;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--color-content);
+  }
+
+  /* A fact in one word: thin border, no fill, uppercase machine type. */
+  .dossier-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid rgb(120 146 184 / 0.32);
+    border-radius: 999px;
+    padding: 0.28rem 0.7rem;
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-content-muted);
+    white-space: nowrap;
+  }
+  .dossier-pill-gold {
+    border-color: rgb(217 164 65 / 0.42);
+    color: #e6c987;
+  }
+
+  /*
+   * The gold surface. Dark bronze under a warm light from the upper left,
+   * a faint grid of the same warmth, a warm edge — the material of one
+   * element on the page, JARVIS's primary recommendation, and of nothing
+   * else. No glow, no particles that move.
+   */
+  .jarvis-gold {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgb(217 164 65 / 0.42);
+    border-radius: 6px;
+    background:
+      radial-gradient(
+        120% 90% at 8% 0%,
+        rgb(217 164 65 / 0.34) 0%,
+        rgb(217 164 65 / 0.08) 42%,
+        transparent 70%
+      ),
+      radial-gradient(80% 60% at 100% 100%, rgb(217 164 65 / 0.14) 0%, transparent 60%),
+      repeating-linear-gradient(
+        0deg,
+        rgb(255 226 170 / 0.035) 0 1px,
+        transparent 1px 22px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgb(255 226 170 / 0.035) 0 1px,
+        transparent 1px 22px
+      ),
+      linear-gradient(160deg, #241a0c 0%, #17120a 55%, #0f0d09 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 226 170 / 0.22),
+      inset 0 0 0 1px rgb(0 0 0 / 0.25),
+      0 14px 34px -22px rgb(0 0 0 / 0.95);
+  }
+  .jarvis-gold-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border-radius: 4px;
+    padding: 0.55rem 1rem;
+    background: linear-gradient(180deg, #e9c46a 0%, #d0a03f 100%);
+    color: #1a1305;
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.35),
+      0 1px 2px 0 rgb(0 0 0 / 0.5);
+    transition:
+      filter 150ms ease,
+      transform 150ms ease;
+  }
+  .jarvis-gold-btn:hover {
+    filter: brightness(1.06);
+  }
+  .jarvis-gold-btn:active {
+    transform: translateY(1px);
+  }
+  .jarvis-ghost-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(217 164 65 / 0.35);
+    border-radius: 4px;
+    padding: 0.55rem 1rem;
+    color: #efe3c6;
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 500;
+    background: rgb(255 226 170 / 0.04);
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease;
+  }
+  .jarvis-ghost-btn:hover {
+    background: rgb(255 226 170 / 0.09);
+    border-color: rgb(217 164 65 / 0.6);
+  }
+
+  /* The gold insight inside a panel: the same material at a lower volume. */
+  .jarvis-gold-soft {
+    border: 1px solid rgb(217 164 65 / 0.3);
+    border-radius: 5px;
+    background:
+      radial-gradient(100% 90% at 0% 0%, rgb(217 164 65 / 0.2) 0%, transparent 60%),
+      linear-gradient(160deg, #1d160b 0%, #120f0a 100%);
+    box-shadow: inset 0 1px 0 0 rgb(255 226 170 / 0.14);
+  }
+
+  /* A row in the intelligence rail: hairline above, no fill. */
+  .rail-row + .rail-row {
+    border-top: 1px solid rgb(255 255 255 / 0.06);
+  }
+
+  /*
+   * The portrait frame: a thin gold ring standing off the image by a
+   * hairline of dark, the way a frame holds a photograph.
+   */
+  .portrait-frame {
+    border-radius: 999px;
+    box-shadow:
+      0 0 0 1px rgb(6 9 16 / 0.9),
+      0 0 0 2.5px rgb(217 164 65 / 0.55),
+      0 0 0 3.5px rgb(6 9 16 / 0.9),
+      0 18px 40px -20px rgb(0 0 0 / 0.95);
+  }
+
+  /* The shell's left column, standing on the environment. */
+  .side-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+    color: var(--color-content-muted);
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
+  }
+  .side-nav-link:hover {
+    color: var(--color-content);
+    background: rgb(255 255 255 / 0.035);
+  }
+  .side-nav-link[aria-current='page'] {
+    color: var(--color-institution);
+    background: linear-gradient(
+      90deg,
+      rgb(217 164 65 / 0.16) 0%,
+      rgb(217 164 65 / 0.03) 100%
+    );
+    box-shadow: inset 2px 0 0 0 var(--color-institution);
+  }
+  .side-nav-sublink {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    border-radius: 3px;
+    padding: 0.32rem 0.6rem 0.32rem 1.1rem;
+    color: var(--color-content-subtle);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    transition: color 150ms ease;
+  }
+  .side-nav-sublink:hover {
+    color: var(--color-content);
+  }
+  .side-nav-sublink[aria-current='page'] {
+    color: var(--color-content);
+  }
+  .side-nav-sublink[aria-current='page'] .side-nav-dot {
+    background: var(--color-institution);
+  }
+  .side-nav-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.22);
+    flex-shrink: 0;
+  }
+}
+
+/* ================================================ the relationship book === */
+
+/*
+ * A client's card.
+ *
+ * Deep navy on the shared surface, a thin blue-grey border, a single pixel of
+ * light along the top edge and a low, soft shadow — depth from illumination,
+ * not from a drop shadow. On hover or focus the card lifts one pixel, the
+ * border comes forward and the top edge warms to bronze: restrained, and the
+ * only warmth a card is allowed. No gradient fill, no glass, no glow.
+ */
+@layer components {
+  .client-card {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.03) 0%, rgb(255 255 255 / 0) 46%),
+      var(--color-surface);
+    border: 1px solid rgb(82 108 142 / 0.34);
+    border-radius: 5px;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 1px 2px 0 rgb(0 0 0 / 0.55),
+      0 12px 28px -22px rgb(0 0 0 / 0.9);
+    transition:
+      transform 150ms cubic-bezier(0.2, 0, 0, 1),
+      border-color 150ms ease,
+      box-shadow 150ms ease,
+      background-color 150ms ease;
+  }
+  .client-card:hover,
+  .client-card:focus-visible {
+    transform: translateY(-1px);
+    border-color: rgb(128 156 194 / 0.55);
+    box-shadow:
+      inset 0 1px 0 0 rgb(217 164 65 / 0.32),
+      0 2px 4px 0 rgb(0 0 0 / 0.5),
+      0 18px 32px -20px rgb(0 0 0 / 0.95);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .client-card,
+    .client-card:hover,
+    .client-card:focus-visible {
+      transform: none;
+      transition: none;
+    }
+  }
+}
+
+/* ============================================= moving between rooms ====== */
+
+/*
+ * Route transitions.
+ *
+ * The routed stage is the only thing that changes when the reader moves
+ * between pages: the rail, the environment and the presence stay where they
+ * are. So the stage is the only thing that animates — the old page fades out
+ * in 160 ms and the new one rises six pixels into place in 220 ms — and the
+ * shell's parts are named so the browser keeps them out of that change and
+ * out of its own root cross-fade, where identical pixels would otherwise
+ * fade into themselves.
+ *
+ * A client's name carries across. The card in the book and the heading in
+ * Client 360 share `client-<id>`, so the browser moves the one into the
+ * other instead of cutting between them; the Meeting Cockpit's heading
+ * carries the same name, so it continues from there.
+ *
+ * Where the browser has no View Transitions API the shell restarts
+ * `route-stage-enter` on the stage it already has (see `AppLayout`): the same
+ * rise, and nothing remounts for it. Reduced motion switches all of it off.
+ */
+.route-stage {
+  view-transition-name: workspace;
+}
+.app-rail {
+  view-transition-name: app-rail;
+}
+.app-side-nav {
+  view-transition-name: app-side-nav;
+}
+.app-environment {
+  view-transition-name: app-environment;
+}
+
+::view-transition-old(workspace) {
+  animation: 160ms cubic-bezier(0.2, 0, 0, 1) both route-fade-out;
+}
+::view-transition-new(workspace) {
+  animation: 220ms cubic-bezier(0.2, 0, 0, 1) both route-rise-in;
+}
+::view-transition-group(workspace) {
+  animation-duration: 220ms;
+}
+::view-transition-group(app-rail),
+::view-transition-old(app-rail),
+::view-transition-new(app-rail),
+::view-transition-group(app-side-nav),
+::view-transition-old(app-side-nav),
+::view-transition-new(app-side-nav),
+::view-transition-group(app-environment),
+::view-transition-old(app-environment),
+::view-transition-new(app-environment) {
+  animation: none;
+}
+
+.route-stage-enter {
+  animation: 220ms cubic-bezier(0.2, 0, 0, 1) both route-rise-in;
+}
+
+@keyframes route-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes route-rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  .route-stage-enter {
+    animation: none;
   }
 }

@@ -15,6 +15,32 @@
 export type ClientId = string
 export type HouseholdId = string
 export type AdvisorId = string
+export type OfficeId = string
+
+export type OfficeStatus = 'active' | 'closed'
+
+/**
+ * The office a relationship belongs to.
+ *
+ * Private Banking is organised by office: an advisor answers for
+ * relationships that originate from several of the firm's offices, and the
+ * relationship book is read office by office before it is read client by
+ * client. A relationship has one primary office in V1; a household whose
+ * members belong to different offices is not modelled yet (see
+ * `docs/client-intelligence.md` §8).
+ */
+export interface Office {
+  id: OfficeId
+  /** The office's name in the firm's register, e.g. the street. */
+  name: string
+  city: string
+  /** How a surface names it. */
+  displayName: string
+  /** How a dense row names it. */
+  shortName: string
+  status: OfficeStatus
+  description?: string
+}
 
 export type ClientSegment =
   'private-banking' | 'wealth-management' | 'entrepreneur' | 'family-office'
@@ -27,6 +53,8 @@ export type CommunicationChannel = 'phone' | 'email' | 'teams' | 'in-person'
 export interface Client {
   id: ClientId
   householdId: HouseholdId
+  /** The office the relationship originates from — one primary office per relationship in V1. */
+  officeId: OfficeId
   displayName: string
   segment: ClientSegment
   /** ISO date the relationship opened. */

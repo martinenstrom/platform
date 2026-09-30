@@ -39,7 +39,8 @@ import {
   typeIntoLiveSessionFn,
 } from '~/infrastructure/jarvis/serverFns'
 
-export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'unavailable'
+export type VoiceStatus =
+  'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'unavailable'
 
 /** What a typed line while live came back with. */
 export type TypedReply =
@@ -94,10 +95,19 @@ export interface VoiceSessionEvents {
   /** A piece of transcript, as the session clock places it. */
   onFragment(fragment: VoiceFragment): void
   /** The firm bound the conversation to a case through a spoken delegation. */
-  onReference(reference: DomainReference, ask: { question: string; subject: string } | null): void
+  onReference(
+    reference: DomainReference,
+    ask: { question: string; subject: string } | null,
+  ): void
 }
 
-const IDLE: VoiceSnapshot = { status: 'idle', sessionId: null, notice: null, seconds: 0, costUsd: 0 }
+const IDLE: VoiceSnapshot = {
+  status: 'idle',
+  sessionId: null,
+  notice: null,
+  seconds: 0,
+  costUsd: 0,
+}
 
 const VAD_THRESHOLD = 0.02
 const VAD_HOLD_MS = 600
@@ -153,7 +163,11 @@ export class VoiceSession {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (error) {
       const name = (error as { name?: string }).name
-      this.set({ status: 'idle', notice: name === 'NotFoundError' ? VOICE_NOTICE.noMicrophone : VOICE_NOTICE.denied })
+      this.set({
+        status: 'idle',
+        notice:
+          name === 'NotFoundError' ? VOICE_NOTICE.noMicrophone : VOICE_NOTICE.denied,
+      })
       return
     }
     const pc = new RTCPeerConnection()
@@ -164,15 +178,22 @@ export class VoiceSession {
       void this.audio.play().catch(() => {})
     })
     pc.addEventListener('connectionstatechange', () => {
-      if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !this.closingByUs) {
+      if (
+        (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') &&
+        !this.closingByUs
+      ) {
         this.end(VOICE_NOTICE.dropped)
       }
     })
     for (const track of this.stream.getAudioTracks()) pc.addTrack(track, this.stream)
-    this.stopVad = watchMicrophone(this.stream, { onSpeechStart: () => this.onUserSpeechStart() })
+    this.stopVad = watchMicrophone(this.stream, {
+      onSpeechStart: () => this.onUserSpeechStart(),
+    })
     const channel = pc.createDataChannel('oai-events')
     this.channel = channel
-    channel.addEventListener('message', (event: MessageEvent) => this.onEvent(JSON.parse(String(event.data)) as Record<string, unknown>))
+    channel.addEventListener('message', (event: MessageEvent) =>
+      this.onEvent(JSON.parse(String(event.data)) as Record<string, unknown>),
+    )
     channel.addEventListener('close', () => {
       if (this.pc && !this.closingByUs) this.end(VOICE_NOTICE.dropped)
     })
@@ -182,11 +203,16 @@ export class VoiceSession {
     await pc.setLocalDescription(offer)
     await new Promise<void>((resolve) => {
       if (pc.iceGatheringState === 'complete') return resolve()
-      pc.addEventListener('icegatheringstatechange', () => pc.iceGatheringState === 'complete' && resolve())
+      pc.addEventListener(
+        'icegatheringstatechange',
+        () => pc.iceGatheringState === 'complete' && resolve(),
+      )
       setTimeout(resolve, 2000)
     })
     const sdp = pc.localDescription?.sdp ?? offer.sdp ?? ''
-    const opened = await openLiveSessionFn({ data: { sdp, ...(reference ? { reference } : {}) } })
+    const opened = await openLiveSessionFn({
+      data: { sdp, ...(reference ? { reference } : {}) },
+    })
     if (!opened.ok) {
       this.teardown()
       const notice =
@@ -270,8 +296,15 @@ export class VoiceSession {
         ...(marketContext ? { marketContext } : {}),
       },
     })
-    if (!result.ok) return { ok: false }
-    return { ok: true, say: result.say, reference: result.reference, lastAsk: result.lastAsk, marketContext: result.marketContext }
+    /* A live line is the model's turn; the record's structured answer never comes this way. */
+    if (!result.ok || 'advisory' in result) return { ok: false }
+    return {
+      ok: true,
+      say: result.say,
+      reference: result.reference,
+      lastAsk: result.lastAsk,
+      marketContext: result.marketContext,
+    }
   }
 
   /* ------------------------------------------------------------ events */
@@ -285,7 +318,12 @@ export class VoiceSession {
         const endMs = Number(event.end_ms ?? 0)
         /* Where the person's interrupting turn ends, on the session clock, so the speaker knows when to come back. */
         if (this.mutedForBargeIn) this.userEndMs = endMs
-        this.events.onFragment({ who: 'user', delta: String(event.delta ?? ''), startMs: Number(event.start_ms ?? 0), endMs })
+        this.events.onFragment({
+          who: 'user',
+          delta: String(event.delta ?? ''),
+          startMs: Number(event.start_ms ?? 0),
+          endMs,
+        })
         break
       }
       case 'session.output_transcript.delta': {
@@ -295,11 +333,20 @@ export class VoiceSession {
         this.delegationPending = false
         if (this.snapshot.status !== 'speaking') this.set({ status: 'speaking' })
         /* JARVIS's new turn after the person's: the speaker comes back. */
-        if (this.mutedForBargeIn && this.userEndMs !== null && startMs >= this.userEndMs - 200) {
+        if (
+          this.mutedForBargeIn &&
+          this.userEndMs !== null &&
+          startMs >= this.userEndMs - 200
+        ) {
           this.audio.muted = false
           this.mutedForBargeIn = false
         }
-        this.events.onFragment({ who: 'jarvis', delta: String(event.delta ?? ''), startMs, endMs })
+        this.events.onFragment({
+          who: 'jarvis',
+          delta: String(event.delta ?? ''),
+          startMs,
+          endMs,
+        })
         break
       }
       case 'session.delegation.created':
@@ -315,7 +362,15 @@ export class VoiceSession {
       case 'session.closed': {
         const reason = String(event.reason ?? '')
         const byPolicy = /idle|max/.test(reason)
-        this.end(byPolicy ? (reason.startsWith('max') ? VOICE_NOTICE.capped : VOICE_NOTICE.idle) : this.closingByUs ? null : VOICE_NOTICE.dropped)
+        this.end(
+          byPolicy
+            ? reason.startsWith('max')
+              ? VOICE_NOTICE.capped
+              : VOICE_NOTICE.idle
+            : this.closingByUs
+              ? null
+              : VOICE_NOTICE.dropped,
+        )
         break
       }
       default:
@@ -326,7 +381,11 @@ export class VoiceSession {
   private tick() {
     if (!this.pc || this.snapshot.status === 'connecting') return
     const status: VoiceStatus =
-      performance.now() - this.assistantLastFragmentAt < SPEAKING_WINDOW_MS ? 'speaking' : this.delegationPending ? 'thinking' : 'listening'
+      performance.now() - this.assistantLastFragmentAt < SPEAKING_WINDOW_MS
+        ? 'speaking'
+        : this.delegationPending
+          ? 'thinking'
+          : 'listening'
     if (status !== this.snapshot.status) this.set({ status })
   }
 
@@ -337,11 +396,20 @@ export class VoiceSession {
     try {
       const state = await liveSessionStateFn({ data: { sessionId } })
       if (!state.ok) return
-      this.set({ seconds: state.telemetry.voiceSeconds, costUsd: state.telemetry.voiceCostUsd + state.telemetry.backend.costUsd })
+      this.set({
+        seconds: state.telemetry.voiceSeconds,
+        costUsd: state.telemetry.voiceCostUsd + state.telemetry.backend.costUsd,
+      })
       if (state.reference) this.events.onReference(state.reference, state.lastAsk)
       if (state.closed && this.pc) {
         const reason = state.telemetry.reason ?? ''
-        this.end(reason.startsWith('idle') ? VOICE_NOTICE.idle : reason.startsWith('max') ? VOICE_NOTICE.capped : null)
+        this.end(
+          reason.startsWith('idle')
+            ? VOICE_NOTICE.idle
+            : reason.startsWith('max')
+              ? VOICE_NOTICE.capped
+              : null,
+        )
       }
     } catch {
       /* The next poll will try again; a missed reading changes nothing the person sees. */
@@ -352,7 +420,11 @@ export class VoiceSession {
 
   /** The person began while JARVIS was speaking: the speaker goes quiet in this frame. */
   private onUserSpeechStart() {
-    if (!this.pc || performance.now() - this.assistantLastFragmentAt >= SPEAKING_WINDOW_MS) return
+    if (
+      !this.pc ||
+      performance.now() - this.assistantLastFragmentAt >= SPEAKING_WINDOW_MS
+    )
+      return
     this.audio.muted = true
     this.mutedForBargeIn = true
     this.userEndMs = null

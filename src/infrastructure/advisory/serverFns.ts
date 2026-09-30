@@ -22,6 +22,7 @@ import {
   clientDirectory,
   type ClientDirectory,
 } from '~/application/advisory/clientDirectory'
+import { officeBook, type OfficeBookView } from '~/application/advisory/officeBook'
 import {
   completeCommitment,
   type CompleteCommitmentResult,
@@ -35,7 +36,13 @@ import {
   marketImpactBrief,
   type MarketImpactBrief,
 } from '~/application/advisory/marketImpact'
-import { prepareMeeting, type MeetingPrepView } from '~/application/advisory/meetingPrep'
+import {
+  askBeforeMeeting,
+  meetingCockpit,
+  type AskBeforeMeetingInput,
+  type AskBeforeMeetingResult,
+  type MeetingCockpit,
+} from '~/application/advisory/meetingCockpit'
 import {
   disposePriority,
   sentinelBrief,
@@ -86,6 +93,17 @@ function advisoryClock(): Clock {
   return systemClock
 }
 
+/**
+ * The one advisory context of the process, for the other doors that answer
+ * from the record — JARVIS's typed line. Called inside a handler body only,
+ * with the market source loader the caller imports dynamically there.
+ */
+export function advisoryContext(
+  loadMarketSource: LoadMarketSource,
+): Promise<AdvisoryContext> {
+  return getContext(loadMarketSource)
+}
+
 async function getContext(loadMarketSource: LoadMarketSource): Promise<AdvisoryContext> {
   if (cached) return cached
   const [{ createAdvisoryContext }, { createMarketObservationSource }] =
@@ -109,6 +127,22 @@ export const getClientDirectoryFn = createServerFn({ method: 'POST' }).handler(
   },
 )
 
+export type OfficeBookResponse =
+  { ok: true; book: OfficeBookView } | { ok: false; code: AdvisoryReadFailure }
+
+/** One office's book: the directory scoped to the office, or NOT_FOUND when the register has no such office. */
+export const getOfficeBookFn = createServerFn({ method: 'POST' })
+  .validator((officeId: string) => officeId)
+  .handler(async ({ data: officeId }): Promise<OfficeBookResponse> => {
+    try {
+      const context = await getContext(() => import('./marketSource'))
+      const book = await officeBook(context, officeId)
+      return book ? { ok: true, book } : { ok: false, code: 'NOT_FOUND' }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
 export type Client360Response =
   { ok: true; view: Client360 } | { ok: false; code: AdvisoryReadFailure }
 
@@ -124,16 +158,32 @@ export const getClient360Fn = createServerFn({ method: 'POST' })
     }
   })
 
-export type MeetingPrepResponse =
-  { ok: true; prep: MeetingPrepView } | { ok: false; code: AdvisoryReadFailure }
+export type MeetingCockpitResponse =
+  { ok: true; cockpit: MeetingCockpit } | { ok: false; code: AdvisoryReadFailure }
 
-export const getMeetingPrepFn = createServerFn({ method: 'POST' })
+/** Meeting Cockpit: what the advisor needs for this meeting, read once on the advisory clock. */
+export const getMeetingCockpitFn = createServerFn({ method: 'POST' })
   .validator((clientId: string) => clientId)
-  .handler(async ({ data: clientId }): Promise<MeetingPrepResponse> => {
+  .handler(async ({ data: clientId }): Promise<MeetingCockpitResponse> => {
     try {
       const context = await getContext(() => import('./marketSource'))
-      const prep = await prepareMeeting(context, clientId)
-      return prep ? { ok: true, prep } : { ok: false, code: 'NOT_FOUND' }
+      const cockpit = await meetingCockpit(context, clientId)
+      return cockpit ? { ok: true, cockpit } : { ok: false, code: 'NOT_FOUND' }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+export type AskBeforeMeetingResponse =
+  AskBeforeMeetingResult | { ok: false; code: 'SERVICE_UNAVAILABLE' }
+
+/** A question before the meeting, answered from the cockpit or the relationship memory. */
+export const askBeforeMeetingFn = createServerFn({ method: 'POST' })
+  .validator((input: AskBeforeMeetingInput) => input)
+  .handler(async ({ data }): Promise<AskBeforeMeetingResponse> => {
+    try {
+      const context = await getContext(() => import('./marketSource'))
+      return await askBeforeMeeting(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
     }

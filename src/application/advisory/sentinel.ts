@@ -37,6 +37,8 @@ export interface SentinelClient {
   displayName: string
   segment: ClientSegment
   advisorName: string
+  /** The office the relationship originates from, for grouping the queue; null when the register does not know it. */
+  office: { id: string; displayName: string } | null
   aum: number
   totalWealth: number
   health: RelationshipHealth
@@ -102,6 +104,7 @@ export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelB
   const today = todayOf(context)
   const clients = await repositories.clients.list()
   const dispositions = await repositories.sentinel.dispositions()
+  const offices = new Map((await repositories.clients.offices()).map((o) => [o.id, o]))
   /* The market, once for the whole brief: the same events every client is judged against. */
   const events = await activeMarketEvents(context)
   const entries: SentinelEntry[] = []
@@ -129,6 +132,7 @@ export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelB
     const status = statusOf(priority, dispositions, today)
     const advisor = await repositories.clients.advisorById(client.primaryAdvisorId)
     const contact = lastContact(facts)
+    const office = offices.get(client.officeId)
     entries.push({
       priority,
       status,
@@ -138,6 +142,7 @@ export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelB
         displayName: client.displayName,
         segment: client.segment,
         advisorName: advisor?.displayName ?? client.primaryAdvisorId,
+        office: office ? { id: office.id, displayName: office.displayName } : null,
         aum: facts.balanceSheet.assetsWithBank,
         totalWealth: facts.balanceSheet.totalAssets,
         health,

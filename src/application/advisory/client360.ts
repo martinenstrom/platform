@@ -44,6 +44,7 @@ import {
   type Liability,
   type MemoryCandidate,
   type NextBestAction,
+  type Office,
   type Opportunity,
   type Portfolio,
   type RelationshipHealth,
@@ -69,6 +70,8 @@ export interface Client360 {
   client: Client
   household: Household | null
   advisor: Advisor | null
+  /** The office the relationship originates from; null only when the register does not know it. */
+  office: Office | null
   balanceSheet: BalanceSheet
   assets: readonly Asset[]
   liabilities: readonly Liability[]
@@ -121,10 +124,11 @@ export async function client360(
   const facts = await assembleClientFacts(context, clientId)
   if (!facts) return null
   const { repositories } = context
-  const [assets, household, advisor, candidates, ledger] = await Promise.all([
+  const [assets, household, advisor, office, candidates, ledger] = await Promise.all([
     repositories.wealth.assetsOf(clientId),
     repositories.clients.householdById(facts.client.householdId),
     repositories.clients.advisorById(facts.client.primaryAdvisorId),
+    repositories.clients.officeById(facts.client.officeId),
     repositories.interactions.candidatesOf(clientId),
     marketLedger(context),
   ])
@@ -141,6 +145,7 @@ export async function client360(
     client: facts.client,
     household,
     advisor,
+    office,
     balanceSheet: facts.balanceSheet,
     assets,
     liabilities: facts.liabilities,

@@ -3061,7 +3061,7 @@ through the runner, with the contract tests the analysis adapter already
 has (in-memory and PostgreSQL judged by one contract), and a ruling on the
 privacy posture before the first non-synthetic client.
 
-## TD-105 · _Fråga JARVIS om klienten_ is a door of its own, not a JARVIS intent · open
+## TD-105 · _Fråga JARVIS om klienten_ is a door of its own, not a JARVIS intent · closed 2026-09-30 (typed path)
 
 Opened 2026-09-23.
 
@@ -3083,6 +3083,16 @@ page change.
 router (`client_context`, `list_commitments`, `next_meeting`…), the fitness
 rule extended to them, and the six-line routing acceptance re-run with
 advisory lines planted.
+
+**Closed 2026-09-30, for the typed path** (`docs/jarvis-context.md`). The
+presence sends the route with every line; the server resolves a
+`JarvisContext` from it and the advisory tier (`application/jarvis/
+advisoryTurn.ts`) answers in Tier 0 — a deterministic recogniser
+(`advisoryIntent.ts`) over the existing evidence services, a typed
+`JarvisAnswer` with sources — before any model, and without one. The
+client and cockpit doors remain as pages' own panels; the presence is now
+the one router for them too. **Still open for the voice path:** a spoken
+line goes to the backend model, which has no advisory tool yet.
 
 ## TD-106 · the advisor recording a note is the client's primary advisor · open
 
@@ -3195,3 +3205,102 @@ who prepares a meeting the morning after a deploy.
 
 **Resolution.** Persist the ledger beside the dispositions when TD-104 is
 resolved; the port is already the seam.
+
+---
+
+## TD-111 · meeting baselines are per process · open
+
+Opened 2026-09-29 with Meeting Cockpit 2.0 (`docs/meeting-cockpit.md`).
+
+`repositories.meetingSnapshots` holds the structured baseline captured when
+a meeting is confirmed, so the next preparation compares against what was
+known then. It lives in the synthetic record with everything else: a
+restart returns every client to the seeded baseline, and a meeting recorded
+before the restart is compared against the wrong past. The port is the
+seam; the snapshot is already structured domain data with no UI state, so
+persisting it is a storage decision, not a modelling one.
+
+---
+
+## TD-112 · the cockpit composes with rules, not a model · open
+
+Opened 2026-09-29.
+
+The focus sentence, the possible client questions, the questions to ask,
+the agenda and the objectives are composed from typed items by fixed
+Swedish templates. That is deliberate for V1 — every sentence is
+traceable and nothing is invented — but a reader will feel the seams
+between templates. The read model (`MeetingCockpit`) is the boundary an AI
+summarisation layer can sit behind: it would read the same typed items and
+the same source ids, and it must not add facts. Not before a production
+LLM posture is ruled.
+
+---
+
+## TD-113 · the relationship book's selection is process-local, not in the URL · open
+
+Opened 2026-09-29 with the navigation pass.
+
+The search, the filter and the sort of `/clients` live in a module store
+(`components/clients/directoryState.ts`) so that opening a client and
+pressing back finds the book as it was left. Deliberate: a keystroke is not
+a navigation, and every navigation now runs inside a view transition. The
+cost is that a filtered book cannot be shared as a link and a reload
+forgets the selection. If a deep link to a filtered view is wanted, the
+filter and the sort (not the search text) belong in the URL, navigated
+with `replace: true` and `viewTransition: false`.
+
+---
+
+## TD-114 · an interrupted view transition is reported as a page error · open
+
+Opened 2026-09-29 with the navigation pass.
+
+Every navigation commits inside `document.startViewTransition`. When the
+next navigation begins before the previous 220 ms transition has finished
+— two quick presses of the browser's back button — Chromium abandons the
+first one and reports `AbortError: Transition was skipped` as an unhandled
+promise rejection. Nothing visible goes wrong: the newer navigation wins.
+The router discards the transition handle, so nothing of ours can attach a
+handler. Observed once in the browser probe on the cockpit → Client 360 →
+Klienter double back; not reproduced deterministically. Leave it unless it
+grows into something a user can see.
+
+---
+
+## TD-115 · dashboard client components with no surface · open
+
+Opened 2026-09-29 with the navigation pass.
+
+`SentinelBriefList`, `SentinelGreeting` (`components/sentinel/SentinelBrief.tsx`)
+and `MarketImpactList` (`components/marketImpact/MarketImpactModule.tsx`)
+rendered the two client modules the home page carried for one stage. The
+modules are gone; the components and their tests remain, unrendered, so
+that the ruling can be reversed without rebuilding them. If the ruling
+stands through the next stage, delete them and their tests rather than
+carry dead surfaces.
+
+---
+
+## TD-116 · the dossier's display serif is fetched from Google Fonts · open
+
+Opened 2026-09-29 with the Client 360 dossier pass.
+
+Playfair Display is linked from the document head (`routes/__root.tsx`)
+and `--font-display` falls back to Georgia where it does not arrive. A
+runtime dependency on a third-party CDN is acceptable for a demonstration
+and not for a bank: before any deployment, self-host the two weights under
+`public/fonts` and drop the preconnects. The fallback means nothing breaks
+offline; the dossier only loses its face.
+
+---
+
+## TD-117 · client portraits are a presentation map, and it is empty · open
+
+Opened 2026-09-29 with the Client 360 dossier pass.
+
+`presentation/advisory/portraits.ts` maps a client id to a portrait URL and
+maps nothing: every synthetic client opens on the monogram. Deliberate —
+a photograph of a real client is governed data and Client 360 must work
+without one — but a deployment that may show approved portraits needs a
+governed source for that map, not a constant in the presentation layer.

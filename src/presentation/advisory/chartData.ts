@@ -25,14 +25,20 @@ export const ASSET_CLASS_COLOR: Record<AssetClass, string> = {
   cash: CATEGORICAL[4],
 }
 
+/*
+ * Wealth buckets in the dossier's palette: gold for property — the one
+ * kind that usually carries a Swedish family's wealth and the one slice the
+ * eye should find first — then the market's cool hues. Same colour for the
+ * same kind on the donut, the legend and the holdings.
+ */
 export const ASSET_KIND_COLOR: Record<AssetKind, string> = {
+  property: '#d9a441',
   'investment-portfolio': CATEGORICAL[0],
+  pension: '#2fb37f',
+  'company-ownership': '#3ea1b8',
+  'other-financial': '#6f8dc9',
   cash: CATEGORICAL[4],
-  property: CATEGORICAL[3],
-  'company-ownership': CATEGORICAL[1],
-  pension: CATEGORICAL[2],
-  'other-financial': '#6b7a90',
-  other: '#4b5563',
+  other: '#5b6b84',
 }
 
 /** The portfolio's current allocation as donut slices. */

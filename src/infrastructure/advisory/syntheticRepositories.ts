@@ -31,7 +31,9 @@ import type {
   Interaction,
   Liability,
   MarketLedgerState,
+  MeetingSnapshot,
   MemoryCandidate,
+  Office,
   Opportunity,
   Portfolio,
   SentinelDisposition,
@@ -68,6 +70,7 @@ export function createSyntheticAdvisoryRepositories(
   seed: AdvisorySeed,
 ): AdvisoryRepositories {
   const advisors = byId<Advisor>(seed.advisors)
+  const offices = byId<Office>(seed.offices)
   const clients = byId<Client>(seed.clients)
   const households = byId<Household>(seed.households)
   const assets = byId<Asset>(seed.assets)
@@ -80,6 +83,7 @@ export function createSyntheticAdvisoryRepositories(
   const commitments = byId<Commitment>(seed.commitments)
   const events = byId<ImportantEvent>(seed.events)
   const opportunities = byId<Opportunity>(seed.opportunities)
+  const meetingSnapshots = byId<MeetingSnapshot>(seed.meetingSnapshots)
 
   /* Sequences per kind, like a database would keep. */
   const sequences = new Map<MintedKind, number>()
@@ -101,6 +105,12 @@ export function createSyntheticAdvisoryRepositories(
       },
       async advisorById(id) {
         return advisors.get(id) ?? null
+      },
+      async offices() {
+        return [...offices.values()]
+      },
+      async officeById(id) {
+        return offices.get(id) ?? null
       },
     },
     wealth: {
@@ -206,6 +216,29 @@ export function createSyntheticAdvisoryRepositories(
       },
       async addDisposition(disposition) {
         dispositions.push(disposition)
+      },
+    },
+    meetingSnapshots: {
+      async latestFor(clientId) {
+        return (
+          ofClient(meetingSnapshots, clientId).sort((a, b) =>
+            a.meetingDate > b.meetingDate
+              ? -1
+              : a.meetingDate < b.meetingDate
+                ? 1
+                : a.capturedAt > b.capturedAt
+                  ? -1
+                  : 1,
+          )[0] ?? null
+        )
+      },
+      async allFor(clientId) {
+        return ofClient(meetingSnapshots, clientId).sort((a, b) =>
+          a.meetingDate > b.meetingDate ? -1 : 1,
+        )
+      },
+      async save(snapshot) {
+        meetingSnapshots.set(snapshot.id, snapshot)
       },
     },
     marketEvents: {
