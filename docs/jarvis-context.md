@@ -62,8 +62,12 @@ CLIENT_QUESTIONS, KEY_FIGURES, GENERAL_CLIENT_QUERY (the relationship
 memory); OFFICE_PRIORITIES, OFFICE_MEETINGS, OFFICE_OVERDUE,
 OFFICE_OPPORTUNITIES; DIRECTORY_CALL_TODAY, DIRECTORY_MEETINGS,
 DIRECTORY_OVERDUE, DIRECTORY_EXTERNAL_ASSETS; SENTINEL_TODAY;
-MARKET_IMPACT_CLIENTS. The recogniser's interface is the seam a model may
-later classify through without touching the evidence services.
+MARKET_IMPACT_CLIENTS; and, since the Meeting Pack, MEETING_PACK_FULL,
+MEETING_PACK_EXECUTIVE, MEETING_PACK_PPTX, MEETING_PACK_PDF and
+MEETING_PACK_UPDATE, which answer with the pack's readiness and contents
+and open the preview themselves (`answer.opens`) for the screen's client.
+The recogniser's interface is the seam a model may later classify through
+without touching the evidence services.
 
 **Evidence services, reused, never re-derived:** `client360`,
 `meetingCockpit` (focus, changes, promises, questions, risks, data gaps),

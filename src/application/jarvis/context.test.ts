@@ -38,6 +38,10 @@ describe('resolveJarvisContext', () => {
       scope: 'MEETING',
       clientId: 'cl-dahlqvist',
     })
+    /* The pack preview is about the meeting too, whatever its search. */
+    expect(
+      resolveJarvisContext('/clients/cl-dahlqvist/meeting-pack?depth=full&format=pptx'),
+    ).toMatchObject({ scope: 'MEETING', clientId: 'cl-dahlqvist' })
     expect(resolveJarvisContext('/clients/cl-dahlqvist').meetingId).toBeUndefined()
   })
 

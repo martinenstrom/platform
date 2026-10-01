@@ -193,6 +193,44 @@ const UNFINISHED = cue([
   'outstanding',
 ])
 
+/* ---------------------------------------------------------- the pack */
+
+const PACK = cue([
+  `mötesunderlag${L}`,
+  `underlag${L} (?:inför|till|för) (?:mötet|möte)`,
+  'pack',
+  'meeting pack',
+  'powerpoint',
+  'pptx',
+  `presentation${L}`,
+  'slides',
+  'executive',
+  'brief',
+  'briefing',
+  'pdf',
+  'deck',
+])
+const PACK_PDF = cue(['pdf'])
+const PACK_PPTX = cue(['powerpoint', 'pptx', `presentation${L}`, 'slides', 'deck'])
+const PACK_EXECUTIVE = cue([
+  'executive',
+  'fem ?slides',
+  'five slides',
+  `kort${L} (?:version|underlag|variant)`,
+  'brief',
+])
+const PACK_UPDATE = cue([`uppdatera${L}`, 'update', 'regenerera', 'gör om', 'refresh'])
+
+/** A line that asks for the pack itself: which depth, which format, or a refresh. */
+function packIntent(line: string): AdvisoryIntentKind | null {
+  if (!PACK.test(line)) return null
+  if (PACK_UPDATE.test(line)) return 'MEETING_PACK_UPDATE'
+  if (PACK_PDF.test(line)) return 'MEETING_PACK_PDF'
+  if (PACK_EXECUTIVE.test(line)) return 'MEETING_PACK_EXECUTIVE'
+  if (PACK_PPTX.test(line)) return 'MEETING_PACK_PPTX'
+  return 'MEETING_PACK_FULL'
+}
+
 /* ------------------------------------------------------- book families */
 
 const NEEDS_ME = cue([
@@ -301,6 +339,12 @@ const COMMON_STARTS = new Set([
   'Show',
   'Förbered',
   'Prepare',
+  'Skapa',
+  'Create',
+  'Generate',
+  'Generera',
+  'Uppdatera',
+  'Update',
 ])
 
 function looksLikeName(word: string, clients: readonly NamedClient[]): boolean {
@@ -375,6 +419,8 @@ export function recognizeAdvisoryIntent(
  */
 function clientIntent(line: string): AdvisoryIntentKind | null {
   if (SAID.test(line)) return 'GENERAL_CLIENT_QUERY'
+  const pack = packIntent(line)
+  if (pack) return pack
   if (CLIENT_QUESTIONS.test(line)) return 'CLIENT_QUESTIONS'
   if (QUESTIONS_TO_ASK.test(line)) return 'QUESTIONS_TO_ASK'
   if (WHY_PRIORITY.test(line)) return 'WHY_PRIORITY'

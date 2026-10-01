@@ -3304,3 +3304,47 @@ maps nothing: every synthetic client opens on the monogram. Deliberate —
 a photograph of a real client is governed data and Client 360 must work
 without one — but a deployment that may show approved portraits needs a
 governed source for that map, not a constant in the presentation layer.
+
+---
+
+## TD-118 · the PDF briefing book sets standard fonts, not the product's typeface · open
+
+Opened 2026-09-30 with the Meeting Pack engine.
+
+`infrastructure/documents/pdf.ts` renders with pdfkit's standard fonts
+(Times for display, Helvetica for body) because no typeface file is in the
+repository (TD-116 fetches the dossier's serif from a CDN at runtime). The
+book is printable and consistent, but it does not carry Playfair Display
+or Inter, and every string is written through WinAnsi — the minus sign and
+the arrow are mapped before they reach the page. Self-hosting the two
+faces (TD-116) and registering them with pdfmake closes this; the
+PowerPoint names Georgia and Calibri and lets Office substitute.
+
+---
+
+## TD-119 · generated pack versions are process-local · open
+
+Opened 2026-09-30 with the Meeting Pack engine.
+
+`infrastructure/documents/meetingPackStore.ts` keeps every generated
+version — metadata and bytes — in the server process, and writes each file
+under `.generated/meeting-packs` so it can be opened. A restart forgets the
+list; the version counter then continues from the files on disk with the
+same base name, so a number is never reused for different content, but the
+preview's list starts empty. Persistence of pack versions belongs with the
+rest of the record (TD-104), governed, and with retention.
+
+---
+
+## TD-120 · the pack's readiness and outline are rules, the notes are composed · open
+
+Opened 2026-09-30 with the Meeting Pack engine.
+
+The readiness gate, the slide outline, the executive summary and the top
+priorities are deterministic selections over cockpit items; the speaker
+notes are the cockpit's own sentences arranged per slide. Nothing is
+summarised by a model. The seam is `MeetingPack` → `composePackDocument`:
+a later summarisation layer would write into the same typed document and
+be subject to the same tests (no id, no arrow, no invented figure). The
+same holds for the JARVIS pack commands, which are a lexicon (TD-105 for
+the voice path remains).

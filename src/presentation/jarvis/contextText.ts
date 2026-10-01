@@ -28,6 +28,7 @@ export function contextNamesOf(loaded: readonly unknown[]): ContextNames {
     const view = isRecord(data.view) ? data.view : null
     const cockpit = isRecord(data.cockpit) ? data.cockpit : null
     const book = isRecord(data.book) ? data.book : null
+    const pack = isRecord(data.pack) ? data.pack : null
     const client = view && isRecord(view.client) ? view.client : null
     const identity = cockpit && isRecord(cockpit.identity) ? cockpit.identity : null
     const cockpitClient = identity && isRecord(identity.client) ? identity.client : null
@@ -35,12 +36,18 @@ export function contextNamesOf(loaded: readonly unknown[]): ContextNames {
     const meetingEvent = meeting && isRecord(meeting.event) ? meeting.event : null
     const nextMeeting = view && isRecord(view.nextMeeting) ? view.nextMeeting : null
     const office = book && isRecord(book.office) ? book.office : null
+    const packIdentity = pack && isRecord(pack.identity) ? pack.identity : null
+    const packMeeting = pack && isRecord(pack.meeting) ? pack.meeting : null
     if (client && typeof client.displayName === 'string')
       names.clientName = client.displayName
     if (cockpitClient && typeof cockpitClient.displayName === 'string')
       names.clientName = cockpitClient.displayName
+    if (packIdentity && typeof packIdentity.clientName === 'string')
+      names.clientName = packIdentity.clientName
     if (meetingEvent && typeof meetingEvent.occursOn === 'string')
       names.meetingDate = meetingEvent.occursOn
+    else if (packMeeting && typeof packMeeting.date === 'string')
+      names.meetingDate = packMeeting.date
     else if (nextMeeting && typeof nextMeeting.occursOn === 'string')
       names.meetingDate = nextMeeting.occursOn
     if (office && typeof office.displayName === 'string')

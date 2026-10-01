@@ -64,6 +64,23 @@ describe('on a client', () => {
     expect(kind('Vad har jag inte slutfört?', MEETING)).toBe('OPEN_COMMITMENTS')
     expect(kind('Vilka siffror behöver jag kunna?', MEETING)).toBe('KEY_FIGURES')
   })
+
+  it('recognises the pack commands: depth, format, refresh — in either language', () => {
+    expect(kind('Prepare full pack.', MEETING)).toBe('MEETING_PACK_FULL')
+    expect(kind('Skapa mötesunderlag', MEETING)).toBe('MEETING_PACK_FULL')
+    expect(kind('Skapa PowerPoint inför mötet.')).toBe('MEETING_PACK_PPTX')
+    expect(kind('Create the PowerPoint.', MEETING)).toBe('MEETING_PACK_PPTX')
+    expect(kind('Ge mig en femslides executive brief.')).toBe('MEETING_PACK_EXECUTIVE')
+    expect(kind('Give me the executive version.', MEETING)).toBe('MEETING_PACK_EXECUTIVE')
+    expect(kind('Skapa PDF inför mötet på torsdag.')).toBe('MEETING_PACK_PDF')
+    expect(kind('Generate the PDF.', MEETING)).toBe('MEETING_PACK_PDF')
+    expect(kind('Uppdatera mötesunderlaget med det som hänt sedan sist.')).toBe(
+      'MEETING_PACK_UPDATE',
+    )
+    expect(kind('Update the pack.', MEETING)).toBe('MEETING_PACK_UPDATE')
+    /* What the client said about a presentation is the memory's, not a command. */
+    expect(kind('Vad sa de om presentationen?')).toBe('GENERAL_CLIENT_QUERY')
+  })
 })
 
 describe('a named client', () => {

@@ -183,8 +183,9 @@ compares against what was just recorded.
 - Rules, not a model: the focus sentence, the questions and the agenda are
   composed from typed items. The read model is the seam for an AI
   summarisation layer later (TD-112).
-- No calendar, e-mail, recording, document generation or recommendation of
-  products.
+- No calendar, e-mail, recording or recommendation of products. Document
+  generation is the Meeting Pack's (`docs/meeting-pack.md`), which reads
+  this cockpit and adds no rule of its own.
 
 ## 8. Verification
 

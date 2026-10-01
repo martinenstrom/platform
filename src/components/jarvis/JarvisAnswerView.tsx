@@ -13,6 +13,7 @@ import {
 const ACTION_LABEL = {
   'open-client': 'Öppna klient',
   'open-meeting-prep': 'Förbered möte',
+  'open-meeting-pack': 'Öppna mötesunderlag',
   'open-office': 'Öppna kontor',
   'open-sentinel': 'Öppna Sentinel',
   'open-market-impact': 'Öppna Marknadspåverkan',

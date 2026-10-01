@@ -22,9 +22,11 @@ import {
   meetingCockpit,
   type MeetingCockpit,
 } from '~/application/advisory/meetingCockpit'
+import { meetingPack } from '~/application/advisory/meetingPack'
 import { officeBook } from '~/application/advisory/officeBook'
 import type { AdvisoryContext } from '~/application/advisory/ports'
 import { sentinelBrief, type SentinelEntry } from '~/application/advisory/sentinel'
+import { fallbackSource, sourceIndex, titlesOf } from '~/application/advisory/sources'
 import {
   recognizeAdvisoryIntent,
   type AdvisoryIntent,
@@ -174,6 +176,7 @@ async function clientAnswer(
       actions: actions(...(over.actions ?? [])),
       titles: { ...titles, ...(over.titles ?? {}) },
       confidence: over.confidence ?? 'high',
+      ...(over.opens ? { opens: over.opens } : {}),
     }
   }
   const prep = (kind: 'open-meeting-prep'): JarvisAction => ({
@@ -668,6 +671,71 @@ async function clientAnswer(
         },
       )
     }
+    case 'MEETING_PACK_FULL':
+    case 'MEETING_PACK_EXECUTIVE':
+    case 'MEETING_PACK_PPTX':
+    case 'MEETING_PACK_PDF':
+    case 'MEETING_PACK_UPDATE': {
+      /*
+       * The pack's own read model says whether it is ready and what it will
+       * contain; the preview is where it is reviewed and generated. JARVIS
+       * opens that door itself for the screen's client; for another client it
+       * offers the door and leaves the screen where it is.
+       */
+      const depth = intent.kind === 'MEETING_PACK_EXECUTIVE' ? 'executive' : 'full'
+      const pack = await meetingPack(context, clientId, depth)
+      if (!pack) return null
+      const format =
+        intent.kind === 'MEETING_PACK_PDF'
+          ? 'pdf'
+          : intent.kind === 'MEETING_PACK_PPTX'
+            ? 'pptx'
+            : 'both'
+      const href = `/clients/${clientId}/meeting-pack?depth=${depth}&format=${format}`
+      const refreshed =
+        intent.kind === 'MEETING_PACK_UPDATE'
+          ? pack.changesSinceLastMeeting.changes
+              .filter((c) => c.kind !== 'contacts')
+              .slice(0, MAX_ITEMS)
+              .map((change) => item('change', { change }, 'fact', change.sourceIds))
+          : []
+      return finish(
+        [
+          section('readiness', [
+            item('pack-readiness', { readiness: pack.readiness }, 'assessment', []),
+            ...pack.readiness.reasons.map((reason) =>
+              item('readiness-reason', { reason }, 'fact', reason.sourceIds),
+            ),
+          ]),
+          section('contents', [
+            item(
+              'pack-outline',
+              {
+                depth,
+                core: pack.outline.core.length,
+                appendix: pack.outline.appendix.length,
+                meetingDate: pack.meeting.date,
+              },
+              'fact',
+              [],
+            ),
+          ]),
+          section(
+            'since-last',
+            intent.kind === 'MEETING_PACK_UPDATE' && refreshed.length === 0
+              ? [note('few-changes')]
+              : refreshed,
+          ),
+        ],
+        {
+          about: about(meetingDate),
+          actions: [{ kind: 'open-meeting-pack', href }],
+          titles: pack.titles,
+          ...(switched ? {} : { opens: href }),
+          confidence: pack.readiness.state === 'BLOCKERAD' ? 'low' : 'high',
+        },
+      )
+    }
     case 'GENERAL_CLIENT_QUERY': {
       const result = await askAboutClient(context, { clientId, question: text })
       /*
@@ -1126,49 +1194,6 @@ function sentinelSource(entry: SentinelEntry): JarvisSource {
   }
 }
 
-/** Every record the view holds, by id, as a source. */
-function sourceIndex(view: Client360): Map<string, JarvisSource> {
-  const index = new Map<string, JarvisSource>()
-  const put = (
-    id: string,
-    type: JarvisSource['type'],
-    label: string,
-    date: string | null,
-  ) => index.set(id, { id, type, label, date })
-  for (const c of view.commitments)
-    put(c.id, 'commitment', c.title, c.dueDate ?? c.createdAt)
-  for (const e of [...view.upcomingEvents]) put(e.id, 'event', e.title, e.occursOn)
-  for (const l of view.liabilities)
-    put(l.id, 'liability', l.title, l.maturityDate ?? l.valuedAt)
-  for (const g of view.goals) put(g.id, 'goal', g.title, g.assessedAt)
-  for (const f of view.contextFacts) put(f.id, 'context', f.statement, f.statusAt)
-  for (const i of view.interactions) put(i.id, 'interaction', i.title, i.date)
-  for (const a of view.assets) put(a.id, 'asset', a.title, a.valuedAt)
-  for (const o of view.opportunities) put(o.id, 'opportunity', o.title, o.expectedDate)
-  if (view.portfolio) {
-    put(view.portfolio.id, 'portfolio', 'Portföljen', view.portfolio.valuedAt)
-    for (const h of view.portfolio.holdings)
-      put(h.id, 'holding', h.name, view.portfolio.valuedAt)
-  }
-  for (const m of view.marketImpacts)
-    put(m.event.id, 'market-event', m.event.label, m.event.firstSeenAt)
-  for (const m of view.recentMarketHistory)
-    put(
-      m.impact.event.id,
-      'market-event',
-      m.impact.event.label,
-      m.impact.event.firstSeenAt,
-    )
-  put(view.client.id, 'client', view.client.displayName, null)
-  return index
-}
-
-function titlesOf(view: Client360): Record<string, string> {
-  const titles: Record<string, string> = {}
-  for (const [id, source] of sourceIndex(view)) titles[id] = source.label
-  return titles
-}
-
 function collectSources(
   sections: readonly JarvisSection[],
   index: Map<string, JarvisSource>,
@@ -1180,15 +1205,8 @@ function collectSources(
       for (const id of it.sourceIds) {
         if (seen.has(id)) continue
         seen.add(id)
-        const source = index.get(id)
+        const source = index.get(id) ?? fallbackSource(id)
         if (source) out.push(source)
-        else if (id.startsWith('snap-'))
-          out.push({
-            id,
-            type: 'meeting-snapshot',
-            label: 'Baslinje från senaste mötet',
-            date: null,
-          })
       }
   return out
 }

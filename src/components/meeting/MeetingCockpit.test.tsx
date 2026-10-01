@@ -55,7 +55,12 @@ async function renderCockpit(clientId: string) {
         changed += 1
       }}
     />,
-    ['/clients/$clientId', '/clients', '/clients/$clientId/meeting-prep'],
+    [
+      '/clients/$clientId',
+      '/clients',
+      '/clients/$clientId/meeting-prep',
+      '/clients/$clientId/meeting-pack',
+    ],
   )
   return { rendered, cockpit, changes: () => changed }
 }

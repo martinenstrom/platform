@@ -44,6 +44,16 @@ import {
   type MeetingCockpit,
 } from '~/application/advisory/meetingCockpit'
 import {
+  meetingPack,
+  type MeetingPack,
+  type MeetingPackDepth,
+} from '~/application/advisory/meetingPack'
+import type { GenerateMeetingPackResult } from '~/infrastructure/documents/generateMeetingPack'
+import type {
+  GeneratedPackMeta,
+  PackFormat,
+} from '~/infrastructure/documents/meetingPackStore'
+import {
   disposePriority,
   sentinelBrief,
   type DisposeInput,
@@ -307,6 +317,99 @@ export const disposePriorityFn = createServerFn({ method: 'POST' })
     try {
       const context = await getContext(() => import('./marketSource'))
       return await disposePriority(context, data)
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+/* ------------------------------------------------------------ Meeting Pack */
+
+export interface MeetingPackRequest {
+  clientId: string
+  depth: MeetingPackDepth
+}
+
+export type MeetingPackResponse =
+  | { ok: true; pack: MeetingPack; versions: GeneratedPackMeta[] }
+  | { ok: false; code: AdvisoryReadFailure }
+
+/**
+ * The Meeting Pack read model for the preview, with the versions already
+ * generated in this process. The store lives behind a dynamic import inside
+ * the handler: it reads the file system, and nothing of it may reach the
+ * client bundle (the same discipline as the market source).
+ */
+export const getMeetingPackFn = createServerFn({ method: 'POST' })
+  .validator((input: MeetingPackRequest) => input)
+  .handler(async ({ data }): Promise<MeetingPackResponse> => {
+    try {
+      const context = await getContext(() => import('./marketSource'))
+      const pack = await meetingPack(context, data.clientId, data.depth)
+      if (!pack) return { ok: false, code: 'NOT_FOUND' }
+      const { meetingPackStore } =
+        await import('~/infrastructure/documents/meetingPackStore')
+      return {
+        ok: true,
+        pack,
+        versions: meetingPackStore().listForClient(pack.identity.clientId, pack.depth),
+      }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+export interface GenerateMeetingPackRequest {
+  clientId: string
+  depth: MeetingPackDepth
+  formats: readonly PackFormat[]
+}
+
+export type GenerateMeetingPackResponse =
+  GenerateMeetingPackResult | { ok: false; code: 'SERVICE_UNAVAILABLE' }
+
+/**
+ * Generate the internal advisor pack in the requested formats. The
+ * audience is fixed here, on the server: the browser cannot ask for any
+ * other, and the generators refuse any other regardless.
+ */
+export const generateMeetingPackFn = createServerFn({ method: 'POST' })
+  .validator((input: GenerateMeetingPackRequest) => input)
+  .handler(async ({ data }): Promise<GenerateMeetingPackResponse> => {
+    try {
+      const context = await getContext(() => import('./marketSource'))
+      const [{ generateMeetingPack }, { meetingPackStore }] = await Promise.all([
+        import('~/infrastructure/documents/generateMeetingPack'),
+        import('~/infrastructure/documents/meetingPackStore'),
+      ])
+      return await generateMeetingPack(context, meetingPackStore(), {
+        clientId: data.clientId,
+        depth: data.depth,
+        formats: data.formats,
+        audience: 'INTERNAL_ADVISOR',
+      })
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+export type DownloadMeetingPackResponse =
+  | { ok: true; meta: GeneratedPackMeta; base64: string }
+  | { ok: false; code: 'NOT_FOUND' | 'SERVICE_UNAVAILABLE' }
+
+/** A generated version's bytes again, by its id; an earlier version is never rewritten. */
+export const downloadMeetingPackFn = createServerFn({ method: 'POST' })
+  .validator((id: string) => id)
+  .handler(async ({ data: id }): Promise<DownloadMeetingPackResponse> => {
+    try {
+      const { meetingPackStore } =
+        await import('~/infrastructure/documents/meetingPackStore')
+      const generated = meetingPackStore().get(id)
+      if (!generated) return { ok: false, code: 'NOT_FOUND' }
+      return {
+        ok: true,
+        meta: generated.meta,
+        base64: generated.bytes.toString('base64'),
+      }
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
     }

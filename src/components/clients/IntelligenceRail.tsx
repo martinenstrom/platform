@@ -245,6 +245,17 @@ function Recommendation({
         >
           Lägg till klientuppdatering
         </button>
+        {/* Only with a meeting to prepare for; the cockpit is the pack's home. */}
+        {view.nextMeeting && (
+          <Link
+            to="/clients/$clientId/meeting-pack"
+            params={{ clientId: view.client.id }}
+            search={{ depth: 'full' }}
+            className="jarvis-ghost-btn"
+          >
+            Skapa mötesunderlag
+          </Link>
+        )}
       </div>
       {action && <p className="type-machine mt-3 text-[#a8987a]">{action.method}</p>}
     </section>

@@ -68,6 +68,12 @@ import {
   INTERACTION_LABEL,
   OPPORTUNITY_STATUS_LABEL,
 } from '~/presentation/advisory/text'
+import {
+  DEPTH_LABEL,
+  READINESS_LABEL,
+  readinessReasonText,
+  readinessSummary,
+} from '~/presentation/documents/meetingPackText'
 
 /* --------------------------------------------------------------- headline */
 
@@ -99,6 +105,11 @@ export function answerHeadline(answer: JarvisAnswer): string {
     SENTINEL_TODAY: 'Behöver dig i dag',
     MARKET_IMPACT_CLIENTS: 'Klienter som berörs',
     GENERAL_CLIENT_QUERY: 'Ur relationsminnet',
+    MEETING_PACK_FULL: `Mötesunderlag · ${name}`,
+    MEETING_PACK_EXECUTIVE: `Executive brief · ${name}`,
+    MEETING_PACK_PPTX: `PowerPoint inför mötet · ${name}`,
+    MEETING_PACK_PDF: `PDF inför mötet · ${name}`,
+    MEETING_PACK_UPDATE: `Uppdaterat mötesunderlag · ${name}`,
   }
   return HEAD[answer.intent]
 }
@@ -137,6 +148,8 @@ export const SECTION_TITLE: Record<SectionKey, string> = {
   memory: 'Ur relationsminnet',
   agenda: 'Agenda',
   objectives: 'Mål med mötet',
+  readiness: 'Status',
+  contents: 'Innehåll',
 }
 
 export const NATURE_LABEL: Record<ItemNature, string> = {
@@ -392,6 +405,19 @@ export function itemText(
       return {
         text: `${item.affected.client.displayName} · ${RELEVANCE_LABEL[item.affected.impact.relevance]}`,
         detail: marketMoveText(item.event),
+      }
+    case 'pack-readiness':
+      return {
+        text: `${READINESS_LABEL[item.readiness.state]} · ${readinessSummary(item.readiness)}`,
+      }
+    case 'readiness-reason':
+      return { text: readinessReasonText(item.reason) }
+    case 'pack-outline':
+      return {
+        text: `${DEPTH_LABEL[item.depth]}: ${item.core} ${item.core === 1 ? 'kärnbild' : 'kärnbilder'}${item.appendix > 0 ? ` och ${item.appendix} bilagor` : ''}`,
+        detail: item.meetingDate
+          ? `Möte ${formatLongDate(item.meetingDate)} · öppnas i förhandsgranskningen`
+          : 'Ingen mötestid bokad · öppnas i förhandsgranskningen',
       }
     case 'memory-hit': {
       const h = item.hit

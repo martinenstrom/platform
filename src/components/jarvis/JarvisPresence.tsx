@@ -56,7 +56,7 @@
  */
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { ChevronLeft, Mic, Send, Sparkles } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { toneText } from '~/lib/tone'
@@ -180,6 +180,7 @@ export function JarvisPresence() {
   const context = resolveJarvisContext(route)
   const names = JSON.parse(namesKey) as ContextNames
   const knows = JSON.parse(knowsKey) as KnownFact[]
+  const navigate = useNavigate()
   const [mounted, setMounted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [operator, setOperator] = useState<string | null>(null)
@@ -418,6 +419,8 @@ export function JarvisPresence() {
           ...state,
           turns: [...state.turns, turn('jarvis', answerHeadline(answer), { answer })],
         }))
+        /* A door the answer opens itself: the pack preview a "prepare the pack" line asked for. */
+        if (answer.opens) void navigate({ href: answer.opens })
         return
       }
       updatePresence((state) => ({

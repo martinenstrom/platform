@@ -20,3 +20,6 @@ scripts/voice-bakeoff/results/
 # GPT-Live proof: telemetry and derived audio never enter the repository
 scripts/voice-live/results/
 scripts/voice-live/audio/
+
+# Generated meeting packs (PowerPoint, PDF) never enter the repository
+.generated/

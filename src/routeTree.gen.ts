@@ -28,6 +28,7 @@ import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId_.underlag'
+import { Route as ClientsClientIdMeetingPackRouteImport } from './routes/clients.$clientId_.meeting-pack'
 import { Route as ClientsClientIdMeetingPrepRouteImport } from './routes/clients.$clientId_.meeting-prep'
 import { Route as ClientsOfficeOfficeIdRouteImport } from './routes/clients.office.$officeId'
 
@@ -127,6 +128,12 @@ const CasesCaseIdUnderlagRoute = CasesCaseIdUnderlagRouteImport.update({
   path: '/cases/$caseId/underlag',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsClientIdMeetingPackRoute =
+  ClientsClientIdMeetingPackRouteImport.update({
+    id: '/clients/$clientId_/meeting-pack',
+    path: '/clients/$clientId/meeting-pack',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ClientsClientIdMeetingPrepRoute =
   ClientsClientIdMeetingPrepRouteImport.update({
     id: '/clients/$clientId_/meeting-prep',
@@ -159,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/clients/': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
@@ -182,6 +190,7 @@ export interface FileRoutesByTo {
   '/clients': typeof ClientsIndexRoute
   '/agents/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
@@ -206,6 +215,7 @@ export interface FileRoutesById {
   '/clients/': typeof ClientsIndexRoute
   '/agents_/$departmentId/commission': typeof AgentsDepartmentIdCommissionRoute
   '/cases/$caseId_/underlag': typeof CasesCaseIdUnderlagRoute
+  '/clients/$clientId_/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId_/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
 }
@@ -231,6 +241,7 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
+    | '/clients/$clientId/meeting-pack'
     | '/clients/$clientId/meeting-prep'
     | '/clients/office/$officeId'
   fileRoutesByTo: FileRoutesByTo
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/agents/$departmentId/commission'
     | '/cases/$caseId/underlag'
+    | '/clients/$clientId/meeting-pack'
     | '/clients/$clientId/meeting-prep'
     | '/clients/office/$officeId'
   id:
@@ -277,6 +289,7 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/agents_/$departmentId/commission'
     | '/cases/$caseId_/underlag'
+    | '/clients/$clientId_/meeting-pack'
     | '/clients/$clientId_/meeting-prep'
     | '/clients/office/$officeId'
   fileRoutesById: FileRoutesById
@@ -301,6 +314,7 @@ export interface RootRouteChildren {
   ClientsIndexRoute: typeof ClientsIndexRoute
   AgentsDepartmentIdCommissionRoute: typeof AgentsDepartmentIdCommissionRoute
   CasesCaseIdUnderlagRoute: typeof CasesCaseIdUnderlagRoute
+  ClientsClientIdMeetingPackRoute: typeof ClientsClientIdMeetingPackRoute
   ClientsClientIdMeetingPrepRoute: typeof ClientsClientIdMeetingPrepRoute
   ClientsOfficeOfficeIdRoute: typeof ClientsOfficeOfficeIdRoute
 }
@@ -440,6 +454,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdUnderlagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/$clientId_/meeting-pack': {
+      id: '/clients/$clientId_/meeting-pack'
+      path: '/clients/$clientId/meeting-pack'
+      fullPath: '/clients/$clientId/meeting-pack'
+      preLoaderRoute: typeof ClientsClientIdMeetingPackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/clients/$clientId_/meeting-prep': {
       id: '/clients/$clientId_/meeting-prep'
       path: '/clients/$clientId/meeting-prep'
@@ -477,6 +498,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsIndexRoute: ClientsIndexRoute,
   AgentsDepartmentIdCommissionRoute: AgentsDepartmentIdCommissionRoute,
   CasesCaseIdUnderlagRoute: CasesCaseIdUnderlagRoute,
+  ClientsClientIdMeetingPackRoute: ClientsClientIdMeetingPackRoute,
   ClientsClientIdMeetingPrepRoute: ClientsClientIdMeetingPrepRoute,
   ClientsOfficeOfficeIdRoute: ClientsOfficeOfficeIdRoute,
 }

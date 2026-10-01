@@ -250,6 +250,15 @@ function Hero({ cockpit }: { cockpit: MeetingCockpitModel }) {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-col lg:items-stretch">
+          {/* The pack: the cockpit's own preparation, handed to the senior as a document. */}
+          <Link
+            to="/clients/$clientId/meeting-pack"
+            params={{ clientId: client.id }}
+            search={{ depth: 'full' }}
+            className="type-section rounded-[4px] border border-institution-line bg-institution-soft/60 px-3.5 py-2 text-center text-institution transition-colors hover:bg-institution-soft"
+          >
+            Skapa mötesunderlag
+          </Link>
           <Link
             to="/clients/$clientId"
             params={{ clientId: client.id }}

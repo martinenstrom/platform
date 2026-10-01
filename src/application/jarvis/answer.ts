@@ -42,8 +42,16 @@ import type {
 import type { ClientDirectoryRow } from '~/application/advisory/clientDirectory'
 import type { AffectedClient } from '~/application/advisory/marketImpact'
 import type { MarketEpisode } from '~/application/advisory/marketEpisodes'
+import type {
+  MeetingPackDepth,
+  PackReadiness,
+  ReadinessReason,
+} from '~/application/advisory/meetingPack'
 import type { SentinelEntry } from '~/application/advisory/sentinel'
+import type { RecordSource, SourceType } from '~/application/advisory/sources'
 import type { JarvisScope } from './context'
+
+export type { SourceType }
 
 /* ---------------------------------------------------------------- intents */
 
@@ -73,6 +81,12 @@ export type AdvisoryIntentKind =
   | 'SENTINEL_TODAY'
   | 'MARKET_IMPACT_CLIENTS'
   | 'GENERAL_CLIENT_QUERY'
+  /** The Meeting Pack: prepare, in a depth or a format, or refresh against the record. */
+  | 'MEETING_PACK_FULL'
+  | 'MEETING_PACK_EXECUTIVE'
+  | 'MEETING_PACK_PPTX'
+  | 'MEETING_PACK_PDF'
+  | 'MEETING_PACK_UPDATE'
 
 /* ------------------------------------------------------------------ about */
 
@@ -204,6 +218,15 @@ export type JarvisItem =
   | (Grounded & { kind: 'episode'; episode: MarketEpisode })
   | (Grounded & { kind: 'affected-client'; affected: AffectedClient; event: MarketEvent })
   | (Grounded & { kind: 'memory-hit'; hit: MemoryHit })
+  | (Grounded & { kind: 'pack-readiness'; readiness: PackReadiness })
+  | (Grounded & { kind: 'readiness-reason'; reason: ReadinessReason })
+  | (Grounded & {
+      kind: 'pack-outline'
+      depth: MeetingPackDepth
+      core: number
+      appendix: number
+      meetingDate: string | null
+    })
 
 export type SectionKey =
   | 'focus'
@@ -239,6 +262,8 @@ export type SectionKey =
   | 'memory'
   | 'agenda'
   | 'objectives'
+  | 'readiness'
+  | 'contents'
 
 export interface JarvisSection {
   key: SectionKey
@@ -247,35 +272,14 @@ export interface JarvisSection {
 
 /* ---------------------------------------------------------------- sources */
 
-export type SourceType =
-  | 'interaction'
-  | 'commitment'
-  | 'liability'
-  | 'event'
-  | 'portfolio'
-  | 'holding'
-  | 'meeting-snapshot'
-  | 'context'
-  | 'goal'
-  | 'opportunity'
-  | 'asset'
-  | 'sentinel-priority'
-  | 'market-event'
-  | 'relationship-health'
-  | 'client'
-
-export interface JarvisSource {
-  id: string
-  type: SourceType
-  /** The record's own title or statement. */
-  label: string
-  date: string | null
-}
+/** A source is the record's own entry, as `application/advisory/sources` indexes it. */
+export type JarvisSource = RecordSource
 
 export interface JarvisAction {
   kind:
     | 'open-client'
     | 'open-meeting-prep'
+    | 'open-meeting-pack'
     | 'open-office'
     | 'open-sentinel'
     | 'open-market-impact'
@@ -291,6 +295,8 @@ export interface JarvisAnswer {
   sections: readonly JarvisSection[]
   sources: readonly JarvisSource[]
   actions: readonly JarvisAction[]
+  /** A door JARVIS opens itself once the answer is shown — the pack preview a "prepare the pack" line asked for. */
+  opens?: string
   /** Display titles for every record id the items point at, so the presentation can name a source. */
   titles: Readonly<Record<string, string>>
   /** ISO date the derivations used. */

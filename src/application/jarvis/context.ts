@@ -121,7 +121,9 @@ export function resolveJarvisContext(route: string): JarvisContext {
     }
     if (second === 'office')
       return third ? at('OFFICE', { officeId: third }) : at('CLIENT_DIRECTORY')
-    if (third === 'meeting-prep') return at('MEETING', { clientId: second })
+    /* The cockpit and the pack preview are both about the meeting. */
+    if (third === 'meeting-prep' || third === 'meeting-pack')
+      return at('MEETING', { clientId: second })
     return at('CLIENT', { clientId: second })
   }
   if (head === 'sentinel') return at('SENTINEL')

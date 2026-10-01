@@ -61,6 +61,7 @@ async function renderClient(context: AdvisoryContext) {
       '/clients/$clientId',
       '/clients',
       '/clients/$clientId/meeting-prep',
+      '/clients/$clientId/meeting-pack',
       '/clients/office/$officeId',
     ],
   )
