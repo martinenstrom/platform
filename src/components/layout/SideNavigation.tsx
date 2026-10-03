@@ -25,19 +25,19 @@ export function SideNavigation() {
     to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`)
 
   return (
-    <div className="app-side-nav sticky top-0 flex h-screen w-14 shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-r from-[#060910]/55 to-[#060910]/25 xl:w-[200px]">
+    <div className="app-side-nav sticky top-0 flex h-screen w-14 shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-r from-[#060910]/28 to-[#060910]/6 xl:w-[200px]">
       <Link
         to="/"
         aria-label="Financial OS — till kommandocentralen"
         className="block px-3 pt-4 pb-5 xl:px-4"
       >
-        <span className="type-display-statement block text-[19px] leading-none text-institution xl:text-[21px]">
+        <span className="type-display-statement block text-[19px] leading-none text-institution xl:text-[23px]">
           <span className="xl:hidden">F</span>
           <span className="hidden xl:inline">
             Financial<span className="text-content"> OS</span>
           </span>
         </span>
-        <span className="mt-1.5 hidden font-display text-[15px] leading-none text-[#e9e1cf] xl:block">
+        <span className="mt-2 hidden font-display text-[16.5px] leading-none text-[#e9e1cf] xl:block">
           Handelsbanken
         </span>
       </Link>

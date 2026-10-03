@@ -111,6 +111,54 @@ describe('a typed line to JARVIS', () => {
     }
   })
 
+  it('carries the market conversation back as the server wrote it, and refuses one it did not', () => {
+    const conversation = {
+      symbols: ['idx:nasdaq100'],
+      region: null,
+      period: { kind: 'range', range: '1w' },
+    }
+    expect(
+      parseAskJarvisRequest({
+        text: 'Jämför med S&P.',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', scope: 'us', conversation },
+      }),
+    ).toEqual({
+      ok: true,
+      request: {
+        text: 'Jämför med S&P.',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', scope: 'us', conversation },
+      },
+    })
+    for (const bad of [
+      {
+        symbols: ['idx:nasdaq100'],
+        region: null,
+        period: { kind: 'range', range: '2w' },
+      },
+      { symbols: ['DROP TABLE'], region: null, period: { kind: 'today' } },
+      { symbols: [], region: 'mars', period: { kind: 'today' } },
+      { symbols: [], region: null, period: { kind: 'today' }, level: 6512 },
+      {
+        symbols: new Array(9).fill('idx:sp500'),
+        region: null,
+        period: { kind: 'today' },
+      },
+    ]) {
+      expect(
+        parseAskJarvisRequest({
+          text: 'x',
+          marketContext: { at: '2026-10-02T15:00:00.000Z', conversation: bad },
+        }),
+      ).toEqual({ ok: false, field: 'marketContext' })
+    }
+    expect(
+      parseAskJarvisRequest({
+        text: 'x',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', scope: 'nowhere' },
+      }),
+    ).toEqual({ ok: false, field: 'marketContext' })
+  })
+
   it('carries where the advisor is as a route, and refuses anything but one', () => {
     expect(
       parseAskJarvisRequest({

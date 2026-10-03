@@ -87,6 +87,14 @@ export type AdvisoryIntentKind =
   | 'MEETING_PACK_PPTX'
   | 'MEETING_PACK_PDF'
   | 'MEETING_PACK_UPDATE'
+  /** "När ses vi?" — the next booked meeting. */
+  | 'NEXT_MEETING'
+  /** The conversation's own continuations: the rest of the last answer, one of its items, its evidence. */
+  | 'FOLLOW_UP_MORE'
+  | 'FOLLOW_UP_ITEM'
+  | 'FOLLOW_UP_EVIDENCE'
+  /** A name that fits two clients: the answer asks which one. */
+  | 'CLARIFY_CLIENT'
 
 /* ------------------------------------------------------------------ about */
 
@@ -153,6 +161,10 @@ export type NoteKind =
   | 'no-external-assets'
   | 'no-affected-clients'
   | 'not-answerable-here'
+  /** The line carried no words a recogniser could read — a dropped transcript. */
+  | 'unclear'
+  /** A continuation with nothing to continue: no earlier answer, or one about someone else. */
+  | 'nothing-to-continue'
 
 interface Grounded {
   nature: ItemNature
@@ -221,6 +233,10 @@ export type JarvisItem =
   | (Grounded & { kind: 'pack-readiness'; readiness: PackReadiness })
   | (Grounded & { kind: 'readiness-reason'; reason: ReadinessReason })
   | (Grounded & {
+      kind: 'clarify-client'
+      candidates: readonly { id: string; displayName: string }[]
+    })
+  | (Grounded & {
       kind: 'pack-outline'
       depth: MeetingPackDepth
       core: number
@@ -264,6 +280,8 @@ export type SectionKey =
   | 'objectives'
   | 'readiness'
   | 'contents'
+  | 'clarify'
+  | 'evidence'
 
 export interface JarvisSection {
   key: SectionKey
@@ -297,6 +315,10 @@ export interface JarvisAnswer {
   actions: readonly JarvisAction[]
   /** A door JARVIS opens itself once the answer is shown — the pack preview a "prepare the pack" line asked for. */
   opens?: string
+  /** The figure the line asked for first, so a spoken answer leads with it. */
+  emphasis?: FigureKind
+  /** For a continuation: the intent of the answer it continues. */
+  continues?: AdvisoryIntentKind
   /** Display titles for every record id the items point at, so the presentation can name a source. */
   titles: Readonly<Record<string, string>>
   /** ISO date the derivations used. */

@@ -1,10 +1,11 @@
 import { cn } from '~/lib/cn'
 import { formatLongDate } from '~/presentation/advisory/format'
-import { NOTE_KIND_LABEL } from '~/presentation/documents/meetingPackText'
+import { CALLOUT_LABEL, NOTE_KIND_LABEL } from '~/presentation/documents/meetingPackText'
 import type {
   PackBlock,
   PackDocument,
   PackSlide,
+  Tone,
 } from '~/presentation/documents/packDocument'
 
 /**
@@ -66,6 +67,7 @@ function SlideView({
       aria-label={slide.headline}
       className="ref-panel px-4 py-3"
       data-slide={slide.kind}
+      data-archetype={slide.archetype}
     >
       <div className="flex items-baseline justify-between gap-3">
         <p
@@ -108,7 +110,8 @@ function SlideView({
         </details>
       )}
       <p className="type-machine mt-3 border-t border-line pt-2">
-        {doc.confidentiality} · {doc.client} · data per {formatLongDate(doc.dataAsOf)}
+        {doc.confidentiality} · {doc.client} · {doc.meetingLabel} · data per{' '}
+        {formatLongDate(doc.dataAsOf)}
       </p>
     </section>
   )
@@ -120,12 +123,20 @@ const MARKER_LABEL = {
   suggestion: 'Förslag',
 } as const
 
-const TONE_CLASS = {
+const TONE_CLASS: Record<Tone, string> = {
   gold: 'text-institution',
   neutral: 'text-content',
   warning: 'text-negative',
   positive: 'text-positive',
   negative: 'text-negative',
+}
+
+const CALLOUT_CLASS = {
+  observation: 'border-institution text-institution',
+  implication: 'border-institution text-institution',
+  'why-it-matters': 'border-line text-content-muted',
+  'watch-out': 'border-negative text-negative',
+  verify: 'border-line text-content-muted',
 } as const
 
 function BlockView({ block }: { block: PackBlock }) {
@@ -134,12 +145,16 @@ function BlockView({ block }: { block: PackBlock }) {
       return (
         <dl
           className={cn(
-            'grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4',
-            block.lead && 'rounded-[4px] border border-line bg-surface-2 px-3 py-2',
+            'grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6',
+            block.lead &&
+              'rounded-[4px] border border-line bg-surface-2 px-3 py-2 lg:grid-cols-4',
           )}
         >
           {block.items.map((item) => (
-            <div key={item.label} className="min-w-0">
+            <div
+              key={item.label}
+              className="min-w-0 border-l border-line pl-2 first:border-l-0 first:pl-0"
+            >
               <dt className="type-section text-[9px]">{item.label}</dt>
               <dd
                 className={cn(
@@ -161,6 +176,16 @@ function BlockView({ block }: { block: PackBlock }) {
           <p className="type-display-statement mt-1 text-[15px] text-content">
             {block.text}
           </p>
+          {block.addendum && (
+            <>
+              <p className="type-section mt-2 text-content-muted">
+                {block.addendum.label}
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-snug text-content">
+                {block.addendum.text}
+              </p>
+            </>
+          )}
         </div>
       )
     case 'caption':
@@ -208,10 +233,16 @@ function BlockView({ block }: { block: PackBlock }) {
           rows={block.rows}
           align={block.align}
           emphasis={block.emphasis}
+          totals={block.totals}
+          tones={block.rowTones}
+          toneColumn={block.toneColumn}
+          footnote={block.footnote}
         />
       )
     case 'chart':
       return <ChartView block={block} />
+    case 'timeline':
+      return <TimelineView block={block} />
     case 'callout':
       return (
         <div
@@ -232,7 +263,14 @@ function BlockView({ block }: { block: PackBlock }) {
           >
             {block.title}
           </p>
-          <p className="type-display-statement mt-1 text-[14px] text-content">
+          <p
+            className={cn(
+              'mt-1 text-content',
+              block.compact
+                ? 'text-[12.5px] leading-snug'
+                : 'type-display-statement text-[14px]',
+            )}
+          >
             {block.text}
           </p>
           {block.detail && (
@@ -242,13 +280,48 @@ function BlockView({ block }: { block: PackBlock }) {
           )}
         </div>
       )
-    case 'columns':
+    case 'callouts':
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {block.items.map((item, index) => (
+            <aside
+              key={index}
+              className={cn('border-l-2 pl-2', CALLOUT_CLASS[item.kind])}
+              aria-label={CALLOUT_LABEL[item.kind]}
+            >
+              <p className="type-section text-[9px]">{CALLOUT_LABEL[item.kind]}</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-content">{item.text}</p>
+              {item.detail && (
+                <p className="mt-0.5 text-[11px] leading-snug text-content-muted">
+                  {item.detail}
+                </p>
+              )}
+            </aside>
+          ))}
+        </div>
+      )
+    case 'meta':
+      return (
+        <p className="type-machine flex flex-wrap gap-x-3 gap-y-0.5 normal-case">
+          {block.items.map((item) => (
+            <span key={item.label}>
+              <span className="text-content-subtle uppercase">{item.label}</span>{' '}
+              <span className="text-content">{item.value}</span>
+            </span>
+          ))}
+        </p>
+      )
+    case 'columns': {
+      const weights =
+        block.weights && block.weights.length === block.columns.length
+          ? block.weights
+          : block.columns.map(() => 1)
       return (
         <div
-          className={cn(
-            'grid gap-4',
-            block.columns.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2',
-          )}
+          className="grid gap-4 lg:[grid-template-columns:var(--cols)]"
+          style={{
+            ['--cols' as string]: weights.map((w) => `minmax(0,${w}fr)`).join(' '),
+          }}
         >
           {block.columns.map((column, index) => (
             <div key={index} className="flex min-w-0 flex-col gap-3">
@@ -259,14 +332,16 @@ function BlockView({ block }: { block: PackBlock }) {
           ))}
         </div>
       )
+    }
     case 'changes':
       return (
         <Table
           title={block.title}
-          columns={['Vad', 'Före', 'Nu', '']}
+          columns={['Vad', 'Före', 'Nu', 'Förändring']}
           rows={block.rows.map((r) => [r.label, r.before, r.after, r.note ?? ''])}
           align={['left', 'right', 'right', 'left']}
           tones={block.rows.map((r) => r.tone)}
+          toneColumn={2}
         />
       )
     case 'actions':
@@ -274,6 +349,8 @@ function BlockView({ block }: { block: PackBlock }) {
         <Table
           columns={['Åtgärd', 'Ägare', 'Datum', 'Status']}
           rows={block.rows.map((r) => [r.action, r.owner, r.date, r.status])}
+          tones={block.rows.map((r) => r.tone)}
+          toneColumn={3}
         />
       )
   }
@@ -285,14 +362,20 @@ function Table({
   rows,
   align,
   emphasis,
+  totals,
   tones,
+  toneColumn = 2,
+  footnote,
 }: {
   title?: string
   columns: readonly string[]
   rows: readonly string[][]
   align?: readonly ('left' | 'right')[]
   emphasis?: readonly number[]
-  tones?: readonly (keyof typeof TONE_CLASS | undefined)[]
+  totals?: readonly number[]
+  tones?: readonly (Tone | undefined)[]
+  toneColumn?: number
+  footnote?: string
 }) {
   return (
     <div className="min-w-0 overflow-x-auto">
@@ -315,35 +398,120 @@ function Table({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, r) => (
-            <tr
-              key={r}
-              className={cn(
-                'border-b border-line',
-                emphasis?.includes(r) && 'font-semibold',
-              )}
-            >
-              {row.map((cell, i) => (
-                <td
-                  key={i}
-                  className={cn(
-                    'py-1 pr-2 align-top',
-                    align?.[i] === 'right' ? 'tabular text-right' : 'text-left',
-                    i === 2 && tones?.[r] ? TONE_CLASS[tones[r]!] : 'text-content',
-                  )}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row, r) => {
+            const total = totals?.includes(r) ?? false
+            return (
+              <tr
+                key={r}
+                className={cn(
+                  'border-b border-line',
+                  total && 'border-t border-t-content-subtle',
+                  (total || emphasis?.includes(r)) && 'font-semibold',
+                )}
+              >
+                {row.map((cell, i) => (
+                  <td
+                    key={i}
+                    className={cn(
+                      'py-1 pr-2 align-top',
+                      align?.[i] === 'right' ? 'tabular text-right' : 'text-left',
+                      i === toneColumn && tones?.[r]
+                        ? TONE_CLASS[tones[r]!]
+                        : 'text-content',
+                    )}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
+      {footnote && (
+        <p className="type-machine mt-1 normal-case text-content-muted">{footnote}</p>
+      )}
     </div>
   )
 }
 
 function ChartView({ block }: { block: Extract<PackBlock, { kind: 'chart' }> }) {
+  const caption = (
+    <p className="type-machine mt-1.5 flex flex-wrap gap-x-3 normal-case">
+      {block.series.length > 1 &&
+        block.series.map((s) => (
+          <span key={s.name} className="inline-flex items-center gap-1">
+            <span
+              className="inline-block h-2 w-2 rounded-[1px]"
+              style={{ backgroundColor: `#${s.color}` }}
+            />
+            {s.name}
+          </span>
+        ))}
+      <span className="text-content-subtle">
+        {block.unit} · per {formatLongDate(block.asOf)} · {block.source}
+        {block.note ? ` · ${block.note}` : ''}
+      </span>
+    </p>
+  )
+  if (block.chart === 'donut') {
+    const values = block.categories.map((_, c) =>
+      block.series.reduce((sum, s) => sum + (s.values[c] ?? 0), 0),
+    )
+    const total = Math.max(
+      1e-9,
+      values.reduce((a, b) => a + b, 0),
+    )
+    let acc = 0
+    const stops = values
+      .map((v, c) => {
+        const from = (acc / total) * 100
+        acc += v
+        const to = (acc / total) * 100
+        return `#${block.series[c]?.color ?? '8A97A8'} ${from}% ${to}%`
+      })
+      .join(', ')
+    return (
+      <figure>
+        <figcaption className="type-section text-[9.5px]">{block.title}</figcaption>
+        <div className="mt-2 flex items-center gap-4">
+          <div
+            role="img"
+            aria-label={block.title}
+            className="relative h-28 w-28 shrink-0 rounded-full"
+            style={{ background: `conic-gradient(${stops})` }}
+          >
+            <div className="absolute inset-[22%] flex items-center justify-center rounded-full bg-surface">
+              <span className="type-display-figure-sm text-[13px] text-content">
+                {block.centre}
+              </span>
+            </div>
+          </div>
+          <ul className="min-w-0 flex-1 space-y-0.5 text-[11.5px]">
+            {block.categories.map((category, c) => (
+              <li
+                key={category}
+                className="flex items-center justify-between gap-2 border-b border-line py-0.5"
+              >
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-content-muted">
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-[1px]"
+                    style={{ backgroundColor: `#${block.series[c]?.color ?? '8A97A8'}` }}
+                  />
+                  <span className="truncate">{category}</span>
+                </span>
+                <span className="tabular shrink-0 text-content">
+                  {round(values[c] ?? 0)} {block.unit} ·{' '}
+                  {Math.round(((values[c] ?? 0) / total) * 100)} %
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {caption}
+      </figure>
+    )
+  }
   const max = Math.max(
     1,
     ...(block.chart === 'stacked-bar'
@@ -359,7 +527,7 @@ function ChartView({ block }: { block: Extract<PackBlock, { kind: 'chart' }> }) 
         {block.categories.map((category, c) => (
           <div
             key={category}
-            className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-2 text-[11.5px]"
+            className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-center gap-2 text-[11.5px]"
           >
             <span className="truncate text-content-muted">{category}</span>
             {block.chart === 'stacked-bar' ? (
@@ -383,7 +551,10 @@ function ChartView({ block }: { block: Extract<PackBlock, { kind: 'chart' }> }) 
                   <span
                     key={s.name}
                     title={`${s.name} ${s.values[c]} ${block.unit}`}
-                    className="block h-1.5 rounded-[1px]"
+                    className={cn(
+                      'block rounded-[1px]',
+                      block.series.length === 1 ? 'h-2.5' : 'h-1.5',
+                    )}
                     style={{
                       width: `${((s.values[c] ?? 0) / max) * 100}%`,
                       backgroundColor: `#${s.color}`,
@@ -396,26 +567,67 @@ function ChartView({ block }: { block: Extract<PackBlock, { kind: 'chart' }> }) 
               {block.chart === 'stacked-bar'
                 ? `${round(block.series.reduce((s, x) => s + (x.values[c] ?? 0), 0))} ${block.unit}`
                 : block.series
-                    .map((s) => `${round(s.values[c] ?? 0)} ${block.unit}`)
+                    .map(
+                      (s) =>
+                        `${round(s.values[c] ?? 0)}${block.unit === '%' ? ' %' : ''}`,
+                    )
                     .join(' / ')}
             </span>
           </div>
         ))}
       </div>
-      <p className="type-machine mt-1.5 flex flex-wrap gap-x-3 normal-case">
-        {block.series.map((s) => (
-          <span key={s.name} className="inline-flex items-center gap-1">
-            <span
-              className="inline-block h-2 w-2 rounded-[1px]"
-              style={{ backgroundColor: `#${s.color}` }}
-            />
-            {s.name}
-          </span>
+      {caption}
+    </figure>
+  )
+}
+
+function TimelineView({ block }: { block: Extract<PackBlock, { kind: 'timeline' }> }) {
+  const maxDays = Math.max(90, ...block.items.map((i) => i.daysAhead))
+  const span = Math.ceil(maxDays / 90) * 90
+  return (
+    <figure>
+      <figcaption className="type-section text-[9.5px]">{block.title}</figcaption>
+      <ol className="mt-1.5 flex flex-col gap-1.5">
+        {block.items.map((item) => (
+          <li
+            key={`${item.label}-${item.date}`}
+            className="grid grid-cols-[9rem_minmax(0,1fr)_auto] items-center gap-2 text-[11.5px]"
+          >
+            <span className="min-w-0">
+              <span
+                className={cn(
+                  'block truncate',
+                  item.tone ? TONE_CLASS[item.tone] : 'text-content',
+                )}
+              >
+                {item.label}
+              </span>
+              {item.detail && (
+                <span className="block truncate text-[10.5px] text-content-muted">
+                  {item.detail}
+                </span>
+              )}
+            </span>
+            <span className="relative block h-3 w-full border-b border-line">
+              <span
+                className={cn(
+                  'absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full',
+                  item.tone === 'gold' ? 'bg-institution' : 'bg-content',
+                )}
+                style={{
+                  left: `calc(${(Math.min(item.daysAhead, span) / span) * 100}% - 4px)`,
+                }}
+              />
+            </span>
+            <span className="tabular text-right text-content-muted">
+              {formatLongDate(item.date)} · om {item.daysAhead} dagar
+            </span>
+          </li>
         ))}
-        <span className="text-content-subtle">
-          {block.unit} · per {formatLongDate(block.asOf)} · {block.source}
-          {block.note ? ` · ${block.note}` : ''}
-        </span>
+      </ol>
+      <p className="type-machine mt-1.5 normal-case text-content-subtle">
+        Dagar från {formatLongDate(block.from)} · {block.source}
+        {block.note ? ` · ${block.note}` : ''}
       </p>
     </figure>
   )

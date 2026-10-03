@@ -14,18 +14,34 @@
  * served, and otherwise the sentence says the driver is not verified.
  */
 
-import type { BriefQuote, BriefYield, MarketBrief } from '~/application/jarvis/marketBrief'
+import type {
+  BriefQuote,
+  BriefYield,
+  MarketBrief,
+} from '~/application/jarvis/marketBrief'
 import type { RetrievalTarget } from '~/application/jarvis/marketIntent'
 
 const TZ = 'Europe/Stockholm'
 
 const clock = (iso: string) =>
-  new Date(iso).toLocaleTimeString('sv-SE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })
-const day = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: TZ, day: 'numeric', month: 'long' })
+  new Date(iso).toLocaleTimeString('sv-SE', {
+    timeZone: TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('sv-SE', {
+    timeZone: TZ,
+    day: 'numeric',
+    month: 'long',
+  })
 
 /* Swedish formatting, with the locale's non-breaking thousands separator made an ordinary space for speech and text. */
 const sv = (value: number, digits: { min: number; max: number }) =>
-  new Intl.NumberFormat('sv-SE', { minimumFractionDigits: digits.min, maximumFractionDigits: digits.max })
+  new Intl.NumberFormat('sv-SE', {
+    minimumFractionDigits: digits.min,
+    maximumFractionDigits: digits.max,
+  })
     .format(value)
     .replace(/ /g, ' ')
 const level = (value: number, symbol: string): string => {
@@ -50,7 +66,8 @@ const bp = (value: number): string => {
 /** A quote's move over the period the source's figure covers. */
 function quoteSentence(q: BriefQuote): string {
   const m = move(q.changePercent)
-  const period = q.changePeriod === 'publication-to-publication' ? 'mot föregående notering' : 'idag'
+  const period =
+    q.changePeriod === 'publication-to-publication' ? 'mot föregående notering' : 'idag'
   const value = `${level(q.level, q.symbol)}${q.symbol.startsWith('fx:') ? ` (${q.name})` : ''}`
   if (q.freshness === 'stale') {
     return `Senaste tillgängliga noteringen för ${q.name} är från kl. ${clock(q.observedAt)} (${q.source}): ${value}${m ? `, ${m}` : ''}.`
@@ -71,7 +88,16 @@ function quoteSentence(q: BriefQuote): string {
 }
 
 function yieldSentence(r: BriefYield): string {
-  const name = r.symbol === 'rate:us10y' ? 'USA:s tioårsränta' : r.symbol === 'rate:us2y' ? 'USA:s tvåårsränta' : r.symbol === 'rate:de10y' ? 'Tysklands tioårsränta' : r.symbol === 'rate:se10y' ? 'Sveriges tioårsränta' : r.name
+  const name =
+    r.symbol === 'rate:us10y'
+      ? 'USA:s tioårsränta'
+      : r.symbol === 'rate:us2y'
+        ? 'USA:s tvåårsränta'
+        : r.symbol === 'rate:de10y'
+          ? 'Tysklands tioårsränta'
+          : r.symbol === 'rate:se10y'
+            ? 'Sveriges tioårsränta'
+            : r.name
   const value = sv(r.yieldPercent, { min: 2, max: 2 })
   const change = r.changeBasisPoints === null ? '' : `, ${bp(r.changeBasisPoints)}`
   return `${name} ligger på ${value} procent${change} (officiell dagsnivå ${day(r.observationDate)}, ${r.source}).`
@@ -82,7 +108,10 @@ function provenanceClause(quotes: readonly BriefQuote[]): string {
   const served = quotes.filter((q) => q.freshness !== 'stale')
   if (served.length === 0) return ''
   const sources = [...new Set(served.map((q) => q.source))].join(' och ')
-  const newest = served.map((q) => q.observedAt).sort().at(-1)!
+  const newest = served
+    .map((q) => q.observedAt)
+    .sort()
+    .at(-1)!
   const delayed = served.some((q) => q.quality === 'delayed') ? 'fördröjd data' : 'data'
   return ` (${delayed} från ${sources}, kl. ${clock(newest)})`
 }
@@ -91,7 +120,10 @@ function provenanceClause(quotes: readonly BriefQuote[]): string {
  * A Tier-0 answer: one sentence per named target from the brief, honest
  * where the brief has nothing, and the provenance once.
  */
-export function retrievalSpeech(targets: readonly RetrievalTarget[], brief: MarketBrief): string {
+export function retrievalSpeech(
+  targets: readonly RetrievalTarget[],
+  brief: MarketBrief,
+): string {
   const sentences: string[] = []
   const quoted: BriefQuote[] = []
   const sp500 = brief.indices.find((q) => q.symbol === 'idx:sp500') ?? null
@@ -106,13 +138,23 @@ export function retrievalSpeech(targets: readonly RetrievalTarget[], brief: Mark
           brief.commodities.find((entry) => entry.symbol === target.symbol) ??
           null
         if (!q) {
-          const name = brief.unavailable.find((entry) => entry.toLowerCase().includes(target.symbol.split(':')[1] ?? '')) ?? nameFor(target.symbol)
-          sentences.push(`${name} saknas i datan just nu — källan svarar inte, och jag vill inte gissa.`)
+          const name =
+            brief.unavailable.find((entry) =>
+              entry.toLowerCase().includes(target.symbol.split(':')[1] ?? ''),
+            ) ?? nameFor(target.symbol)
+          sentences.push(
+            `${name} saknas i datan just nu — källan svarar inte, och jag vill inte gissa.`,
+          )
           break
         }
         let sentence = quoteSentence(q)
         /* A sector against the broad index, when both are served: the one comparison a person wants. */
-        if (q.symbol.startsWith('sector:') && sp500 && sp500.changePercent !== null && q.changePercent !== null) {
+        if (
+          q.symbol.startsWith('sector:') &&
+          sp500 &&
+          sp500.changePercent !== null &&
+          q.changePercent !== null
+        ) {
           const better = q.changePercent > sp500.changePercent
           sentence += ` Det är ${better ? 'bättre' : 'svagare'} än S&P 500, som är ${move(sp500.changePercent)}.`
         }
@@ -124,7 +166,9 @@ export function retrievalSpeech(targets: readonly RetrievalTarget[], brief: Mark
       case 'rate': {
         const r = brief.rates.find((entry) => entry.symbol === target.symbol)
         if (!r) {
-          sentences.push(`${nameFor(target.symbol)} saknas i datan just nu; jag vill inte gissa.`)
+          sentences.push(
+            `${nameFor(target.symbol)} saknas i datan just nu; jag vill inte gissa.`,
+          )
           break
         }
         sentences.push(yieldSentence(r))
@@ -154,17 +198,32 @@ export function retrievalSpeech(targets: readonly RetrievalTarget[], brief: Mark
           break
         }
         const { score, label } = brief.riskAppetite
-        const word = label === 'risk-on' ? 'risk-on' : label === 'risk-off' ? 'risk-off' : 'neutralt'
-        sentences.push(`Plattformens riskaptitindex står i ${score} av 100 — ${word} (härlett, ${day(brief.riskAppetite.observedAt)}).`)
+        const word =
+          label === 'risk-on' ? 'risk-on' : label === 'risk-off' ? 'risk-off' : 'neutralt'
+        sentences.push(
+          `Plattformens riskaptitindex står i ${score} av 100 — ${word} (härlett, ${day(brief.riskAppetite.observedAt)}).`,
+        )
         break
       }
       case 'vix':
-        sentences.push('En VIX-nivå serveras inte av plattformen.' + (brief.riskAppetite ? ` Riskaptitindexet står i ${brief.riskAppetite.score} av 100.` : ''))
+        sentences.push(
+          'En VIX-nivå serveras inte av plattformen.' +
+            (brief.riskAppetite
+              ? ` Riskaptitindexet står i ${brief.riskAppetite.score} av 100.`
+              : ''),
+        )
+        break
+      case 'not-served':
+        sentences.push(
+          `${target.name} serveras inte av plattformen, så jag har ingen siffra att ge.`,
+        )
         break
     }
   }
   const clause = provenanceClause(quoted)
-  if (clause && sentences.length > 0) sentences[sentences.length - 1] = sentences[sentences.length - 1]!.replace(/\.$/, '') + `${clause}.`
+  if (clause && sentences.length > 0)
+    sentences[sentences.length - 1] =
+      sentences[sentences.length - 1]!.replace(/\.$/, '') + `${clause}.`
   return sentences.join(' ')
 }
 
@@ -212,29 +271,44 @@ export function marketContextText(brief: MarketBrief): string {
   const q = (entry: BriefQuote) =>
     `${entry.name}: ${level(entry.level, entry.symbol)}${entry.changePercent === null ? ' (förändring saknas)' : `, ${move(entry.changePercent)}`}, ${entry.session}, ${entry.freshness === 'stale' ? 'INAKTUELL ' : ''}${entry.source} kl. ${clock(entry.observedAt)}`
   const lines: string[] = []
-  lines.push(`MARKNADSLÄGE hämtat ${clock(brief.generatedAt)} (${day(brief.generatedAt)}), omfattning ${brief.scope}.`)
+  lines.push(
+    `MARKNADSLÄGE hämtat ${clock(brief.generatedAt)} (${day(brief.generatedAt)}), omfattning ${brief.scope}.`,
+  )
   if (brief.indices.length) lines.push(`Index: ${brief.indices.map(q).join(' · ')}`)
-  if (brief.sectors.length) lines.push(`Sektorer (bäst→sämst): ${brief.sectors.map((s) => `${s.name} ${s.changePercent === null ? '(saknas)' : move(s.changePercent)}`).join(' · ')}`)
+  if (brief.sectors.length)
+    lines.push(
+      `Sektorer (bäst→sämst): ${brief.sectors.map((s) => `${s.name} ${s.changePercent === null ? '(saknas)' : move(s.changePercent)}`).join(' · ')}`,
+    )
   if (brief.rates.length)
     lines.push(
       `Räntor: ${brief.rates.map((r) => `${r.name} ${sv(r.yieldPercent, { min: 2, max: 2 })} % ${r.changeBasisPoints === null ? '' : `(${bp(r.changeBasisPoints)})`} ${day(r.observationDate)} ${r.source}`).join(' · ')}${brief.curveSlopeBasisPoints === null ? '' : ` · kurvlutning 10y−2y ${Math.round(brief.curveSlopeBasisPoints)} bp`}`,
     )
   if (brief.fx.length) lines.push(`Valutor: ${brief.fx.map(q).join(' · ')}`)
-  if (brief.commodities.length) lines.push(`Råvaror: ${brief.commodities.map(q).join(' · ')}`)
-  if (brief.riskAppetite) lines.push(`Riskaptitindex (härlett, 0–100, aldrig VIX): ${brief.riskAppetite.score} ${brief.riskAppetite.label}`)
+  if (brief.commodities.length)
+    lines.push(`Råvaror: ${brief.commodities.map(q).join(' · ')}`)
+  if (brief.riskAppetite)
+    lines.push(
+      `Riskaptitindex (härlett, 0–100, aldrig VIX): ${brief.riskAppetite.score} ${brief.riskAppetite.label}`,
+    )
   lines.push(
     brief.headlines.length
       ? `Rubriker: ${brief.headlines.map((h) => `"${h.headline}" (${h.outlet})`).join(' · ')}`
       : 'Rubriker: inga i källan — dagens drivkraft är inte verifierad; beskriv rörelserna, hitta inte på en orsak.',
   )
-  if (brief.unavailable.length) lines.push(`Saknas just nu: ${brief.unavailable.join(', ')}.`)
+  if (brief.unavailable.length)
+    lines.push(`Saknas just nu: ${brief.unavailable.join(', ')}.`)
   lines.push(`Serveras inte alls: ${brief.notServed.join(', ')}.`)
   return lines.join('\n')
 }
 
 /* ------------------------------------------- the brief for the voice */
 
-const dayShort = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: TZ, day: 'numeric', month: 'short' })
+const dayShort = (iso: string) =>
+  new Date(iso).toLocaleDateString('sv-SE', {
+    timeZone: TZ,
+    day: 'numeric',
+    month: 'short',
+  })
 
 /** "upp 0,45 %" / "ned 0,45 %" / "oförändrad" / "(förändring saknas)". */
 const shortMove = (changePercent: number | null): string => {
@@ -246,16 +320,30 @@ const shortMove = (changePercent: number | null): string => {
 const shortBp = (value: number | null): string => {
   if (value === null) return 'förändring saknas'
   const rounded = Math.round(value)
-  return rounded === 0 ? 'oförändrad' : `${rounded > 0 ? 'upp' : 'ned'} ${Math.abs(rounded)} bp`
+  return rounded === 0
+    ? 'oförändrad'
+    : `${rounded > 0 ? 'upp' : 'ned'} ${Math.abs(rounded)} bp`
 }
 
 const shortRateName = (r: BriefYield): string =>
-  r.symbol === 'rate:us10y' ? 'USA 10 år' : r.symbol === 'rate:us2y' ? 'USA 2 år' : r.symbol === 'rate:de10y' ? 'Tyskland 10 år' : r.symbol === 'rate:se10y' ? 'Sverige 10 år' : r.name
+  r.symbol === 'rate:us10y'
+    ? 'USA 10 år'
+    : r.symbol === 'rate:us2y'
+      ? 'USA 2 år'
+      : r.symbol === 'rate:de10y'
+        ? 'Tyskland 10 år'
+        : r.symbol === 'rate:se10y'
+          ? 'Sverige 10 år'
+          : r.name
 
 const voiceQuote = (q: BriefQuote): string => {
   const stale = q.freshness === 'stale' ? 'INAKTUELL ' : ''
-  const session = q.session === 'closed' ? 'stängt, ' : q.session === 'open' ? 'öppet, ' : ''
-  const when = q.changePeriod === 'publication-to-publication' ? dayShort(q.observedAt) : clock(q.observedAt)
+  const session =
+    q.session === 'closed' ? 'stängt, ' : q.session === 'open' ? 'öppet, ' : ''
+  const when =
+    q.changePeriod === 'publication-to-publication'
+      ? dayShort(q.observedAt)
+      : clock(q.observedAt)
   return `${stale}${q.name} ${level(q.level, q.symbol)} ${shortMove(q.changePercent)} (${session}${q.source} ${when})`
 }
 
@@ -269,19 +357,64 @@ interface VoiceTrim {
 }
 
 const VOICE_TRIM_LADDER: readonly VoiceTrim[] = [
-  { notServed: true, sectors: 'all', headlines: 3, unavailable: true, fxAndCommodities: true },
-  { notServed: false, sectors: 'all', headlines: 3, unavailable: true, fxAndCommodities: true },
-  { notServed: false, sectors: 'edges', headlines: 3, unavailable: true, fxAndCommodities: true },
-  { notServed: false, sectors: 'edges', headlines: 1, unavailable: true, fxAndCommodities: true },
-  { notServed: false, sectors: 'none', headlines: 1, unavailable: true, fxAndCommodities: true },
-  { notServed: false, sectors: 'none', headlines: 1, unavailable: false, fxAndCommodities: true },
-  { notServed: false, sectors: 'none', headlines: 0, unavailable: false, fxAndCommodities: false },
+  {
+    notServed: true,
+    sectors: 'all',
+    headlines: 3,
+    unavailable: true,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'all',
+    headlines: 3,
+    unavailable: true,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'edges',
+    headlines: 3,
+    unavailable: true,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'edges',
+    headlines: 1,
+    unavailable: true,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'none',
+    headlines: 1,
+    unavailable: true,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'none',
+    headlines: 1,
+    unavailable: false,
+    fxAndCommodities: true,
+  },
+  {
+    notServed: false,
+    sectors: 'none',
+    headlines: 0,
+    unavailable: false,
+    fxAndCommodities: false,
+  },
 ]
 
 function voiceContextAt(brief: MarketBrief, trim: VoiceTrim): string {
   const lines: string[] = []
-  lines.push(`MARKNADSLÄGE hämtat ${clock(brief.generatedAt)} (${dayShort(brief.generatedAt)}), ${brief.scope}.`)
-  if (brief.indices.length) lines.push(`Index: ${brief.indices.map(voiceQuote).join(' · ')}`)
+  lines.push(
+    `MARKNADSLÄGE hämtat ${clock(brief.generatedAt)} (${dayShort(brief.generatedAt)}), ${brief.scope}.`,
+  )
+  if (brief.indices.length)
+    lines.push(`Index: ${brief.indices.map(voiceQuote).join(' · ')}`)
   if (brief.sectors.length && trim.sectors !== 'none') {
     let sectors = brief.sectors
     if (trim.sectors === 'edges' && sectors.length > 7) {
@@ -300,15 +433,25 @@ function voiceContextAt(brief: MarketBrief, trim: VoiceTrim): string {
     )
   if (trim.fxAndCommodities) {
     if (brief.fx.length) lines.push(`Valutor: ${brief.fx.map(voiceQuote).join(' · ')}`)
-    if (brief.commodities.length) lines.push(`Råvaror: ${brief.commodities.map(voiceQuote).join(' · ')}`)
+    if (brief.commodities.length)
+      lines.push(`Råvaror: ${brief.commodities.map(voiceQuote).join(' · ')}`)
   }
-  if (brief.riskAppetite) lines.push(`Riskaptit (härlett 0–100, aldrig VIX): ${brief.riskAppetite.score} ${brief.riskAppetite.label}`)
+  if (brief.riskAppetite)
+    lines.push(
+      `Riskaptit (härlett 0–100, aldrig VIX): ${brief.riskAppetite.score} ${brief.riskAppetite.label}`,
+    )
   if (brief.headlines.length && trim.headlines > 0) {
-    lines.push(`Rubriker: ${brief.headlines.slice(0, trim.headlines).map((h) => `"${h.headline.slice(0, 90)}" (${h.outlet})`).join(' · ')}`)
+    lines.push(
+      `Rubriker: ${brief.headlines
+        .slice(0, trim.headlines)
+        .map((h) => `"${h.headline.slice(0, 90)}" (${h.outlet})`)
+        .join(' · ')}`,
+    )
   } else {
     lines.push('Rubriker: inga — drivkraften ej verifierad, hitta inte på en orsak.')
   }
-  if (brief.unavailable.length && trim.unavailable) lines.push(`Saknas: ${brief.unavailable.join(', ')}.`)
+  if (brief.unavailable.length && trim.unavailable)
+    lines.push(`Saknas: ${brief.unavailable.join(', ')}.`)
   if (trim.notServed) lines.push(`Ej serverat: ${brief.notServed.join(', ')}.`)
   return lines.join('\n')
 }

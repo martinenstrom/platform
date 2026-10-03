@@ -2,7 +2,8 @@
 
 **Status: implemented 2026-09-30 on top of the office layer. Synthetic
 record only; no external AI in the advisory tier; no persistence. TD-105
-closed for the typed path.**
+closed for the typed path; the voice path followed on 2026-10-01
+(`jarvis-voice-context.md`).**
 
 JARVIS is not a chat window beside Financial OS. When the advisor is on
 Anna & Per Dahlqvist's page and asks _"Vad ska jag ta upp på mötet?"_, the
@@ -127,8 +128,10 @@ route changes). Browser probe: `.probe/jarvis-context-probe.mjs`.
 
 ## 7. Limitations
 
-- The voice path is unchanged: a spoken line goes to the backend model,
-  which has no advisory tool yet (TD-105, voice).
+- The voice path joined the same router on 2026-10-01
+  (`jarvis-voice-context.md`): the session carries the route, the backend
+  tool `answer_from_workspace` reaches this advisory tier, and the answer is
+  spoken by `spokenAnswerOf`. TD-105 is closed for both modalities.
 - Intent recognition is a lexicon; a model may classify later behind the
   same interface.
 - The context is a pointer to the synthetic record; nothing persists.

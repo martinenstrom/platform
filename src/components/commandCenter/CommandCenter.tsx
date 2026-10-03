@@ -606,7 +606,7 @@ function Figure({ label, value, note }: { label: string; value: number; note: st
  */
 const DOOR_NOTES: Record<string, string> = {
   '/': 'Marknadsläget',
-  '/clients': 'Klienter · Sentinel · Marknadspåverkan',
+  '/sentinel': 'Klienter · Sentinel · Marknadspåverkan',
   '/evidence': 'Vad firman håller',
   '/settings': 'Miljö och konto',
 }

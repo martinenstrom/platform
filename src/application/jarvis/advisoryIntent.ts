@@ -22,10 +22,18 @@ export interface NamedClient {
   displayName: string
 }
 
+export type FigureEmphasis = 'total-wealth' | 'aum' | 'net-worth' | 'liquidity' | 'debt'
+
 export interface AdvisoryIntent {
   kind: AdvisoryIntentKind
   /** A client the line named, resolved against the register; absent when the screen's subject is meant. */
   namedClient?: NamedClient
+  /** A name that fits several clients; the answer asks which one. */
+  ambiguous?: readonly NamedClient[]
+  /** The figure a figures line asked for first. */
+  emphasis?: FigureEmphasis
+  /** "Utveckla punkt två": which item of the last answer, 1-based. */
+  itemIndex?: number
   method: 'advisory-intent-v1'
 }
 
@@ -50,6 +58,17 @@ const MEETING_PREP = cue([
   'bring up',
   'think about',
   'talk about',
+  'brief me',
+  'briefa mig',
+])
+const NEXT_MEETING = cue([
+  'när (?:ses|träffas|möts|sågs) vi',
+  'när (?:är|blir|har vi|har jag) (?:mötet|nästa möte|nästa träff)',
+  'nästa möte',
+  'när träffar jag (?:dem|dom|honom|henne|hen|kunden|klienten)',
+  'when (?:do|are) we meet(?:ing)?',
+  'when is the (?:next )?meeting',
+  'next meeting',
 ])
 const LAST_INTERACTION = cue([
   '(?:pratade|diskuterade|tog upp|gick|talade) (?:vi|ni|jag)(?: igenom)?(?: om)? (?:sist|senast|förra gången)',
@@ -130,6 +149,7 @@ const OPPORTUNITIES = cue([
 const RISKS = cue([
   `risk${L}`,
   'glöm inte',
+  'inte glömma',
   `fallgrop${L}`,
   'forget',
   `varning${L}`,
@@ -155,8 +175,8 @@ const CLIENT_QUESTIONS = cue([
 const KEY_FIGURES = cue([
   `siffr${L}`,
   `nyckeltal${L}`,
-  `förmögenhet${L}`,
-  'hur mycket (?:har|äger|är)',
+  `${L}förmögenhet${L}`,
+  'hur mycket (?:har|äger|är|finns)',
   'hur rik',
   `figures`,
   `numbers`,
@@ -166,7 +186,32 @@ const KEY_FIGURES = cue([
   `tillgång${L}`,
   `skulder${L}`,
   `likviditet${L}`,
+  'hos oss',
+  'hos banken',
+  'under förvaltning',
 ])
+/** Which figure a figures line asks for first; the spoken answer leads with it. */
+const EMPHASIS: readonly { cue: RegExp; figure: FigureEmphasis }[] = [
+  {
+    cue: cue(['hos oss', 'hos banken', 'under förvaltning', 'aum', 'förvaltar vi']),
+    figure: 'aum',
+  },
+  { cue: cue([`netto${L}`, 'net worth']), figure: 'net-worth' },
+  { cue: cue([`likvid${L}`, `kassa${L}`, `kontant${L}`, 'cash']), figure: 'liquidity' },
+  { cue: cue([`skuld${L}`, 'debt']), figure: 'debt' },
+  {
+    cue: cue([
+      `total${L}`,
+      'hur rik',
+      'hur mycket (?:har|äger)',
+      'how (?:much|rich|wealthy)',
+    ]),
+    figure: 'total-wealth',
+  },
+]
+function emphasisOf(line: string): FigureEmphasis | undefined {
+  return EMPHASIS.find((entry) => entry.cue.test(line))?.figure
+}
 const CLIENT_SUMMARY = cue([
   '30 sekunder',
   '30 seconds',
@@ -193,6 +238,70 @@ const UNFINISHED = cue([
   'outstanding',
 ])
 
+/* ------------------------------------------------- the conversation's own */
+
+const FOLLOW_UP_MORE = cue([
+  'ta resten',
+  'resten (?:också|med)',
+  'resten',
+  'fortsätt',
+  'de (?:andra|övriga)',
+  'the rest',
+  'go on',
+  'continue',
+])
+const FOLLOW_UP_EVIDENCE = cue([
+  'vad bygger du (?:det|detta|den|dem) på',
+  'varför säger du (?:det|så|detta)',
+  'vad (?:är|har du för) underlag',
+  `underlag${L} för det`,
+  `källa${L}`,
+  'what is (?:that|this) based on',
+  'why do you say',
+  'your sources',
+])
+const ORDINALS: Record<string, number> = {
+  '1': 1,
+  ett: 1,
+  första: 1,
+  one: 1,
+  first: 1,
+  '2': 2,
+  två: 2,
+  andra: 2,
+  two: 2,
+  second: 2,
+  '3': 3,
+  tre: 3,
+  tredje: 3,
+  three: 3,
+  third: 3,
+  '4': 4,
+  fyra: 4,
+  fjärde: 4,
+  four: 4,
+  fourth: 4,
+  '5': 5,
+  fem: 5,
+  femte: 5,
+  five: 5,
+  fifth: 5,
+  '6': 6,
+  sex: 6,
+  sjätte: 6,
+  six: 6,
+  sixth: 6,
+}
+const FOLLOW_UP_ITEM =
+  /(?:utveckla|berätta mer om|mer om|elaborate on|expand on|tell me more about)\s+(?:punkt\s+|den\s+|point\s+|item\s+|number\s+)?(\d|ett|två|tre|fyra|fem|sex|första|andra|tredje|fjärde|femte|sjätte|one|two|three|four|five|six|first|second|third|fourth|fifth|sixth)(?![\p{L}\p{N}])|(?:^|\s)punkt\s+(\d|ett|två|tre|fyra|fem|sex)(?![\p{L}\p{N}])/iu
+
+function followUpItemIndex(line: string): number | null {
+  const match = FOLLOW_UP_ITEM.exec(line)
+  if (!match) return null
+  const word = (match[1] ?? match[2] ?? '').toLowerCase()
+  return ORDINALS[word] ?? null
+}
+
 /* ---------------------------------------------------------- the pack */
 
 const PACK = cue([
@@ -201,17 +310,25 @@ const PACK = cue([
   'pack',
   'meeting pack',
   'powerpoint',
+  `powerpoint${L}`,
   'pptx',
   `presentation${L}`,
   'slides',
   'executive',
-  'brief',
   'briefing',
   'pdf',
+  `pdf${L}`,
   'deck',
 ])
-const PACK_PDF = cue(['pdf'])
-const PACK_PPTX = cue(['powerpoint', 'pptx', `presentation${L}`, 'slides', 'deck'])
+const PACK_PDF = cue(['pdf', `pdf${L}`])
+const PACK_PPTX = cue([
+  'powerpoint',
+  `powerpoint${L}`,
+  'pptx',
+  `presentation${L}`,
+  'slides',
+  'deck',
+])
 const PACK_EXECUTIVE = cue([
   'executive',
   'fem ?slides',
@@ -243,6 +360,10 @@ const NEEDS_ME = cue([
   'call',
   'attention',
   'vem (?:bör|ska|borde) jag',
+  'börja med',
+  'var (?:ska|bör|borde) jag börja',
+  'start with',
+  'where (?:do|should) i start',
 ])
 const MEETINGS = cue([`möte${L}`, `meeting${L}`, 'träffa'])
 const OVERDUE = cue([
@@ -288,19 +409,45 @@ export function resolveNamedClient(
   text: string,
   clients: readonly NamedClient[],
 ): NamedClient | null {
+  const resolved = resolveNamedClients(text, clients)
+  return resolved.kind === 'one' ? resolved.client : null
+}
+
+export type NamedResolution =
+  | { kind: 'none' }
+  | { kind: 'one'; client: NamedClient }
+  /** The name fits several clients; nobody is guessed, and the answer may ask. */
+  | { kind: 'many'; candidates: readonly NamedClient[] }
+
+/** The client a line names, or the clients a first name could mean. */
+export function resolveNamedClients(
+  text: string,
+  clients: readonly NamedClient[],
+): NamedResolution {
   const words = text.match(/\p{Lu}\p{Ll}+/gu) ?? []
   const names = words.filter((word, index) => !(index === 0 && COMMON_STARTS.has(word)))
-  if (names.length === 0) return null
+  if (names.length === 0) return { kind: 'none' }
   const candidates = clients.filter((client) => {
     const parts = client.displayName.split(/[\s&]+/).filter(Boolean)
     return names.some((name) => parts.includes(name))
   })
-  if (candidates.length !== 1) return null
+  if (candidates.length === 0) return { kind: 'none' }
+  if (candidates.length > 1) {
+    /* Two names in the line that together fit exactly one client — "Henrik Alvarsson" — are not an ambiguity. */
+    const exact = candidates.filter((client) => {
+      const parts = new Set(client.displayName.split(/[\s&]+/).filter(Boolean))
+      return names
+        .filter((name) => looksLikeName(name, clients))
+        .every((name) => parts.has(name))
+    })
+    if (exact.length === 1) return { kind: 'one', client: exact[0]! }
+    return { kind: 'many', candidates }
+  }
   const only = candidates[0]!
   /* Every capitalised word that is a name must belong to this client. */
   const parts = new Set(only.displayName.split(/[\s&]+/).filter(Boolean))
   const foreign = names.filter((name) => !parts.has(name) && looksLikeName(name, clients))
-  return foreign.length === 0 ? only : null
+  return foreign.length === 0 ? { kind: 'one', client: only } : { kind: 'none' }
 }
 
 /** Sentence starts that are capitalised only because they start the sentence. */
@@ -366,17 +513,39 @@ export function recognizeAdvisoryIntent(
 ): AdvisoryIntent | null {
   const line = text.trim()
   if (!line || line.length > MAX_LINE) return null
-  const named = resolveNamedClient(line, clients)
+  const resolution = resolveNamedClients(line, clients)
+  const named = resolution.kind === 'one' ? resolution.client : null
   const done = (kind: AdvisoryIntentKind): AdvisoryIntent => ({
     kind,
     ...(named ? { namedClient: named } : {}),
     method: 'advisory-intent-v1',
   })
 
+  /* A first name two clients share names nobody; the answer asks which one. */
+  if (resolution.kind === 'many') {
+    return {
+      kind: 'CLARIFY_CLIENT',
+      ambiguous: resolution.candidates,
+      method: 'advisory-intent-v1',
+    }
+  }
+
+  /* The conversation's own continuations, wherever the advisor is. */
+  if (FOLLOW_UP_EVIDENCE.test(line)) return done('FOLLOW_UP_EVIDENCE')
+  const itemIndex = followUpItemIndex(line)
+  if (itemIndex !== null) return { ...done('FOLLOW_UP_ITEM'), itemIndex }
+  if (FOLLOW_UP_MORE.test(line) && line.length <= 40) return done('FOLLOW_UP_MORE')
+
   /* A named client makes any line a client question, from any scope. */
   if (named || IS_CLIENT_SCOPE(context.scope)) {
     const client = clientIntent(line)
-    if (client) return done(client)
+    if (client) {
+      const emphasis =
+        client === 'KEY_FIGURES' || client === 'CLIENT_SUMMARY'
+          ? emphasisOf(line)
+          : undefined
+      return { ...done(client), ...(emphasis ? { emphasis } : {}) }
+    }
     if (named) return done('CLIENT_SUMMARY')
     /* Nothing recognised on a client: the relationship memory answers, or says it cannot. */
     return done('GENERAL_CLIENT_QUERY')
@@ -421,6 +590,7 @@ function clientIntent(line: string): AdvisoryIntentKind | null {
   if (SAID.test(line)) return 'GENERAL_CLIENT_QUERY'
   const pack = packIntent(line)
   if (pack) return pack
+  if (NEXT_MEETING.test(line)) return 'NEXT_MEETING'
   if (CLIENT_QUESTIONS.test(line)) return 'CLIENT_QUESTIONS'
   if (QUESTIONS_TO_ASK.test(line)) return 'QUESTIONS_TO_ASK'
   if (WHY_PRIORITY.test(line)) return 'WHY_PRIORITY'

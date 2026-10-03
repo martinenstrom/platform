@@ -58,6 +58,8 @@ export type RetrievalTarget =
   | { kind: 'risk' }
   /** A VIX level, which the platform does not serve; answered by saying so. */
   | { kind: 'vix' }
+  /** An instrument the platform has no source for — the Dow, the Russell — named so the answer says so instead of guessing. */
+  | { kind: 'not-served'; name: string }
 
 export interface RetrievalIntent {
   kind: 'retrieval'
@@ -82,42 +84,118 @@ const rate = (symbol: CanonicalSymbol): RetrievalTarget => ({ kind: 'rate', symb
 const B = '(?<![\\p{L}\\p{N}])'
 const E = '(?![\\p{L}\\p{N}])'
 /** Any inflection: "guld", "guldet", "guldpriset". */
-const L = '\\p{L}*'
-const words = (alternatives: readonly string[]): RegExp =>
+export const L = '\\p{L}*'
+export const words = (alternatives: readonly string[]): RegExp =>
   new RegExp(`${B}(?:${alternatives.join('|')})${E}`, 'iu')
 
-/** Instrument names as a Swedish speaker says them. Each entry is one instrument; first mention wins. */
-const LEXICON: readonly LexiconEntry[] = [
-  { pattern: words(['s\\s?&\\s?p\\s?500', 's\\s?&\\s?p', 'sp500', 's och p', 'ess och pe']), target: quote(SYM_SP500) },
-  { pattern: words(['nasdaq(?:\\s?100)?']), target: quote(SYM_NASDAQ100) },
-  { pattern: words(['omx(?:s30)?', 'stockholmsbörsen', 'svenska börsen']), target: quote(SYM_OMXS30) },
+/**
+ * Instrument names as a Swedish speaker — or a transcript of one — says them.
+ * Each entry is one instrument; first mention wins. The aliases are
+ * deterministic and closed: an instrument the platform has no source for
+ * (the Dow, the Russell) is listed as not served, never guessed at.
+ */
+export const INSTRUMENT_LEXICON: readonly LexiconEntry[] = [
+  {
+    pattern: words([
+      's\\s?&\\s?p\\s?500',
+      's\\s?&\\s?p',
+      's&p-500',
+      'sp\\s?500',
+      'spx',
+      's och p(?:\\s?500)?',
+      'ess och pe(?:\\s?500)?',
+      'ess and pee(?:\\s?500)?',
+      `amerikanska storbolag${L}`,
+    ]),
+    target: quote(SYM_SP500),
+  },
+  {
+    pattern: words(['nasdaq(?:[\\s-]?100)?', 'ndx', `nasdaqbörs${L}`, `teknikbörs${L}`]),
+    target: quote(SYM_NASDAQ100),
+  },
+  {
+    pattern: words([
+      'dow(?: jones)?(?: industrial average)?',
+      'djia',
+      `dow[- ]?index${L}`,
+    ]),
+    target: { kind: 'not-served', name: 'Dow Jones' },
+  },
+  {
+    pattern: words(['russell(?:\\s?2000)?']),
+    target: { kind: 'not-served', name: 'Russell 2000' },
+  },
+  {
+    pattern: words(['omx(?:s30)?', 'stockholmsbörsen', 'svenska börsen']),
+    target: quote(SYM_OMXS30),
+  },
   { pattern: words(['dax', 'tyska börsen']), target: quote(SYM_DAX) },
   { pattern: words(['ftse(?:\\s?100)?', 'londonbörsen']), target: quote(SYM_FTSE100) },
   { pattern: words(['nikkei(?:\\s?225)?', 'tokyobörsen']), target: quote(SYM_NIKKEI225) },
   { pattern: words([`tyska tioår${L}`, 'bund(?:en|s)?']), target: rate(SYM_DE10Y) },
-  { pattern: words([`svenska tioår${L}`, `svenska statsobligation${L}`]), target: rate(SYM_SE10Y) },
-  { pattern: words([`tioår${L}`, `tioårsränt${L}`, 'us 10[- ]?year', '10[- ]?year', '10y', `amerikanska långränt${L}`]), target: rate(SYM_US10Y) },
-  { pattern: words([`tvåår${L}`, `tvåårsränt${L}`, 'us 2[- ]?year', '2[- ]?year', '2y']), target: rate(SYM_US2Y) },
+  {
+    pattern: words([`svenska tioår${L}`, `svenska statsobligation${L}`]),
+    target: rate(SYM_SE10Y),
+  },
+  {
+    pattern: words([
+      `tioår${L}`,
+      `tioårsränt${L}`,
+      'us 10[- ]?year',
+      '10[- ]?year',
+      '10y',
+      `amerikanska långränt${L}`,
+    ]),
+    target: rate(SYM_US10Y),
+  },
+  {
+    pattern: words([`tvåår${L}`, `tvåårsränt${L}`, 'us 2[- ]?year', '2[- ]?year', '2y']),
+    target: rate(SYM_US2Y),
+  },
   { pattern: words([`guld${L}`]), target: quote(SYM_GOLD) },
   { pattern: words([`olj${L}`, `brent${L}`]), target: quote(SYM_BRENT) },
-  { pattern: words([`dollar${L}`, 'usd', 'usdsek', 'kronan']), target: quote(SYM_USDSEK) },
-  { pattern: words(['euron?', `eurokurs${L}`, 'eurusd', 'euro[/-]dollar']), target: quote(SYM_EURUSD) },
-  { pattern: words([`tech${L}`, `teknik${L}`, 'it-sektorn', 'information technology']), target: quote(SYM_SECTOR_TECH) },
+  {
+    pattern: words([`dollar${L}`, 'usd', 'usdsek', 'kronan']),
+    target: quote(SYM_USDSEK),
+  },
+  {
+    pattern: words(['euron?', `eurokurs${L}`, 'eurusd', 'euro[/-]dollar']),
+    target: quote(SYM_EURUSD),
+  },
+  {
+    pattern: words([`tech${L}`, `teknik${L}`, 'it-sektorn', 'information technology']),
+    target: quote(SYM_SECTOR_TECH),
+  },
   { pattern: words([`finans${L}`, `bank${L}`]), target: quote(SYM_SECTOR_FINANCIALS) },
   { pattern: words([`energi${L}`, `oljebolag${L}`]), target: quote(SYM_SECTOR_ENERGY) },
-  { pattern: words([`hälsovård${L}`, 'health\\s?care', `läkemedel${L}`]), target: quote(SYM_SECTOR_HEALTHCARE) },
-  { pattern: words([`industri${L}`, `verkstad${L}`]), target: quote(SYM_SECTOR_INDUSTRIALS) },
-  { pattern: words([`kommunikation${L}`, `communication${L}`]), target: quote(SYM_SECTOR_COMMS) },
-  { pattern: words([`sällanköp${L}`, 'discretionary', `konsument${L}`]), target: quote(SYM_SECTOR_DISCRETIONARY) },
+  {
+    pattern: words([`hälsovård${L}`, 'health\\s?care', `läkemedel${L}`]),
+    target: quote(SYM_SECTOR_HEALTHCARE),
+  },
+  {
+    pattern: words([`industri${L}`, `verkstad${L}`]),
+    target: quote(SYM_SECTOR_INDUSTRIALS),
+  },
+  {
+    pattern: words([`kommunikation${L}`, `communication${L}`]),
+    target: quote(SYM_SECTOR_COMMS),
+  },
+  {
+    pattern: words([`sällanköp${L}`, 'discretionary', `konsument${L}`]),
+    target: quote(SYM_SECTOR_DISCRETIONARY),
+  },
   { pattern: words([`dagligvar${L}`, 'staples']), target: quote(SYM_SECTOR_STAPLES) },
-  { pattern: words([`fastighet${L}`, 'real estate']), target: quote(SYM_SECTOR_REALESTATE) },
+  {
+    pattern: words([`fastighet${L}`, 'real estate']),
+    target: quote(SYM_SECTOR_REALESTATE),
+  },
   { pattern: words([`sektor${L}`]), target: { kind: 'sectors' } },
   { pattern: words([`riskaptit${L}`, `risksentiment${L}`]), target: { kind: 'risk' } },
   { pattern: words(['vix', `volatilitetsindex${L}`]), target: { kind: 'vix' } },
 ]
 
 /** Plain words for "what is its state". */
-const STATE_CUE = words([
+export const STATE_CUE = words([
   'hur (?:gick|går|handlas|står|ligger|utvecklas|utvecklades|mår|rör sig|rörde sig|mycket|långt|stor)',
   'vad (?:står|ligger|gör|gjorde|kostar|är)',
   '(?:är|var|ligger|står|stängde|öppnade) \\S+ (?:upp|ner|ned|på)',
@@ -140,7 +218,7 @@ const STATE_CUE = words([
  * Cues of judgement, reasoning, meaning or institutional work. Any one
  * refuses the match, whatever else the line says.
  */
-const NOT_RETRIEVAL = words([
+export const NOT_RETRIEVAL = words([
   'borde',
   'bör',
   'ska (?:jag|vi)',
@@ -184,7 +262,22 @@ const NOT_RETRIEVAL = words([
   `drivkraft${L}`,
 ])
 
-const WORD = /[\p{L}\p{N}&/]+/gu
+export const WORD = /[\p{L}\p{N}&/]+/gu
+
+/** Every instrument the line names, in order of mention, one entry per instrument. */
+export function namedTargets(line: string): RetrievalTarget[] {
+  const hits: { index: number; target: RetrievalTarget }[] = []
+  for (const entry of INSTRUMENT_LEXICON) {
+    const match = entry.pattern.exec(line)
+    if (match) hits.push({ index: match.index, target: entry.target })
+  }
+  hits.sort((a, b) => a.index - b.index)
+  const targets: RetrievalTarget[] = []
+  for (const hit of hits) {
+    if (!targets.some((known) => sameTarget(known, hit.target))) targets.push(hit.target)
+  }
+  return targets
+}
 
 /** A line is retrieval when it names an instrument and asks only for its state. */
 export function recognizeRetrieval(text: string): RetrievalIntent | null {
@@ -192,18 +285,9 @@ export function recognizeRetrieval(text: string): RetrievalIntent | null {
   if (!line || line.length > 160) return null
   if (NOT_RETRIEVAL.test(line)) return null
 
-  const hits: { index: number; target: RetrievalTarget }[] = []
-  for (const entry of LEXICON) {
-    const match = entry.pattern.exec(line)
-    if (match) hits.push({ index: match.index, target: entry.target })
-  }
-  if (hits.length === 0) return null
-  hits.sort((a, b) => a.index - b.index)
-  /* One target per instrument, first mention wins; more than three names is a survey, not a lookup. */
-  const targets: RetrievalTarget[] = []
-  for (const hit of hits) {
-    if (!targets.some((known) => sameTarget(known, hit.target))) targets.push(hit.target)
-  }
+  const targets = namedTargets(line)
+  if (targets.length === 0) return null
+  /* More than three names is a survey, not a lookup. */
   if (targets.length > 3) return null
 
   const tokens = line.match(WORD) ?? []
@@ -212,23 +296,34 @@ export function recognizeRetrieval(text: string): RetrievalIntent | null {
   return { kind: 'retrieval', targets }
 }
 
-function sameTarget(a: RetrievalTarget, b: RetrievalTarget): boolean {
+export function sameTarget(a: RetrievalTarget, b: RetrievalTarget): boolean {
   if (a.kind !== b.kind) return false
   if ('symbol' in a && 'symbol' in b) return a.symbol === b.symbol
+  if (a.kind === 'not-served' && b.kind === 'not-served') return a.name === b.name
   return true
 }
 
 /** The narrowest brief scope that serves every target. */
 export function scopeForRetrieval(intent: RetrievalIntent): MarketScope {
+  return scopeForTargets(intent.targets)
+}
+
+export function scopeForTargets(targets: readonly RetrievalTarget[]): MarketScope {
   const regions = new Set<MarketScope>()
-  for (const target of intent.targets) {
-    if (target.kind === 'sectors' || target.kind === 'risk' || target.kind === 'vix') {
+  for (const target of targets) {
+    if (
+      target.kind === 'sectors' ||
+      target.kind === 'risk' ||
+      target.kind === 'vix' ||
+      target.kind === 'not-served'
+    ) {
       regions.add('us')
       continue
     }
     const symbol = target.symbol
     if (symbol === SYM_OMXS30 || symbol === SYM_SE10Y) regions.add('sweden')
-    else if (symbol === SYM_DAX || symbol === SYM_FTSE100 || symbol === SYM_DE10Y) regions.add('europe')
+    else if (symbol === SYM_DAX || symbol === SYM_FTSE100 || symbol === SYM_DE10Y)
+      regions.add('europe')
     else if (symbol === SYM_NIKKEI225) regions.add('global')
     else regions.add('us')
   }
@@ -242,10 +337,44 @@ export function scopeForRetrieval(intent: RetrievalIntent): MarketScope {
  * market answer is answered from the same numbers rather than a second fetch.
  */
 const MARKET_VOCABULARY = words([
-  `börs${L}`, `marknad${L}`, `index${L}`, `ränt${L}`, `yield${L}`, `kurv${L}`, `dollar${L}`, 'euron?', `krona${L}`, `guld${L}`,
-  `olj${L}`, 'brent', `sektor${L}`, `tech${L}`, `teknik${L}`, 'nasdaq', 's\\s?&\\s?p', `omx${L}`, 'dax', 'ftse', 'nikkei', 'vix',
-  `riskaptit${L}`, `volatil${L}`, `aktie${L}`, `obligation${L}`, `tioår${L}`, `tvåår${L}`, `inflation${L}`, 'fed', 'ecb',
-  `riksbank${L}`, `rapport${L}`, 'usa', 'wall street', 'stockholm', 'europa', 'asien',
+  `börs${L}`,
+  `marknad${L}`,
+  `index${L}`,
+  `ränt${L}`,
+  `yield${L}`,
+  `kurv${L}`,
+  `dollar${L}`,
+  'euron?',
+  `krona${L}`,
+  `guld${L}`,
+  `olj${L}`,
+  'brent',
+  `sektor${L}`,
+  `tech${L}`,
+  `teknik${L}`,
+  'nasdaq',
+  's\\s?&\\s?p',
+  `omx${L}`,
+  'dax',
+  'ftse',
+  'nikkei',
+  'vix',
+  `riskaptit${L}`,
+  `volatil${L}`,
+  `aktie${L}`,
+  `obligation${L}`,
+  `tioår${L}`,
+  `tvåår${L}`,
+  `inflation${L}`,
+  'fed',
+  'ecb',
+  `riksbank${L}`,
+  `rapport${L}`,
+  'usa',
+  'wall street',
+  'stockholm',
+  'europa',
+  'asien',
 ])
 
 export function mentionsMarket(text: string): boolean {

@@ -16,7 +16,7 @@ import { answerAdvisoryLine } from './advisoryAnswer'
 import type { JarvisAnswer } from './answer'
 import type { AskJarvisRequest } from './askJarvis'
 import { resolveJarvisContext, type JarvisContext } from './context'
-import { recognizeRetrieval } from './marketIntent'
+import { recognizeMarketQuery } from './marketQuery'
 
 export interface AdvisoryTurnResult {
   advisory: JarvisAnswer
@@ -29,8 +29,20 @@ export async function advisoryTurn(
 ): Promise<AdvisoryTurnResult | null> {
   if (!request.context) return null
   const jarvis = resolveJarvisContext(request.context.route)
-  if (recognizeRetrieval(request.text)) return null
+  /* A clearly named instrument, a region, a period in a market conversation: the market's, wherever the advisor is. */
+  if (
+    recognizeMarketQuery(request.text, {
+      scope: jarvis.scope,
+      conversation: request.marketContext?.conversation ?? null,
+    })
+  )
+    return null
   const context = await advisory()
-  const turn = await answerAdvisoryLine(context, jarvis, request.text)
+  const turn = await answerAdvisoryLine(
+    context,
+    jarvis,
+    request.text,
+    request.previous ?? null,
+  )
   return turn ? { advisory: turn.answer, context: turn.context } : null
 }

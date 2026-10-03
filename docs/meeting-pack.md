@@ -70,13 +70,22 @@ regeneration over an unchanged record returns the version already made.
 
 ## 3. The document
 
-`composePackDocument(pack)` produces `PackDocument`: slides with a kicker,
-a headline, typed blocks (kpis, statement, caption, list, table, chart,
-callout, columns, changes, actions) and speaker notes (talking point,
-watch-out, do-not-claim, follow-up, evidence, source). Rules it keeps:
+`composePackDocument(pack)` produces `PackDocument`: slides with an
+archetype, a kicker, a headline, typed blocks (kpis, statement, caption,
+list, table with totals, chart, timeline, callout, callouts, meta,
+weighted columns, changes, actions) and speaker notes in reading order
+(talking point, why it matters, watch-out, do-not-claim, verify,
+follow-up, evidence, source). Rules it keeps:
 
-- **Headline = conclusion.** _Brygglånet, Åre förfaller om 45 dagar och
-  kräver ett tydligt nästa steg._ — never _Finansiering_.
+- **One archetype per page.** Executive brief, snapshot, change page,
+  balance sheet, portfolio analysis, financing page, market page,
+  open-issues page, questions page, plan, action list, data appendix —
+  each composed its own way (refinement pass, 2026-10-01; §3a).
+- **Headline = conclusion.** _Brygglånet Åre förfaller om 45 dagar;
+  finansieringen är mötets huvudpunkt._ on the first slide; _Brygglån, Åre
+  förfaller om 45 dagar och kräver ett tydligt nästa steg._ on the
+  financing page — never _Finansiering_, never the client's name as a
+  title.
 - **Placement, not repetition.** The bridge loan is a priority on slide 1
   and a detail on the financing slide; the relationship slide's _Kommande_
   skips events the financing slide already carries; concerns go to the
@@ -88,29 +97,79 @@ watch-out, do-not-claim, follow-up, evidence, source). Rules it keeps:
   slide and no market slide.
 - **Formatting is Financial OS's**: `42,0 MSEK`, `750 kSEK`, `49 %`,
   `+2 pp`, `3,60 %`, `45 dagar`, `3 okt 2026`.
-- **Charts answer a question**: balance sheet as a stacked bar, allocation
-  against the mandate as grouped bars; each with a title, unit, as-of and
-  source, drawn from the same data in every format.
-- **Notes are internal**: the cockpit's discussion points, what not to
-  claim (_Ange ingen ny ränta … förrän aktuell prissättning är
-  verifierad_), the readiness warnings, why to ask each question, the
-  sources by name. They go to the PowerPoint notes page and to a marked
-  box in the PDF; never to a slide body.
+- **Charts answer a question**: the wealth composition as a donut on the
+  snapshot page, previous against current as paired bars on the change
+  page (only when at least two figures moved), the balance sheet as a
+  stacked bar, allocation against the mandate as grouped bars with a
+  deviation table, liquidity against the debt maturing within twelve
+  months as bars, and the maturities and reviews as a timeline from
+  today. Each with a title, unit, as-of and source, drawn from the same
+  data in every format; bars always read from zero.
+- **Tables carry totals**: the financial summary, the balance sheet (sum
+  of assets, sum of liabilities, net worth), the loan structure with its
+  collateral and sum, the holdings and loans in the appendix; figures
+  right-aligned, a rule above every total, never a filled cell.
+- **Margin notes, not panels**: JARVIS-observation, Mötesimplikation,
+  Varför det spelar roll, Varning, Data att verifiera — at most three per
+  page, small, in the body face, each from a cockpit sentence.
+- **Notes are internal and in reading order**: TALEPUNKT · VARFÖR DET
+  SPELAR ROLL · VARNING · PÅSTÅ INTE · ATT VERIFIERA · FÖLJDFRÅGA ·
+  UNDERLAG · KÄLLA — the cockpit's discussion points, what not to claim
+  (_Ange ingen ny ränta … förrän aktuell prissättning är verifierad_), the
+  readiness warnings as things to verify, the likely follow-up question,
+  the sources by name. They go to the PowerPoint notes page and to a
+  marked box in the PDF; never to a slide body.
 - **File name**: `Anna_Per_Dahlqvist_Motesunderlag_2026-10-02_v1.pptx`
   (executive: `…_Executive_brief_…`); ASCII, no id.
 
+### 3a. The page archetypes
+
+| Archetype       | Slide          | Composition                                                                                                                                       |
+| --------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `executive`     | executive      | identity panel; six key figures; focus statement with the desired outcome beneath it; top three and _Glöm inte_; counters incl. the critical date |
+| `snapshot`      | glance         | financial summary table with totals (7:5) composition donut; goals, context, next event; two margin notes                                         |
+| `change`        | since-last     | baseline caption; changes table (with paired bars when ≥ 2 figures moved); market since last; implication, why, verify                            |
+| `balance-sheet` | wealth         | stacked bar and two figures (5:7) full balance sheet with three totals and its footnote; observation, why, verify                                 |
+| `portfolio`     | portfolio      | five figures; allocation bars and margin notes (7:5) largest holdings with a sum and the deviation table                                          |
+| `financing`     | financing      | loan structure with collateral and sum; maturity timeline (7:5) liquidity against maturities; implication and the warning or the rate to verify   |
+| `market`        | market         | moves table (status per row, the reason once in the margin); why it matters and the discussion points                                             |
+| `issues`        | relationship   | open commitments and important dates as tables (7:5) concerns, goals, family; implication, Sentinel observation, why                              |
+| `questions`     | questions      | client questions with likelihood and basis (6:6) numbered advisor questions with their why; implication and warning                               |
+| `plan`          | plan           | objectives and desired outcome (6:6) agenda table with its basis in the document, materials; opportunity and warning                              |
+| `actions`       | next-steps     | action table with status tones; implication and the overdue warning                                                                               |
+| `appendix-data` | every appendix | one table with sums or a provenance line; the appendix flows in the PDF                                                                           |
+
 ## 4. The formats
 
-**PowerPoint** — one slide master (navy, gold hairline, footer rule),
-native text boxes, shapes, tables and charts from data, `addNotes` per
-slide, the footer _KONFIDENTIELLT · INTERNT RÅDGIVARMATERIAL · client ·
-Data per … · Bild n / N_. No image anywhere: the senior edits wording,
-moves boxes, changes a number, deletes a slide. Georgia and Calibri by
-name. Verified to open in PowerPoint (COM export of every slide).
+**PowerPoint** — one slide master (navy ground, a gold hairline at the
+head, a hairline above the footer), a header rule under the headline, a
+12-column grid with weighted columns, figure strips separated by
+hairlines, tables with a gold rule under the header and a rule above
+every total, native charts on the slide's own ground, the timeline drawn
+from shapes, margin notes as thin rules with small-caps labels, Georgia
+for the headline and the key figures only. The footer carries the
+confidentiality, the client, the meeting date, the data date, the
+generation time and _Bild n / N_. Heights are estimated per block
+(TD-122): a figure strip, table or chart that would not fit is left off
+rather than drawn over the footer. No image anywhere: the senior edits
+wording, moves boxes, changes a number, deletes a slide. Verified to open
+in PowerPoint (COM export of every slide).
 
-**PDF** — A4 briefing book: cover block, one section per slide, running
-header, footer with page numbers, tables that break, charts as vector bars,
-the notes box. Standard fonts in V1 (TD-118).
+**PDF** — A4 briefing book: a cover page that already carries the brief
+(title block, advisor and office, provenance line, the executive page's
+figures, focus, priorities and counters), one chapter per core slide on
+its own page, the appendix flowing as data pages under rules, a running
+header with the meeting and the data date, a footer with the generation
+time and page numbers, tables with a gold rule under the header and a
+rule above every total, the donut and the timeline drawn as vectors,
+inline legends, margin notes in tinted columns, the notes box per
+chapter. Standard fonts in V1 (TD-118).
+
+Sample renders for review: `scripts/render-meeting-pack.ts` writes the
+full pack and the executive brief for Anna & Per and Henrik to a folder
+(`npx vite-node scripts/render-meeting-pack.ts -- .probe/meeting-pack/refine 2026-09-23`);
+`.probe/pdf-to-png.mjs` renders a PDF's pages to PNG, and PowerPoint's
+COM export does the same for a deck.
 
 ## 5. The audience policy
 
@@ -167,12 +226,24 @@ no change here. Not built.
 `application/advisory/meetingPack.test.ts` (Anna & Per, Henrik, the quiet
 client, stale data, no market relevance, no financing, no open promises, no
 baseline, blocked), `meetingPackPolicy.test.ts`,
-`presentation/documents/meetingPackDocument.test.ts` (outline, headlines,
-placement, formatting, no id, notes, charts, market presence, executive
-depth, file names), `infrastructure/documents/meetingPackDocuments.test.ts`
-(the PowerPoint read back with jszip: slides, titles, tables, charts,
-notes, no picture, footer, no id; the PDF read back with pdfjs: pages,
-titles, figures, footer, page numbers, no id; cross-format agreement;
+`presentation/documents/meetingPackDocument.test.ts` (outline, one
+archetype per core page, conclusion headlines including the first slide,
+the first slide's figures, focus, outcome, priorities and critical date,
+the chart inventory, the tables with totals, the margin notes, placement,
+formatting, no id, notes in reading order and off the body, market
+presence, executive depth, file names),
+`infrastructure/documents/meetingPackDocuments.test.ts` (the PowerPoint
+read back with jszip: slides, titles, tables, one chart part per chart
+block, the timeline's labels as text, totals and margin notes as text,
+notes in order, the metadata footer, no picture, no id; the PDF read back
+with pdfjs: the content cover, the chapters, the running header, the
+footer with the generation time, the figures and totals, the notes, no
+id; cross-format agreement on headlines, figures, totals and dates;
 versions; the policy at the door), `components/meetingPack/
 MeetingPackPreview.test.tsx`, the JARVIS intent and answer tests. Browser
-probe: `.probe/meeting-pack-probe.mjs`.
+probe: `.probe/meeting-pack-probe.mjs` (expects an empty
+`.generated/meeting-packs`). Visual review: the sample renders under
+`.probe/meeting-pack/refine/` — every slide exported through PowerPoint
+and every PDF page rendered to PNG — inspected against the acceptance
+test of the refinement brief (conclusion-first titles, chart presence,
+serious tables, restrained gold, density, premium feel).

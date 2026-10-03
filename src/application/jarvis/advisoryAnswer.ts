@@ -32,6 +32,7 @@ import {
   type AdvisoryIntent,
   type NamedClient,
 } from './advisoryIntent'
+import { canContinue, evidenceOf, itemOf, restOf } from './followUp'
 import type {
   AdvisoryIntentKind,
   JarvisAbout,
@@ -76,6 +77,8 @@ export async function answerAdvisoryLine(
   context: AdvisoryContext,
   jarvis: JarvisContext,
   text: string,
+  /** The record's last answer in this conversation, for a continuation; never read for anything else. */
+  previous: JarvisAnswer | null = null,
 ): Promise<AdvisoryTurn | null> {
   const clients: NamedClient[] = (await context.repositories.clients.list()).map((c) => ({
     id: c.id,
@@ -83,8 +86,11 @@ export async function answerAdvisoryLine(
   }))
   const intent = recognizeAdvisoryIntent(text, jarvis, clients)
   if (!intent) return null
-  if (!intent.namedClient && !isAdvisoryScope(jarvis.scope)) return null
-  const answer = await answerIntent(context, jarvis, intent, text)
+  const conversational =
+    intent.kind === 'CLARIFY_CLIENT' || intent.kind.startsWith('FOLLOW_UP')
+  if (!intent.namedClient && !isAdvisoryScope(jarvis.scope) && !conversational)
+    return null
+  const answer = await answerIntent(context, jarvis, intent, text, previous)
   if (!answer) return null
   return { answer, intent, context: withMeeting(jarvis, answer) }
 }
@@ -100,9 +106,16 @@ async function answerIntent(
   jarvis: JarvisContext,
   intent: AdvisoryIntent,
   text: string,
+  previous: JarvisAnswer | null,
 ): Promise<JarvisAnswer | null> {
   const clientId = intent.namedClient?.id ?? jarvis.clientId
   switch (intent.kind) {
+    case 'CLARIFY_CLIENT':
+      return clarifyAnswer(context, jarvis, intent)
+    case 'FOLLOW_UP_MORE':
+    case 'FOLLOW_UP_ITEM':
+    case 'FOLLOW_UP_EVIDENCE':
+      return followUpAnswer(context, jarvis, intent, previous, clientId ?? null)
     case 'OFFICE_PRIORITIES':
     case 'OFFICE_MEETINGS':
     case 'OFFICE_OVERDUE':
@@ -121,6 +134,83 @@ async function answerIntent(
       return marketImpactAnswer(context, jarvis)
     default:
       return clientId ? clientAnswer(context, jarvis, intent, clientId, text) : null
+  }
+}
+
+/* ------------------------------------------------- the conversation's own */
+
+/** A name two clients share: the answer asks which, and names them. */
+async function clarifyAnswer(
+  context: AdvisoryContext,
+  jarvis: JarvisContext,
+  intent: AdvisoryIntent,
+): Promise<JarvisAnswer> {
+  const candidates = (intent.ambiguous ?? []).map((c) => ({
+    id: c.id,
+    displayName: c.displayName,
+  }))
+  return {
+    scope: jarvis.scope,
+    intent: 'CLARIFY_CLIENT',
+    about: { kind: 'client', id: null, label: 'Klient', href: null, switched: false },
+    sections: [
+      { key: 'clarify', items: [item('clarify-client', { candidates }, 'fact', [])] },
+    ],
+    sources: [],
+    actions: [],
+    titles: Object.fromEntries(candidates.map((c) => [c.id, c.displayName])),
+    today:
+      (await context.repositories.clients.list()).length >= 0
+        ? context.clock.isoNow().slice(0, 10)
+        : '',
+    confidence: 'low',
+    method: 'advisory-rules-v1',
+    askedAt: context.clock.isoNow(),
+  }
+}
+
+/**
+ * The rest, one item, or the evidence of the last answer — when there is a
+ * last answer and it is about the subject on screen. A route change wins:
+ * an earlier answer about someone else is not continued, it is said to be
+ * over.
+ */
+function followUpAnswer(
+  context: AdvisoryContext,
+  jarvis: JarvisContext,
+  intent: AdvisoryIntent,
+  previous: JarvisAnswer | null,
+  subjectId: string | null,
+): JarvisAnswer {
+  const askedAt = context.clock.isoNow()
+  if (canContinue(previous, subjectId)) {
+    if (intent.kind === 'FOLLOW_UP_EVIDENCE') return evidenceOf(previous, askedAt)
+    if (intent.kind === 'FOLLOW_UP_ITEM') {
+      const one = itemOf(previous, intent.itemIndex ?? 0, askedAt)
+      if (one) return one
+    } else {
+      const rest = restOf(previous, askedAt)
+      if (rest.sections.length > 0) return rest
+    }
+  }
+  return {
+    scope: jarvis.scope,
+    intent: intent.kind,
+    about: previous?.about ?? {
+      kind: 'client',
+      id: subjectId,
+      label: 'Klient',
+      href: subjectId ? `/clients/${subjectId}` : null,
+      switched: false,
+    },
+    sections: [{ key: 'evidence', items: [note('nothing-to-continue')] }],
+    sources: [],
+    actions: [],
+    titles: {},
+    today: askedAt.slice(0, 10),
+    confidence: 'low',
+    method: 'advisory-rules-v1',
+    askedAt,
   }
 }
 
@@ -177,6 +267,7 @@ async function clientAnswer(
       titles: { ...titles, ...(over.titles ?? {}) },
       confidence: over.confidence ?? 'high',
       ...(over.opens ? { opens: over.opens } : {}),
+      ...(intent.emphasis ? { emphasis: intent.emphasis } : {}),
     }
   }
   const prep = (kind: 'open-meeting-prep'): JarvisAction => ({
@@ -463,6 +554,29 @@ async function clientAnswer(
         { titles: cockpitTitles },
       )
     }
+    case 'NEXT_MEETING':
+      return finish(
+        [
+          section('upcoming', [
+            view.nextMeeting
+              ? item(
+                  'event',
+                  {
+                    event: view.nextMeeting,
+                    occursOn: view.nextMeeting.occursOn,
+                    daysAhead: view.nextMeeting.daysAhead,
+                  },
+                  'fact',
+                  [view.nextMeeting.id],
+                )
+              : note('no-upcoming-meeting'),
+          ]),
+        ],
+        {
+          about: about(meetingDate),
+          ...(view.nextMeeting ? { actions: [prep('open-meeting-prep')] } : {}),
+        },
+      )
     case 'GOALS':
       return finish([
         section(

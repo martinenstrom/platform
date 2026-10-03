@@ -56,6 +56,12 @@ export interface PresenceState {
    * numbers; the numbers themselves are re-read on the server, never kept here.
    */
   marketContextAt: string | null
+  /**
+   * What the last market answer was about and over which period, as the
+   * server wrote it, handed back so "och i veckan?" continues it. Opaque
+   * here: never read, never edited, only returned.
+   */
+  marketConversation: unknown | null
 }
 
 export const EMPTY_PRESENCE: PresenceState = Object.freeze({
@@ -66,6 +72,7 @@ export const EMPTY_PRESENCE: PresenceState = Object.freeze({
   turns: Object.freeze([]) as readonly PresenceTurn[],
   surface: null,
   marketContextAt: null,
+  marketConversation: null,
 })
 
 const KEY = 'jarvis:presence'
@@ -97,6 +104,11 @@ function load(): PresenceState {
           : null,
       marketContextAt:
         typeof parsed.marketContextAt === 'string' ? parsed.marketContextAt : null,
+      marketConversation:
+        typeof parsed.marketConversation === 'object' &&
+        parsed.marketConversation !== null
+          ? parsed.marketConversation
+          : null,
     }
   } catch {
     return EMPTY_PRESENCE

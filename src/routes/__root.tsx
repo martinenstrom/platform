@@ -64,10 +64,11 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <RootDocument>
+      {/* First in the document, so the keyboard reaches the rail before the page: Tab lands on the spine, then the work. */}
+      <JarvisPresence />
       <AppLayout>
         <Outlet />
       </AppLayout>
-      <JarvisPresence />
     </RootDocument>
   )
 }

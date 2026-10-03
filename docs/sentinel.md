@@ -126,8 +126,10 @@ synthetic repository with everything else (per process, TD-104).
   Sentinel_ module between the market overview and the market detail, and
   the market command centre became a client page with a globe on it. The
   navigation pass removed both: the home page is the market, and Sentinel
-  is reached through the JARVIS gateway in the rail (JARVIS → Klienter /
-  Sentinel / Marknadspåverkan). The engine, the route and the tests are
+  is reached through the JARVIS gateway (JARVIS → Klienter / Sentinel /
+  Marknadspåverkan); since the global rail of 2026-10-03 the gateway opens
+  on Sentinel itself, and Klienter has a rail entry of its own. The engine,
+  the route and the tests are
   unchanged; the components `SentinelBriefList` and `SentinelGreeting`
   remain but no surface renders them.
 - **`/sentinel`.** Six counts (act today, meetings within 7 days, overdue

@@ -110,6 +110,14 @@ export function answerHeadline(answer: JarvisAnswer): string {
     MEETING_PACK_PPTX: `PowerPoint inför mötet · ${name}`,
     MEETING_PACK_PDF: `PDF inför mötet · ${name}`,
     MEETING_PACK_UPDATE: `Uppdaterat mötesunderlag · ${name}`,
+    NEXT_MEETING: `Nästa möte · ${name}`,
+    FOLLOW_UP_MORE: 'Resten',
+    FOLLOW_UP_ITEM: 'Mer om punkten',
+    FOLLOW_UP_EVIDENCE: 'Vad det bygger på',
+    CLARIFY_CLIENT: 'Vilken klient menar du?',
+  }
+  if (answer.continues && answer.intent.startsWith('FOLLOW_UP')) {
+    return `${HEAD[answer.intent]} · ${HEAD[answer.continues]}`
   }
   return HEAD[answer.intent]
 }
@@ -150,6 +158,8 @@ export const SECTION_TITLE: Record<SectionKey, string> = {
   objectives: 'Mål med mötet',
   readiness: 'Status',
   contents: 'Innehåll',
+  clarify: 'Förtydliga',
+  evidence: 'Underlag',
 }
 
 export const NATURE_LABEL: Record<ItemNature, string> = {
@@ -198,6 +208,13 @@ const NOTE_TEXT: Record<NoteKind, string> = {
   'no-external-assets': 'Inga tillgångar utanför banken är registrerade.',
   'no-affected-clients': 'Ingen klient berörs meningsfullt av dagens rörelser.',
   'not-answerable-here': 'Det kan jag inte svara på härifrån.',
+  unclear: 'Jag uppfattade inte det. Kan du säga det igen?',
+  'nothing-to-continue': 'Det finns inget mer att ta från det senaste svaret.',
+}
+
+/** What an empty section says, for a renderer outside this module (the voice). */
+export function noteText(kind: NoteKind): string {
+  return NOTE_TEXT[kind]
 }
 
 const FIGURE_LABEL = {
@@ -405,6 +422,11 @@ export function itemText(
       return {
         text: `${item.affected.client.displayName} · ${RELEVANCE_LABEL[item.affected.impact.relevance]}`,
         detail: marketMoveText(item.event),
+      }
+    case 'clarify-client':
+      return {
+        text: `Menar du ${item.candidates.map((c) => c.displayName).join(' eller ')}?`,
+        detail: 'Säg hela namnet, så svarar jag om rätt klient.',
       }
     case 'pack-readiness':
       return {

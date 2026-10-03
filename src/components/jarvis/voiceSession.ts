@@ -32,11 +32,17 @@
  */
 
 import type { DomainReference } from '~/application/analysis/domainSystem'
+import type { JarvisAnswer } from '~/application/jarvis/answer'
 import {
   closeLiveSessionFn,
+  hearInLiveSessionFn,
   liveSessionStateFn,
   openLiveSessionFn,
   typeIntoLiveSessionFn,
+  updateLiveSessionContextFn,
+  type AdvisoryEntry,
+  type LiveVoiceMode,
+  type MarketContextPointer,
 } from '~/infrastructure/jarvis/serverFns'
 
 export type VoiceStatus =
@@ -49,8 +55,10 @@ export type TypedReply =
       say: string
       reference: DomainReference | null
       lastAsk: { question: string; subject: string } | null
-      /** A market brief was fetched or attached; handed back with the next line. */
-      marketContext: { at: string } | null
+      /** A market brief was fetched or attached, and what the answer was about; handed back with the next line. */
+      marketContext: MarketContextPointer | null
+      /** The record answered: the structured answer the presence renders, beside what the voice said. */
+      advisory: JarvisAnswer | null
     }
   | { ok: false }
 
@@ -61,6 +69,8 @@ export interface VoiceSnapshot {
   notice: string | null
   seconds: number
   costUsd: number
+  /** The simulated provider: no microphone, no speaker; lines are typed and the answers come back as text. */
+  simulated: boolean
 }
 
 /** What the microphone says for each state, and what pressing it does. */
@@ -99,6 +109,8 @@ export interface VoiceSessionEvents {
     reference: DomainReference,
     ask: { question: string; subject: string } | null,
   ): void
+  /** The record answered a spoken line: the structured answer, what the voice said, the door it opens. */
+  onAdvisory(entry: AdvisoryEntry): void
 }
 
 const IDLE: VoiceSnapshot = {
@@ -107,7 +119,10 @@ const IDLE: VoiceSnapshot = {
   notice: null,
   seconds: 0,
   costUsd: 0,
+  simulated: false,
 }
+
+export const SIMULATED_NOTICE = 'Rösten är simulerad: skriv det du skulle ha sagt.'
 
 const VAD_THRESHOLD = 0.02
 const VAD_HOLD_MS = 600
@@ -127,6 +142,10 @@ export class VoiceSession {
   private userEndMs: number | null = null
   private mutedForBargeIn = false
   private stopVad: (() => void) | null = null
+  /** Where the advisor is, as last told to the session; sent at open and on every change while live. */
+  private route: string | null = null
+  /** The last answer from the record the presence has rendered, by its sequence number. */
+  private seenSeq = 0
   private readonly onPageHide = () => this.teardown()
 
   constructor(
@@ -146,7 +165,9 @@ export class VoiceSession {
   }
 
   get active(): boolean {
-    return this.pc !== null
+    return (
+      this.pc !== null || (this.snapshot.simulated && this.snapshot.sessionId !== null)
+    )
   }
 
   private set(change: Partial<VoiceSnapshot>) {
@@ -156,9 +177,22 @@ export class VoiceSession {
 
   /* ------------------------------------------------------------- start */
 
-  async start(reference: DomainReference | null): Promise<void> {
-    if (this.pc) return
-    this.set({ status: 'connecting', notice: null, seconds: 0, costUsd: 0 })
+  async start(
+    reference: DomainReference | null,
+    route: string | null = null,
+    mode: LiveVoiceMode = { configured: true, simulated: false },
+  ): Promise<void> {
+    if (this.pc || this.snapshot.simulated) return
+    this.route = route
+    this.seenSeq = 0
+    if (mode.simulated) return this.startSimulated(reference)
+    this.set({
+      status: 'connecting',
+      notice: null,
+      seconds: 0,
+      costUsd: 0,
+      simulated: false,
+    })
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (error) {
@@ -211,7 +245,11 @@ export class VoiceSession {
     })
     const sdp = pc.localDescription?.sdp ?? offer.sdp ?? ''
     const opened = await openLiveSessionFn({
-      data: { sdp, ...(reference ? { reference } : {}) },
+      data: {
+        sdp,
+        ...(reference ? { reference } : {}),
+        ...(this.route ? { context: { route: this.route } } : {}),
+      },
     })
     if (!opened.ok) {
       this.teardown()
@@ -230,15 +268,86 @@ export class VoiceSession {
     this.ticker = setInterval(() => this.tick(), 300)
   }
 
+  /**
+   * The simulated provider: no microphone, no peer connection. The session
+   * exists on the server with its route; what the person "says" goes in as
+   * text through `hear`, and the answers come back the way a real session's
+   * do — polled, numbered, rendered once.
+   */
+  private async startSimulated(reference: DomainReference | null): Promise<void> {
+    this.set({
+      status: 'connecting',
+      notice: null,
+      seconds: 0,
+      costUsd: 0,
+      simulated: true,
+    })
+    const opened = await openLiveSessionFn({
+      data: {
+        sdp: 'simulated',
+        ...(reference ? { reference } : {}),
+        ...(this.route ? { context: { route: this.route } } : {}),
+      },
+    })
+    if (!opened.ok || !opened.simulated) {
+      this.set({
+        status: 'idle',
+        simulated: false,
+        notice: opened.ok ? VOICE_NOTICE.unavailable : VOICE_NOTICE.notConfigured,
+      })
+      return
+    }
+    window.addEventListener('pagehide', this.onPageHide)
+    this.set({
+      sessionId: opened.sessionId,
+      status: 'listening',
+      notice: SIMULATED_NOTICE,
+    })
+    this.poll = setInterval(() => void this.refresh(), 2000)
+  }
+
+  /** The advisor moved: the session answers against the new route from now on. */
+  setContext(route: string): void {
+    this.route = route
+    const sessionId = this.snapshot.sessionId
+    if (!sessionId || !this.active) return
+    void updateLiveSessionContextFn({ data: { sessionId, context: { route } } }).catch(
+      () => {
+        /* The next line carries the route again; nothing the person sees changes. */
+      },
+    )
+  }
+
+  /** A spoken line as text, into the simulated session; the answer arrives through `onAdvisory`. */
+  async hear(text: string): Promise<AdvisoryEntry | null> {
+    const sessionId = this.snapshot.sessionId
+    if (!this.snapshot.simulated || !sessionId) return null
+    this.set({ status: 'thinking' })
+    try {
+      const heard = await hearInLiveSessionFn({ data: { sessionId, text } })
+      if (!heard.ok) {
+        this.set({ status: 'listening' })
+        return null
+      }
+      this.seenSeq = Math.max(this.seenSeq, heard.entry.seq)
+      this.events.onAdvisory(heard.entry)
+      this.set({ status: 'listening' })
+      return heard.entry
+    } catch {
+      this.set({ status: 'listening' })
+      return null
+    }
+  }
+
   /* -------------------------------------------------------------- stop */
 
   /** The person's own stop, or the presence collapsing: the paid session ends now. */
   async stop(): Promise<void> {
-    if (!this.pc) return
+    if (!this.active) return
     const sessionId = this.snapshot.sessionId
     this.closingByUs = true
     this.teardown()
-    this.set({ status: 'idle', notice: null })
+    this.set({ status: 'idle', notice: null, sessionId: null, simulated: false })
     if (sessionId) {
       try {
         await closeLiveSessionFn({ data: { sessionId } })
@@ -251,7 +360,7 @@ export class VoiceSession {
   private end(notice: string | null) {
     this.closingByUs = true
     this.teardown()
-    this.set({ status: 'idle', notice })
+    this.set({ status: 'idle', notice, sessionId: null, simulated: false })
   }
 
   private teardown() {
@@ -271,6 +380,7 @@ export class VoiceSession {
     this.mutedForBargeIn = false
     this.delegationPending = false
     this.userEndMs = null
+    this.seenSeq = 0
   }
 
   /* -------------------------------------------------------------- typed */
@@ -284,26 +394,40 @@ export class VoiceSession {
   async type(
     text: string,
     history: readonly { by: 'user' | 'jarvis'; text: string }[] = [],
-    marketContext: { at: string } | null = null,
+    marketContext: MarketContextPointer | null = null,
+    previous: JarvisAnswer | null = null,
   ): Promise<TypedReply> {
     const sessionId = this.snapshot.sessionId
-    if (!this.pc || !sessionId) return { ok: false }
+    if (!this.active || !sessionId) return { ok: false }
     const result = await typeIntoLiveSessionFn({
       data: {
         sessionId,
         text,
         ...(history.length > 0 ? { history: [...history] } : {}),
         ...(marketContext ? { marketContext } : {}),
+        ...(this.route ? { context: { route: this.route } } : {}),
+        ...(previous ? { previous } : {}),
       },
     })
-    /* A live line is the model's turn; the record's structured answer never comes this way. */
-    if (!result.ok || 'advisory' in result) return { ok: false }
+    if (!result.ok) return { ok: false }
+    /* The record answered: the structured answer for the screen; the voice says the spoken rendering. */
+    if ('advisory' in result) {
+      return {
+        ok: true,
+        say: result.spoken ?? '',
+        reference: null,
+        lastAsk: null,
+        marketContext: null,
+        advisory: result.advisory,
+      }
+    }
     return {
       ok: true,
       say: result.say,
       reference: result.reference,
       lastAsk: result.lastAsk,
       marketContext: result.marketContext,
+      advisory: null,
     }
   }
 
@@ -379,7 +503,8 @@ export class VoiceSession {
   }
 
   private tick() {
-    if (!this.pc || this.snapshot.status === 'connecting') return
+    if (!this.pc || this.snapshot.simulated || this.snapshot.status === 'connecting')
+      return
     const status: VoiceStatus =
       performance.now() - this.assistantLastFragmentAt < SPEAKING_WINDOW_MS
         ? 'speaking'
@@ -392,7 +517,7 @@ export class VoiceSession {
   /** The server's view: cost, and the case the firm bound. Never a transcript. */
   private async refresh() {
     const sessionId = this.snapshot.sessionId
-    if (!sessionId || !this.pc) return
+    if (!sessionId || !this.active) return
     try {
       const state = await liveSessionStateFn({ data: { sessionId } })
       if (!state.ok) return
@@ -401,7 +526,13 @@ export class VoiceSession {
         costUsd: state.telemetry.voiceCostUsd + state.telemetry.backend.costUsd,
       })
       if (state.reference) this.events.onReference(state.reference, state.lastAsk)
-      if (state.closed && this.pc) {
+      /* The record's answers since the last poll, each rendered once. */
+      for (const entry of state.advisory ?? []) {
+        if (entry.seq <= this.seenSeq) continue
+        this.seenSeq = entry.seq
+        this.events.onAdvisory(entry)
+      }
+      if (state.closed && this.active) {
         const reason = state.telemetry.reason ?? ''
         this.end(
           reason.startsWith('idle')

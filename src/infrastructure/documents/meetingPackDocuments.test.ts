@@ -2,10 +2,11 @@
 /**
  * The generated files, read back: the PowerPoint opens as a zip of native
  * slides with editable text, tables, charts and notes and no picture; the
- * PDF opens with the expected pages, titles, figures, footer and page
- * numbers; and, from one pack, the two formats agree on the client, the
- * meeting, the focus, the figures, the commitments and the data date. The
- * store versions without overwriting; the policy is enforced at the door.
+ * PDF opens as a briefing book with a content cover, the chapters, the
+ * footer and page numbers; and, from one pack, the two formats agree on
+ * the client, the meeting, the focus, the figures, the totals, the
+ * commitments and the data date. The store versions without overwriting;
+ * the policy is enforced at the door.
  */
 
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
@@ -18,7 +19,7 @@ import { FakeClock } from '~/domain/shared/clock'
 import { createSyntheticAdvisoryRepositories } from '~/infrastructure/advisory/syntheticRepositories'
 import { syntheticClients } from '~/infrastructure/advisory/syntheticClients'
 import { composePackDocument } from '~/presentation/documents/meetingPackDocument'
-import type { PackDocument } from '~/presentation/documents/packDocument'
+import type { PackBlock, PackDocument } from '~/presentation/documents/packDocument'
 import {
   readPdf,
   readPptx,
@@ -55,6 +56,17 @@ beforeAll(async () => {
 
 const ids = () => [...Object.keys(pack.titles), pack.identity.clientId]
 
+function countBlocks(kind: PackBlock['kind']): number {
+  let n = 0
+  const walk = (block: PackBlock) => {
+    if (block.kind === kind) n += 1
+    if (block.kind === 'columns')
+      for (const col of block.columns) for (const b of col) walk(b)
+  }
+  for (const slide of doc.slides) for (const block of slide.blocks) walk(block)
+  return n
+}
+
 describe('the PowerPoint', () => {
   it('opens as one native slide per document slide, in order, with the titles', () => {
     expect(pptxBytes.subarray(0, 2).toString('latin1')).toBe('PK')
@@ -66,15 +78,41 @@ describe('the PowerPoint', () => {
     })
   })
 
-  it('is built from editable text, tables and charts — never a picture of a screen', () => {
+  it('is built from editable text, tables and native charts — one chart part per chart block, never a picture', () => {
     expect(pptx.slides.every((s) => s.texts.length > 3)).toBe(true)
-    expect(pptx.slides.some((s) => s.hasTable)).toBe(true)
-    expect(pptx.slides.filter((s) => s.hasChart).length).toBe(2)
-    expect(pptx.chartParts).toBe(2)
+    expect(pptx.slides.filter((s) => s.hasTable).length).toBeGreaterThanOrEqual(10)
+    const charts = countBlocks('chart')
+    expect(charts).toBe(4)
+    expect(pptx.slides.filter((s) => s.hasChart).length).toBe(charts)
+    expect(pptx.chartParts).toBe(charts)
     expect(pptx.slides.every((s) => !s.hasPicture)).toBe(true)
+    /* The maturity timeline is drawn from shapes on the financing slide, so its labels are text. */
+    const financing = pptx.slides[doc.slides.findIndex((s) => s.kind === 'financing')]!
+    expect(financing.texts.join(' ')).toMatch(/FÖRFALLOSTRUKTUR/)
+    expect(financing.texts.join(' ')).toMatch(/I DAG/)
+    expect(financing.texts.join(' ')).toMatch(/LIKVIDITET MOT FÖRFALL/)
   })
 
-  it('carries speaker notes on every slide that has them, and keeps them off the body', () => {
+  it('sets the totals, the margin notes and the figure strips as text the advisor can edit', () => {
+    const all = pptx.slides.map((s) => s.texts.join(' ')).join('\n')
+    for (const expected of [
+      'Summa tillgångar',
+      'Summa skulder',
+      'Nettoförmögenhet',
+      'FINANSIELL ÖVERSIKT',
+      'BALANSRÄKNING',
+      'LÅNESTRUKTUR',
+      'JARVIS-OBSERVATION',
+      'MÖTESIMPLIKATION',
+      'VARFÖR DET SPELAR ROLL',
+      'KRITISKT DATUM',
+      'ÖNSKAT UTFALL',
+    ]) {
+      expect(all, expected).toContain(expected)
+    }
+  })
+
+  it('carries speaker notes on every slide that has them, in reading order, and keeps the internal ones off the body', () => {
     doc.slides.forEach((slide, i) => {
       const reading = pptx.slides[i]!
       if (slide.notes.length === 0) return
@@ -82,56 +120,90 @@ describe('the PowerPoint', () => {
       for (const note of slide.notes) expect(notes, slide.kind).toContain(note.text)
       const body = reading.texts.join('\n')
       const internalOnly = slide.notes.find(
-        (n) => n.kind === 'do-not-claim' || n.kind === 'watch-out',
+        (n) => n.kind === 'do-not-claim' || n.kind === 'verify',
       )
-      if (internalOnly) expect(body).not.toContain(internalOnly.text)
+      if (internalOnly) expect(body, slide.kind).not.toContain(internalOnly.text)
     })
+    const financingNotes =
+      pptx.slides[doc.slides.findIndex((s) => s.kind === 'financing')]!.notes.join('\n')
+    expect(financingNotes.indexOf('TALEPUNKT')).toBeLessThan(
+      financingNotes.indexOf('VARFÖR DET SPELAR ROLL'),
+    )
+    expect(financingNotes.indexOf('VARFÖR DET SPELAR ROLL')).toBeLessThan(
+      financingNotes.indexOf('PÅSTÅ INTE'),
+    )
+    expect(financingNotes.indexOf('PÅSTÅ INTE')).toBeLessThan(
+      financingNotes.indexOf('FÖLJDFRÅGA'),
+    )
+    expect(financingNotes.indexOf('FÖLJDFRÅGA')).toBeLessThan(
+      financingNotes.indexOf('KÄLLA'),
+    )
   })
 
-  it('names the right client and meeting on every slide, with the footer and no id', () => {
+  it('names the right client and meeting on every slide, with the metadata footer and no id', () => {
     for (const slide of pptx.slides) {
       const texts = slide.texts.join(' ')
       expect(texts).toContain('Anna & Per Dahlqvist')
       expect(texts).toContain('KONFIDENTIELLT · INTERNT RÅDGIVARMATERIAL')
       expect(texts).toMatch(/Data per 23 sep 2026/)
+      expect(texts).toMatch(/Genererad 2026-09-23 10:00/)
+      expect(texts).toMatch(/Möte 26 sep 2026/)
       expect(texts).toMatch(new RegExp(`Bild ${slide.index} / ${doc.slides.length}`))
       expect(texts).toContain('INTERNT')
       for (const id of ids()) expect(texts, id).not.toContain(id)
     }
-    expect(pptx.slides[0]!.texts.join(' ')).toContain('möte 26 sep')
+    expect(pptx.slides[0]!.texts.join(' ')).toMatch(/MÖTE 26 sep 2026 om 3 dagar/)
+    expect(pptx.slides[0]!.texts.join(' ')).toMatch(/RÅDGIVARE Sofia/)
   })
 })
 
 describe('the PDF', () => {
-  it('opens with one section per slide, the titles selectable as text', () => {
+  it('opens as a briefing book: a cover that carries the brief, one chapter per core slide, the appendix flowing', () => {
     expect(pdfBytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
-    expect(pdf.pageCount).toBeGreaterThanOrEqual(doc.slides.length)
-    expect(pdf.pageCount).toBeLessThanOrEqual(doc.slides.length + 8)
+    expect(pdf.pageCount).toBeGreaterThanOrEqual(doc.coreCount)
+    expect(pdf.pageCount).toBeLessThanOrEqual(doc.slides.length + 6)
     const all = pdf.pages.join('\n')
     for (const slide of doc.slides) {
       expect(all, slide.kind).toContain(slide.kicker.toUpperCase())
     }
     expect(all).toContain(doc.slides[1]!.headline)
     expect(pdf.title).toBe('Mötesunderlag · Anna & Per Dahlqvist')
+    const cover = pdf.pages[0]!
+    expect(cover).toContain('MÖTESUNDERLAG · KONFIDENTIELLT')
+    expect(cover).toContain('Rådgivare Sofia · Kontor Arbetargatan')
+    expect(cover).toMatch(/källposter/)
+    expect(cover).toMatch(/genererad 2026-09-23 10:00/)
+    expect(cover).toContain('EXECUTIVE MEETING BRIEF')
+    expect(cover).toContain('MÖTETS HUVUDFOKUS')
+    expect(cover).toContain('TOPP 3 PRIORITERINGAR')
   })
 
-  it('numbers its pages, carries the confidential footer, the client and the figures, and no id', () => {
+  it('numbers its pages, carries the running header, the footer, the figures, the totals and the notes, and no id', () => {
     pdf.pages.forEach((page, i) => {
       expect(page, `page ${i + 1}`).toContain(`Sida ${i + 1} / ${pdf.pageCount}`)
       expect(page).toContain('KONFIDENTIELLT · INTERNT RÅDGIVARMATERIAL')
       expect(page).toContain('Anna & Per Dahlqvist')
+      expect(page).toMatch(/Genererad 2026-09-23 10:00/)
+      if (i > 0)
+        expect(page).toContain('MÖTESUNDERLAG · Anna & Per Dahlqvist · Möte 26 sep 2026')
       for (const id of ids()) expect(page, id).not.toContain(id)
     })
     const all = pdf.pages.join(' ')
     expect(all).toContain('42,0 MSEK')
     expect(all).toContain('22,5 MSEK')
+    expect(all).toContain('Summa tillgångar')
+    expect(all).toContain('Summa skulder')
     expect(all).toContain('TALEPUNKTER · INTERNT')
+    expect(all).toContain('VARFÖR DET SPELAR ROLL')
+    expect(all).toContain('MÖTESIMPLIKATION')
+    expect(all).toContain('FÖRFALLOSTRUKTUR')
+    expect(all).toContain('FÖRMÖGENHETENS SAMMANSÄTTNING')
     expect(all).not.toMatch(/−|→/)
   })
 })
 
 describe('cross-format consistency', () => {
-  it('the two files say the same thing about the client, the meeting, the focus, the figures, the promises and the date', () => {
+  it('the two files say the same thing about the client, the meeting, the headlines, the figures, the totals, the promises and the date', () => {
     const slidesText = pptx.slides.map((s) => s.texts.join(' ')).join('\n')
     const pagesText = pdf.pages.join('\n')
     const normalise = (t: string) => t.replace(/−/g, '-').replace(/\s+/g, ' ')
@@ -139,16 +211,17 @@ describe('cross-format consistency', () => {
     const b = normalise(pagesText)
     const shared = [
       pack.identity.clientName,
-      doc.slides[0]!.blocks.find((x) => x.kind === 'kpis')!.kind === 'kpis'
-        ? '26 sep 2026'
-        : '',
+      '26 sep 2026',
       ...doc.slides.map((s) => s.headline),
       '42,0 MSEK',
       '4,9 MSEK',
       '22,5 MSEK',
       '19,5 MSEK',
+      'Summa tillgångar',
+      'Nettoförmögenhet',
       ...pack.commitments.map((p) => p.commitment.title),
       'Data per 23 sep 2026',
+      'Genererad 2026-09-23 10:00',
     ].filter((t) => t.length > 0)
     for (const text of shared) {
       const t = normalise(text)

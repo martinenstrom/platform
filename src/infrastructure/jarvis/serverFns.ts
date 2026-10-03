@@ -30,6 +30,7 @@ import {
   type MarketBrief,
   type MarketScope,
 } from '~/application/jarvis/marketBrief'
+import type { MarketHistorySource } from '~/application/jarvis/marketHistory'
 import type { Container } from '~/infrastructure/marketData/container'
 import {
   createLiveRuntime,
@@ -41,6 +42,11 @@ import {
   type TypedTurnResult,
 } from './liveSession'
 import { createOpenAiLiveProvider, LiveProviderRefusal } from './openaiLive'
+import { createSimulatedLiveProvider } from './simulatedLive'
+import { workspaceLabel, workspaceTurn } from './workspaceTurn'
+import { parseRouteContext } from '~/application/jarvis/liveOpen'
+import type { AdvisoryEntry } from './liveSession'
+import type { JarvisAnswer } from '~/application/jarvis/answer'
 
 /* ------------------------------------------------------------- config */
 
@@ -151,17 +157,57 @@ async function marketBrief(
   return composeMarketBrief(parts, scope, source.now())
 }
 
+/**
+ * A period's series for "i veckan", "i år", through the registry's series
+ * capability. Bound lazily per call, like the brief, so nothing at module
+ * level names the container.
+ */
+function marketHistory(getContainer: ContainerGetter): MarketHistorySource {
+  return {
+    series: async (symbol, range) => {
+      const container = await getContainer()
+      const { createMarketHistorySource } =
+        await import('~/infrastructure/marketData/marketHistorySource')
+      return createMarketHistorySource(container, container.newCorrelationId()).series(
+        symbol,
+        range,
+      )
+    },
+  }
+}
+
+/** The voice path without audio: every server-side part of it, no provider. Explicit, never default. */
+const simulatedVoice = () => process.env.JARVIS_LIVE_SIMULATE === '1'
+
+/**
+ * The relationship record's one context, reached by a dynamic import inside
+ * a function body (TD-107 discipline): the advisory tier of the voice path
+ * reads the same record the typed path does.
+ */
+async function advisory(): Promise<AdvisoryContext> {
+  const { advisoryContext } = await import('~/infrastructure/advisory/serverFns')
+  return advisoryContext(() => import('~/infrastructure/advisory/marketSource'))
+}
+
 function runtime(getContainer: ContainerGetter): LiveRuntime | null {
   const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return null
+  const simulated = simulatedVoice()
+  if (!apiKey && !simulated) return null
   if (!live) {
     live = createLiveRuntime({
-      provider: createOpenAiLiveProvider({
-        apiKey,
-        networkDisabled: process.env.JARVIS_LIVE_NETWORK_DISABLED === '1',
-      }),
+      provider: simulated
+        ? createSimulatedLiveProvider()
+        : createOpenAiLiveProvider({
+            apiKey: apiKey ?? '',
+            networkDisabled: process.env.JARVIS_LIVE_NETWORK_DISABLED === '1',
+          }),
       host,
       market: (scope) => marketBrief(scope, getContainer),
+      history: marketHistory(getContainer),
+      /* The one brain: the voice's workspace questions go through the same advisory tier as a typed line. */
+      workspace: (input) => workspaceTurn(advisory, input),
+      workspaceLabel: (route) => workspaceLabel(advisory, route),
+      simulated,
       config: liveConfig(),
       log: (line) => console.log(`[jarvis/live] ${line}`),
     })
@@ -172,7 +218,7 @@ function runtime(getContainer: ContainerGetter): LiveRuntime | null {
 /* -------------------------------------------------------- the requests */
 
 export type LiveOpenResponse =
-  | { ok: true; sessionId: string; sdp: string }
+  | { ok: true; sessionId: string; sdp: string; simulated: boolean }
   | {
       ok: false
       code:
@@ -189,7 +235,11 @@ export const openLiveSessionFn = createServerFn({ method: 'POST' })
     const rt = runtime(getContainer)
     if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
     try {
-      const opened = await rt.open(parsed.request)
+      const { context, ...rest } = parsed.request
+      const opened = await rt.open({
+        ...rest,
+        ...(context ? { route: context.route } : {}),
+      })
       return { ok: true, ...opened }
     } catch (error) {
       if (error instanceof LiveProviderRefusal) {
@@ -204,6 +254,24 @@ export const openLiveSessionFn = createServerFn({ method: 'POST' })
 export type LiveStateResponse =
   ({ ok: true } & LiveSessionState) | { ok: false; code: 'NOT_FOUND' | 'NOT_CONFIGURED' }
 
+export type { AdvisoryEntry }
+export type { MarketContextPointer } from '~/application/jarvis/askJarvis'
+
+export interface LiveVoiceMode {
+  /** A session can be opened: a key is configured, or the simulated provider is on. */
+  configured: boolean
+  /** The simulated provider: no audio, lines arrive as text through `hearInLiveSessionFn`. */
+  simulated: boolean
+}
+
+/** What kind of voice the server offers, so the browser knows whether to open a microphone at all. */
+export const liveVoiceModeFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<LiveVoiceMode> => ({
+    configured: Boolean(process.env.OPENAI_API_KEY) || simulatedVoice(),
+    simulated: simulatedVoice(),
+  }),
+)
+
 export const liveSessionStateFn = createServerFn({ method: 'POST' })
   .validator((input: { sessionId: string }) => ({ sessionId: String(input.sessionId) }))
   .handler(async ({ data }): Promise<LiveStateResponse> => {
@@ -215,12 +283,60 @@ export const liveSessionStateFn = createServerFn({ method: 'POST' })
   })
 
 /**
+ * The advisor moved while the session is live: the browser sends the route
+ * and nothing else, and the server re-resolves the workspace from it — the
+ * voice answers about what is on screen now, never about where the
+ * conversation began.
+ */
+export const updateLiveSessionContextFn = createServerFn({ method: 'POST' })
+  .validator((input: { sessionId: string; context: unknown }) => ({
+    sessionId: String(input.sessionId),
+    context: input.context,
+  }))
+  .handler(async ({ data }): Promise<LiveStateResponse> => {
+    const context = parseRouteContext(data.context)
+    if (!context) return { ok: false, code: 'NOT_FOUND' }
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
+    if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
+    const state = rt.setContext(data.sessionId, context.route)
+    return state ? { ok: true, ...state } : { ok: false, code: 'NOT_FOUND' }
+  })
+
+export type LiveHearResponse =
+  | { ok: true; entry: AdvisoryEntry }
+  | {
+      ok: false
+      code: 'NOT_FOUND' | 'NOT_CONFIGURED' | 'NOT_SIMULATED' | 'INVALID_REQUEST'
+    }
+
+/**
+ * The simulated microphone: a spoken line as text, into a simulated session,
+ * through exactly the turn the voice's workspace tool runs. Refused for a
+ * real session — a real voice hears the person itself.
+ */
+export const hearInLiveSessionFn = createServerFn({ method: 'POST' })
+  .validator((input: { sessionId: string; text: string }) => ({
+    sessionId: String(input.sessionId),
+    text: String(input.text),
+  }))
+  .handler(async ({ data }): Promise<LiveHearResponse> => {
+    if (!simulatedVoice()) return { ok: false, code: 'NOT_SIMULATED' }
+    if (data.text.length > 2_000) return { ok: false, code: 'INVALID_REQUEST' }
+    const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
+    const rt = runtime(getContainer)
+    if (!rt) return { ok: false, code: 'NOT_CONFIGURED' }
+    const entry = await rt.hear(data.sessionId, data.text)
+    return entry ? { ok: true, entry } : { ok: false, code: 'NOT_FOUND' }
+  })
+
+/**
  * What a typed line came back with: a structured answer from the
  * relationship record when the workspace made the line the record's, else
  * the model's answer as text and the case it may have bound.
  */
 export type AskJarvisResponse =
-  | ({ ok: true } & AdvisoryTurnResult)
+  | ({ ok: true; spoken?: string } & AdvisoryTurnResult)
   | ({ ok: true } & TypedTurnResult)
   | {
       ok: false
@@ -283,9 +399,10 @@ export const askJarvisFn = createServerFn({ method: 'POST' })
   })
 
 /**
- * A typed line while a session is live: the same router, and the answer is
- * then handed to the voice to say. The voice model never sees the question
- * on its own, so it cannot answer it on its own.
+ * A typed line while a session is live: the same router — the record first,
+ * with the route the browser sends — and the answer is then handed to the
+ * voice to say. The voice model never sees the question on its own, so it
+ * cannot answer it on its own.
  */
 export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
   .validator(
@@ -294,6 +411,8 @@ export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
       text: string
       history?: unknown
       marketContext?: unknown
+      context?: unknown
+      previous?: unknown
     }) => ({
       sessionId: String(input.sessionId),
       text: String(input.text),
@@ -301,11 +420,22 @@ export const typeIntoLiveSessionFn = createServerFn({ method: 'POST' })
       ...(input.marketContext !== undefined
         ? { marketContext: input.marketContext }
         : {}),
+      ...(input.context !== undefined ? { context: input.context } : {}),
+      ...(input.previous !== undefined ? { previous: input.previous } : {}),
     }),
   )
   .handler(async ({ data }): Promise<AskJarvisResponse> => {
     const { getContainer } = await import('~/infrastructure/marketData/containerInstance')
-    return typedTurn(data, getContainer)
+    const result = await typedTurn(data, getContainer, advisory)
+    if (result.ok && 'advisory' in result) {
+      /* The record answered: the voice says the spoken rendering, and remembers the answer for a spoken "ta resten". */
+      const rt = runtime(getContainer)
+      const { spokenAnswerOf } = await import('~/presentation/jarvis/spokenAnswer')
+      const spoken = spokenAnswerOf(result.advisory)
+      rt?.speak(data.sessionId, data.text, spoken.say, result.advisory as JarvisAnswer)
+      return { ...result, spoken: spoken.say }
+    }
+    return result
   })
 
 export const closeLiveSessionFn = createServerFn({ method: 'POST' })

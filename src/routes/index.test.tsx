@@ -139,9 +139,10 @@ describe('one navigation language per screen', () => {
     ).toBeInTheDocument()
     /* Outside the JARVIS workspace the rail is one band: no doors, no menu. */
     expect(screen.queryByRole('navigation', { name: 'JARVIS' })).toBeNull()
+    /* The gateway opens on JARVIS's own front, Sentinel; Klienter has an entry of its own in the global rail. */
     expect(screen.getByRole('link', { name: 'JARVIS' })).toHaveAttribute(
       'href',
-      '/clients',
+      '/sentinel',
     )
     view.unmount()
   })

@@ -1,11 +1,13 @@
 import {
   Activity,
+  Globe,
   Landmark,
   LayoutDashboard,
   Library,
   Radar,
   Settings,
   Sparkles,
+  UsersRound,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -29,9 +31,9 @@ export interface NavItem {
  * home page a client page with a globe on it. The home page is the market
  * command centre again; everything about clients is here, one level in.
  *
- * The entry is defined once — `WORKSPACE_ENTRY` — and the gateway opens on
- * it, so the rail, the presence's shortcuts and Huvudkontoret's doors agree
- * on where JARVIS begins.
+ * The relationship book is defined once — `WORKSPACE_ENTRY` — and is the
+ * first door, the global rail's Klienter shortcut and the presence's first
+ * shortcut, so every surface agrees on where the clients are.
  */
 const WORKSPACE_ENTRY: NavItem = { to: '/clients', label: 'Klienter', icon: Users }
 
@@ -41,9 +43,16 @@ export const jarvisNav: NavItem[] = [
   { to: '/market-impact', label: 'Marknadspåverkan', icon: Activity },
 ]
 
-/** The gateway in the primary rail: JARVIS, opening on the client directory. */
+/**
+ * The gateway: JARVIS, opening on Sentinel — JARVIS's own reading of who
+ * needs the advisor today. It opened on the relationship book while that
+ * was the only way in; since the global rail carries Klienter as a shortcut
+ * of its own, JARVIS and Klienter are two destinations, and the gateway
+ * opens on the door that is JARVIS's. The second door of `jarvisNav` is
+ * that one; `navigation.test` holds it to `/sentinel`.
+ */
 export const jarvisGateway: NavItem = {
-  ...WORKSPACE_ENTRY,
+  ...jarvisNav[1]!,
   label: 'JARVIS',
   icon: Sparkles,
 }
@@ -61,15 +70,16 @@ export function inJarvisWorkspace(pathname: string): boolean {
  *
  *   Kommandocentral   `/`              what is happening in the world
  *   Huvudkontor       `/headquarters`  what the firm is, and what it owes
- *   JARVIS            `/clients`       whom the firm serves — the workspace above
+ *   JARVIS            `/sentinel`      whom the firm serves — the workspace above
  *   Underlag          `/evidence`      what the firm holds to reason from
  *
  * **This is the product's one definition of its destinations.** The
- * institutional top rail, the presence's shortcuts and Huvudkontoret's doors
- * all read it. The landing page used to carry a list of its own — eight
- * entries, two of them pages this file had already removed as fabricated —
- * which is how one product came to describe itself three different ways on
- * three screens.
+ * institutional top rail, the presence's shortcuts, Huvudkontoret's doors and
+ * the global rail all read it. The landing page used to carry a list of its
+ * own — eight entries, two of them pages this file had already removed as
+ * fabricated — which is how one product came to describe itself three
+ * different ways on three screens. Each path is written once here, as a
+ * named destination, and every list is built from those.
  *
  * **Marknader is gone, and that is not a removal of anything.** It pointed at
  * the same market overview the home page now renders, so leaving it in the
@@ -91,12 +101,15 @@ export function inJarvisWorkspace(pathname: string): boolean {
  *
  * Paths must match the file routes in `src/routes`.
  */
-export const primaryNav: NavItem[] = [
-  { to: '/', label: 'Kommandocentral', icon: LayoutDashboard },
-  { to: '/headquarters', label: 'Huvudkontor', icon: Landmark },
-  jarvisGateway,
-  { to: '/evidence', label: 'Underlag', icon: Library },
-]
+const MARKET: NavItem = { to: '/', label: 'Kommandocentral', icon: LayoutDashboard }
+const HEADQUARTERS: NavItem = {
+  to: '/headquarters',
+  label: 'Huvudkontor',
+  icon: Landmark,
+}
+const EVIDENCE: NavItem = { to: '/evidence', label: 'Underlag', icon: Library }
+
+export const primaryNav: NavItem[] = [MARKET, HEADQUARTERS, jarvisGateway, EVIDENCE]
 
 /**
  * Utilities — reachable from every rail that carries one, never a peer of the
@@ -104,6 +117,31 @@ export const primaryNav: NavItem[] = [
  */
 export const utilityNav: NavItem[] = [
   { to: '/settings', label: 'Inställningar', icon: Settings },
+]
+
+/**
+ * The global rail — Financial OS's spine, in the strip at the left edge of
+ * every page. The same destinations as the primary navigation, named for
+ * the advisor at a glance, with the relationship book beside the market as
+ * a shortcut: an advisor goes from the market to the clients in one click,
+ * and the product hierarchy does not change for it — Klienter is still the
+ * first door of the JARVIS workspace.
+ *
+ *   Marknad      `/`              the market command centre
+ *   Klienter     `/clients`       the relationship book — a shortcut into the workspace
+ *   JARVIS       `/sentinel`      the intelligence system, on its own front
+ *   Huvudkontor  `/headquarters`  the firm
+ *   Underlag     `/evidence`      what the firm holds
+ *
+ * The rail is navigation and nothing else: no counts, no notices, no
+ * previews. Sentinel and the relationship book own those signals.
+ */
+export const globalRail: NavItem[] = [
+  { ...MARKET, label: 'Marknad', icon: Globe },
+  { ...WORKSPACE_ENTRY, icon: UsersRound },
+  jarvisGateway,
+  HEADQUARTERS,
+  EVIDENCE,
 ]
 
 /**

@@ -2,10 +2,12 @@
  * JARVIS, present beside the person in HQ.
  *
  * Mounted once, from the root route, in the space the left navigation used to
- * take. At rest it is a narrow strip: a mark, a state, and a microphone that
- * says plainly it does not listen yet. Engaged, it expands inward into a
- * conversation, a product state, and the doors to the firm's deeper surfaces
- * — and collapses again. The HQ behind it is untouched.
+ * take. At rest it is a narrow strip: a mark, a state, the Financial OS rail
+ * beneath them — the product's five destinations, Klienter one click from the
+ * market — and a microphone that says plainly it does not listen yet.
+ * Engaged, it expands inward into a conversation, a product state, and the
+ * doors to the firm's deeper surfaces — and collapses again. The HQ behind
+ * it is untouched.
  *
  * ## It talks to one thing
  *
@@ -61,6 +63,8 @@ import { ChevronLeft, Mic, Send, Sparkles } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { toneText } from '~/lib/tone'
 import { shortcutNav } from '~/lib/navigation'
+/* The Financial OS rail stands in the strip: the product's spine, beside JARVIS's mark. */
+import { GlobalRail, GlobalRailUtilities } from '~/components/layout/GlobalRail'
 import {
   financialOsHostFn,
   getCurrentOperatorFn,
@@ -68,7 +72,12 @@ import {
 import type { HostRequest, HostResult } from '~/application/analysis/hostContract'
 import { resolveJarvisContext, type JarvisContext } from '~/application/jarvis/context'
 /* The typed door: one line through the same router the voice delegates to. */
-import { askJarvisFn } from '~/infrastructure/jarvis/serverFns'
+import {
+  askJarvisFn,
+  liveVoiceModeFn,
+  type MarketContextPointer,
+} from '~/infrastructure/jarvis/serverFns'
+import type { JarvisAnswer } from '~/application/jarvis/answer'
 import { answerHeadline } from '~/presentation/jarvis/advisoryAnswerText'
 import {
   composePlaceholder,
@@ -94,6 +103,7 @@ import {
   updatePresence,
   usePresence,
   type ContextualSurface as SurfaceKind,
+  type PresenceState,
   type PresenceTurn,
 } from './presenceStore'
 import {
@@ -109,6 +119,7 @@ const IDLE_VOICE: VoiceSnapshot = {
   notice: null,
   seconds: 0,
   costUsd: 0,
+  simulated: false,
 }
 const voiceActive = (voice: VoiceSnapshot) =>
   voice.status !== 'idle' && voice.status !== 'unavailable'
@@ -255,6 +266,36 @@ export function JarvisPresence() {
                 },
           )
         },
+        /*
+         * The record answered a spoken line. The voice is saying the spoken
+         * rendering; the presence shows the structured answer with its
+         * evidence. The transcript bubble that is already forming for this
+         * reply becomes the card, so one reply is one bubble; without one,
+         * the card is the bubble.
+         */
+        onAdvisory: (entry) => {
+          const say = entry.say
+          echoUntil.current = Date.now() + 30_000
+          updatePresence((state) => {
+            const last = state.turns[state.turns.length - 1]
+            const recent =
+              last &&
+              last.by === 'jarvis' &&
+              last.via === 'voice' &&
+              Date.now() - new Date(last.at).getTime() < 30_000
+            const card = turn('jarvis', say, {
+              via: 'voice',
+              ...(entry.answer ? { answer: entry.answer } : {}),
+            })
+            return {
+              ...state,
+              turns: recent
+                ? [...state.turns.slice(0, -1), { ...card, id: last.id }]
+                : [...state.turns, card],
+            }
+          })
+          if (entry.opens) void navigate({ href: entry.opens })
+        },
       },
       audioRef.current,
     )
@@ -265,9 +306,16 @@ export function JarvisPresence() {
       void session.stop()
       voiceRef.current = null
     }
+    /* `navigate` is stable for the router's life; the session is one per presence. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** The microphone: start a session bound to the conversation's case, or end the one running. */
+  /* The advisor moved while the voice is live: the session answers against the new route from now on. */
+  useEffect(() => {
+    voiceRef.current?.setContext(route)
+  }, [route])
+
+  /** The microphone: start a session bound to the conversation's case, where the advisor is, or end the one running. */
   async function toggleVoice() {
     const session = voiceRef.current
     if (!session) return
@@ -276,7 +324,11 @@ export function JarvisPresence() {
       return
     }
     if (!presence.open) updatePresence((state) => ({ ...state, open: true }))
-    await session.start(presence.reference)
+    const mode = await liveVoiceModeFn().catch(() => ({
+      configured: true,
+      simulated: false,
+    }))
+    await session.start(presence.reference, route, mode)
   }
 
   /* Who JARVIS is talking to, as the server resolves it. Read once per opening. */
@@ -333,20 +385,64 @@ export function JarvisPresence() {
    * minutes is the conversation's memory of it, not the data's freshness —
    * the server re-reads the numbers and applies its own window.
    */
-  const recentMarketContext = (): { at: string } | null => {
+  const recentMarketContext = (): MarketContextPointer | null => {
     const at = presence.marketContextAt
     if (!at) return null
-    return Date.now() - new Date(at).getTime() < 10 * 60_000 ? { at } : null
+    if (Date.now() - new Date(at).getTime() >= 10 * 60_000) return null
+    const conversation = presence.marketConversation
+    return conversation
+      ? { at, conversation: conversation as MarketContextPointer['conversation'] }
+      : { at }
   }
+
+  /** The market pointer a reply gave back, kept for the next line; a reply without one changes nothing. */
+  const marketPointerOf = (
+    state: PresenceState,
+    pointer: MarketContextPointer | null | undefined,
+  ): Pick<PresenceState, 'marketContextAt' | 'marketConversation'> => ({
+    marketContextAt: pointer?.at ?? state.marketContextAt,
+    marketConversation: pointer
+      ? (pointer.conversation ?? null)
+      : state.marketConversation,
+  })
+
+  /** The record's last structured answer in this conversation, for a continuation. */
+  const previousAnswer = (): JarvisAnswer | null =>
+    [...presence.turns].reverse().find((entry) => entry.by === 'jarvis' && entry.answer)
+      ?.answer ?? null
 
   /** A typed line while live: routed by the server, answered here as text, then spoken by the voice. */
   async function say(text: string) {
     const history = recentHistory()
     const marketContext = recentMarketContext()
+    const session = voiceRef.current
+    /* The simulated microphone: the line is what the person said; the answer arrives as a spoken turn. */
+    if (session && voice.simulated) {
+      updatePresence((state) => ({
+        ...state,
+        turns: [...state.turns, turn('user', text, { via: 'voice' })],
+      }))
+      setBusy(true)
+      try {
+        const heard = await session.hear(text)
+        if (!heard) {
+          updatePresence((state) => ({
+            ...state,
+            turns: [
+              ...state.turns,
+              turn('jarvis', 'Röstsessionen tog inte emot det.', { tone: 'warning' }),
+            ],
+          }))
+        }
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     updatePresence((state) => ({ ...state, turns: [...state.turns, turn('user', text)] }))
     setBusy(true)
     try {
-      const reply = await voiceRef.current?.type(text, history, marketContext)
+      const reply = await session?.type(text, history, marketContext, previousAnswer())
       if (!reply?.ok) {
         updatePresence((state) => ({
           ...state,
@@ -362,12 +458,22 @@ export function JarvisPresence() {
         return
       }
       if (reply.say) echoUntil.current = Date.now() + 30_000
+      /* The record answered: the structured answer, with its evidence; the voice says the spoken form. */
+      if (reply.advisory) {
+        const answer = reply.advisory
+        updatePresence((state) => ({
+          ...state,
+          turns: [...state.turns, turn('jarvis', answerHeadline(answer), { answer })],
+        }))
+        if (answer.opens) void navigate({ href: answer.opens })
+        return
+      }
       updatePresence((state) => ({
         ...state,
         reference: reply.reference ?? state.reference,
         subject: reply.lastAsk?.subject ?? state.subject,
         question: reply.lastAsk?.question ?? state.question,
-        marketContextAt: reply.marketContext?.at ?? state.marketContextAt,
+        ...marketPointerOf(state, reply.marketContext),
         turns: [
           ...state.turns,
           turn('jarvis', reply.say || 'JARVIS svarade inte på det.'),
@@ -400,6 +506,8 @@ export function JarvisPresence() {
           ...(marketContext ? { marketContext } : {}),
           /* Where the advisor is: the server resolves the workspace from it. */
           context: { route },
+          /* The last structured answer, so "ta resten också" continues it. */
+          ...(previousAnswer() ? { previous: previousAnswer() } : {}),
         },
       })
       if (!result.ok) {
@@ -428,7 +536,7 @@ export function JarvisPresence() {
         reference: result.reference ?? state.reference,
         subject: result.lastAsk?.subject ?? state.subject,
         question: result.lastAsk?.question ?? state.question,
-        marketContextAt: result.marketContext?.at ?? state.marketContextAt,
+        ...marketPointerOf(state, result.marketContext),
         turns: [
           ...state.turns,
           turn('jarvis', result.say || 'JARVIS svarade inte på det.'),
@@ -517,13 +625,17 @@ export function JarvisPresence() {
         aria-label="JARVIS"
         onKeyDown={onKeyDown}
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-line bg-[#070c14]/95 backdrop-blur-md transition-[width] duration-200',
+          'fixed inset-y-0 left-0 z-40 flex flex-col transition-[width] duration-200',
           /*
            * Engaged, the presence fills the column the rail left — the landing
            * page reserves exactly this — and no more. Measured: a wider panel
-           * ran over the column and clipped the greeting beside it.
+           * ran over the column and clipped the greeting beside it. At rest the
+           * strip is a gradient over the room rather than a bar on it, so the
+           * photograph runs under the rail to the edge.
            */
-          open ? 'w-[306px]' : PRESENCE_STRIP_WIDTH,
+          open
+            ? 'w-[306px] border-r border-line bg-[#070c14]/95 backdrop-blur-md'
+            : `${PRESENCE_STRIP_WIDTH} rail-strip`,
         )}
       >
         {open ? (
@@ -684,8 +796,11 @@ function RestingStrip({
           {chip}
         </span>
       )}
-      <div className="mt-auto">
+      {/* The product's spine, under JARVIS's mark; the microphone and the utilities at the foot. */}
+      <GlobalRail className="mt-5" />
+      <div className="mt-auto flex w-full flex-col items-center gap-2">
         <MicrophoneButton compact voice={voice} onToggle={onToggleVoice} />
+        <GlobalRailUtilities />
       </div>
     </div>
   )
@@ -768,6 +883,12 @@ function ExpandedPanel({
           <p className="type-machine truncate text-institution" aria-label="Kontext">
             {contextName}
           </p>
+          {/* With the voice live, the same workspace — said so, beside the ear. */}
+          {live && (
+            <p className="type-machine truncate text-content" aria-label="Röstkontext">
+              JARVIS lyssnar · {contextName}
+            </p>
+          )}
           <p className="type-metadata truncate">{operator ?? '…'}</p>
         </div>
         <button
@@ -803,7 +924,21 @@ function ExpandedPanel({
             )}
           >
             {entry.answer ? (
-              <JarvisAnswerView answer={entry.answer} />
+              <>
+                {/* A spoken answer: what the voice said, then the same answer with its evidence. */}
+                {entry.via === 'voice' && entry.text && (
+                  <p className="mb-2 font-medium">
+                    {entry.text}
+                    <span
+                      className="type-machine ml-1.5 text-content-subtle"
+                      aria-label="sagt"
+                    >
+                      röst
+                    </span>
+                  </p>
+                )}
+                <JarvisAnswerView answer={entry.answer} />
+              </>
             ) : (
               <p className={cn('font-medium', entry.tone ? toneText[entry.tone] : '')}>
                 {entry.text}
@@ -944,7 +1079,9 @@ function ExpandedPanel({
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={
               live
-                ? 'Skriv in i samtalet — JARVIS svarar med rösten'
+                ? voice.simulated
+                  ? 'Skriv det du skulle ha sagt — rösten är simulerad'
+                  : 'Skriv in i samtalet — JARVIS svarar med rösten'
                 : composePlaceholder(context)
             }
             rows={2}
@@ -966,8 +1103,20 @@ function ExpandedPanel({
           <button
             type="submit"
             disabled={busy || !question.trim()}
-            aria-label={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
-            title={live ? 'Skicka in i samtalet' : 'Ställ frågan'}
+            aria-label={
+              live
+                ? voice.simulated
+                  ? 'Säg det (simulerad röst)'
+                  : 'Skicka in i samtalet'
+                : 'Ställ frågan'
+            }
+            title={
+              live
+                ? voice.simulated
+                  ? 'Säg det (simulerad röst)'
+                  : 'Skicka in i samtalet'
+                : 'Ställ frågan'
+            }
             className={cn(
               'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-content transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40',
               live && 'ml-auto',

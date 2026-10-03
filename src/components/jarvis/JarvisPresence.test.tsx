@@ -37,6 +37,7 @@ import {
   openLiveSessionFn,
   typeIntoLiveSessionFn,
 } from '~/infrastructure/jarvis/serverFns'
+import type { AdvisoryEntry } from '~/infrastructure/jarvis/serverFns'
 import type { CaseOverviewResponse } from '~/infrastructure/analysis/serverFns'
 import decided from '~/test/fixtures/caseOverview.decided.json'
 import { JarvisPresence } from './JarvisPresence'
@@ -56,6 +57,9 @@ vi.mock('~/infrastructure/jarvis/serverFns', () => ({
   liveSessionStateFn: vi.fn(),
   typeIntoLiveSessionFn: vi.fn(),
   closeLiveSessionFn: vi.fn(),
+  liveVoiceModeFn: vi.fn(async () => ({ configured: true, simulated: false })),
+  hearInLiveSessionFn: vi.fn(),
+  updateLiveSessionContextFn: vi.fn(async () => ({ ok: false, code: 'NOT_FOUND' })),
 }))
 
 const host = vi.mocked(financialOsHostFn)
@@ -282,7 +286,12 @@ beforeEach(() => {
   askJarvis.mockReset()
   askJarvis.mockResolvedValue(delegated)
   openLive.mockReset()
-  openLive.mockResolvedValue({ ok: true, sessionId: 'live-1', sdp: 'v=0 answer' })
+  openLive.mockResolvedValue({
+    ok: true,
+    sessionId: 'live-1',
+    sdp: 'v=0 answer',
+    simulated: false,
+  })
   liveState.mockReset()
   liveState.mockResolvedValue({ ok: false, code: 'NOT_FOUND' })
   typeLive.mockReset()
@@ -307,7 +316,8 @@ describe('at rest', () => {
     expect(
       within(strip).getByRole('button', { name: 'Öppna JARVIS' }),
     ).toBeInTheDocument()
-    expect(within(strip).getByText('JARVIS')).toBeInTheDocument()
+    /* The name under the mark; the rail below names its JARVIS destination the same way. */
+    expect(within(strip).getAllByText('JARVIS')[0]).toBeInTheDocument()
     const mic = within(strip).getByRole('button', { name: 'Starta röst' })
     expect(mic).toHaveAttribute('aria-pressed', 'false')
     expect(mic).toHaveTextContent('Röst')
@@ -315,11 +325,39 @@ describe('at rest', () => {
     expect(within(strip).queryByLabelText('Fråga')).toBeNull()
   })
 
-  it('is not another menu', async () => {
+  it('carries the Financial OS rail, and no second menu', async () => {
     await mountApp()
     /* The landing page owns its shell; nothing named Huvudnavigation appears there. */
     expect(screen.queryByRole('navigation', { name: 'Huvudnavigation' })).toBeNull()
-    expect(within(presence()).queryByRole('navigation')).toBeNull()
+    /*
+     * The strip is where the product's spine stands: five destinations, the
+     * relationship book among them one click from the market, the market
+     * current at home and JARVIS not. One navigation, and the presence's own
+     * conversation is not a menu.
+     */
+    const strip = presence()
+    expect(within(strip).getAllByRole('navigation')).toHaveLength(1)
+    const rail = within(strip).getByRole('navigation', { name: 'Financial OS' })
+    expect(
+      within(rail)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('title')),
+    ).toEqual(['Marknad', 'Klienter', 'JARVIS', 'Huvudkontor', 'Underlag'])
+    expect(within(rail).getByRole('link', { name: 'Klienter' })).toHaveAttribute(
+      'href',
+      '/clients',
+    )
+    expect(within(rail).getByRole('link', { name: 'Marknad' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(rail).getByRole('link', { name: 'JARVIS' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(within(strip).getByRole('link', { name: 'Inställningar' })).toHaveAttribute(
+      'href',
+      '/settings',
+    )
   })
 })
 
@@ -766,7 +804,7 @@ describe('the microphone', () => {
     expect(mic).toHaveAttribute('aria-pressed', 'true')
     expect(openLive).toHaveBeenCalledTimes(1)
     const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
-    expect(Object.keys(sent)).toEqual(['sdp'])
+    expect(Object.keys(sent)).toEqual(['sdp', 'context'])
     expect(sent.sdp).toBe('v=0 offer')
     expect(FakePeerConnection.last!.setRemoteDescription).toHaveBeenCalledWith({
       type: 'answer',
@@ -885,7 +923,7 @@ describe('the microphone', () => {
     await user.type(screen.getByLabelText('Fråga'), 'Hur går börsen?')
     await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
     expect(typeLive).toHaveBeenCalledWith({
-      data: { sessionId: 'live-1', text: 'Hur går börsen?' },
+      data: { sessionId: 'live-1', text: 'Hur går börsen?', context: { route: '/' } },
     })
     /* And the brief's time the reply carried is remembered for the next line. */
     expect(window.sessionStorage.getItem('jarvis:presence')).toContain(
@@ -951,7 +989,7 @@ describe('the microphone', () => {
     await user.click(screen.getByRole('button', { name: 'Starta röst' }))
     await screen.findByRole('button', { name: 'Avsluta röst' })
     const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
-    expect(Object.keys(sent).sort()).toEqual(['reference', 'sdp'])
+    expect(Object.keys(sent).sort()).toEqual(['context', 'reference', 'sdp'])
     expect(sent.reference).toEqual(reference)
   })
 
@@ -961,6 +999,9 @@ describe('the microphone', () => {
       closed: false,
       reference,
       lastAsk: { question: 'Hur ser du på Nvidia?', subject: 'Nvidia' },
+      route: null,
+      simulated: false,
+      advisory: [],
       telemetry: {
         voiceSeconds: 12,
         voiceCostUsd: 0.01,
@@ -1448,6 +1489,8 @@ describe('it talks to one thing', () => {
        */
       /^~\/components\/boardroom\/CaseOverviewPage$/,
       /^~\/components\/headquarters\/CaseRecord$/,
+      /* The Financial OS rail stands in the strip: navigation, read from `~/lib/navigation`, nothing of the firm. */
+      /^~\/components\/layout\/GlobalRail$/,
       /^\.\//,
     ]
     const offenders: string[] = []
@@ -1499,5 +1542,125 @@ describe('it talks to one thing', () => {
     expect(record).not.toMatch(/function CaseRecord\b/)
     expect(surface).toContain("from '~/components/boardroom/CaseOverviewPage'")
     expect(surface).toContain("from '~/components/headquarters/CaseRecord'")
+  })
+})
+
+/* ---------------------------------------------------- the voice's one brain */
+
+describe('the voice and the record', () => {
+  const answerFor = (label: string, id: string, opens?: string) => ({
+    scope: 'CLIENT' as const,
+    intent: 'KEY_FIGURES' as const,
+    about: {
+      kind: 'client' as const,
+      id,
+      label,
+      href: `/clients/${id}`,
+      switched: false,
+    },
+    sections: [
+      {
+        key: 'figures' as const,
+        items: [
+          {
+            kind: 'record-text' as const,
+            text: '42,0 MSEK i total förmögenhet',
+            nature: 'fact' as const,
+            sourceIds: [],
+          },
+        ],
+      },
+    ],
+    sources: [],
+    actions: [],
+    titles: {},
+    today: '2026-09-23',
+    confidence: 'high' as const,
+    method: 'advisory-rules-v1' as const,
+    askedAt: '2026-09-23T10:00:00.000Z',
+    ...(opens ? { opens } : {}),
+  })
+  const stateWith = (advisory: AdvisoryEntry[]) => ({
+    ok: true as const,
+    closed: false,
+    reference: null,
+    lastAsk: null,
+    route: '/',
+    simulated: false,
+    advisory,
+    telemetry: {
+      voiceSeconds: 3,
+      voiceCostUsd: 0.003,
+      backend: { costUsd: 0 },
+      reason: null,
+    } as never,
+  })
+
+  it('names the workspace beside the ear while live, and sends the route with every typed line', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    expect(screen.getByLabelText('Röstkontext')).toHaveTextContent(
+      'JARVIS lyssnar · Marknaden',
+    )
+    const sent = (openLive.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+    expect(sent.context).toEqual({ route: '/' })
+  })
+
+  it('renders the record’s spoken answer once, as a card with its evidence, and opens the door it names', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    const entry = {
+      seq: 1,
+      at: '2026-09-23T10:00:01.000Z',
+      text: 'Vad har de i totalförmögenhet?',
+      answer: answerFor('Anna & Per Dahlqvist', 'cl-dahlqvist'),
+      say: '42 miljoner i total förmögenhet.',
+      opens: null,
+      typed: false,
+    }
+    liveState.mockResolvedValue(stateWith([entry]))
+    /* The transcript of the reply is already forming; the answer becomes that bubble. */
+    channel().emit({
+      type: 'session.output_transcript.delta',
+      delta: '42 miljoner',
+      start_ms: 1000,
+      end_ms: 1500,
+    })
+    await screen.findByText('42 miljoner')
+    await screen.findByRole('region', { name: 'Siffror' }, { timeout: 4000 })
+    expect(screen.getAllByText(/Varför säger JARVIS detta/)).toHaveLength(1)
+    expect(screen.getByText('42,0 MSEK i total förmögenhet')).toBeInTheDocument()
+    /* Polled again, the same entry is not rendered twice. */
+    await new Promise((resolve) => setTimeout(resolve, 2200))
+    expect(screen.getAllByText(/Varför säger JARVIS detta/)).toHaveLength(1)
+  })
+
+  it('shows a typed line’s record answer while live as a card, with the spoken form handed to the voice', async () => {
+    const user = userEvent.setup()
+    await mountApp()
+    await goLive(user)
+    typeLive.mockResolvedValueOnce({
+      ok: true,
+      advisory: answerFor('Anna & Per Dahlqvist', 'cl-dahlqvist'),
+      context: {
+        scope: 'CLIENT',
+        route: '/clients/cl-dahlqvist',
+        clientId: 'cl-dahlqvist',
+        capabilities: [],
+      },
+      spoken: '42 miljoner i total förmögenhet.',
+    } as never)
+    await user.type(screen.getByLabelText('Fråga'), 'Vad har de i totalförmögenhet?')
+    await user.click(screen.getByRole('button', { name: 'Skicka in i samtalet' }))
+    await screen.findByRole('region', { name: 'Siffror' })
+    expect(typeLive).toHaveBeenCalledWith({
+      data: {
+        sessionId: 'live-1',
+        text: 'Vad har de i totalförmögenhet?',
+        context: { route: '/' },
+      },
+    })
   })
 })

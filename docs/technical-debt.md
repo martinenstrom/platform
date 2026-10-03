@@ -3061,7 +3061,7 @@ through the runner, with the contract tests the analysis adapter already
 has (in-memory and PostgreSQL judged by one contract), and a ruling on the
 privacy posture before the first non-synthetic client.
 
-## TD-105 · _Fråga JARVIS om klienten_ is a door of its own, not a JARVIS intent · closed 2026-09-30 (typed path)
+## TD-105 · _Fråga JARVIS om klienten_ is a door of its own, not a JARVIS intent — CLOSED 2026-10-01
 
 Opened 2026-09-23.
 
@@ -3091,8 +3091,17 @@ advisoryTurn.ts`) answers in Tier 0 — a deterministic recogniser
 (`advisoryIntent.ts`) over the existing evidence services, a typed
 `JarvisAnswer` with sources — before any model, and without one. The
 client and cockpit doors remain as pages' own panels; the presence is now
-the one router for them too. **Still open for the voice path:** a spoken
-line goes to the backend model, which has no advisory tool yet.
+the one router for them too.
+
+**Closed 2026-10-01, for the voice path** (`docs/jarvis-voice-context.md`).
+The live session carries the route (set at open, updated on every route
+change, never an id); the backend model has the tool `answer_from_workspace`,
+which runs the same advisory tier with the session's route and last answer
+(`infrastructure/jarvis/workspaceTurn.ts`) and returns the spoken rendering
+(`presentation/jarvis/spokenAnswer.ts`) for the voice to relay, while the
+structured answer reaches the presence through the session's advisory ring.
+Proven end to end in the simulated voice mode; the live model's compliance
+with the routing rule is TD-121.
 
 ## TD-106 · the advisor recording a note is the client's primary advisor · open
 
@@ -3112,6 +3121,15 @@ is the root.
 **What closes it.** An advisor identity resolved server-side — the operator
 extended to advisory roles, or an authenticated session under TD-8 — and
 `createdBy` read from it rather than from the client.
+
+**2026-10-01, the surface.** The workspace bar and the relationship book's
+hero now show the advisor whose book the workspace is read as — Martin
+Enström, Private Banking, with his portrait — from a presentation map
+(`presentation/advisory/advisorIdentity.ts`, `WORKSPACE_ADVISOR_ID`),
+labelled "Rådgivare" and shown only when no operator is configured. It is
+the synthetic deployment's default for a visual pass, not an asserted
+identity; the record still attributes nothing to it, and nothing above
+changes what closes this entry.
 
 ## TD-107 · `vite build` failed: the MCP stdio client reached the browser bundle — CLOSED 2026-09-24
 
@@ -3346,5 +3364,79 @@ notes are the cockpit's own sentences arranged per slide. Nothing is
 summarised by a model. The seam is `MeetingPack` → `composePackDocument`:
 a later summarisation layer would write into the same typed document and
 be subject to the same tests (no id, no arrow, no invented figure). The
-same holds for the JARVIS pack commands, which are a lexicon (TD-105 for
-the voice path remains).
+same holds for the JARVIS pack commands, which are a lexicon, spoken or
+typed (TD-105 closed for both on 2026-10-01).
+
+## TD-121 · the live voice's routing to the record is an instruction to the model, not a gate · open
+
+Opened 2026-10-01 with the context-aware voice (`docs/jarvis-voice-context.md`).
+
+**What.** A spoken line reaches the record through the backend model's
+tool `answer_from_workspace`; backend rule 8 tells the model to call it
+first for anything about the workspace and to relay the record's words
+verbatim. The typed line is routed by code (`advisoryTurn.ts`); the spoken
+line is routed by a model following a rule. A model that answers itself,
+or paraphrases the record's sentence, bypasses or distorts the one brain
+without any part of the server noticing.
+
+**Why it stays.** The simulated voice (`JARVIS_LIVE_SIMULATE=1`) proves
+everything behind the tool — the route, the router, the answer, the spoken
+rendering, the ring, the presence — without a model. The live model's
+compliance can only be measured live, and the live path is blocked on
+Anthropic/OpenAI credits (the master ruling's standing item).
+
+**What closes it.** A live run with the probe's lines, measuring: tool call
+before any answer for every workspace line; `say` relayed unchanged;
+the market line never reaching the record. If compliance is not total, the
+structural fix is to route the voice's transcript through
+`workspaceTurn` server-side before the model sees it (as `hear` already
+does in the simulated mode), making the model a relay by construction.
+
+## TD-122 · PowerPoint block heights are estimated, not measured · open
+
+Opened 2026-10-01 with the Meeting Pack refinement pass.
+
+**What.** `infrastructure/documents/pptx.ts` lays a slide out top to
+bottom from an estimate of each block's height (characters per line from
+an average glyph width, rows at a fixed height). PowerPoint measures the
+real text when it opens the file; the renderer cannot. The estimates are
+calibrated against PowerPoint's own export of the sample decks and err
+on the tall side, and a figure strip, table or chart that would not fit
+is left off rather than drawn over the footer — but a record with much
+longer titles than the synthetic one could still leave a page with a
+block missing, or a text box shrunk by autofit.
+
+**Why it stays.** Measuring text needs a font engine with the deck's
+faces; neither pptxgenjs nor the server has one. The honest alternative
+— a fixed layout with fewer, larger blocks — would cost the density the
+pack exists for.
+
+**What closes it.** A measurement pass over every generated deck (open
+in PowerPoint through the COM bridge, read each shape's rendered height)
+feeding the estimator per block kind, or a font-metrics table for Georgia
+and Calibri in the renderer.
+
+## TD-123 · period questions are answered honestly as missing until a live series provider exists · open
+
+Opened 2026-10-03 with the market voice/text path (`docs/jarvis-voice-context.md` §10).
+
+**What.** "Hur gick S&P 500 i veckan?" needs the level at the start of the
+week and the level now. `application/jarvis/marketHistory.ts` computes
+that from a daily series through the `MarketHistorySource` port, which
+`infrastructure/marketData/marketHistorySource.ts` binds to the registry's
+`series` capability. On this date the `intraday` chain is fixture-only
+(the chart ranges behind "Utveckling idag" are generated), and a fixture is
+never quoted as the market, so every period question is answered "Jag har
+dagens S&P 500-data, men inte en komplett veckoserie i den här datakällan"
+with today's figure beside it, labelled as today's. The daily change is
+never used as the week's — asserted in `marketHistory.test.ts` and
+`marketAnswer.test.ts`.
+
+**Why it is debt.** The answer is truthful but thin: an advisor asking for
+the week gets the day. The fix is a `SeriesProvider` in the `intraday`
+chain (Yahoo serves daily history for the indices it already quotes);
+nothing above the port changes, and the same tests light up with numbers.
+
+**Closes when** a live series provider stands in the chain and the probe
+`.probe/market-voice-probe.mjs` answers "Hur gick amerikanska börsen i
+veckan?" with two weekly moves.

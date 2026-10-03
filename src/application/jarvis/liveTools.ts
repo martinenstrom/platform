@@ -50,6 +50,7 @@ export type LiveToolName =
   | 'begin_delegation'
   | 'close_case'
   | 'get_market_snapshot'
+  | 'answer_from_workspace'
 
 /** The reason recorded for a closure the person asked for without giving one. */
 export const DEFAULT_CLOSE_REASON = 'På användarens begäran i samtalet.'
@@ -64,8 +65,14 @@ export const LIVE_TOOL_DEFINITIONS = [
     parameters: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'Frågan som ställdes, på användarens språk.' },
-        subject: { type: 'string', description: 'Vad frågan gäller: bolag, fond, tillgång eller tema.' },
+        question: {
+          type: 'string',
+          description: 'Frågan som ställdes, på användarens språk.',
+        },
+        subject: {
+          type: 'string',
+          description: 'Vad frågan gäller: bolag, fond, tillgång eller tema.',
+        },
       },
       required: ['question', 'subject'],
       additionalProperties: false,
@@ -76,13 +83,24 @@ export const LIVE_TOOL_DEFINITIONS = [
     name: 'check_delegation',
     description:
       'Läser var det pågående ärendet står — även om det är stängt, och i så fall varför. Svaret är firmans eget läge, aldrig en gissning.',
-    parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
   },
   {
     type: 'function',
     name: 'get_delegation_result',
-    description: 'Hämtar kommitténs slutsats eller CIO:s beslut för det pågående ärendet, om ett resultat faktiskt finns.',
-    parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    description:
+      'Hämtar kommitténs slutsats eller CIO:s beslut för det pågående ärendet, om ett resultat faktiskt finns.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
   },
   {
     type: 'function',
@@ -91,7 +109,12 @@ export const LIVE_TOOL_DEFINITIONS = [
       'Lägger till användarens egna ord i det pågående ärendet, till exempel "ta hänsyn till dollarn också". Tillägget registreras hos firman med vem, när och i vilket läge ärendet var. Svaret säger om arbete som redan gjorts föregår tillägget.',
     parameters: {
       type: 'object',
-      properties: { note: { type: 'string', description: 'Vad som ska tas med, med användarens ord.' } },
+      properties: {
+        note: {
+          type: 'string',
+          description: 'Vad som ska tas med, med användarens ord.',
+        },
+      },
       required: ['note'],
       additionalProperties: false,
     },
@@ -106,12 +129,14 @@ export const LIVE_TOOL_DEFINITIONS = [
       properties: {
         view: {
           type: 'string',
-          description: 'Användarens svar med deras egna ord: en syn, "pröva den öppet", eller ett klartecken. Utelämnas om de bara nämnde fokus.',
+          description:
+            'Användarens svar med deras egna ord: en syn, "pröva den öppet", eller ett klartecken. Utelämnas om de bara nämnde fokus.',
         },
         focus: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Vad borden ska väga, med användarens ord, i deras ordning. Tom om inget nämndes.',
+          description:
+            'Vad borden ska väga, med användarens ord, i deras ordning. Tom om inget nämndes.',
         },
       },
       required: [],
@@ -128,10 +153,29 @@ export const LIVE_TOOL_DEFINITIONS = [
       properties: {
         reason: {
           type: 'string',
-          description: 'Varför, med användarens egna ord om de gav ett skäl. Utelämnas annars.',
+          description:
+            'Varför, med användarens egna ord om de gav ett skäl. Utelämnas annars.',
         },
       },
       required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'answer_from_workspace',
+    description:
+      'Svarar ur Financial OS egna data om det som rådgivaren frågar om — marknaden och det som visas på skärmen — genom samma regler som den skrivna frågan. MARKNADEN: hur ett index, börsen i USA, Europa eller Sverige, en sektor, en ränta, en valuta eller en råvara gick eller går — idag, i veckan, den senaste månaden, i år, i en viss månad — samt uppföljningar som "och Nasdaq?", "och i veckan?", "jämför med S&P", "vilken gick bäst?", "vad hände med räntorna?"; servern minns ämnet och perioden och säger exakt vad som saknas om perioden inte finns i datan. REGISTRET: klienten, mötet, kontoret eller klientboken på skärmen — förmögenhet och siffror, vad som lovats, senaste kontakten, nästa möte, vad som ska tas upp på mötet, vad som hänt sedan sist, varför klienten är prioriterad, risker, frågor att ställa och frågor klienten kan ställa, finansiering, mål, möjligheter, mötesunderlaget (skapa, PowerPoint, PDF, executive brief, uppdatera), vilka kunder på kontoret eller i boken som behöver rådgivaren, samt uppföljningar som "ta resten", "utveckla punkt två" och "vad bygger du det på". Anropas för VARJE sådan fråga, också med pronomen — "de", "dem", "han", "hon", "här" — eftersom servern vet var rådgivaren är; svara ALDRIG om en klient, ett möte, ett kontor eller en marknadssiffra ur minnet. Svaret innehåller "say" som läses upp ordagrant. Säger svaret att frågan inte rör datan (state workspace-unanswered) svarar du själv enligt dina regler.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: {
+          type: 'string',
+          description:
+            'Rådgivarens fråga, med deras egna ord och på deras språk, utan omskrivning.',
+        },
+      },
+      required: ['question'],
       additionalProperties: false,
     },
   },
@@ -158,20 +202,25 @@ export const LIVE_TOOL_DEFINITIONS = [
 
 export type UnsupportedToolReason =
   /** A status, result, addition or closure was asked for and no case is bound to the conversation. */
-  | 'no-open-case'
-  | 'unknown-tool'
-  | 'invalid-arguments'
+  'no-open-case' | 'unknown-tool' | 'invalid-arguments'
 
 export type ToolInterpretation =
   | { kind: 'host'; request: HostRequest }
   /** An observation of the market, answered by JARVIS from fresh data — never the firm. */
   | { kind: 'market'; scope: MarketScope }
+  /** A question about what is on screen, answered from the relationship record by the one router. */
+  | { kind: 'workspace'; question: string }
   /**
    * The person's answer to the one question, on the bound case. Becomes a
    * host `begin` once the runtime has read the case's own question, which
    * decides whether the words are a view or a confirmation of an explanation.
    */
-  | { kind: 'begin'; reference: DomainReference; words: string | null; focus: readonly string[] }
+  | {
+      kind: 'begin'
+      reference: DomainReference
+      words: string | null
+      focus: readonly string[]
+    }
   | { kind: 'unsupported'; reason: UnsupportedToolReason }
 
 const FOCUS_LIMIT = 6
@@ -217,7 +266,8 @@ export function interpretToolCall(
       return { kind: 'host', request: { kind: 'result', reference: context.reference } }
     case 'add_to_delegation':
       if (!context.reference) return { kind: 'unsupported', reason: 'no-open-case' }
-      if (!nonEmpty(input.note)) return { kind: 'unsupported', reason: 'invalid-arguments' }
+      if (!nonEmpty(input.note))
+        return { kind: 'unsupported', reason: 'invalid-arguments' }
       return {
         kind: 'host',
         request: {
@@ -230,7 +280,10 @@ export function interpretToolCall(
     case 'begin_delegation': {
       if (!context.reference) return { kind: 'unsupported', reason: 'no-open-case' }
       const focus = Array.isArray(input.focus)
-        ? input.focus.filter(nonEmpty).map((entry) => entry.trim().slice(0, 60)).slice(0, FOCUS_LIMIT)
+        ? input.focus
+            .filter(nonEmpty)
+            .map((entry) => entry.trim().slice(0, 60))
+            .slice(0, FOCUS_LIMIT)
         : []
       return {
         kind: 'begin',
@@ -241,7 +294,17 @@ export function interpretToolCall(
     }
     case 'get_market_snapshot':
       /* A missing or unknown scope is answered with the widest view, never with a question back. */
-      return { kind: 'market', scope: isMarketScope(input.scope) ? input.scope : 'global' }
+      return {
+        kind: 'market',
+        scope: isMarketScope(input.scope) ? input.scope : 'global',
+      }
+    case 'answer_from_workspace':
+      /* An empty question is still the workspace's: the runtime asks the person to say it again. */
+      return {
+        kind: 'workspace',
+        question:
+          typeof input.question === 'string' ? input.question.trim().slice(0, 600) : '',
+      }
     case 'close_case':
       if (!context.reference) return { kind: 'unsupported', reason: 'no-open-case' }
       return {

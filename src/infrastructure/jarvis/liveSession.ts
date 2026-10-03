@@ -34,12 +34,31 @@
  * as TD-93 rather than solved here.
  */
 
-import type { HostOpening, HostRequest, HostResult } from '~/application/analysis/hostContract'
+import type {
+  HostOpening,
+  HostRequest,
+  HostResult,
+} from '~/application/analysis/hostContract'
 import type { DomainReference } from '~/application/analysis/domainSystem'
+import type { JarvisAnswer } from '~/application/jarvis/answer'
+import type { MarketContextPointer } from '~/application/jarvis/askJarvis'
 import { interpretToolCall, LIVE_TOOL_DEFINITIONS } from '~/application/jarvis/liveTools'
+import { resolveJarvisContext } from '~/application/jarvis/context'
 import type { MarketBrief, MarketScope } from '~/application/jarvis/marketBrief'
-import { mentionsMarket, recognizeRetrieval, scopeForRetrieval } from '~/application/jarvis/marketIntent'
-import { commissionKind, isConfirmation, isFocusOnly, openingFromWords } from '~/application/jarvis/opening'
+import { answerMarketQuery, type MarketAnswer } from '~/application/jarvis/marketAnswer'
+import type { MarketHistorySource } from '~/application/jarvis/marketHistory'
+import { mentionsMarket } from '~/application/jarvis/marketIntent'
+import {
+  recognizeMarketQuery,
+  scopeForQuery,
+  type MarketConversation,
+} from '~/application/jarvis/marketQuery'
+import {
+  commissionKind,
+  isConfirmation,
+  isFocusOnly,
+  openingFromWords,
+} from '~/application/jarvis/opening'
 import {
   ACKNOWLEDGEMENT_PATTERN,
   BRIDGING_PATTERN,
@@ -47,11 +66,17 @@ import {
   LIVE_MARKET_CONTEXT,
   LIVE_TYPED_CONTEXT,
   LIVE_VOICE_INSTRUCTIONS,
+  LIVE_WORKSPACE_CONTEXT,
   MARKET_UNAVAILABLE,
   toolSpeech,
   unsupportedSpeech,
+  WORKSPACE_UNCLEAR,
 } from '~/presentation/jarvis/liveSpeech'
-import { retrievalSpeech } from '~/presentation/jarvis/marketSpeech'
+import {
+  marketAnswerSpeech,
+  marketAnswerText,
+} from '~/presentation/jarvis/marketAnswerText'
+import type { JarvisSpokenAnswer } from '~/presentation/jarvis/spokenAnswer'
 
 /* ------------------------------------------------------------ the ports */
 
@@ -73,7 +98,13 @@ export interface ResponsesRequest {
 }
 
 export type ResponsesOutputItem =
-  | { type: 'function_call'; call_id: string; name: string; arguments?: string; id?: string }
+  | {
+      type: 'function_call'
+      call_id: string
+      name: string
+      arguments?: string
+      id?: string
+    }
   | { type: 'message'; role?: string; content?: { type: string; text?: string }[] }
   | { type: string }
 
@@ -85,7 +116,10 @@ export interface ResponsesResult {
 
 export interface LiveProvider {
   /** POST /v1/live/sessions: the session config and the browser's offer in, the answer out. */
-  createSession(input: { session: Record<string, unknown>; sdp: string }): Promise<{ id: string; sdp: string }>
+  createSession(input: {
+    session: Record<string, unknown>
+    sdp: string
+  }): Promise<{ id: string; sdp: string }>
   /** The sideband socket for a running session, authenticated with the server key. */
   attach(sessionId: string): Promise<LiveSideband>
   /** POST /v1/responses: the backend model for a typed line — the same router, without a voice. Stores nothing. */
@@ -124,17 +158,68 @@ export interface LiveConfig {
   }
 }
 
+/** The record's answer to a line, in both modalities: what the screen renders, what the voice says. */
+export interface WorkspaceResult {
+  answer: JarvisAnswer
+  spoken: JarvisSpokenAnswer
+}
+
+export interface WorkspaceInput {
+  text: string
+  /** The route the browser last reported for this session. */
+  route: string | null
+  /** The record's last answer in this session, for "ta resten också". */
+  previous: JarvisAnswer | null
+  /** The market conversation so far, so a bare "och i veckan?" is the market's and not the record's. */
+  marketConversation?: MarketConversation | null
+}
+
 export interface LiveRuntimeDeps {
   provider: LiveProvider
   /** The host gateway, already bound to the server-resolved operator. */
   host: (request: HostRequest) => Promise<HostResult>
   /** Fresh market data for an observation question; never the firm. */
   market: (scope: MarketScope) => Promise<MarketBrief>
+  /**
+   * The advisory tier of the one router, for the workspace on screen: null
+   * when the line is not the record's to answer. Absent, the voice has no
+   * record to read from and the tool says so.
+   */
+  workspace?: (input: WorkspaceInput) => Promise<WorkspaceResult | null>
+  /** The workspace's name for the voice's context — a client, a meeting, an office — from the route. */
+  workspaceLabel?: (route: string | null) => Promise<string | null>
+  /**
+   * A period's series, for "i veckan", "i år": the platform's history, or
+   * null when none is bound, in which case every period is honestly missing.
+   */
+  history?: MarketHistorySource | null
+  /** True when the provider is the simulated one: no audio, lines arrive as text. */
+  simulated?: boolean
   config: LiveConfig
   requestId?: () => string
   now?: () => number
   log?: (line: string) => void
 }
+
+/**
+ * One answer from the record inside a session, numbered so the browser,
+ * which polls, renders each once: the line it answered, the structured
+ * answer (null when the model answered), what the voice said, and the door
+ * the answer opens.
+ */
+export interface AdvisoryEntry {
+  seq: number
+  at: string
+  text: string
+  answer: JarvisAnswer | null
+  say: string
+  opens: string | null
+  /** True when the line was typed into the session rather than spoken. */
+  typed: boolean
+}
+
+/** How many answers a session keeps for the browser to catch up on. */
+const ADVISORY_RING = 30
 
 /* --------------------------------------------------------- the telemetry */
 
@@ -149,7 +234,13 @@ export interface LiveTelemetry {
   reason: string | null
   voiceSeconds: number
   voiceCostUsd: number
-  backend: { responses: number; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number }
+  backend: {
+    responses: number
+    inputTokens: number
+    cachedTokens: number
+    outputTokens: number
+    costUsd: number
+  }
   toolCalls: number
   toolCallsByName: Record<string, number>
   delegationsCreated: number
@@ -205,8 +296,15 @@ export interface LiveSessionState {
   reference: DomainReference | null
   /** What was last delegated, so the presence can name the case the way the typed path does. */
   lastAsk: { question: string; subject: string } | null
+  /** The route the session answers against, as the browser last reported it. */
+  route: string | null
+  simulated: boolean
+  /** The record's answers in this session, oldest first, the last ADVISORY_RING of them. */
+  advisory: AdvisoryEntry[]
   closed: boolean
 }
+
+export type { MarketContextPointer }
 
 /** A typed line, answered by the backend through the same tools the voice uses. */
 export interface TypedTurnInput {
@@ -220,7 +318,9 @@ export interface TypedTurnInput {
   /** The conversation before this line, oldest first, so "varför?" has something to be about. */
   history?: readonly { by: 'user' | 'jarvis'; text: string }[]
   /** When the conversation last carried a market brief, so a follow-up is answered over the same numbers. */
-  marketContext?: { at: string } | null
+  marketContext?: MarketContextPointer | null
+  /** Where the advisor is, so a generic market question knows whether the market is the scope. */
+  context?: { route: string }
 }
 
 /**
@@ -249,6 +349,10 @@ export interface TypedTurnStages {
 export interface TypedTurnResult {
   /** What JARVIS answered, as text. Empty when the model said nothing. */
   say: string
+  /** The same answer in fewer words, for the voice; present when the answer has two forms. */
+  spokenSay?: string
+  /** The structured market answer, when the line was the market's. */
+  market?: MarketAnswer
   /** The case the conversation is bound to after the turn: unchanged, or the one a delegation opened. */
   reference: DomainReference | null
   lastAsk: { question: string; subject: string } | null
@@ -260,7 +364,7 @@ export interface TypedTurnResult {
   spoken: boolean
   stages: TypedTurnStages
   /** A market brief was fetched or attached for this turn; the presence hands it back with the next line. */
-  marketContext: { at: string; scope: MarketScope } | null
+  marketContext: MarketContextPointer | null
 }
 
 export interface TypedTelemetry {
@@ -276,9 +380,34 @@ export interface TypedTelemetry {
 }
 
 export interface LiveRuntime {
-  /** `reference`: the case the conversation is already bound to, so spoken follow-ups read it. */
-  open(input: { sdp: string; voice?: string; reference?: DomainReference }): Promise<{ sessionId: string; sdp: string }>
+  /** `reference`: the case the conversation is already bound to, so spoken follow-ups read it; `route`: where the advisor is. */
+  open(input: {
+    sdp: string
+    voice?: string
+    reference?: DomainReference
+    route?: string
+  }): Promise<{ sessionId: string; sdp: string; simulated: boolean }>
   state(sessionId: string): LiveSessionState | null
+  /** The advisor moved: the session answers against the new route from now on, and the voice is told where they are. */
+  setContext(sessionId: string, route: string): LiveSessionState | null
+  /**
+   * A line answered from the record outside the session's own loop — a typed
+   * line while live — handed to the voice to say and remembered as the last
+   * answer, so a spoken "ta resten" continues it. Not listed for the browser,
+   * which already holds it.
+   */
+  speak(
+    sessionId: string,
+    text: string,
+    say: string,
+    answer: JarvisAnswer | null,
+  ): boolean
+  /**
+   * A spoken line arriving as text: the simulated microphone, and the tests.
+   * The same turn the workspace tool runs — the record first, then the market
+   * fast path and the model — recorded for the browser to render.
+   */
+  hear(sessionId: string, text: string): Promise<AdvisoryEntry | null>
   /**
    * A typed line through the one router: the backend model with the same
    * tools, executed the same way. With a live session, the answer is also
@@ -315,6 +444,14 @@ interface Session {
   lastAssistantEndMs: number | null
   /** When a market brief was last handed to the voice as context, on the wall clock. */
   marketContextAt: number | null
+  /** The subject and period of the last market answer in this session, for a spoken follow-up. */
+  marketConversation: MarketConversation | null
+  /** Where the advisor is, as the browser last reported it. */
+  route: string | null
+  /** The record's last answer in this session, for a continuation. */
+  lastAdvisory: JarvisAnswer | null
+  advisory: AdvisoryEntry[]
+  advisorySeq: number
   lastUserSpeechAt: number
   openedAt: number
   closed: boolean
@@ -336,7 +473,8 @@ interface ToolEffects {
 const awaitsOpening = (
   result: HostResult,
 ): result is Extract<HostResult, { state: 'needs-decision' }> =>
-  result.state === 'needs-decision' && result.decision.reason === 'institutional-initialization-required'
+  result.state === 'needs-decision' &&
+  result.decision.reason === 'institutional-initialization-required'
 
 const isFunctionCall = (
   item: ResponsesOutputItem,
@@ -344,7 +482,9 @@ const isFunctionCall = (
   item.type === 'function_call' && 'call_id' in item && 'name' in item
 
 export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
-  const { provider, host, market, config } = deps
+  const { provider, host, market, config, workspace, workspaceLabel } = deps
+  const history = deps.history ?? null
+  const simulated = deps.simulated ?? false
   const now = deps.now ?? (() => Date.now())
   const requestId = deps.requestId ?? (() => crypto.randomUUID())
   const log = deps.log ?? (() => {})
@@ -379,11 +519,115 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         delegation_id: null,
         content,
       })
-      log(`[${session.id}] market context ${why}: ${brief.indices.length} indices, ${brief.unavailable.length} unavailable, ${content.length} chars`)
+      log(
+        `[${session.id}] market context ${why}: ${brief.indices.length} indices, ${brief.unavailable.length} unavailable, ${content.length} chars`,
+      )
     } catch (error) {
       log(`[${session.id}] market context ${why} failed: ${String(error)}`)
     }
   }
+
+  /** Where the advisor is, told to the voice: a short append, re-sent on every route change. */
+  async function injectWorkspaceContext(session: Session, why: string) {
+    try {
+      const label = workspaceLabel ? await workspaceLabel(session.route) : null
+      if (session.closed) return
+      send(session, {
+        type: 'session.instructions.append',
+        event_id: `workspace_${now()}`,
+        delegation_id: null,
+        content: LIVE_WORKSPACE_CONTEXT.voice(label),
+      })
+      log(
+        `[${session.id}] workspace context ${why}: ${label ?? 'no subject'} (${session.route ?? 'no route'})`,
+      )
+    } catch (error) {
+      log(`[${session.id}] workspace context ${why} failed: ${String(error)}`)
+    }
+  }
+
+  /** An answer from the record, kept for the browser and as the conversation's last answer. */
+  function recordAdvisory(
+    session: Session,
+    text: string,
+    answer: JarvisAnswer | null,
+    say: string,
+    typed: boolean,
+  ): AdvisoryEntry {
+    session.advisorySeq += 1
+    const entry: AdvisoryEntry = {
+      seq: session.advisorySeq,
+      at: new Date(now()).toISOString(),
+      text,
+      answer,
+      say,
+      opens: answer?.opens ?? null,
+      typed,
+    }
+    if (answer) session.lastAdvisory = answer
+    session.advisory.push(entry)
+    if (session.advisory.length > ADVISORY_RING) session.advisory.shift()
+    return entry
+  }
+
+  /** The record's answer to a line in a session, or null when the line is the model's. */
+  async function answerFromWorkspace(
+    session: Session,
+    text: string,
+  ): Promise<WorkspaceResult | null> {
+    if (!workspace) return null
+    return workspace({
+      text,
+      route: session.route,
+      previous: session.lastAdvisory,
+      marketConversation: session.marketConversation,
+    })
+  }
+
+  /** A market answer in both forms: the text the presence shows, the sentence the voice says. */
+  interface MarketTurn {
+    answer: MarketAnswer
+    say: string
+    spokenSay: string
+    scope: MarketScope
+    dataMs: number
+  }
+
+  /**
+   * The market's answer to a line, where the line is the market's: the
+   * recogniser decides in microseconds, the brief and the series answer from
+   * the platform, the renderer speaks the numbers. No model. The conversation
+   * carries the subject and the period on to the next line.
+   */
+  async function marketTurnFor(
+    text: string,
+    route: string | null,
+    conversation: MarketConversation | null,
+  ): Promise<MarketTurn | null> {
+    /* No route reported: nowhere in particular, so a generic line is the router's and a named one the market's. */
+    const scope = route ? resolveJarvisContext(route).scope : 'GLOBAL'
+    const query = recognizeMarketQuery(text, {
+      scope,
+      conversation,
+      now: new Date(now()),
+    })
+    if (!query) return null
+    const started = now()
+    const answer = await answerMarketQuery(query, {
+      brief: market,
+      history,
+      now: () => new Date(now()),
+    })
+    return {
+      answer,
+      say: marketAnswerText(answer),
+      spokenSay: marketAnswerSpeech(answer),
+      scope: scopeForQuery(query),
+      dataMs: now() - started,
+    }
+  }
+
+  const readable = (text: string): boolean => /[\p{L}\p{N}]{2,}/u.test(text)
 
   function sessionConfig(voice: string): Record<string, unknown> {
     return {
@@ -398,8 +642,12 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           tools: LIVE_TOOL_DEFINITIONS,
           tool_choice: 'auto',
           parallel_tool_calls: false,
-          ...(config.backendServiceTier ? { service_tier: config.backendServiceTier } : {}),
-          ...(config.backendReasoningEffort ? { reasoning: { effort: config.backendReasoningEffort } } : {}),
+          ...(config.backendServiceTier
+            ? { service_tier: config.backendServiceTier }
+            : {}),
+          ...(config.backendReasoningEffort
+            ? { reasoning: { effort: config.backendReasoningEffort } }
+            : {}),
         },
       },
     }
@@ -414,7 +662,13 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
   }
 
   function accumulateInto(
-    bucket: { responses: number; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number },
+    bucket: {
+      responses: number
+      inputTokens: number
+      cachedTokens: number
+      outputTokens: number
+      costUsd: number
+    },
     usage: Record<string, unknown>,
   ) {
     const details = usage.input_tokens_details as { cached_tokens?: number } | undefined
@@ -470,7 +724,10 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     } catch {
       args = {}
     }
-    const interpreted = interpretToolCall(call.name, args, { reference: effects.reference, requestId })
+    const interpreted = interpretToolCall(call.name, args, {
+      reference: effects.reference,
+      requestId,
+    })
     if (interpreted.kind === 'host' || interpreted.kind === 'begin') {
       const started = now()
       if (timing && timing.hostCallMs === null) timing.hostCallMs = clock(started)
@@ -487,13 +744,27 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         const status = await host({ kind: 'status', reference: interpreted.reference })
         path.push('status', status.state)
         if (awaitsOpening(status)) {
-          opening = openingFromWords(status.question, interpreted.words, interpreted.focus)
-          request = { kind: 'begin', reference: interpreted.reference, requestId: requestId(), opening }
+          opening = openingFromWords(
+            status.question,
+            interpreted.words,
+            interpreted.focus,
+          )
+          request = {
+            kind: 'begin',
+            reference: interpreted.reference,
+            requestId: requestId(),
+            opening,
+          }
           result = await host(request)
           path.push(`begin (${opening.kind})`, result.state)
         } else if (interpreted.words && !isConfirmation(interpreted.words)) {
           /* The firm is already under way; what the person said is still theirs to have on the record. */
-          request = { kind: 'amend', reference: interpreted.reference, requestId: requestId(), text: interpreted.words }
+          request = {
+            kind: 'amend',
+            reference: interpreted.reference,
+            requestId: requestId(),
+            text: interpreted.words,
+          }
           result = await host(request)
           path.push('amend', result.state)
         } else {
@@ -543,7 +814,12 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           /* The one question, asked once; the answer comes back as begin_delegation or as an addition. */
         } else {
           opening = openingFromWords(question, words)
-          const begin: HostRequest = { kind: 'begin', reference: result.reference, requestId: requestId(), opening }
+          const begin: HostRequest = {
+            kind: 'begin',
+            reference: result.reference,
+            requestId: requestId(),
+            opening,
+          }
           result = await host(begin)
           path.push(`begin (${opening.kind})`, result.state)
           if (request.kind === 'amend') request = begin
@@ -555,14 +831,23 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
        * the objections behind the block itself (G1, 2026-09-17). One read,
        * no second tool call for the model to think of.
        */
-      if (result.state === 'blocked' && result.block.reason === 'objections-unresolved' && !result.inspection) {
-        const inspected = await host({ kind: 'inspect', reference: result.reference, view: { kind: 'objections' } })
+      if (
+        result.state === 'blocked' &&
+        result.block.reason === 'objections-unresolved' &&
+        !result.inspection
+      ) {
+        const inspected = await host({
+          kind: 'inspect',
+          reference: result.reference,
+          view: { kind: 'objections' },
+        })
         if (inspected.state === 'blocked' && inspected.inspection) {
           result = inspected
           path.push('inspect (objections)')
         }
       }
-      if (timing && timing.hostDurationMs === null) timing.hostDurationMs = now() - started
+      if (timing && timing.hostDurationMs === null)
+        timing.hostDurationMs = now() - started
       const speech = toolSpeech(result, opening ? 'begin' : request.kind, opening)
       if (speech.reference) effects.reference = speech.reference
       if (request.kind === 'ask' && speech.reference)
@@ -579,23 +864,127 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         },
       }
     }
+    if (interpreted.kind === 'workspace') {
+      /*
+       * The record answers what is on screen through the same router the
+       * typed line uses; the session supplies the route, never the model.
+       * What the voice reads is the spoken rendering, verbatim; what the
+       * browser renders is the structured answer, from the session state.
+       */
+      /* A live session's effects ARE the session; a bare typed turn's are not, and have no route. */
+      const session = sessions.get((effects as { id?: string }).id ?? '') ?? null
+      const question = interpreted.question
+      if (!readable(question)) {
+        log(`[${tag}] ${call.name} → unclear`)
+        return {
+          state: 'workspace-unclear',
+          output: {
+            state: 'workspace-unclear',
+            say: WORKSPACE_UNCLEAR,
+            acknowledgeWork: false,
+            decisionRequired: false,
+          },
+        }
+      }
+      const started = now()
+      /*
+       * The market first, through the same path a typed line takes: a named
+       * instrument, a region, a period or a follow-up is answered from the
+       * platform's numbers and read verbatim — the voice model never answers
+       * the market on its own.
+       */
+      if (session) {
+        let marketTurn: MarketTurn | null = null
+        try {
+          marketTurn = await marketTurnFor(
+            question,
+            session.route,
+            session.marketConversation,
+          )
+        } catch (error) {
+          log(`[${tag}] ${call.name} → market read failed: ${String(error)}`)
+          marketTurn = null
+        }
+        if (marketTurn) {
+          session.marketConversation = marketTurn.answer.conversation
+          recordAdvisory(session, question, null, marketTurn.spokenSay, false)
+          log(
+            `[${tag}] ${call.name} → ${marketTurn.answer.kind} (${marketTurn.scope}) in ${now() - started} ms`,
+          )
+          return {
+            state: 'workspace-answer',
+            output: {
+              state: 'workspace-answer',
+              say: marketTurn.spokenSay,
+              acknowledgeWork: false,
+              decisionRequired: false,
+            },
+          }
+        }
+      }
+      const result = session ? await answerFromWorkspace(session, question) : null
+      if (!result) {
+        log(
+          `[${tag}] ${call.name} → not the record's (${session?.route ?? 'no route'}) in ${now() - started} ms`,
+        )
+        return {
+          state: 'workspace-unanswered',
+          output: {
+            state: 'workspace-unanswered',
+            acknowledgeWork: false,
+            decisionRequired: false,
+            note: 'Frågan rör inte det som visas i registret. Svara själv enligt dina regler.',
+          },
+        }
+      }
+      if (session)
+        recordAdvisory(session, question, result.answer, result.spoken.say, false)
+      log(
+        `[${tag}] ${call.name} → ${result.answer.intent} (${session?.route ?? 'no route'}) in ${now() - started} ms`,
+      )
+      return {
+        state: 'workspace-answer',
+        output: {
+          state: 'workspace-answer',
+          say: result.spoken.say,
+          acknowledgeWork: false,
+          decisionRequired: false,
+        },
+      }
+    }
     if (interpreted.kind === 'market') {
       const started = now()
       if (timing && timing.marketCallMs === null) timing.marketCallMs = clock(started)
       try {
         const brief = await market(interpreted.scope)
-        if (timing && timing.marketDurationMs === null) timing.marketDurationMs = now() - started
-        log(`[${tag}] ${call.name} → market ${interpreted.scope} → ${brief.indices.length} indices, ${brief.unavailable.length} unavailable`)
+        if (timing && timing.marketDurationMs === null)
+          timing.marketDurationMs = now() - started
+        log(
+          `[${tag}] ${call.name} → market ${interpreted.scope} → ${brief.indices.length} indices, ${brief.unavailable.length} unavailable`,
+        )
         return {
           state: 'market-snapshot',
-          output: { state: 'market-snapshot', acknowledgeWork: false, decisionRequired: false, brief },
+          output: {
+            state: 'market-snapshot',
+            acknowledgeWork: false,
+            decisionRequired: false,
+            brief,
+          },
         }
       } catch (error) {
-        if (timing && timing.marketDurationMs === null) timing.marketDurationMs = now() - started
-        log(`[${tag}] ${call.name} → market ${interpreted.scope} → failed: ${String(error)}`)
+        if (timing && timing.marketDurationMs === null)
+          timing.marketDurationMs = now() - started
+        log(
+          `[${tag}] ${call.name} → market ${interpreted.scope} → failed: ${String(error)}`,
+        )
         return {
           state: 'market-unavailable',
-          output: { state: 'market-unavailable', say: MARKET_UNAVAILABLE, acknowledgeWork: false, decisionRequired: false },
+          output: {
+            state: 'market-unavailable',
+            say: MARKET_UNAVAILABLE,
+            acknowledgeWork: false,
+            decisionRequired: false,
+          },
         }
       }
     }
@@ -620,11 +1009,21 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     const t = session.telemetry
     t.toolCalls += 1
     t.toolCallsByName[item.name] = (t.toolCallsByName[item.name] ?? 0) + 1
-    const { output, state } = await runTool(item, session, session.openTurn, (wallMs) => sessionMs(session, wallMs), session.id)
+    const { output, state } = await runTool(
+      item,
+      session,
+      session.openTurn,
+      (wallMs) => sessionMs(session, wallMs),
+      session.id,
+    )
     send(session, {
       type: 'response.item.create',
       event_id: `out_${item.call_id}`,
-      item: { type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(output) },
+      item: {
+        type: 'function_call_output',
+        call_id: item.call_id,
+        output: JSON.stringify(output),
+      },
     })
     send(session, { type: 'response.create', event_id: `continue_${item.call_id}` })
     /* The voice gets the same fresh numbers, so the next simple question needs no handoff. */
@@ -634,7 +1033,10 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
   /** The text of a Responses result: every output_text part, in order. */
   function answerOf(result: ResponsesResult): string {
     return result.output
-      .filter((item): item is Extract<ResponsesOutputItem, { type: 'message' }> => item.type === 'message')
+      .filter(
+        (item): item is Extract<ResponsesOutputItem, { type: 'message' }> =>
+          item.type === 'message',
+      )
       .flatMap((item) => item.content ?? [])
       .filter((part) => part.type === 'output_text')
       .map((part) => part.text ?? '')
@@ -684,7 +1086,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         session.lastUserSpeechAt = now()
         const endMs = Number(event.end_ms ?? 0)
         /* The person speaking again after a reply began opens a new turn's timing. */
-        if (session.openTurn && session.openTurn.firstSpeechMs !== null) session.openTurn = null
+        if (session.openTurn && session.openTurn.firstSpeechMs !== null)
+          session.openTurn = null
         if (!session.openTurn) openTurn(session, endMs, false)
         else session.openTurn.userEndMs = endMs
         session.lastUserEndMs = endMs
@@ -703,7 +1106,11 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         const turn = session.openTurn
         if (turn && startMs >= turn.userEndMs - 400) {
           if (turn.firstSpeechMs === null) turn.firstSpeechMs = startMs
-          if (session.lastAssistantEndMs === null || startMs - session.lastAssistantEndMs > 1200) turn.speechStartsMs.push(startMs)
+          if (
+            session.lastAssistantEndMs === null ||
+            startMs - session.lastAssistantEndMs > 1200
+          )
+            turn.speechStartsMs.push(startMs)
           /*
            * The useful-speech mark: the first fragment after which the reply,
            * with its bridging words stripped, says something. The words are
@@ -713,7 +1120,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
             session.replyText = (session.replyText + delta).slice(-300)
             const content = session.replyText.replace(BRIDGING_PATTERN, '')
             /* Two words of content — not a stray syllable of a date ("sep.,"), which a run of 2026-09-17 counted as an answer. */
-            if ((content.match(/[\p{L}\p{N}]{2,}/gu) ?? []).length >= 2) turn.firstUsefulSpeechMs = startMs
+            if ((content.match(/[\p{L}\p{N}]{2,}/gu) ?? []).length >= 2)
+              turn.firstUsefulSpeechMs = startMs
           }
         }
         session.lastAssistantEndMs = Math.max(session.lastAssistantEndMs ?? 0, endMs)
@@ -721,20 +1129,39 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       }
       case 'session.delegation.created': {
         t.delegationsCreated += 1
-        const offset = typeof event.offset_ms === 'number' ? event.offset_ms : sessionMs(session, now())
-        if (session.openTurn && session.openTurn.delegationMs === null) session.openTurn.delegationMs = offset
+        const offset =
+          typeof event.offset_ms === 'number'
+            ? event.offset_ms
+            : sessionMs(session, now())
+        if (session.openTurn && session.openTurn.delegationMs === null)
+          session.openTurn.delegationMs = offset
         break
       }
       case 'response.event': {
         const inner = (event.event ?? {}) as Record<string, unknown>
         const innerType = String(inner.type ?? '')
         count(t, `response.event/${innerType}`)
-        if (innerType === 'response.created' && session.openTurn && session.openTurn.backendStartMs === null)
+        if (
+          innerType === 'response.created' &&
+          session.openTurn &&
+          session.openTurn.backendStartMs === null
+        )
           session.openTurn.backendStartMs = sessionMs(session, now())
-        const item = inner.item as { type?: string; call_id?: string; name?: string; arguments?: string } | undefined
-        if (innerType === 'response.output_item.done' && item?.type === 'function_call' && item.call_id && item.name) {
-          void executeToolCall(session, { call_id: item.call_id, name: item.name, arguments: item.arguments }).catch(
-            (error: unknown) => log(`[${session.id}] tool failed: ${String(error)}`),
+        const item = inner.item as
+          | { type?: string; call_id?: string; name?: string; arguments?: string }
+          | undefined
+        if (
+          innerType === 'response.output_item.done' &&
+          item?.type === 'function_call' &&
+          item.call_id &&
+          item.name
+        ) {
+          void executeToolCall(session, {
+            call_id: item.call_id,
+            name: item.name,
+            arguments: item.arguments,
+          }).catch((error: unknown) =>
+            log(`[${session.id}] tool failed: ${String(error)}`),
           )
         }
         const response = inner.response as { usage?: Record<string, unknown> } | undefined
@@ -753,10 +1180,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       case 'error': {
         /* A refused market-context append is the one error that leaves the voice without its numbers: counted by name. */
         const error = event.error as { client_event_id?: unknown } | undefined
-        if (typeof error?.client_event_id === 'string' && error.client_event_id.startsWith('market_')) {
+        if (
+          typeof error?.client_event_id === 'string' &&
+          error.client_event_id.startsWith('market_')
+        ) {
           count(session.telemetry, 'error.market_context')
         }
-        log(`[${session.id}] error event: ${JSON.stringify(event.error ?? event).slice(0, 200)}`)
+        log(
+          `[${session.id}] error event: ${JSON.stringify(event.error ?? event).slice(0, 200)}`,
+        )
         break
       }
       default:
@@ -779,7 +1211,10 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         void injectMarketContext(session, 'window passed')
       }
       if (idle >= config.idleSeconds || age >= config.maxSeconds) {
-        session.telemetry.reason = idle >= config.idleSeconds ? `idle ${Math.round(idle)} s` : `max ${Math.round(age)} s`
+        session.telemetry.reason =
+          idle >= config.idleSeconds
+            ? `idle ${Math.round(idle)} s`
+            : `max ${Math.round(age)} s`
         session.telemetry.closedByPolicy = true
         log(`[${session.id}] closing by policy: ${session.telemetry.reason}`)
         send(session, { type: 'session.close', event_id: `policy_${now()}` })
@@ -789,10 +1224,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     }, 1000)
   }
 
-  return {
-    async open({ sdp, voice, reference }) {
+  const respond: LiveRuntime['respond'] = async (input) => respondImpl(input)
+
+  const runtime: LiveRuntime = {
+    async open({ sdp, voice, reference, route }) {
       const chosen = voice && config.voices.includes(voice) ? voice : config.defaultVoice
-      const created = await provider.createSession({ session: sessionConfig(chosen), sdp })
+      const created = await provider.createSession({
+        session: sessionConfig(chosen),
+        sdp,
+      })
       const session: Session = {
         id: created.id,
         voice: chosen,
@@ -807,7 +1247,13 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           reason: null,
           voiceSeconds: 0,
           voiceCostUsd: 0,
-          backend: { responses: 0, inputTokens: 0, cachedTokens: 0, outputTokens: 0, costUsd: 0 },
+          backend: {
+            responses: 0,
+            inputTokens: 0,
+            cachedTokens: 0,
+            outputTokens: 0,
+            costUsd: 0,
+          },
           toolCalls: 0,
           toolCallsByName: {},
           delegationsCreated: 0,
@@ -827,6 +1273,11 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         replyText: '',
         lastAssistantEndMs: null,
         marketContextAt: null,
+        marketConversation: null,
+        route: route ?? null,
+        lastAdvisory: null,
+        advisory: [],
+        advisorySeq: 0,
         lastUserSpeechAt: now(),
         openedAt: now(),
         closed: false,
@@ -839,26 +1290,123 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         sideband.onMessage((event) => onEvent(session, event))
         sideband.onClose(() => finish(session, 'transport-closed', false))
         watch(session)
-        /* Not awaited: the offer is answered now; the numbers follow within the session's first seconds. */
+        /* Not awaited: the offer is answered now; the numbers and the workspace follow within the session's first seconds. */
         void injectMarketContext(session, 'at open')
+        void injectWorkspaceContext(session, 'at open')
       } catch (error) {
         log(`[${session.id}] sideband failed: ${String(error)}`)
         finish(session, 'sideband-unavailable', false)
       }
-      return { sessionId: session.id, sdp: created.sdp }
+      return { sessionId: session.id, sdp: created.sdp, simulated }
     },
 
     state(sessionId) {
       const session = sessions.get(sessionId)
       if (!session) return null
-      return { telemetry: session.telemetry, reference: session.reference, lastAsk: session.lastAsk, closed: session.closed }
+      return stateOf(session)
     },
 
-    async respond(input) {
+    setContext(sessionId, route) {
+      const session = sessions.get(sessionId)
+      if (!session) return null
+      if (session.route !== route) {
+        session.route = route
+        /* A new subject: the earlier answer is not continued across it. */
+        session.lastAdvisory = null
+        if (!session.closed) void injectWorkspaceContext(session, 'route changed')
+      }
+      return stateOf(session)
+    },
+
+    speak(sessionId, text, say, answer) {
+      const session = sessions.get(sessionId)
+      if (!session || session.closed) return false
+      if (answer) session.lastAdvisory = answer
+      session.telemetry.typedInjections += 1
+      send(session, {
+        type: 'session.instructions.append',
+        event_id: `typed_${now()}`,
+        delegation_id: null,
+        content: LIVE_WORKSPACE_CONTEXT.speak(text, say),
+      })
+      return true
+    },
+
+    async hear(sessionId, text) {
+      const session = sessions.get(sessionId)
+      if (!session || session.closed) return null
+      const line = text.trim()
+      session.lastUserSpeechAt = now()
+      if (!readable(line))
+        return recordAdvisory(session, line, null, WORKSPACE_UNCLEAR, false)
+      const started = now()
+      const result = await answerFromWorkspace(session, line)
+      if (result) {
+        log(
+          `[${session.id}] heard → ${result.answer.intent} (${session.route ?? 'no route'}) in ${now() - started} ms`,
+        )
+        return recordAdvisory(session, line, result.answer, result.spoken.say, false)
+      }
+      /* Not the record's: the market path and the model, exactly as a typed line; the voice says the spoken form. */
+      const typed = await respond({ text: line, sessionId })
+      log(`[${session.id}] heard → ${typed.state ?? 'model'} in ${now() - started} ms`)
+      return recordAdvisory(session, line, null, typed.spokenSay ?? typed.say, false)
+    },
+
+    respond,
+
+    async close(sessionId) {
+      const session = sessions.get(sessionId)
+      if (!session) return null
+      if (!session.closed) {
+        send(session, { type: 'session.close', event_id: `close_${now()}` })
+        /* The provider confirms with session.closed and final usage; wait briefly for it, then finish regardless. */
+        await new Promise<void>((resolve) => {
+          const started = now()
+          const tick = setInterval(() => {
+            if (session.closed || now() - started > 5000) {
+              clearInterval(tick)
+              resolve()
+            }
+          }, 100)
+        })
+        finish(session, 'close-requested', false)
+        session.sideband?.close()
+      }
+      return { ...stateOf(session), closed: true }
+    },
+
+    telemetry() {
+      return [...sessions.values()].map((session) => session.telemetry)
+    },
+
+    typedTelemetry() {
+      return typed
+    },
+  }
+
+  function stateOf(session: Session): LiveSessionState {
+    return {
+      telemetry: session.telemetry,
+      reference: session.reference,
+      lastAsk: session.lastAsk,
+      route: session.route,
+      simulated,
+      advisory: [...session.advisory],
+      closed: session.closed,
+    }
+  }
+
+  async function respondImpl(input: TypedTurnInput): Promise<TypedTurnResult> {
+    {
       const session = input.sessionId ? (sessions.get(input.sessionId) ?? null) : null
       const live = session !== null && !session.closed
       /* A live session carries the conversation's effects; a bare typed turn carries its own. */
-      const effects: ToolEffects = session ?? { reference: input.reference ?? null, lastAsk: null, everWorking: false }
+      const effects: ToolEffects = session ?? {
+        reference: input.reference ?? null,
+        lastAsk: null,
+        everWorking: false,
+      }
       const tag = session?.id ?? 'typed'
       const timing: TurnTiming | null = (() => {
         if (!live) return null
@@ -900,44 +1448,81 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       }
 
       /*
-       * Tier 0: a named instrument's current state. The recogniser decides
-       * in microseconds, the market answers from the platform's cache, the
-       * formatter speaks the number with its time and source. No model.
+       * Tier 0: the market's own questions — a named instrument, a region,
+       * a period, a comparison, a follow-up — recognised in microseconds and
+       * answered from the platform's numbers, the subject and the period
+       * carried on to the next line. No model. A market question the
+       * platform cannot read right now is answered as unavailable, never
+       * handed to the model to guess at.
        */
-      const retrieval = recognizeRetrieval(input.text)
-      if (retrieval) {
-        const scope = scopeForRetrieval(retrieval)
+      const route = session?.route ?? input.context?.route ?? null
+      const marketConversation =
+        session?.marketConversation ?? input.marketContext?.conversation ?? null
+      const scopeOfLine = route ? resolveJarvisContext(route).scope : 'GLOBAL'
+      const query = recognizeMarketQuery(input.text, {
+        scope: scopeOfLine,
+        conversation: marketConversation,
+        now: new Date(now()),
+      })
+      if (query) {
+        const scope = scopeForQuery(query)
         const dataStarted = now()
-        if (timing && timing.marketCallMs === null) timing.marketCallMs = clock(dataStarted)
+        if (timing && timing.marketCallMs === null)
+          timing.marketCallMs = clock(dataStarted)
         let say: string
+        let spokenSay: string
+        let answer: MarketAnswer | null = null
         let dataMs: number | null = null
         let context: TypedTurnResult['marketContext'] = null
         try {
-          const brief = await market(scope)
+          answer = await answerMarketQuery(query, {
+            brief: market,
+            history,
+            now: () => new Date(now()),
+          })
           dataMs = now() - dataStarted
-          if (timing && timing.marketDurationMs === null) timing.marketDurationMs = dataMs
-          const composeStarted = now()
-          say = retrievalSpeech(retrieval.targets, brief)
-          context = { at: brief.generatedAt, scope }
-          const stages: TypedTurnStages = {
-            tier: 0,
-            intentMs: 0,
-            routed: 'retrieval',
-            toolNames: [],
-            dataMs,
-            composeMs: now() - composeStarted,
-            modelPasses: 0,
-            contextAttached: false,
-            totalMs: now() - started,
-          }
-          recordStages(stages)
-          if (timing) timing.backendEndMs = clock(now())
-          const spoken = deliver(say)
-          log(`[${tag}] typed → tier 0 (${retrieval.targets.length} target${retrieval.targets.length === 1 ? '' : 's'}, ${scope}) in ${stages.totalMs} ms`)
-          return { say, reference: effects.reference, lastAsk: effects.lastAsk, state: 'market-retrieval', toolCalls: [], backendMs: stages.totalMs, spoken, stages, marketContext: context }
+          say = marketAnswerText(answer)
+          spokenSay = marketAnswerSpeech(answer)
+          context = { at: answer.generatedAt, scope, conversation: answer.conversation }
+          if (session) session.marketConversation = answer.conversation
         } catch (error) {
-          /* The platform could not be read: said, and the line goes to the router like any other. */
-          log(`[${tag}] tier 0 market read failed, routing: ${String(error)}`)
+          /* The platform could not be read: said plainly, and the subject is still remembered. */
+          log(`[${tag}] market read failed: ${String(error)}`)
+          dataMs = now() - dataStarted
+          say = MARKET_UNAVAILABLE
+          spokenSay = MARKET_UNAVAILABLE
+        }
+        if (timing && timing.marketDurationMs === null) timing.marketDurationMs = dataMs
+        const composeStarted = now()
+        const stages: TypedTurnStages = {
+          tier: 0,
+          intentMs: 0,
+          routed: 'retrieval',
+          toolNames: [],
+          dataMs,
+          composeMs: now() - composeStarted,
+          modelPasses: 0,
+          contextAttached: false,
+          totalMs: now() - started,
+        }
+        recordStages(stages)
+        if (timing) timing.backendEndMs = clock(now())
+        const spoken = deliver(spokenSay)
+        log(
+          `[${tag}] typed → tier 0 ${query.kind} (${query.symbols.length} symbol${query.symbols.length === 1 ? '' : 's'}, ${scope}, ${query.period.kind}) in ${stages.totalMs} ms`,
+        )
+        return {
+          say,
+          spokenSay,
+          ...(answer ? { market: answer } : {}),
+          reference: effects.reference,
+          lastAsk: effects.lastAsk,
+          state: 'market-retrieval',
+          toolCalls: [],
+          backendMs: stages.totalMs,
+          spoken,
+          stages,
+          marketContext: context,
         }
       }
 
@@ -950,7 +1535,9 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       const wantsContext =
         mentionsMarket(input.text) ||
         (input.marketContext !== undefined && input.marketContext !== null) ||
-        (input.history ?? []).some((turn) => turn.by === 'user' && mentionsMarket(turn.text))
+        (input.history ?? []).some(
+          (turn) => turn.by === 'user' && mentionsMarket(turn.text),
+        )
       let contextText = ''
       let dataMs: number | null = null
       let context: TypedTurnResult['marketContext'] = null
@@ -977,19 +1564,29 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
        * router still called it on a third of market lines and paid a second
        * model pass for numbers it already had.
        */
-      const tools = contextText ? LIVE_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'get_market_snapshot') : LIVE_TOOL_DEFINITIONS
+      const tools = contextText
+        ? LIVE_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'get_market_snapshot')
+        : LIVE_TOOL_DEFINITIONS
       const request = (conversation: unknown[]): ResponsesRequest => ({
         model: config.backendModel,
         instructions: `${LIVE_BACKEND_INSTRUCTIONS}\n${LIVE_TYPED_CONTEXT.channel}${bound}${contextText}`,
         tools,
         input: conversation,
         ...(config.backendServiceTier ? { serviceTier: config.backendServiceTier } : {}),
-        ...(config.backendReasoningEffort ? { reasoningEffort: config.backendReasoningEffort } : {}),
+        ...(config.backendReasoningEffort
+          ? { reasoningEffort: config.backendReasoningEffort }
+          : {}),
       })
       /* The earlier turns travel as the messages they were; the backend keeps nothing between calls. */
       const conversation: unknown[] = [
-        ...(input.history ?? []).map((turn) => ({ role: turn.by === 'user' ? 'user' : 'assistant', content: turn.text })),
-        { role: 'user', content: input.subject ? `${input.text}\n(Ämne: ${input.subject})` : input.text },
+        ...(input.history ?? []).map((turn) => ({
+          role: turn.by === 'user' ? 'user' : 'assistant',
+          content: turn.text,
+        })),
+        {
+          role: 'user',
+          content: input.subject ? `${input.text}\n(Ämne: ${input.subject})` : input.text,
+        },
       ]
       const toolCalls: string[] = []
       let state: string | null = null
@@ -1001,7 +1598,9 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       modelPasses += 1
       usage(result)
       const intentMs = now() - routingStarted
-      const routed: TypedTurnStages['routed'] = result.output.some(isFunctionCall) ? 'tool' : 'answer'
+      const routed: TypedTurnStages['routed'] = result.output.some(isFunctionCall)
+        ? 'tool'
+        : 'answer'
       const composeStarted = now()
       for (let round = 0; round < 4; round++) {
         const calls = result.output.filter(isFunctionCall)
@@ -1011,11 +1610,16 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           toolCalls.push(call.name)
           const toolStarted = now()
           const ran = await runTool(call, effects, timing, clock, tag, input.text)
-          if (ran.state === 'market-snapshot') dataMs = (dataMs ?? 0) + (now() - toolStarted)
+          if (ran.state === 'market-snapshot')
+            dataMs = (dataMs ?? 0) + (now() - toolStarted)
           state = ran.state
           /* The call and its result travel back in the request; nothing is kept at the provider. */
           conversation.push(call)
-          conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(ran.output) })
+          conversation.push({
+            type: 'function_call_output',
+            call_id: call.call_id,
+            output: JSON.stringify(ran.output),
+          })
         }
         result = await provider.respond(request(conversation))
         modelPasses += 1
@@ -1035,40 +1639,26 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         totalMs: now() - started,
       }
       recordStages(stages)
-      if (toolCalls.includes('get_market_snapshot')) context = context ?? { at: new Date(now()).toISOString(), scope: 'global' }
+      if (toolCalls.includes('get_market_snapshot'))
+        context = context ?? { at: new Date(now()).toISOString(), scope: 'global' }
 
       const spoken = deliver(say)
-      log(`[${tag}] typed → ${toolCalls.join(',') || 'no tool'} → ${state ?? 'answered'} in ${stages.totalMs} ms (${modelPasses} pass${modelPasses === 1 ? '' : 'es'}${contextText ? ', context' : ''})`)
-      return { say, reference: effects.reference, lastAsk: effects.lastAsk, state, toolCalls, backendMs: stages.totalMs, spoken, stages, marketContext: context }
-    },
-
-    async close(sessionId) {
-      const session = sessions.get(sessionId)
-      if (!session) return null
-      if (!session.closed) {
-        send(session, { type: 'session.close', event_id: `close_${now()}` })
-        /* The provider confirms with session.closed and final usage; wait briefly for it, then finish regardless. */
-        await new Promise<void>((resolve) => {
-          const started = now()
-          const tick = setInterval(() => {
-            if (session.closed || now() - started > 5000) {
-              clearInterval(tick)
-              resolve()
-            }
-          }, 100)
-        })
-        finish(session, 'close-requested', false)
-        session.sideband?.close()
+      log(
+        `[${tag}] typed → ${toolCalls.join(',') || 'no tool'} → ${state ?? 'answered'} in ${stages.totalMs} ms (${modelPasses} pass${modelPasses === 1 ? '' : 'es'}${contextText ? ', context' : ''})`,
+      )
+      return {
+        say,
+        reference: effects.reference,
+        lastAsk: effects.lastAsk,
+        state,
+        toolCalls,
+        backendMs: stages.totalMs,
+        spoken,
+        stages,
+        marketContext: context,
       }
-      return { telemetry: session.telemetry, reference: session.reference, lastAsk: session.lastAsk, closed: true }
-    },
-
-    telemetry() {
-      return [...sessions.values()].map((session) => session.telemetry)
-    },
-
-    typedTelemetry() {
-      return typed
-    },
+    }
   }
+
+  return runtime
 }

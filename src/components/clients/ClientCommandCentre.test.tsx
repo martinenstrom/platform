@@ -46,6 +46,12 @@ describe('the relationship book, office by office', () => {
       screen.getByRole('heading', { level: 1, name: 'Klienter' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Client Intelligence')).toBeInTheDocument()
+    /* Whose book it is: the advisor's name, role and portrait in the hero. */
+    expect(screen.getByText('Martin Enström')).toBeInTheDocument()
+    expect(screen.getByText('Private Banking')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-advisor-portrait="adv-martin"] img'),
+    ).toHaveAttribute('src', '/data/advisors/martin-enstrom.jpg')
     const metrics = screen.getByRole('region', { name: 'Nyckeltal' })
     expect(within(metrics).getByText('Klienter').nextElementSibling).toHaveTextContent(
       '7',
@@ -65,6 +71,23 @@ describe('the relationship book, office by office', () => {
     expect(folders[0]).toHaveTextContent(formatMsek(strandvagen.metrics.totalAum))
     expect(folders[0]).toHaveTextContent('behöver uppmärksamhet')
     expect(folders[0]).toHaveTextContent('Öppna kontor')
+    /* The tile's plate and its six figures, the insight beneath them. */
+    expect(
+      folders[0]!.querySelector('[data-plate="of-strandvagen"] .office-tile-plate-img'),
+    ).toHaveStyle({ backgroundImage: 'url(/data/offices/strandvagen.jpg)' })
+    expect(
+      within(folders[0]!)
+        .getAllByRole('term')
+        .map((t) => t.textContent),
+    ).toEqual([
+      'Total förmögenhet',
+      'Behöver uppmärksamhet',
+      'Möten',
+      'Åtaganden',
+      'Möjligheter',
+      'Nästa möte',
+    ])
+    expect(folders[0]).toHaveTextContent('JARVIS insikt')
 
     const switcher = screen.getByRole('navigation', { name: 'Vy' })
     expect(within(switcher).getByRole('link', { name: 'Kontor' })).toHaveAttribute(

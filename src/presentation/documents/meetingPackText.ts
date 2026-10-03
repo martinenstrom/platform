@@ -14,7 +14,7 @@ import type {
   ReadinessState,
 } from '~/application/advisory/meetingPack'
 import { formatLongDate } from '~/presentation/advisory/format'
-import type { NoteKind } from './packDocument'
+import type { CalloutKind, NoteKind } from './packDocument'
 
 export const READINESS_LABEL: Record<ReadinessState, string> = {
   REDO: 'Redo',
@@ -46,11 +46,34 @@ export const STEP_STATUS_LABEL: Record<NextStepStatus, string> = {
 
 export const NOTE_KIND_LABEL: Record<NoteKind, string> = {
   'talking-point': 'TALEPUNKT',
+  'why-it-matters': 'VARFÖR DET SPELAR ROLL',
   'watch-out': 'VARNING',
   'do-not-claim': 'PÅSTÅ INTE',
+  verify: 'ATT VERIFIERA',
   'follow-up': 'FÖLJDFRÅGA',
   evidence: 'UNDERLAG',
   source: 'KÄLLA',
+}
+
+/** The order a slide's notes are read in: the point, why, what to mind, what to check, what comes next, the basis. */
+export const NOTE_ORDER: readonly NoteKind[] = [
+  'talking-point',
+  'why-it-matters',
+  'watch-out',
+  'do-not-claim',
+  'verify',
+  'follow-up',
+  'evidence',
+  'source',
+]
+
+/** The margin notes an analyst writes beside a page. */
+export const CALLOUT_LABEL: Record<CalloutKind, string> = {
+  observation: 'JARVIS-observation',
+  implication: 'Mötesimplikation',
+  'why-it-matters': 'Varför det spelar roll',
+  'watch-out': 'Varning',
+  verify: 'Data att verifiera',
 }
 
 export const CONFIDENTIALITY = 'KONFIDENTIELLT · INTERNT RÅDGIVARMATERIAL'

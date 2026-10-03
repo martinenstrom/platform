@@ -57,7 +57,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     >
       {sharedShell && <Environment />}
       {sharedShell ? (
-        <div className="relative z-10 flex flex-1">
+        <div className="app-shell relative z-10 flex flex-1">
           <SideNavigation />
           <div className="flex min-w-0 flex-1 flex-col">
             <AppTopBar />
@@ -81,14 +81,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
 }
 
 /**
- * The same photograph the home page stands in front of, in the same crop —
- * anchored at the left, where the column stands on it, and dissolved into
- * the canvas under the work. Fixed to the viewport: the page scrolls over
- * the room, the room does not scroll with the page. Decorative, hidden from
- * assistive technology, and drifting the same 6 px over 80 s as the home
- * page's, which reduced motion stops.
+ * One scene, twice: the waterfront at evening in focus at the left edge,
+ * where the column stands, and the same scene out of focus across the whole
+ * viewport — its sky, its lamps and its water, none of its detail — so the
+ * work stands in the same room as the column rather than beside it. The
+ * focused photograph fades through a mask into its own blurred self, which
+ * is aligned under it, so there is no edge where one becomes the other. A
+ * veil over the room is lighter beside the column and darker under the
+ * work, with a band for the bar and one at the foot, set by measurement so
+ * white text keeps its contrast everywhere the room shows. Fixed to the
+ * viewport: the page scrolls over the room, the room does not scroll with
+ * the page. Decorative, hidden from assistive technology, and drifting the
+ * same 6 px over 80 s as the home page's, which reduced motion stops.
  */
-const ENVIRONMENT_PHOTO = '/data/wall-street.jpg'
+const ENVIRONMENT_PHOTO = '/data/environment/waterfront.jpg'
+const ENVIRONMENT_ROOM = '/data/environment/waterfront-room.jpg'
 
 function Environment() {
   return (
@@ -97,21 +104,31 @@ function Environment() {
       data-environment
       className="app-environment pointer-events-none fixed inset-0 z-0 overflow-hidden"
     >
-      <div className="absolute inset-y-0 left-0 w-[52vw] max-w-[860px] overflow-hidden">
+      {/* The room: the scene out of focus, edge to edge. */}
+      <div
+        className="app-environment-room absolute inset-0 bg-cover bg-[position:left_center] bg-no-repeat"
+        style={{ backgroundImage: `url(${ENVIRONMENT_ROOM})` }}
+      />
+      {/* The veil: lighter beside the column, darker under the work; a band for the bar, one at the foot. */}
+      <div className="absolute inset-0 bg-gradient-to-r from-[#060910]/24 via-[#060910]/48 via-[45%] to-[#060910]/56" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#060910]/55 via-transparent via-[26%] to-[#060910]/40" />
+      {/*
+       * The scene in focus where the column stands — the water, the lit
+       * façades and the flag at the viewport's height — fading over its
+       * right half into the room beneath.
+       */}
+      <div className="app-environment-focus absolute inset-y-0 left-0 overflow-hidden">
         <div
-          className="hero-photo-drift absolute -inset-y-[8px] right-0 left-0 bg-[length:auto_100%] bg-[position:-46px_center] bg-no-repeat"
+          className="hero-photo-drift app-environment-photo absolute -inset-y-[8px] right-0 left-0 bg-[length:auto_100%] bg-[position:left_center] bg-no-repeat"
           style={{ backgroundImage: `url(${ENVIRONMENT_PHOTO})` }}
         />
-        {/* Lit where the column stands, and gone under the work. */}
-        <div className="absolute inset-0 bg-[#060910]/15" />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent from-[22%] via-[rgba(6,9,16,0.8)] via-[56%] to-[#060910]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent via-[45%] to-[#060910]" />
       </div>
+      {/* The lamp light spilling from the quay into the foot of the column and up into the hero. */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(90% 60% at 50% -10%, rgb(217 164 65 / 0.05) 0%, transparent 60%), radial-gradient(80% 50% at 50% 110%, rgb(77 232 245 / 0.04) 0%, transparent 60%)',
+            'radial-gradient(42% 60% at 8% 90%, rgb(236 168 72 / 0.12) 0%, transparent 60%), radial-gradient(34% 42% at 20% 18%, rgb(236 180 100 / 0.07) 0%, transparent 65%), radial-gradient(90% 60% at 50% -10%, rgb(226 180 90 / 0.05) 0%, transparent 60%)',
         }}
       />
     </div>

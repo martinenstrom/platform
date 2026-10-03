@@ -186,11 +186,13 @@ function intradaySeriesMeta(snapshot: OverviewSnapshot, range: SeriesRange) {
  * mounted from the root route, beside every page, and stands at the left edge
  * of this space — it is not this screen's to render.
  *
- * What stood here before is gone rather than hidden. The rail listed the
- * product's destinations; the presence carries them as shortcuts, and
- * `Bevakning` is linked from the panel that shows it. The operator plate that
- * named who is here is JARVIS's to show, because JARVIS is the one addressing
- * them.
+ * What stood here before is gone rather than hidden. The wide rail listed the
+ * product's destinations with notes; the Financial OS rail in the presence's
+ * strip carries them now — five icons, Klienter among them — and the presence
+ * carries them as shortcuts when it is open; `Bevakning` is linked from the
+ * panel that shows it. The operator plate that named who is here is JARVIS's
+ * to show, because JARVIS is the one addressing them. This screen renders
+ * none of it.
  */
 function RailSpace() {
   return (

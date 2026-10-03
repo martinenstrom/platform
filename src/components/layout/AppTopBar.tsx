@@ -1,10 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
+import { Bell, Search } from 'lucide-react'
 import type { CurrentOperator } from '~/application/analysis/currentOperator'
+import { AdvisorPortrait } from '~/components/clients/AdvisorPortrait'
 import { officeScope, updateDirectoryState } from '~/components/clients/directoryState'
 import { cn } from '~/lib/cn'
-import { initialsOf } from '~/presentation/advisory/portraits'
+import { inJarvisWorkspace } from '~/lib/navigation'
+import {
+  workspaceAdvisor,
+  type AdvisorIdentity,
+} from '~/presentation/advisory/advisorIdentity'
 
 /**
  * The workspace bar: where the reader is, in the product's own words, and
@@ -16,11 +21,16 @@ import { initialsOf } from '~/presentation/advisory/portraits'
  * › CLIENT 360 › FÖRBERED MÖTE. The client search hands its words to the
  * relationship book — the same search the book carries — and opens it.
  *
- * **What it does not carry, and why.** No notification bell: nothing in the
- * product produces notifications yet, and a bell that is never lit is the
- * smallest possible fabrication. The identity is the server-asserted
- * operator the home page greets, from the root loader; when none is
- * configured, nobody is shown.
+ * **The identity.** The server-asserted operator the home page greets, from
+ * the root loader, with the portrait the presentation holds for them. Inside
+ * the JARVIS workspace, when no operator is configured, the bar names the
+ * advisor whose book the workspace is read as (`advisorIdentity.ts`) — a
+ * presentation default labelled as the advisor, never a login. Elsewhere,
+ * with none configured, nobody is shown.
+ *
+ * **The bell is unlit and says so.** Nothing in the product produces
+ * notifications yet; the bell stands in the chrome where one will, disabled
+ * and titled "inga ännu", so it never implies a count it cannot have.
  *
  * **Huvudkontoret does not render this at all.** That page carries the firm's
  * identity and its destinations in its own institutional rail. The shell
@@ -49,10 +59,25 @@ export function AppTopBar() {
       }
     : null
   const crumbs = breadcrumbs(pathname, office)
+  const identity: Identity | null = operator
+    ? {
+        name: operator.displayName,
+        role: operator.roleTitle,
+        portrait: {
+          advisorId: operator.employeeId,
+          fullName: operator.displayName,
+          roleTitle: operator.roleTitle,
+          portraitUrl: null,
+        },
+        label: `Inloggad: ${operator.displayName}, ${operator.roleTitle}`,
+      }
+    : inJarvisWorkspace(pathname)
+      ? workspaceIdentity()
+      : null
 
   return (
     <header className="app-rail sticky top-0 z-30 border-b border-line bg-[#070c14]/92 backdrop-blur-md">
-      <div className="flex h-12 items-center gap-4 pl-4 pr-3">
+      <div className="flex h-[52px] items-center gap-4 pl-4 pr-3">
         <nav aria-label="Var du är" className="min-w-0 flex-1">
           <ol className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
             {crumbs.map((crumb, index) => (
@@ -91,7 +116,8 @@ export function AppTopBar() {
 
         <ClientSearch pathname={pathname} />
         <Clock />
-        {operator && <Identity operator={operator} />}
+        <Bell_ />
+        {identity && <IdentityMark identity={identity} />}
       </div>
     </header>
   )
@@ -229,7 +255,7 @@ function ClientSearch({ pathname }: { pathname: string }) {
           placeholder={
             officeId ? 'Sök klient på kontoret…' : 'Sök klient, person, bolag…'
           }
-          className="hq-field h-8 w-52 rounded-full py-1 pr-3 pl-8 text-[12px] lg:w-64"
+          className="hq-field h-8 w-52 rounded-full py-1 pr-3 pl-8 text-[12px] lg:w-72 xl:w-80"
         />
       </div>
     </form>
@@ -244,28 +270,56 @@ function operatorOf(loaderData: unknown): CurrentOperator | null {
   return data.ok && data.operator ? data.operator : null
 }
 
-/** Who is at the desk: a monogram and the name, the role beneath it. */
-function Identity({ operator }: { operator: CurrentOperator }) {
+interface Identity {
+  name: string
+  role: string
+  portrait: AdvisorIdentity
+  label: string
+}
+
+/** The workspace's advisor, as the bar shows them when no operator is configured. */
+function workspaceIdentity(): Identity {
+  const advisor = workspaceAdvisor()
+  return {
+    name: advisor.fullName,
+    role: advisor.roleTitle,
+    portrait: advisor,
+    label: `Rådgivare: ${advisor.fullName}, ${advisor.roleTitle}`,
+  }
+}
+
+/** Who is at the desk: the portrait in its frame and the name, the role beneath it. */
+function IdentityMark({ identity }: { identity: Identity }) {
   return (
     <div
-      className="flex items-center gap-2.5 border-l border-line pl-3"
-      aria-label={`Inloggad: ${operator.displayName}, ${operator.roleTitle}`}
+      className="flex items-center gap-2.5 border-l border-line pl-3.5"
+      aria-label={identity.label}
     >
-      <span
-        aria-hidden="true"
-        className="portrait-frame flex h-7 w-7 items-center justify-center bg-[#1a1913] font-display text-[11px] text-[#e6c987]"
-      >
-        {initialsOf(operator.displayName)}
-      </span>
+      <AdvisorPortrait identity={identity.portrait} size="sm" />
       <span className="hidden min-w-0 leading-tight lg:block">
-        <span className="block truncate text-[12px] font-medium text-content">
-          {operator.displayName}
+        <span className="block truncate text-[12.5px] font-medium text-content">
+          {identity.name}
         </span>
         <span className="block truncate text-[10.5px] text-content-subtle">
-          {operator.roleTitle}
+          {identity.role}
         </span>
       </span>
     </div>
+  )
+}
+
+/** The bell: in the chrome, unlit, and honest about why. */
+function Bell_() {
+  return (
+    <button
+      type="button"
+      disabled
+      aria-label="Aviseringar"
+      title="Aviseringar · inga ännu"
+      className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-content-subtle sm:inline-flex"
+    >
+      <Bell className="h-[15px] w-[15px]" aria-hidden="true" strokeWidth={1.6} />
+    </button>
   )
 }
 
