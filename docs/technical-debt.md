@@ -3416,7 +3416,7 @@ in PowerPoint through the COM bridge, read each shape's rendered height)
 feeding the estimator per block kind, or a font-metrics table for Georgia
 and Calibri in the renderer.
 
-## TD-123 · period questions are answered honestly as missing until a live series provider exists · open
+## TD-123 · period questions are answered honestly as missing until a live series provider exists · closed 2026-10-03
 
 Opened 2026-10-03 with the market voice/text path (`docs/jarvis-voice-context.md` §10).
 
@@ -3440,3 +3440,112 @@ nothing above the port changes, and the same tests light up with numbers.
 **Closes when** a live series provider stands in the chain and the probe
 `.probe/market-voice-probe.mjs` answers "Hur gick amerikanska börsen i
 veckan?" with two weekly moves.
+
+**Closed 2026-10-03 — Historical Market Data V1.** The `series` capability
+now has three live adapters behind it: Yahoo's chart endpoint for the six
+indices (`YAHOO_HISTORY_INDICES`), Frankfurter's time series for the ECB
+pairs, and the Treasury's monthly pages for the US yields, each in its own
+chain (`history-index`, `history-fx`, `history-yields-us`) with a daily-
+history cache policy. `application/marketData/history.ts` holds the series
+contract, the trading-day policy and the per-kind calculation; JARVIS reads
+it through `marketHistory.ts`. The live probe
+`.probe/history-live-probe.ts` read real series for all ten instruments on
+2026-10-03 and the browser probe answered "Hur gick S&P 500 i veckan?" with
+a measured move and its card. Still not served: Germany and Sweden 10Y
+history (no adapter route), Brent and Gold (Yahoo's futures are not spot).
+## TD-124 · a company outside EDGAR has no structured filing source · open
+
+Opened 2026-10-03 with Public Research V1 (`docs/jarvis-public-research.md`).
+
+**What.** The issuer step of a company question reads EDGAR by ticker where
+the company files with the SEC. A Nordic or European company that does not —
+Volvo, Investor, Atlas Copco — gets a filing-domain search instead, which
+finds the release only when the open-web provider is configured. The answer
+is still honest (news or "inget verifierat underlag"), but the brief's
+"company release / filing first" is not met for those names.
+
+**Closes when** a reviewed investor-relations feed or a Nordic filings
+source (Cision, MFN, the exchange's own) stands behind `searchOfficial` for
+the companies the register's clients hold.
+
+## TD-125 · the open-web provider dates nothing · open
+
+Opened 2026-10-03.
+
+**What.** OpenAI's web search returns URL citations without a publication
+time, so evidence from the open web is `freshness: unknown` and the strip's
+"Data / nyheter t.o.m." falls back to the retrieval instant. The official
+feeds and EDGAR are dated by the publisher. A retrieved primary page carries
+its meta time where it states one.
+
+**Closes when** the port's open-web adapter supplies a publication time (a
+provider that returns one, or a retrieval of the cited page's meta time for
+reputable news domains under their terms).
+
+## TD-126 · the week ahead has no structured calendar · open
+
+Opened 2026-10-03.
+
+**What.** "Vad händer nästa vecka?" and "Vilka bolag rapporterar idag?" are
+answered from a domain-restricted search over the official calendar domains
+and from reporting, not from a machine-readable economic or earnings
+calendar. Coverage depends on what the search surfaces that day.
+
+**Closes when** a calendar source (an economic-calendar API, the exchanges'
+earnings calendars, the central banks' meeting schedules) is read directly
+as a feed behind `searchOfficial`.
+
+## TD-127 · the research answer is composed, not synthesised · open
+
+Opened 2026-10-03.
+
+**What.** The Swedish answer is composed deterministically from cited claims
+(the provider's cited sentences and the sources' own excerpts) in authority
+order. It is honest and inspectable, but a longer deep answer can read as
+a list of sentences rather than one argument, and an English excerpt stays
+English. A model synthesis over the pinned evidence — never over the open
+web — would read better; it is not built, and would need live measurement.
+
+**Closes when** a synthesis step over the typed evidence is proven live
+to keep every sentence tied to a citation.
+
+## TD-128 · the Avanza MCP server's tool signatures changed; the breaker is open · open
+
+Opened 2026-10-03, measured while probing Public Research V1.
+
+**What.** The dev server's log shows the Avanza MCP server (FastMCP 3.4.7,
+"Avanza MCP Server 2.1.0") refusing the adapter's calls — `get_marketplace_info`
+and `get_stock_info` now require `order_book_id` where the adapter sends
+`instrument_id` — after which the circuit breaker opens
+(`"providerId":"avanza","outcome":"provider-skipped","errorCode":"circuit-open"`).
+Today's quotes for Nasdaq 100, DAX, Nikkei 225 and OMXS30 then fall to the
+fixture outside production, and JARVIS says "Nasdaq 100 saknas i datan just
+nu". History (the Yahoo chain) is unaffected, which is why period answers
+still carry every index.
+
+**Closes when** the Avanza adapter is re-mapped to the server's current
+tool signatures (resolve `order_book_id` through `search_instruments`, as
+the server's own instructions say) and the smoke test
+`avanza.smoke.test.ts` passes against the installed server version.
+
+## TD-129 · the Avanza MCP stdio child keeps a short-lived process alive · open
+
+Opened 2026-10-04 from a measured hang of the research probe.
+
+**What.** `src/services/avanzaMcp/client.ts` connects a long-lived
+`StdioClientTransport` to the `uvx avanza-mcp` child the first time a tool
+is called, and never closes it. In the dev server that is by design. In a
+short-lived process — a probe, a script, a one-off CLI — the open stdio
+pipes keep Node's event loop alive after the last statement, so the process
+never exits: five probe runs on 2026-10-03 (15:30, 15:44, 15:51, 15:57,
+18:08) each printed `LIVE OK` within 35 seconds and then sat idle for hours
+until killed; the harness waited for an exit that never came. Terminating
+the node processes completed all pending tasks at once.
+
+**Why it is debt.** Any script that touches the container inherits the
+behaviour, and nothing says so. The probe now exits explicitly
+(`process.exit`) and carries per-step and overall timeouts; the client has
+no `close()` for callers that want to finish.
+
+**Closes when** the client exposes a close (or unrefs the child's stdio) and
+a short-lived caller is shown to exit on its own.

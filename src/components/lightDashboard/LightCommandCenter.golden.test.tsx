@@ -170,8 +170,17 @@ async function buildFixtureSnapshot(dataClock: Date = FROZEN_NOW) {
   return getOverviewSnapshot(createOverviewDataSource(container))
 }
 
+/**
+ * The frozen-clock snapshot is deterministic, so it is built once per file
+ * and read by every test that renders at FROZEN_NOW; only the data-clock
+ * test builds its own. Avoidable setup cost, removed.
+ */
+let frozenSnapshot: ReturnType<typeof buildFixtureSnapshot> | null = null
+
 async function renderOverview(dataClock?: Date) {
-  const snapshot = await buildFixtureSnapshot(dataClock)
+  const snapshot = dataClock
+    ? await buildFixtureSnapshot(dataClock)
+    : await (frozenSnapshot ??= buildFixtureSnapshot())
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -198,123 +207,140 @@ async function renderOverview(dataClock?: Date) {
   return view
 }
 
-describe('Overview — golden baseline (Phase 0 gate G1)', () => {
-  it('renders the full Overview identically to the committed baseline', async () => {
-    const { container } = await renderOverview()
-    expect(container).toMatchSnapshot()
-  })
+/*
+ * The full Overview render — recharts, sparklines, every panel — measured
+ * 0,67 s for the first test of this file alone on 2026-10-04, and over 5 s
+ * once in a full solo suite run with every worker busy (a timeout, not a
+ * mismatch). The default 5 s is unrealistic for that first render under
+ * load; the assertions are unchanged.
+ */
+const GOLDEN_RENDER_TIMEOUT_MS = 30_000
 
-  /**
-   * Kept out of the snapshot deliberately: this is the one approved
-   * intentional change in Phase 0, so it is the only assertion that moved.
-   */
-  it('shows "Data uppdaterad" from the data asOf, not render time (D5/D10)', async () => {
-    await renderOverview()
-    expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 14:32')
-  })
+describe(
+  'Overview — golden baseline (Phase 0 gate G1)',
+  { timeout: GOLDEN_RENDER_TIMEOUT_MS },
+  () => {
+    it('renders the full Overview identically to the committed baseline', async () => {
+      const { container } = await renderOverview()
+      expect(container).toMatchSnapshot()
+    })
 
-  /**
-   * The proof that D5 is genuinely fixed rather than coincidentally equal.
-   * The data clock is set 87 minutes behind the render clock; the label must
-   * follow the data. Before Phase 0 it read the render clock regardless.
-   */
-  it('follows the data clock when it differs from the render clock', async () => {
-    await renderOverview(new Date('2026-07-26T13:05:00+02:00'))
-    expect(screen.getByText(/Data uppdaterad/).textContent).toBe('Data uppdaterad 13:05')
-  })
+    /**
+     * Kept out of the snapshot deliberately: this is the one approved
+     * intentional change in Phase 0, so it is the only assertion that moved.
+     */
+    it('shows "Data uppdaterad" from the data asOf, not render time (D5/D10)', async () => {
+      await renderOverview()
+      expect(screen.getByText(/Data uppdaterad/).textContent).toBe(
+        'Data uppdaterad 14:32',
+      )
+    })
 
-  it('renders every panel, market tile, rate, sector and news label', async () => {
-    const { container } = await renderOverview()
-    // Belt-and-braces on the snapshot: if a whole panel silently disappeared,
-    // a snapshot diff is easy to approve by accident. This is not. Matched
-    // against raw container text because several labels legitimately appear
-    // more than once (panel + ticker rail, or nav + section heading).
-    const text = container.textContent ?? ''
-    for (const label of [
-      'OMXS30',
-      'S&P 500',
-      'DAX',
-      'FTSE 100',
-      'Nikkei 225',
-      'Nasdaq 100',
-      '10Y U.S. Yield',
-      '10Y Germany Yield',
-      '2Y U.S. Yield',
-      'Sweden 10Y Yield',
-      'USD/SEK',
-      'EUR/USD',
-      'Brent Olja',
-      'Guld (USD/oz)',
-      'Bitcoin (USD)',
-      'Sektorer (S&P 500)',
-      'Senaste nytt',
-      'Bevakning',
-      'Utveckling idag',
-      'Räntemarknaden',
-      'Aktuella marknader',
-      'Marknadsöversikt',
-      'Cross-Asset Risk Appetite',
-    ]) {
-      expect(text).toContain(label)
-    }
-  })
+    /**
+     * The proof that D5 is genuinely fixed rather than coincidentally equal.
+     * The data clock is set 87 minutes behind the render clock; the label must
+     * follow the data. Before Phase 0 it read the render clock regardless.
+     */
+    it('follows the data clock when it differs from the render clock', async () => {
+      await renderOverview(new Date('2026-07-26T13:05:00+02:00'))
+      expect(screen.getByText(/Data uppdaterad/).textContent).toBe(
+        'Data uppdaterad 13:05',
+      )
+    })
 
-  it('reproduces the pre-migration values through the application service', async () => {
-    const { container } = await renderOverview()
-    // Spot-checks across four different mock sources, so a regression in any
-    // one of them fails by name rather than as an anonymous snapshot blob.
-    const text = container.textContent ?? ''
-    const present = (value: string) => expect(text).toContain(value)
-    present('2' + NBSP + '612,48') // was mockData marketIndices
-    present('19' + NBSP + '840') // was a localized string, now numeric (D2)
-    present('8' + NBSP + '363,95') // was an inline literal
-    present('71' + NBSP + '386,25') // BTC via one canonical symbol (D1)
-    present('4,32%') // was the '4.32%' mock string
-    present('2,48%') // was an inline literal
-  })
+    it('renders every panel, market tile, rate, sector and news label', async () => {
+      const { container } = await renderOverview()
+      // Belt-and-braces on the snapshot: if a whole panel silently disappeared,
+      // a snapshot diff is easy to approve by accident. This is not. Matched
+      // against raw container text because several labels legitimately appear
+      // more than once (panel + ticker rail, or nav + section heading).
+      const text = container.textContent ?? ''
+      for (const label of [
+        'OMXS30',
+        'S&P 500',
+        'DAX',
+        'FTSE 100',
+        'Nikkei 225',
+        'Nasdaq 100',
+        '10Y U.S. Yield',
+        '10Y Germany Yield',
+        '2Y U.S. Yield',
+        'Sweden 10Y Yield',
+        'USD/SEK',
+        'EUR/USD',
+        'Brent Olja',
+        'Guld (USD/oz)',
+        'Bitcoin (USD)',
+        'Sektorer (S&P 500)',
+        'Senaste nytt',
+        'Bevakning',
+        'Utveckling idag',
+        'Räntemarknaden',
+        'Aktuella marknader',
+        'Marknadsöversikt',
+        'Cross-Asset Risk Appetite',
+      ]) {
+        expect(text).toContain(label)
+      }
+    })
 
-  /**
-   * The complete, exhaustive list of what Phase 0 changed on screen.
-   *
-   * Before the migration this screen formatted numbers three different ways:
-   * values passed through `formatNumber` used a non-breaking space to group
-   * digits, hand-written mock literals used an ASCII space, and one yield
-   * string used a dot decimal separator with a "pp" unit. Making every value
-   * numeric until the presentation boundary converges all of them onto one
-   * formatter.
-   *
-   * If any assertion here fails, the delta list has grown and needs approval.
-   */
-  it('converged all formatting onto one path (the approved Phase 0 delta)', async () => {
-    const { container } = await renderOverview()
-    const text = container.textContent ?? ''
+    it('reproduces the pre-migration values through the application service', async () => {
+      const { container } = await renderOverview()
+      // Spot-checks across four different mock sources, so a regression in any
+      // one of them fails by name rather than as an anonymous snapshot blob.
+      const text = container.textContent ?? ''
+      const present = (value: string) => expect(text).toContain(value)
+      present('2' + NBSP + '612,48') // was mockData marketIndices
+      present('19' + NBSP + '840') // was a localized string, now numeric (D2)
+      present('8' + NBSP + '363,95') // was an inline literal
+      present('71' + NBSP + '386,25') // BTC via one canonical symbol (D1)
+      present('4,32%') // was the '4.32%' mock string
+      present('2,48%') // was an inline literal
+    })
 
-    // Already NBSP before the migration - unchanged.
-    expect(text).toContain('2' + NBSP + '612,48') // OMXS30
-    expect(text).toContain('5' + NBSP + '843,12') // S&P 500
-    expect(text).toContain('20' + NBSP + '418,65') // Nasdaq 100
+    /**
+     * The complete, exhaustive list of what Phase 0 changed on screen.
+     *
+     * Before the migration this screen formatted numbers three different ways:
+     * values passed through `formatNumber` used a non-breaking space to group
+     * digits, hand-written mock literals used an ASCII space, and one yield
+     * string used a dot decimal separator with a "pp" unit. Making every value
+     * numeric until the presentation boundary converges all of them onto one
+     * formatter.
+     *
+     * If any assertion here fails, the delta list has grown and needs approval.
+     */
+    it('converged all formatting onto one path (the approved Phase 0 delta)', async () => {
+      const { container } = await renderOverview()
+      const text = container.textContent ?? ''
 
-    // Were ASCII-space literals; now NBSP. Visually identical.
-    expect(text).toContain('19' + NBSP + '840') // DAX
-    expect(text).toContain('40' + NBSP + '850') // Nikkei 225
-    expect(text).toContain('8' + NBSP + '363,95') // FTSE 100
-    expect(text).toContain('2' + NBSP + '385,40') // Gold
-    expect(text).toContain('71' + NBSP + '386,25') // Bitcoin
+      // Already NBSP before the migration - unchanged.
+      expect(text).toContain('2' + NBSP + '612,48') // OMXS30
+      expect(text).toContain('5' + NBSP + '843,12') // S&P 500
+      expect(text).toContain('20' + NBSP + '418,65') // Nasdaq 100
 
-    // Was '4.32%' with a dot; now a comma, matching every other figure.
-    expect(text).toContain('4,32%')
-    expect(text).not.toContain('4.32%')
+      // Were ASCII-space literals; now NBSP. Visually identical.
+      expect(text).toContain('19' + NBSP + '840') // DAX
+      expect(text).toContain('40' + NBSP + '850') // Nikkei 225
+      expect(text).toContain('8' + NBSP + '363,95') // FTSE 100
+      expect(text).toContain('2' + NBSP + '385,40') // Gold
+      expect(text).toContain('71' + NBSP + '386,25') // Bitcoin
 
-    // Was '+0.00 pp'; now basis points like the rest of the column.
-    expect(text).toContain('+0,00 bp')
-    expect(text).not.toContain('+0.00 pp')
-  })
+      // Was '4.32%' with a dot; now a comma, matching every other figure.
+      expect(text).toContain('4,32%')
+      expect(text).not.toContain('4.32%')
 
-  it('no longer renders any ASCII-space grouped number', async () => {
-    const { container } = await renderOverview()
-    // One formatter means one separator. A digit-space-digit sequence would
-    // mean a hand-written literal had crept back in.
-    const digitSpaceDigit = new RegExp('[0-9] [0-9]')
-    expect(digitSpaceDigit.test(container.textContent ?? '')).toBe(false)
-  })
-})
+      // Was '+0.00 pp'; now basis points like the rest of the column.
+      expect(text).toContain('+0,00 bp')
+      expect(text).not.toContain('+0.00 pp')
+    })
+
+    it('no longer renders any ASCII-space grouped number', async () => {
+      const { container } = await renderOverview()
+      // One formatter means one separator. A digit-space-digit sequence would
+      // mean a hand-written literal had crept back in.
+      const digitSpaceDigit = new RegExp('[0-9] [0-9]')
+      expect(digitSpaceDigit.test(container.textContent ?? '')).toBe(false)
+    })
+  },
+)

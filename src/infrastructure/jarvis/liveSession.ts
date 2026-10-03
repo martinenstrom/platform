@@ -76,6 +76,9 @@ import {
   marketAnswerSpeech,
   marketAnswerText,
 } from '~/presentation/jarvis/marketAnswerText'
+import { marketCardOf, type MarketCard } from '~/presentation/jarvis/marketCard'
+import type { ResearchCard } from '~/presentation/jarvis/researchCard'
+import type { ResearchContext } from '~/application/jarvis/research/researchQuery'
 import type { JarvisSpokenAnswer } from '~/presentation/jarvis/spokenAnswer'
 
 /* ------------------------------------------------------------ the ports */
@@ -172,6 +175,27 @@ export interface WorkspaceInput {
   previous: JarvisAnswer | null
   /** The market conversation so far, so a bare "och i veckan?" is the market's and not the record's. */
   marketConversation?: MarketConversation | null
+  /** The research conversation so far, so a bare "varför?" after a market answer is research and not the record's. */
+  researchContext?: ResearchContext | null
+}
+
+/** What the research tier needs to recognise and answer a line. */
+export interface ResearchInput {
+  text: string
+  route: string | null
+  market: MarketConversation | null
+  research: ResearchContext | null
+}
+
+/** A researched answer in both modalities, with the strip and the context it leaves behind. */
+export interface ResearchTurn {
+  say: string
+  spokenSay: string
+  card: ResearchCard
+  context: ResearchContext
+  kind: string
+  unavailable: boolean
+  evidenceCount: number
 }
 
 export interface LiveRuntimeDeps {
@@ -193,6 +217,13 @@ export interface LiveRuntimeDeps {
    * null when none is bound, in which case every period is honestly missing.
    */
   history?: MarketHistorySource | null
+  /**
+   * The public research tier: a line that is inherently public and current
+   * — why the market moved, what a central bank said, what a company
+   * reported — answered from public sources behind the firewall, before any
+   * model. Null when the line is not research.
+   */
+  research?: ((input: ResearchInput) => Promise<ResearchTurn | null>) | null
   /** True when the provider is the simulated one: no audio, lines arrive as text. */
   simulated?: boolean
   config: LiveConfig
@@ -216,6 +247,10 @@ export interface AdvisoryEntry {
   opens: string | null
   /** True when the line was typed into the session rather than spoken. */
   typed: boolean
+  /** The compact card for a period market answer, when the line was the market's. */
+  card?: MarketCard | null
+  /** The research strip, when the line was research. */
+  research?: ResearchCard | null
 }
 
 /** How many answers a session keeps for the browser to catch up on. */
@@ -329,7 +364,8 @@ export interface TypedTurnInput {
  * is the deterministic path (no model); tiers 1–3 go through the router.
  */
 export interface TypedTurnStages {
-  tier: 0 | 'router'
+  /** 0: the deterministic market path; `research`: the public research tier; `router`: the model. */
+  tier: 0 | 'research' | 'router'
   /** Tier 0: the recogniser's decision (µs, reported as 0). Router: the first model pass, which decides. */
   intentMs: number
   /** How the router decided: a tool, or a direct answer. */
@@ -353,6 +389,10 @@ export interface TypedTurnResult {
   spokenSay?: string
   /** The structured market answer, when the line was the market's. */
   market?: MarketAnswer
+  /** The compact card for a period market answer. */
+  card?: MarketCard
+  /** The research strip, when the line was research. */
+  research?: ResearchCard
   /** The case the conversation is bound to after the turn: unchanged, or the one a delegation opened. */
   reference: DomainReference | null
   lastAsk: { question: string; subject: string } | null
@@ -446,6 +486,8 @@ interface Session {
   marketContextAt: number | null
   /** The subject and period of the last market answer in this session, for a spoken follow-up. */
   marketConversation: MarketConversation | null
+  /** The subject of the last researched answer in this session, for "varför?" and "vad säger analytiker?". */
+  researchContext: ResearchContext | null
   /** Where the advisor is, as the browser last reported it. */
   route: string | null
   /** The record's last answer in this session, for a continuation. */
@@ -484,6 +526,7 @@ const isFunctionCall = (
 export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
   const { provider, host, market, config, workspace, workspaceLabel } = deps
   const history = deps.history ?? null
+  const research = deps.research ?? null
   const simulated = deps.simulated ?? false
   const now = deps.now ?? (() => Date.now())
   const requestId = deps.requestId ?? (() => crypto.randomUUID())
@@ -553,6 +596,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
     answer: JarvisAnswer | null,
     say: string,
     typed: boolean,
+    card: MarketCard | null = null,
+    researchCard: ResearchCard | null = null,
   ): AdvisoryEntry {
     session.advisorySeq += 1
     const entry: AdvisoryEntry = {
@@ -563,6 +608,8 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       say,
       opens: answer?.opens ?? null,
       typed,
+      ...(card ? { card } : {}),
+      ...(researchCard ? { research: researchCard } : {}),
     }
     if (answer) session.lastAdvisory = answer
     session.advisory.push(entry)
@@ -581,6 +628,21 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       route: session.route,
       previous: session.lastAdvisory,
       marketConversation: session.marketConversation,
+      researchContext: session.researchContext,
+    })
+  }
+
+  /** The research tier's answer to a line in a session, or null when the line is not research or the tier is not bound. */
+  async function researchTurnFor(
+    session: Session,
+    text: string,
+  ): Promise<ResearchTurn | null> {
+    if (!research) return null
+    return research({
+      text,
+      route: session.route,
+      market: session.marketConversation,
+      research: session.researchContext,
     })
   }
 
@@ -907,7 +969,14 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         }
         if (marketTurn) {
           session.marketConversation = marketTurn.answer.conversation
-          recordAdvisory(session, question, null, marketTurn.spokenSay, false)
+          recordAdvisory(
+            session,
+            question,
+            null,
+            marketTurn.spokenSay,
+            false,
+            marketCardOf(marketTurn.answer),
+          )
           log(
             `[${tag}] ${call.name} → ${marketTurn.answer.kind} (${marketTurn.scope}) in ${now() - started} ms`,
           )
@@ -916,6 +985,38 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
             output: {
               state: 'workspace-answer',
               say: marketTurn.spokenSay,
+              acknowledgeWork: false,
+              decisionRequired: false,
+            },
+          }
+        }
+        /* Then research: why the market moved, what a central bank said — from public sources behind the firewall, read verbatim. */
+        let researched: ResearchTurn | null = null
+        try {
+          researched = await researchTurnFor(session, question)
+        } catch (error) {
+          log(`[${tag}] ${call.name} → research failed: ${String(error)}`)
+          researched = null
+        }
+        if (researched) {
+          session.researchContext = researched.context
+          recordAdvisory(
+            session,
+            question,
+            null,
+            researched.spokenSay,
+            false,
+            null,
+            researched.card,
+          )
+          log(
+            `[${tag}] ${call.name} → research ${researched.kind} (${researched.evidenceCount} sources${researched.unavailable ? ', unavailable' : ''}) in ${now() - started} ms`,
+          )
+          return {
+            state: 'workspace-answer',
+            output: {
+              state: 'workspace-answer',
+              say: researched.spokenSay,
               acknowledgeWork: false,
               decisionRequired: false,
             },
@@ -1274,6 +1375,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         lastAssistantEndMs: null,
         marketContextAt: null,
         marketConversation: null,
+        researchContext: null,
         route: route ?? null,
         lastAdvisory: null,
         advisory: [],
@@ -1350,7 +1452,15 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       /* Not the record's: the market path and the model, exactly as a typed line; the voice says the spoken form. */
       const typed = await respond({ text: line, sessionId })
       log(`[${session.id}] heard → ${typed.state ?? 'model'} in ${now() - started} ms`)
-      return recordAdvisory(session, line, null, typed.spokenSay ?? typed.say, false)
+      return recordAdvisory(
+        session,
+        line,
+        null,
+        typed.spokenSay ?? typed.say,
+        false,
+        typed.card ?? null,
+        typed.research ?? null,
+      )
     },
 
     respond,
@@ -1458,6 +1568,14 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
       const route = session?.route ?? input.context?.route ?? null
       const marketConversation =
         session?.marketConversation ?? input.marketContext?.conversation ?? null
+      const researchContext =
+        session?.researchContext ?? input.marketContext?.research ?? null
+      /** The pointer handed back: the research context rides along so a follow-up keeps its subject. */
+      const withResearch = (
+        pointer: MarketContextPointer | null,
+        context: ResearchContext | null,
+      ): MarketContextPointer | null =>
+        pointer ? { ...pointer, ...(context ? { research: context } : {}) } : null
       const scopeOfLine = route ? resolveJarvisContext(route).scope : 'GLOBAL'
       const query = recognizeMarketQuery(input.text, {
         scope: scopeOfLine,
@@ -1511,10 +1629,12 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         log(
           `[${tag}] typed → tier 0 ${query.kind} (${query.symbols.length} symbol${query.symbols.length === 1 ? '' : 's'}, ${scope}, ${query.period.kind}) in ${stages.totalMs} ms`,
         )
+        const card = answer ? marketCardOf(answer) : null
         return {
           say,
           spokenSay,
           ...(answer ? { market: answer } : {}),
+          ...(card ? { card } : {}),
           reference: effects.reference,
           lastAsk: effects.lastAsk,
           state: 'market-retrieval',
@@ -1522,7 +1642,66 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
           backendMs: stages.totalMs,
           spoken,
           stages,
-          marketContext: context,
+          marketContext: withResearch(context, researchContext),
+        }
+      }
+
+      /*
+       * The research tier: a line that is inherently public and current —
+       * why the market moved, what a central bank said, what a company
+       * reported, what the week holds — answered from public sources behind
+       * the firewall, before any model and never from a model's memory. The
+       * subject carries on to the next line.
+       */
+      if (research) {
+        const researchStarted = now()
+        let turn: ResearchTurn | null = null
+        try {
+          turn = await research({
+            text: input.text,
+            route,
+            market: marketConversation,
+            research: researchContext,
+          })
+        } catch (error) {
+          log(`[${tag}] research failed: ${String(error)}`)
+        }
+        if (turn) {
+          if (session) session.researchContext = turn.context
+          const stages: TypedTurnStages = {
+            tier: 'research',
+            intentMs: 0,
+            routed: 'retrieval',
+            toolNames: [],
+            dataMs: now() - researchStarted,
+            composeMs: 0,
+            modelPasses: 0,
+            contextAttached: false,
+            totalMs: now() - started,
+          }
+          recordStages(stages)
+          if (timing) timing.backendEndMs = clock(now())
+          const spoken = deliver(turn.spokenSay)
+          log(
+            `[${tag}] typed → research ${turn.kind} (${turn.evidenceCount} source${turn.evidenceCount === 1 ? '' : 's'}${turn.unavailable ? ', unavailable' : ''}) in ${stages.totalMs} ms`,
+          )
+          return {
+            say: turn.say,
+            spokenSay: turn.spokenSay,
+            research: turn.card,
+            reference: effects.reference,
+            lastAsk: effects.lastAsk,
+            state: 'research',
+            toolCalls: [],
+            backendMs: stages.totalMs,
+            spoken,
+            stages,
+            marketContext: {
+              at: new Date(now()).toISOString(),
+              ...(marketConversation ? { conversation: marketConversation } : {}),
+              research: turn.context,
+            },
+          }
         }
       }
 
@@ -1655,7 +1834,7 @@ export function createLiveRuntime(deps: LiveRuntimeDeps): LiveRuntime {
         backendMs: stages.totalMs,
         spoken,
         stages,
-        marketContext: context,
+        marketContext: withResearch(context, researchContext),
       }
     }
   }

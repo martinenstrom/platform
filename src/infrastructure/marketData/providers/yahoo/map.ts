@@ -32,7 +32,13 @@
  */
 
 import {
+  SYM_DAX,
+  SYM_DJIA,
   SYM_FTSE100,
+  SYM_NASDAQ100,
+  SYM_NIKKEI225,
+  SYM_OMXS30,
+  SYM_RUSSELL2000,
   SYM_SECTOR_COMMS,
   SYM_SECTOR_DISCRETIONARY,
   SYM_SECTOR_ENERGY,
@@ -183,9 +189,77 @@ export const YAHOO_INDICES: readonly YahooBinding[] = Object.freeze([
   ...SECTOR_INDICES,
 ])
 
+/**
+ * The indices whose DAILY HISTORY is read from Yahoo.
+ *
+ * A wider set than the quotes: Avanza serves the live level of DAX, Nasdaq
+ * 100, Nikkei 225 and OMXS30 but has no history route, and a period question
+ * ("hur gick Nasdaq i veckan?") needs the closes. The same reviewed-binding
+ * rule applies — exact ticker, `INDEX` instrument type verified on every
+ * fetch — and the quotes keep their broker route. Gold and Brent stay
+ * absent for the reason above: a futures contract is not spot.
+ *
+ * Tickers read from live `v8/finance/chart` responses on 2026-10-03.
+ */
+export const YAHOO_HISTORY_INDICES: readonly YahooBinding[] = Object.freeze([
+  YAHOO_INDICES[0]!,
+  YAHOO_INDICES[1]!,
+  {
+    symbol: SYM_NASDAQ100,
+    yahooSymbol: '^NDX',
+    expectedName: 'NASDAQ 100',
+    expectedExchange: 'NIM',
+  },
+  {
+    symbol: SYM_OMXS30,
+    yahooSymbol: '^OMX',
+    expectedName: 'OMX Stockholm 30 Index',
+    expectedExchange: 'STO',
+  },
+  {
+    symbol: SYM_DAX,
+    yahooSymbol: '^GDAXI',
+    expectedName: 'DAX PERFORMANCE-INDEX',
+    expectedExchange: 'GER',
+  },
+  {
+    symbol: SYM_NIKKEI225,
+    yahooSymbol: '^N225',
+    expectedName: 'Nikkei 225',
+    expectedExchange: 'OSA',
+  },
+  /*
+   * The two further US majors, for a ranking over a period. Read live on
+   * 2026-10-03: both `INDEX`; Yahoo spells the Russell's longName with a
+   * leading space (" Russell 2000 Index"), which the history path does not
+   * compare — identity is the ticker and the instrument type.
+   */
+  {
+    symbol: SYM_DJIA,
+    yahooSymbol: '^DJI',
+    expectedName: 'Dow Jones Industrial Average',
+    expectedExchange: 'DJI',
+  },
+  {
+    symbol: SYM_RUSSELL2000,
+    yahooSymbol: '^RUT',
+    expectedName: 'Russell 2000 Index',
+    expectedExchange: 'WCB',
+  },
+])
+
 const BY_SYMBOL: ReadonlyMap<CanonicalSymbol, YahooBinding> = new Map(
   YAHOO_INDICES.map((binding) => [binding.symbol, binding]),
 )
+
+const HISTORY_BY_SYMBOL: ReadonlyMap<CanonicalSymbol, YahooBinding> = new Map(
+  YAHOO_HISTORY_INDICES.map((binding) => [binding.symbol, binding]),
+)
+
+/** The history binding, or null: a miss is answered as "no series", never resolved dynamically. */
+export function yahooHistoryBindingFor(symbol: CanonicalSymbol): YahooBinding | null {
+  return HISTORY_BY_SYMBOL.get(symbol) ?? null
+}
 
 /**
  * Throws on an unmapped symbol. A miss is a wiring mistake, and the only safe

@@ -63,15 +63,27 @@
 
 import {
   buildQuote,
+  buildSeries,
   type CanonicalSymbol,
   type DataSourceMetadata,
   type MarketQuote,
+  type MarketSeries,
+  type SeriesPoint,
   type SessionState,
   type Provenance,
 } from '~/domain/market'
-import type { FetchContext, QuoteProvider } from '~/application/marketData/ports'
+import type {
+  FetchContext,
+  QuoteProvider,
+  SeriesProvider,
+} from '~/application/marketData/ports'
 import { HttpError, type HttpClient } from './httpClient'
-import { YAHOO_INDICES, yahooBindingFor, type YahooBinding } from './yahoo/map'
+import {
+  YAHOO_INDICES,
+  yahooBindingFor,
+  yahooHistoryBindingFor,
+  type YahooBinding,
+} from './yahoo/map'
 
 export const YAHOO_PROVIDER_ID = 'yahoo'
 
@@ -124,6 +136,7 @@ interface YahooChartMeta {
 interface YahooHistoryResponse {
   chart?: {
     result?: Array<{
+      meta?: YahooChartMeta
       timestamp?: unknown
       indicators?: {
         quote?: Array<{ close?: unknown }>
@@ -364,13 +377,140 @@ export async function fetchDailyHistory(
   return bars
 }
 
+/* ------------------------------------------------------------ daily series */
+
+/** The Yahoo range that covers a window, with headroom; the bars are then cut to the window. */
+export function yahooRangeFor(window: { from: string; to: string }): string {
+  const days =
+    (Date.parse(`${window.to}T00:00:00Z`) - Date.parse(`${window.from}T00:00:00Z`)) /
+    86_400_000
+  if (days <= 25) return '1mo'
+  if (days <= 85) return '3mo'
+  if (days <= 175) return '6mo'
+  if (days <= 360) return '1y'
+  return '2y'
+}
+
+/**
+ * A daily close series for an index, identity-checked like a quote.
+ *
+ * The same chart endpoint as `fetchDailyHistory`, the same `INDEX` check as
+ * the quote path: the transport serves futures and funds under the same
+ * shape, and a period question answered from a December contract would be
+ * a number about something else. Unadjusted closes, because an index has
+ * nothing to adjust. The last bar is the session in progress when the
+ * market is open — the latest observation, timestamped by Yahoo's own
+ * `regularMarketTime`, never promoted above `delayed`.
+ */
+export function toIndexSeries(
+  binding: YahooBinding,
+  body: YahooHistoryResponse,
+  window: { from: string; to: string },
+  ctx: FetchContext,
+): MarketSeries {
+  const result = body?.chart?.result?.[0]
+  const meta = result?.meta
+  if (!meta) {
+    throw new HttpError(
+      'schema',
+      `Yahoo returned no chart result for ${binding.yahooSymbol}.`,
+    )
+  }
+  if (meta.symbol !== binding.yahooSymbol) {
+    throw new HttpError(
+      'schema',
+      `Yahoo returned symbol ${JSON.stringify(meta.symbol)} for ${binding.yahooSymbol}. ` +
+        `Refusing to serve an unverified instrument.`,
+    )
+  }
+  if (meta.instrumentType !== 'INDEX') {
+    throw new HttpError(
+      'schema',
+      `Yahoo returned instrumentType ${JSON.stringify(meta.instrumentType)} for ` +
+        `${binding.yahooSymbol}; expected INDEX. A future or a fund never stands in for an index.`,
+    )
+  }
+  const stamps = result?.timestamp as unknown[] | undefined
+  const closes = result?.indicators?.quote?.[0]?.close as unknown[] | undefined
+  if (!Array.isArray(stamps) || !Array.isArray(closes)) {
+    throw new HttpError(
+      'schema',
+      `Yahoo returned no daily series for ${binding.yahooSymbol}.`,
+    )
+  }
+  const points: SeriesPoint[] = []
+  for (let i = 0; i < stamps.length; i += 1) {
+    const at = stamps[i]
+    const close = closes[i]
+    /* A hole in the series is skipped, never interpolated. */
+    if (typeof at !== 'number' || typeof close !== 'number' || !Number.isFinite(close))
+      continue
+    const t = new Date(at * 1000).toISOString()
+    const date = t.slice(0, 10)
+    if (date < window.from || date > window.to) continue
+    points.push({ t, v: close })
+  }
+  if (points.length === 0) {
+    throw new HttpError(
+      'schema',
+      `Yahoo daily series for ${binding.yahooSymbol} was empty in the window.`,
+    )
+  }
+  const now = ctx.clock.now()
+  const observedSeconds = optionalFiniteNumber(meta.regularMarketTime)
+  const observedMs =
+    observedSeconds !== null
+      ? observedSeconds * 1000
+      : Date.parse(points[points.length - 1]!.t)
+  return buildSeries({
+    symbol: binding.symbol,
+    interval: '1d',
+    points,
+    provenance: {
+      asOf: new Date(observedMs).toISOString(),
+      asOfPrecision: 'second',
+      receivedAt: now.toISOString(),
+      ageMs: Math.max(0, now.getTime() - observedMs),
+      source: YAHOO_SOURCE,
+      quality: 'delayed',
+      isDelayed: true,
+      delayMinutes: null,
+      isProxy: false,
+    },
+  })
+}
+
 /* ---------------------------------------------------------------- provider */
 
-export function createYahooProvider(http: HttpClient): QuoteProvider {
+export function createYahooProvider(http: HttpClient): QuoteProvider & SeriesProvider {
   return {
     id: YAHOO_PROVIDER_ID,
     name: YAHOO_SOURCE.providerName,
     attributionUrl: YAHOO_SOURCE.attributionUrl,
+
+    async fetchSeries(symbol, interval, range, ctx): Promise<MarketSeries> {
+      if (interval !== '1d') {
+        throw new HttpError(
+          'not-found',
+          `Yahoo history is served daily; ${interval} is not offered.`,
+        )
+      }
+      const binding = yahooHistoryBindingFor(symbol)
+      if (!binding) {
+        throw new HttpError(
+          'not-found',
+          `Yahoo has no reviewed history binding for ${symbol}.`,
+        )
+      }
+      const url =
+        `${BASE_URL}/${encodeURIComponent(binding.yahooSymbol)}` +
+        `?interval=1d&range=${yahooRangeFor(range)}`
+      const body = await http.getJson<YahooHistoryResponse>(url, ctx.signal, {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json',
+      })
+      return toIndexSeries(binding, body, range, ctx)
+    },
 
     async fetchQuotes(symbols, ctx): Promise<MarketQuote[]> {
       /*

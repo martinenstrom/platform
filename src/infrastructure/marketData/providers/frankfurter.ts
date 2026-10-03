@@ -29,13 +29,19 @@
 
 import {
   buildQuote,
+  buildSeries,
   canonicalSymbol,
   decimalsOf,
   type CanonicalSymbol,
   type DataSourceMetadata,
   type MarketQuote,
+  type MarketSeries,
 } from '~/domain/market'
-import type { FetchContext, FxProvider } from '~/application/marketData/ports'
+import type {
+  FetchContext,
+  FxProvider,
+  SeriesProvider,
+} from '~/application/marketData/ports'
 import { HttpError, type HttpClient } from './httpClient'
 
 export const FRANKFURTER_PROVIDER_ID = 'frankfurter'
@@ -230,11 +236,78 @@ function toQuote(
 
 /* ---------------------------------------------------------------- provider */
 
-export function createFrankfurterProvider(http: HttpClient): FxProvider {
+/** The ECB's reference rates for a pair over a window, one point per publication date. */
+function toSeries(
+  symbol: CanonicalSymbol,
+  series: FrankfurterTimeSeries,
+  window: { from: string; to: string },
+  ctx: FetchContext,
+): MarketSeries {
+  const { quote: currency } = pairFor(symbol)
+  const points = Object.entries(series.rates)
+    .map(([date, rates]) => ({ date, rate: rates[currency] }))
+    .filter(
+      (entry): entry is { date: string; rate: number } =>
+        typeof entry.rate === 'number' &&
+        entry.date >= window.from &&
+        entry.date <= window.to,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry) => ({ t: `${entry.date}T00:00:00.000Z`, v: entry.rate }))
+  const latest = points[points.length - 1]
+  if (!latest) {
+    throw new HttpError(
+      'schema',
+      `Frankfurter returned no ${currency} rates for ${symbol} in the window`,
+    )
+  }
+  const now = ctx.clock.now()
+  const latestDate = latest.t.slice(0, 10)
+  return buildSeries({
+    symbol,
+    interval: '1d',
+    points,
+    provenance: {
+      asOf: latest.t,
+      asOfPrecision: 'date',
+      sourceDate: latestDate,
+      estimatedPublicationAt: estimatedEcbPublicationAt(latestDate),
+      receivedAt: now.toISOString(),
+      ageMs: Math.max(0, now.getTime() - Date.parse(latest.t)),
+      source: FRANKFURTER_SOURCE,
+      quality: 'eod',
+      isDelayed: false,
+      delayMinutes: null,
+      isProxy: false,
+    },
+  })
+}
+
+export function createFrankfurterProvider(http: HttpClient): FxProvider & SeriesProvider {
   return {
     id: FRANKFURTER_PROVIDER_ID,
     name: FRANKFURTER_SOURCE.providerName,
     attributionUrl: FRANKFURTER_SOURCE.attributionUrl,
+
+    /** The reference-rate history of a pair: the same time-series endpoint the quote reads, over the window asked for. */
+    async fetchSeries(symbol, interval, range, ctx): Promise<MarketSeries> {
+      if (interval !== '1d') {
+        throw new HttpError(
+          'not-found',
+          `Frankfurter publishes daily; ${interval} is not offered.`,
+        )
+      }
+      const { base, quote } = pairFor(symbol)
+      const url = `${BASE_URL}/${range.from}..${range.to}?base=${base}&symbols=${quote}`
+      const payload = await http.getJson<unknown>(url, ctx.signal)
+      if (!isTimeSeries(payload)) {
+        throw new HttpError(
+          'schema',
+          `Frankfurter returned an unexpected shape for ${symbol}`,
+        )
+      }
+      return toSeries(symbol, payload, range, ctx)
+    },
 
     async fetchFxRates(pairs, ctx): Promise<MarketQuote[]> {
       const from = new Date(ctx.clock.epochMs() - LOOKBACK_DAYS * 86_400_000)

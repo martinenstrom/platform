@@ -9,9 +9,11 @@ import { describe, expect, it } from 'vitest'
 import {
   SYM_DAX,
   SYM_DE10Y,
+  SYM_DJIA,
   SYM_FTSE100,
   SYM_NASDAQ100,
   SYM_OMXS30,
+  SYM_RUSSELL2000,
   SYM_SE10Y,
   SYM_SP500,
   SYM_US10Y,
@@ -70,11 +72,78 @@ describe('instrument aliases', () => {
     }
   })
 
-  it('names the Dow as not served rather than guessing a series for it', () => {
-    const query = ask('Hur gick Dow Jones idag?')
-    expect(query?.kind).toBe('MARKET_NOT_SERVED')
-    expect(query?.notServed).toEqual(['Dow Jones'])
-    expect(query?.symbols).toEqual([])
+  it('resolves the Dow and the Russell to their history-served indices, never to a guess', () => {
+    const dow = ask('Hur gick Dow Jones i veckan?')
+    expect(dow?.kind).toBe('MARKET_INDEX_PERFORMANCE')
+    expect(dow?.symbols).toEqual([SYM_DJIA])
+    expect(dow?.notServed).toEqual([])
+    expect(ask('Hur gick Russell 2000 i år?')?.symbols).toEqual([SYM_RUSSELL2000])
+  })
+})
+
+describe('a ranking over an inferred universe', () => {
+  it('"Vad gick bäst?" after one US index ranks the four US majors over the same period', () => {
+    const spLastWeek = conversationAfter(ask('Hur gick S&P 500 förra veckan?')!)
+    const best = ask('Vad gick bäst?', market(spLastWeek))
+    expect(best?.kind).toBe('MARKET_BEST')
+    expect(best?.universe).toBe('us-majors')
+    expect(best?.symbols).toEqual([SYM_SP500, SYM_NASDAQ100, SYM_DJIA, SYM_RUSSELL2000])
+    expect(best?.region).toBe('us')
+    expect(best?.period).toEqual({ kind: 'range', range: '1w' })
+    expect(best?.superlative).toBe('best')
+    /* The thread now covers the four, so "och i år?" ranks them over the year. */
+    const after = conversationAfter(best!)
+    expect(after.symbols).toHaveLength(4)
+    expect(ask('Vad gick sämst i år?', market(after))?.superlative).toBe('worst')
+  })
+
+  it('after a European index the universe is Europe’s majors; after a US region, the US majors', () => {
+    const omx = conversationAfter(ask('Hur gick OMXS30 i veckan?')!)
+    expect(ask('Vilken gick bäst?', market(omx))?.universe).toBe('europe-majors')
+    const us = conversationAfter(ask('Hur gick amerikanska börsen i veckan?')!)
+    expect(ask('Vad gick bäst?', market(us))?.symbols).toEqual([
+      SYM_SP500,
+      SYM_NASDAQ100,
+      SYM_DJIA,
+      SYM_RUSSELL2000,
+    ])
+  })
+
+  it('over today the universe is the region’s live-quoted indices, since the Dow and the Russell have no quote', () => {
+    const spToday = conversationAfter(ask('Hur gick S&P 500 idag?')!)
+    const best = ask('Vad gick bäst?', market(spToday))
+    expect(best?.universe).toBe('us-majors')
+    expect(best?.symbols).toEqual([SYM_SP500, SYM_NASDAQ100])
+    expect(best?.period).toEqual({ kind: 'today' })
+  })
+
+  it('with nothing to infer the universe from, asks one question back — and "ja" or "Europa" completes it', () => {
+    const cold = ask('Vad gick bäst förra veckan?')
+    expect(cold?.kind).toBe('MARKET_CLARIFY')
+    expect(cold?.clarification).toBe('Menar du bland de stora USA-indexen?')
+    const waiting = conversationAfter(cold!)
+    expect(waiting.pending).toEqual({
+      kind: 'best-universe',
+      superlative: 'best',
+      period: { kind: 'range', range: '1w' },
+    })
+    const yes = ask('Ja', market(waiting))
+    expect(yes?.kind).toBe('MARKET_BEST')
+    expect(yes?.universe).toBe('us-majors')
+    expect(yes?.period).toEqual({ kind: 'range', range: '1w' })
+    const europe = ask('Europa', market(waiting))
+    expect(europe?.universe).toBe('europe-majors')
+    expect(europe?.symbols).toEqual([SYM_DAX, SYM_FTSE100, SYM_OMXS30])
+    /* A rates thread ranks the rates it covered, in basis points — the thread is wide enough. */
+    const rates = conversationAfter(ask('Vad hände med räntorna?')!)
+    const mostUp = ask('Vilken steg mest?', market(rates))
+    expect(mostUp?.kind).toBe('MARKET_BEST')
+    expect(mostUp?.universe).toBeUndefined()
+    expect(mostUp?.symbols).toEqual(rates.symbols)
+  })
+
+  it('on a client page with no market conversation, the line is not the market’s', () => {
+    expect(ask('Vad gick bäst?', client())).toBeNull()
   })
 })
 
@@ -112,7 +181,8 @@ describe('regions', () => {
     ]) {
       const query = ask(line)
       expect(query?.kind, line).toBe('MARKET_REGION_PERFORMANCE')
-      expect(query?.period, line).toEqual({ kind: 'range', range: '1w' })
+      expect(query?.period.kind, line).toBe('range')
+      expect(['this-week', '1w']).toContain((query?.period as { range: string }).range)
       expect(query?.explicit, line).toEqual({ subject: true, period: true })
     }
   })
@@ -137,12 +207,15 @@ describe('periods', () => {
       ['idag', { kind: 'today' }],
       ['i dag', { kind: 'today' }],
       ['just nu', { kind: 'today' }],
-      ['den här veckan', { kind: 'range', range: '1w' }],
-      ['i veckan', { kind: 'range', range: '1w' }],
+      /* The week under way, seven days back and five sessions are three different periods. */
+      ['den här veckan', { kind: 'range', range: 'this-week' }],
+      ['i veckan', { kind: 'range', range: 'this-week' }],
       ['senaste veckan', { kind: 'range', range: '1w' }],
-      ['5 dagar', { kind: 'range', range: '1w' }],
-      ['senaste 5 handelsdagarna', { kind: 'range', range: '1w' }],
-      ['den här månaden', { kind: 'range', range: '1m' }],
+      ['förra veckan', { kind: 'range', range: '1w' }],
+      ['5 dagar', { kind: 'range', range: '5d' }],
+      ['senaste 5 handelsdagarna', { kind: 'range', range: '5d' }],
+      /* Month to date against a month back. */
+      ['den här månaden', { kind: 'range', range: 'mtd' }],
       ['senaste månaden', { kind: 'range', range: '1m' }],
       ['i år', { kind: 'range', range: 'ytd' }],
       ['YTD', { kind: 'range', range: 'ytd' }],
@@ -186,12 +259,48 @@ describe('follow-ups in a market conversation', () => {
     expect(query?.explicit).toEqual({ subject: true, period: false })
   })
 
+  it('"Och Nasdaq?" widens the thread, so "Vilken gick bäst?" ranks both; a whole question narrows it again', () => {
+    const spWeek = conversationAfter(ask('Hur gick S&P 500 i veckan?')!)
+    expect(spWeek).toEqual({
+      symbols: [SYM_SP500],
+      region: null,
+      period: { kind: 'range', range: 'this-week' },
+    })
+    /* The subject is Nasdaq; the thread is both — as the browser carries it, not as a test builds it. */
+    const nasdaq = conversationAfter(ask('Och Nasdaq?', market(spWeek))!)
+    expect(nasdaq.symbols).toEqual([SYM_NASDAQ100])
+    expect(nasdaq.set).toEqual([SYM_SP500, SYM_NASDAQ100])
+    const best = ask('Vilken gick bäst?', market(nasdaq))
+    expect(best?.kind).toBe('MARKET_BEST')
+    expect(best?.symbols).toEqual([SYM_SP500, SYM_NASDAQ100])
+    expect(best?.period).toEqual({ kind: 'range', range: 'this-week' })
+    /* "Och i år?" moves the period and keeps the thread. */
+    const year = conversationAfter(ask('Och i år?', market(nasdaq))!)
+    expect(year.symbols).toEqual([SYM_NASDAQ100])
+    expect(year.set).toEqual([SYM_SP500, SYM_NASDAQ100])
+    expect(year.period).toEqual({ kind: 'range', range: 'ytd' })
+    expect(ask('Vilken gick bäst?', market(year))?.symbols).toEqual([
+      SYM_SP500,
+      SYM_NASDAQ100,
+    ])
+    /* A whole question is a new subject: the thread narrows to DAX, and a ranking after it is Europe's majors. */
+    const dax = conversationAfter(ask('Hur gick DAX i veckan?', market(nasdaq))!)
+    expect(dax).toEqual({
+      symbols: [SYM_DAX],
+      region: null,
+      period: { kind: 'range', range: 'this-week' },
+    })
+    const europe = ask('Vilken gick bäst?', market(dax))
+    expect(europe?.universe).toBe('europe-majors')
+    expect(europe?.symbols).not.toContain(SYM_NASDAQ100)
+  })
+
   it('"Och i veckan?" keeps the instrument and changes the period', () => {
     const nasdaqToday = conversationAfter(ask('Och Nasdaq?', market(sp500Today))!)
     const query = ask('Och i veckan?', market(nasdaqToday))
     expect(query?.kind).toBe('MARKET_INDEX_PERFORMANCE')
     expect(query?.symbols).toEqual([SYM_NASDAQ100])
-    expect(query?.period).toEqual({ kind: 'range', range: '1w' })
+    expect(query?.period).toEqual({ kind: 'range', range: 'this-week' })
     expect(query?.explicit).toEqual({ subject: false, period: true })
   })
 
@@ -226,7 +335,7 @@ describe('follow-ups in a market conversation', () => {
     const query = ask('Och i veckan?', market(usToday))
     expect(query?.kind).toBe('MARKET_REGION_PERFORMANCE')
     expect(query?.region).toBe('us')
-    expect(query?.period).toEqual({ kind: 'range', range: '1w' })
+    expect(query?.period).toEqual({ kind: 'range', range: 'this-week' })
   })
 
   it('"Och Europa?" after a weekly question is Europe over the week', () => {
@@ -251,10 +360,11 @@ describe('follow-ups in a market conversation', () => {
     expect(query?.period).toEqual({ kind: 'range', range: 'ytd' })
   })
 
-  it('has nothing to continue without a conversation', () => {
+  it('has nothing to continue without a conversation — except a ranking, which asks one question back on the market', () => {
     expect(ask('Och i veckan?')).toBeNull()
-    expect(ask('Vilken gick bäst?')).toBeNull()
     expect(ask('Jämför med S&P.')).toBeNull()
+    expect(ask('Vilken gick bäst?')?.kind).toBe('MARKET_CLARIFY')
+    expect(ask('Vilken gick bäst?', client())).toBeNull()
   })
 })
 
@@ -349,6 +459,6 @@ describe('precedence and refusals', () => {
   it('answers several named instruments at once, over the period said', () => {
     const query = ask('Hur gick S&P 500 och Nasdaq i veckan?')
     expect(query?.symbols).toEqual([SYM_SP500, SYM_NASDAQ100])
-    expect(query?.period).toEqual({ kind: 'range', range: '1w' })
+    expect(query?.period).toEqual({ kind: 'range', range: 'this-week' })
   })
 })

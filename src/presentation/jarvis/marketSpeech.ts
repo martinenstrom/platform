@@ -241,6 +241,10 @@ function nameFor(symbol: string): string {
       return 'FTSE 100'
     case 'idx:nikkei225':
       return 'Nikkei 225'
+    case 'idx:djia':
+      return 'Dow Jones'
+    case 'idx:russell2000':
+      return 'Russell 2000'
     case 'rate:us10y':
       return 'USA:s tioårsränta'
     case 'rate:us2y':

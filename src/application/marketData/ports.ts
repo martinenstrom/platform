@@ -77,6 +77,16 @@ export type DataCategory =
   | 'intraday'
   | 'sectors'
   /*
+   * Daily history, one category per source family, so that a period
+   * question ("i veckan", "i år") is answered from a real daily series and
+   * the fixture behind the chart ranges never stands in for one. Separate
+   * from `intraday` on purpose: today's intraday series and a daily history
+   * are different observations, and the chains differ.
+   */
+  | 'history-index'
+  | 'history-fx'
+  | 'history-yields-us'
+  /*
    * Monetary policy, one category per institution. Separate from the yield
    * categories on purpose: a Fed outage must not be able to reach for a
    * Treasury yield, and the two are not the same measure.

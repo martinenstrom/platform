@@ -1534,6 +1534,7 @@ describe('a live session', () => {
           route: '/clients/cl-dahlqvist',
           previous: null,
           marketConversation: null,
+          researchContext: null,
         },
       ])
       const [out] = outputs()
@@ -1592,6 +1593,7 @@ describe('a live session', () => {
         route: '/clients/cl-alvarsson',
         previous: null,
         marketConversation: null,
+        researchContext: null,
       })
       expect(rt.state('live-1')!.advisory.at(-1)!.answer?.about.id).toBe('cl-alvarsson')
       /* The same route again is no change: nothing re-sent, the continuation kept. */
@@ -1688,7 +1690,7 @@ describe('a live session', () => {
       )
       await flush()
       expect(outputs().at(-1)?.say).toBe(
-        'Jag har dagens S&P 500-data, men inte en komplett veckoserie i den här datakällan. Idag S&P 500 är upp 0,42 procent.',
+        'Jag har dagens S&P 500-data, men inte en komplett veckoserie i den här datakällan. Dagens förändring: S&P 500 upp 0,42 procent.',
       )
       /* A record question on the market page is still the record's. */
       sideband.emit(
@@ -1705,7 +1707,7 @@ describe('a live session', () => {
         marketConversation: {
           symbols: ['idx:sp500'],
           region: null,
-          period: { kind: 'range', range: '1w' },
+          period: { kind: 'range', range: 'this-week' },
         },
       })
     })
@@ -1718,7 +1720,7 @@ describe('a live session', () => {
       const week = await rt.hear('live-1', 'Hur gick amerikanska börsen i veckan?')
       expect(week?.say).not.toMatch(forbidden)
       expect(week?.say).toBe(
-        'Jag har dagens S&P 500-data, men inte en komplett veckoserie i den här datakällan. Nasdaq 100 saknas i datan just nu. Idag S&P 500 är upp 0,42 procent.',
+        'Jag har dagens S&P 500-data, men inte en komplett veckoserie i den här datakällan. Nasdaq 100 saknas i datan just nu. Dagens förändring: S&P 500 upp 0,42 procent.',
       )
       const sp = await rt.hear('live-1', 'Hur gick sp500?')
       expect(sp?.say).toBe('S&P 500 är upp 0,42 procent idag.')

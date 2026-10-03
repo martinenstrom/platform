@@ -8,12 +8,17 @@
 
 import type { AdvisoryContext } from '~/application/advisory/ports'
 import { answerAdvisoryLine } from '~/application/jarvis/advisoryAnswer'
+import { BARE_WHY } from '~/application/jarvis/advisoryTurn'
 import type { JarvisAnswer } from '~/application/jarvis/answer'
 import { resolveJarvisContext, type JarvisContext } from '~/application/jarvis/context'
 import {
   recognizeMarketQuery,
   type MarketConversation,
 } from '~/application/jarvis/marketQuery'
+import {
+  recognizeResearchQuery,
+  type ResearchContext,
+} from '~/application/jarvis/research/researchQuery'
 import { contextLabel, type ContextNames } from '~/presentation/jarvis/contextText'
 import {
   spokenAnswerOf,
@@ -28,6 +33,8 @@ export interface WorkspaceTurnInput {
   previous: JarvisAnswer | null
   /** The market conversation so far, so "och i veckan?" is the market's and not the record's. */
   marketConversation?: MarketConversation | null
+  /** The research conversation so far, so "varför?" after a market answer is research and not the record's. */
+  researchContext?: ResearchContext | null
 }
 
 export interface WorkspaceTurnResult {
@@ -52,6 +59,16 @@ export async function workspaceTurn(
     recognizeMarketQuery(text, {
       scope: jarvis.scope,
       conversation: input.marketConversation ?? null,
+    })
+  )
+    return null
+  /* Research, wherever the advisor is — except a bare "varför?" right after the record answered. */
+  if (
+    !(BARE_WHY.test(text) && input.previous) &&
+    recognizeResearchQuery(text, {
+      scope: jarvis.scope,
+      market: input.marketConversation ?? null,
+      research: input.researchContext ?? null,
     })
   )
     return null

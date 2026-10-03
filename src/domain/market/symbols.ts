@@ -28,6 +28,12 @@ export const SYM_NASDAQ100 = s('idx:nasdaq100')
 export const SYM_DAX = s('idx:dax')
 export const SYM_FTSE100 = s('idx:ftse100')
 export const SYM_NIKKEI225 = s('idx:nikkei225')
+/**
+ * The two further US majors a ranking question needs ("vad gick bäst?"):
+ * served for daily history, with no live-quote route and no Overview tile.
+ */
+export const SYM_DJIA = s('idx:djia')
+export const SYM_RUSSELL2000 = s('idx:russell2000')
 /** Volatility index — an input to derived sentiment, not a displayed tile. */
 export const SYM_VIX = s('idx:vix')
 
@@ -215,6 +221,15 @@ export const INSTRUMENTS: Readonly<Record<CanonicalSymbol, InstrumentRef>> =
             precision: 0,
           },
           index(SYM_VIX, 'VIX', { countryCode: 'US' }),
+          /* History only (a period question's universe); no tile, no live quote. */
+          {
+            ...index(SYM_DJIA, 'Dow Jones', { countryCode: 'US', exchangeMic: 'XNYS' }),
+            precision: 0,
+          },
+          {
+            ...index(SYM_RUSSELL2000, 'Russell 2000', { countryCode: 'US' }),
+            precision: 0,
+          },
 
           fx(SYM_USDSEK, 'USD/SEK', USD, SEK),
           fx(SYM_EURSEK, 'EUR/SEK', EUR, SEK),

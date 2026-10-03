@@ -114,6 +114,8 @@ const MARKET_LABEL: Record<string, string> = {
   'idx:dax': 'DAX',
   'idx:ftse100': 'FTSE 100',
   'idx:nikkei225': 'Nikkei 225',
+  'idx:djia': 'Dow Jones',
+  'idx:russell2000': 'Russell 2000',
   'fx:usdsek': 'USD/SEK',
   'fx:eurusd': 'EUR/USD',
   'fx:eursek': 'EUR/SEK',

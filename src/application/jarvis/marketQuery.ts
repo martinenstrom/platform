@@ -33,10 +33,12 @@
 import {
   SYM_DAX,
   SYM_DE10Y,
+  SYM_DJIA,
   SYM_FTSE100,
   SYM_NASDAQ100,
   SYM_NIKKEI225,
   SYM_OMXS30,
+  SYM_RUSSELL2000,
   SYM_SE10Y,
   SYM_SP500,
   SYM_US10Y,
@@ -79,8 +81,29 @@ export type MarketIntentKind =
   | 'MARKET_VIX'
   /** An instrument the platform has no source for. */
   | 'MARKET_NOT_SERVED'
+  /**
+   * One question back, never a refusal: "Vad gick bäst?" with nothing to
+   * infer the universe from asks "Menar du bland de stora USA-indexen?".
+   */
+  | 'MARKET_CLARIFY'
 
-export type MarketRange = '1w' | '1m' | '3m' | '1y' | 'ytd'
+/** The set a ranking runs over when the line names none: the region's majors. */
+export type MarketUniverse = 'us-majors' | 'europe-majors'
+
+/** A clarification the conversation waits on; the next line answers it or drops it. */
+export interface PendingClarification {
+  kind: 'best-universe'
+  superlative: 'best' | 'worst'
+  period: MarketPeriod
+}
+
+/**
+ * The periods a series answers, as the history service measures them:
+ * `this-week` from the last close before the week, `5d` the latest five
+ * sessions, `1w` seven days back, `mtd` from the previous month's last
+ * close, `1m`/`3m`/`1y` rolling, `ytd` from the previous year's last close.
+ */
+export type MarketRange = 'this-week' | '5d' | '1w' | 'mtd' | '1m' | '3m' | '1y' | 'ytd'
 
 export type MarketPeriod =
   | { kind: 'today' }
@@ -95,6 +118,14 @@ export interface MarketConversation {
   symbols: readonly CanonicalSymbol[]
   region: MarketScope | null
   period: MarketPeriod
+  /**
+   * The instruments the thread has covered, when wider than the last
+   * subject: "Hur gick S&P 500 i veckan?" then "Och Nasdaq?" is about
+   * Nasdaq, over a thread of two — so "Vilken gick bäst?" has two to rank.
+   */
+  set?: readonly CanonicalSymbol[]
+  /** The question the last answer asked back, so "ja" or "Europa" completes it. */
+  pending?: PendingClarification
 }
 
 export interface MarketQuery {
@@ -111,6 +142,12 @@ export interface MarketQuery {
   explicit: { subject: boolean; period: boolean }
   /** Instruments the line named that the platform does not serve. */
   notServed: readonly string[]
+  /** The instruments the thread covers after this line: widened by a fragment that adds one, replaced by a whole question. */
+  thread: readonly CanonicalSymbol[]
+  /** The ranking's universe, when the line named none and the thread's region decided it. */
+  universe?: MarketUniverse
+  /** The one question back, for `MARKET_CLARIFY`. */
+  clarification?: string
   method: 'market-query-v1'
 }
 
@@ -131,6 +168,45 @@ export const REGION_INDICES: Record<MarketScope, readonly CanonicalSymbol[]> = {
   sweden: [SYM_OMXS30],
   global: [SYM_SP500, SYM_NASDAQ100, SYM_OMXS30, SYM_DAX, SYM_FTSE100, SYM_NIKKEI225],
 }
+
+/**
+ * The majors a ranking runs over when the advisor names none. The US set is
+ * the four an advisor means by "de stora USA-indexen"; the Dow and the
+ * Russell are served for history only, so a ranking over today uses the
+ * region's live-quoted indices instead.
+ */
+export const UNIVERSES: Record<
+  MarketUniverse,
+  { region: MarketScope; symbols: readonly CanonicalSymbol[]; name: string }
+> = {
+  'us-majors': {
+    region: 'us',
+    symbols: [SYM_SP500, SYM_NASDAQ100, SYM_DJIA, SYM_RUSSELL2000],
+    name: 'de stora USA-indexen',
+  },
+  'europe-majors': {
+    region: 'europe',
+    symbols: [SYM_DAX, SYM_FTSE100, SYM_OMXS30],
+    name: 'de stora europeiska indexen',
+  },
+}
+
+export const BEST_UNIVERSE_QUESTION = 'Menar du bland de stora USA-indexen?'
+
+const universeOfRegion = (region: MarketScope): MarketUniverse | null =>
+  region === 'us'
+    ? 'us-majors'
+    : region === 'europe' || region === 'sweden'
+      ? 'europe-majors'
+      : null
+
+/** The region an index belongs to, for inferring a ranking's universe; null for anything but an index. */
+const regionOfIndex = (symbol: CanonicalSymbol): MarketScope | null =>
+  UNIVERSES['us-majors'].symbols.includes(symbol)
+    ? 'us'
+    : UNIVERSES['europe-majors'].symbols.includes(symbol)
+      ? 'europe'
+      : null
 
 export const REGION_RATES: Record<MarketScope, readonly CanonicalSymbol[]> = {
   us: [SYM_US10Y, SYM_US2Y],
@@ -241,9 +317,19 @@ const PERIOD_LEXICON: readonly { pattern: RegExp; period: MarketPeriod }[] = [
     ]),
     period: { kind: 'range', range: '3m' },
   },
+  /* "Den här månaden" is month-to-date; "senaste månaden" is a month back. Not the same period. */
   {
     pattern: words([
-      '(?:den här|denna|i|under|senaste|förra|den senaste|den gångna) månaden',
+      '(?:den här|denna|i|under) månaden',
+      'hittills i månaden',
+      'månaden hittills',
+      'sedan månadsskiftet',
+    ]),
+    period: { kind: 'range', range: 'mtd' },
+  },
+  {
+    pattern: words([
+      '(?:senaste|förra|den senaste|den gångna) månaden',
       'månaden',
       'senaste 30 dagarna',
       '30 dagar',
@@ -253,19 +339,35 @@ const PERIOD_LEXICON: readonly { pattern: RegExp; period: MarketPeriod }[] = [
     ]),
     period: { kind: 'range', range: '1m' },
   },
+  /* Exactly five sessions, which is not a calendar week. */
   {
     pattern: words([
-      '(?:den här|denna|i|under|senaste|förra|den senaste|den gångna) veckan',
-      'veckan',
-      '(?:5|fem) dagar',
+      '(?:5|fem) (?:handels)?dagar',
       'senaste (?:5|fem) (?:handels)?dagarna',
+      'de senaste (?:5|fem) (?:handels)?dagarna',
       'handelsdagarna',
+    ]),
+    period: { kind: 'range', range: '5d' },
+  },
+  /* "Senaste veckan" is seven days back; "den här veckan" and "i veckan" are the week under way. The rolling one is read first, so a bare "veckan" means the week under way. */
+  {
+    pattern: words([
+      '(?:senaste|förra|den senaste|den gångna) veckan',
+      'senaste (?:7|sju) dagarna',
       'på en vecka',
       'en vecka tillbaka',
       'veckovis',
-      'sedan i måndags',
     ]),
     period: { kind: 'range', range: '1w' },
+  },
+  {
+    pattern: words([
+      '(?:den här|denna|i|under) veckan',
+      'veckan',
+      'sedan i måndags',
+      'hittills i veckan',
+    ]),
+    period: { kind: 'range', range: 'this-week' },
   },
   {
     pattern: words(['igår', 'i går', 'gårdagen']),
@@ -333,7 +435,8 @@ const RATES = words([
 const BEST = words([
   'vilken (?:gick|går|har gått|utvecklades|utvecklats|steg) (?:bäst|starkast|mest)',
   'vilket (?:gick|går) bäst',
-  'vad gick bäst',
+  'vilka (?:gick|går|har gått) bäst',
+  'vad (?:gick|går|har gått) (?:bäst|starkast)',
   'vem gick bäst',
   'bäst',
   'starkast',
@@ -341,11 +444,13 @@ const BEST = words([
 ])
 const WORST = words([
   'vilken (?:gick|går|har gått|utvecklades|föll) (?:sämst|svagast|mest)',
-  'vad gick sämst',
+  'vad (?:gick|går|har gått) (?:sämst|svagast)',
   'sämst',
   'svagast',
   'förloraren?',
 ])
+/** "Ja", "japp", "precis": the answer to the one question back. A region word answers it too, through the lexicon. */
+const YES = /^(?:ja|japp|jo|yes|ok|okej|precis|gärna|exakt)(?![\p{L}])/iu
 const COMPARE = words([
   'jämför',
   'jämfört med',
@@ -420,9 +525,30 @@ export function scopeForQuery(
   return targets.length > 0 ? scopeForTargets(targets) : 'global'
 }
 
-/** What the conversation remembers after an answer to this query. */
+/** The region a line names, by the same lexicon the market recogniser uses; null when it names none. */
+export function regionNamed(text: string): MarketScope | null {
+  return REGION_LEXICON.find((entry) => entry.pattern.test(text))?.region ?? null
+}
+
+/** What the conversation remembers after an answer to this query: the subject, the period, the thread when it is wider, and a question asked back. */
 export function conversationAfter(query: MarketQuery): MarketConversation {
-  return { symbols: query.symbols, region: query.region, period: query.period }
+  const remembered: MarketConversation = {
+    symbols: query.symbols,
+    region: query.region,
+    period: query.period,
+  }
+  if (query.kind === 'MARKET_CLARIFY')
+    return {
+      ...remembered,
+      pending: {
+        kind: 'best-universe',
+        superlative: query.superlative ?? 'best',
+        period: query.period,
+      },
+    }
+  return query.thread.length > query.symbols.length
+    ? { ...remembered, set: query.thread }
+    : remembered
 }
 
 /**
@@ -458,20 +584,8 @@ export function recognizeMarketQuery(
 
   const inherited = (): MarketPeriod =>
     conversation && followUp ? conversation.period : TODAY
-  const query = (
-    kind: MarketIntentKind,
-    symbols: readonly CanonicalSymbol[],
-    over: Partial<MarketQuery> & { explicit: MarketQuery['explicit'] },
-  ): MarketQuery => ({
-    kind,
-    symbols: unique(symbols).slice(0, MAX_SYMBOLS),
-    region: null,
-    period: period ?? inherited(),
-    targets: [],
-    notServed: [],
-    method: 'market-query-v1',
-    ...over,
-  })
+  /* A fragment leans on the conversation; a whole question stands alone. */
+  const continues = followUp && conversation !== null
   const conversationSymbols = (): readonly CanonicalSymbol[] =>
     conversation
       ? conversation.symbols.length > 0
@@ -480,6 +594,93 @@ export function recognizeMarketQuery(
           ? REGION_INDICES[conversation.region]
           : []
       : []
+  /** The thread so far — "S&P 500 … och Nasdaq?" is two — when it is wider than the last subject. */
+  const conversationSet = (): readonly CanonicalSymbol[] =>
+    conversation?.set && conversation.set.length >= 2
+      ? conversation.set
+      : conversationSymbols()
+  /*
+   * What the thread covers after this line. A fragment that adds an
+   * instrument widens it, so "Vilken gick bäst?" has every index the
+   * advisor has brought up to rank; a fragment that only moves the period
+   * keeps it; a whole question, a region, a comparison or a ranking
+   * replaces it with its own instruments.
+   */
+  const threadAfter = (
+    built: Omit<MarketQuery, 'thread'>,
+  ): readonly CanonicalSymbol[] => {
+    if (!continues) return built.symbols
+    if (built.kind === 'MARKET_INDEX_PERFORMANCE' && built.explicit.subject)
+      return unique([...conversationSet(), ...built.symbols]).slice(-MAX_SYMBOLS)
+    if (
+      !built.explicit.subject &&
+      (built.kind === 'MARKET_INDEX_PERFORMANCE' ||
+        built.kind === 'MARKET_REGION_PERFORMANCE') &&
+      conversationSet().length > built.symbols.length
+    )
+      return conversationSet()
+    return built.symbols
+  }
+  const query = (
+    kind: MarketIntentKind,
+    symbols: readonly CanonicalSymbol[],
+    over: Partial<MarketQuery> & { explicit: MarketQuery['explicit'] },
+  ): MarketQuery => {
+    const built: Omit<MarketQuery, 'thread'> = {
+      kind,
+      symbols: unique(symbols).slice(0, MAX_SYMBOLS),
+      region: null,
+      period: period ?? inherited(),
+      targets: [],
+      notServed: [],
+      method: 'market-query-v1',
+      ...over,
+    }
+    return { ...built, thread: threadAfter(built) }
+  }
+
+  /** A ranking over a universe: the region's majors for a period, its live-quoted indices for today. */
+  const universeQuery = (
+    universe: MarketUniverse,
+    superlative: 'best' | 'worst',
+    over: MarketPeriod,
+    explicitPeriod: boolean,
+  ): MarketQuery => {
+    const { region: universeRegion, symbols: majors } = UNIVERSES[universe]
+    const members = over.kind === 'today' ? REGION_INDICES[universeRegion] : majors
+    return query('MARKET_BEST', members, {
+      region: universeRegion,
+      targets: quoteTargets(members),
+      superlative,
+      universe,
+      period: over,
+      explicit: { subject: false, period: explicitPeriod },
+    })
+  }
+
+  /* 0. The answer to the one question back: "ja" is the US majors, a region word is that region's. */
+  if (
+    conversation?.pending &&
+    targets.length === 0 &&
+    !best &&
+    !worst &&
+    !asksState &&
+    !generic
+  ) {
+    const pending = conversation.pending
+    const universe = region
+      ? universeOfRegion(region)
+      : YES.test(line)
+        ? 'us-majors'
+        : null
+    if (universe)
+      return universeQuery(
+        universe,
+        pending.superlative,
+        period ?? pending.period,
+        period !== null,
+      )
+  }
 
   /* 1. Instruments named. */
   if (targets.length > 0) {
@@ -500,8 +701,8 @@ export function recognizeMarketQuery(
         explicit: { subject: true, period: period !== null },
       })
     }
-    if ((best || worst) && quoted.length + conversationSymbols().length >= 2) {
-      const set = quoted.length >= 2 ? quoted : [...conversationSymbols(), ...quoted]
+    if ((best || worst) && quoted.length + conversationSet().length >= 2) {
+      const set = quoted.length >= 2 ? quoted : [...conversationSet(), ...quoted]
       return query('MARKET_BEST', set, {
         targets: quoteTargets(unique(set)),
         superlative: worst ? 'worst' : 'best',
@@ -553,6 +754,15 @@ export function recognizeMarketQuery(
       })
     }
     if (best || worst) {
+      /* "Vilket USA-index gick bäst i veckan?": the region's majors over a period, its live indices today. */
+      const universe = universeOfRegion(region)
+      if (universe)
+        return universeQuery(
+          universe,
+          worst ? 'worst' : 'best',
+          period ?? inherited(),
+          period !== null,
+        )
       return query('MARKET_BEST', indices, {
         region,
         targets: quoteTargets(indices),
@@ -579,16 +789,53 @@ export function recognizeMarketQuery(
     })
   }
 
-  /* 4. "Vilken gick bäst?" over what the conversation is about. */
-  if ((best || worst) && conversationSymbols().length >= 2) {
-    const set = conversationSymbols()
-    return query('MARKET_BEST', set, {
-      region: conversation?.region ?? null,
-      targets: quoteTargets(set),
-      superlative: worst ? 'worst' : 'best',
-      period: period ?? conversation!.period,
-      explicit: { subject: false, period: period !== null },
-    })
+  /*
+   * 4. "Vilken gick bäst?" over what the thread has covered. With one index
+   * in the thread the ranking is over its region's majors — "vad gick bäst?"
+   * after S&P 500 is the US majors; with nothing to infer from, one question
+   * back and never a refusal.
+   */
+  if (best || worst) {
+    const superlative = worst ? 'worst' : 'best'
+    const set = conversationSet()
+    /* A region thread that named no index — "amerikanska börsen" — ranks the region's majors, not its two default tiles. */
+    const regionDefaults =
+      conversation?.region !== null && conversation?.region !== undefined
+        ? universeOfRegion(conversation.region)
+        : null
+    const unnamedRegion =
+      regionDefaults !== null &&
+      set.length === REGION_INDICES[conversation!.region!].length &&
+      set.every((symbol) => REGION_INDICES[conversation!.region!].includes(symbol))
+    if (unnamedRegion && regionDefaults)
+      return universeQuery(
+        regionDefaults,
+        superlative,
+        period ?? conversation!.period,
+        period !== null,
+      )
+    if (set.length >= 2) {
+      return query('MARKET_BEST', set, {
+        region: conversation?.region ?? null,
+        targets: quoteTargets(set),
+        superlative,
+        period: period ?? conversation!.period,
+        explicit: { subject: false, period: period !== null },
+      })
+    }
+    const over = period ?? conversation?.period ?? TODAY
+    const inferredRegion =
+      set.length === 1 ? regionOfIndex(set[0]!) : (conversation?.region ?? null)
+    const universe = inferredRegion ? universeOfRegion(inferredRegion) : null
+    if (universe) return universeQuery(universe, superlative, over, period !== null)
+    if (marketScope || conversation) {
+      return query('MARKET_CLARIFY', [], {
+        clarification: BEST_UNIVERSE_QUESTION,
+        superlative,
+        period: over,
+        explicit: { subject: false, period: period !== null },
+      })
+    }
   }
 
   /* 5. A bare period on the conversation's subject: "Och i veckan?". */

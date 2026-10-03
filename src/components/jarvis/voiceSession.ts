@@ -33,6 +33,8 @@
 
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import type { JarvisAnswer } from '~/application/jarvis/answer'
+import type { MarketCard } from '~/presentation/jarvis/marketCard'
+import type { ResearchCard } from '~/presentation/jarvis/researchCard'
 import {
   closeLiveSessionFn,
   hearInLiveSessionFn,
@@ -59,6 +61,10 @@ export type TypedReply =
       marketContext: MarketContextPointer | null
       /** The record answered: the structured answer the presence renders, beside what the voice said. */
       advisory: JarvisAnswer | null
+      /** The compact card of a period market answer. */
+      card?: MarketCard
+      /** The research strip of a researched answer. */
+      research?: ResearchCard
     }
   | { ok: false }
 
@@ -428,6 +434,8 @@ export class VoiceSession {
       lastAsk: result.lastAsk,
       marketContext: result.marketContext,
       advisory: null,
+      ...(result.card ? { card: result.card } : {}),
+      ...(result.research ? { research: result.research } : {}),
     }
   }
 

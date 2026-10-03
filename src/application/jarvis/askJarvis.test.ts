@@ -129,12 +129,69 @@ describe('a typed line to JARVIS', () => {
         marketContext: { at: '2026-10-02T15:00:00.000Z', scope: 'us', conversation },
       },
     })
+    /* The research context travels as typed slots, each checked; a sentence or an unknown field is refused. */
+    const research = {
+      topic: 'fed',
+      region: 'us',
+      period: { kind: 'range', range: '1w' },
+      instruments: ['idx:sp500'],
+      companies: [{ name: 'Nvidia', ticker: 'NVDA', country: 'us' }],
+      institution: 'fed',
+      release: null,
+      evidenceIds: ['e1', 'e2'],
+      asOf: '2026-10-02T15:05:00.000Z',
+    }
+    expect(
+      parseAskJarvisRequest({
+        text: 'Varför?',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', conversation, research },
+      }),
+    ).toEqual({
+      ok: true,
+      request: {
+        text: 'Varför?',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', conversation, research },
+      },
+    })
+    for (const badResearch of [
+      { ...research, topic: 'x'.repeat(81) },
+      { ...research, institution: 'imf' },
+      { ...research, evidenceIds: ['DROP TABLE'] },
+      {
+        ...research,
+        companies: [{ name: 'Nvidia', ticker: 'NVDA', country: 'us', note: 'Henrik' }],
+      },
+      { ...research, line: 'Vad betyder det för Henrik?' },
+    ]) {
+      expect(
+        parseAskJarvisRequest({
+          text: 'x',
+          marketContext: { at: '2026-10-02T15:00:00.000Z', research: badResearch },
+        }),
+      ).toEqual({ ok: false, field: 'marketContext' })
+    }
+    /* The thread, when wider than the subject, travels too — canonical symbols, two or more. */
+    const threaded = { ...conversation, set: ['idx:sp500', 'idx:nasdaq100'] }
+    expect(
+      parseAskJarvisRequest({
+        text: 'Vilken gick bäst?',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', conversation: threaded },
+      }),
+    ).toEqual({
+      ok: true,
+      request: {
+        text: 'Vilken gick bäst?',
+        marketContext: { at: '2026-10-02T15:00:00.000Z', conversation: threaded },
+      },
+    })
     for (const bad of [
       {
         symbols: ['idx:nasdaq100'],
         region: null,
         period: { kind: 'range', range: '2w' },
       },
+      { ...conversation, set: ['idx:sp500'] },
+      { ...conversation, set: ['idx:sp500', 'DROP TABLE'] },
       { symbols: ['DROP TABLE'], region: null, period: { kind: 'today' } },
       { symbols: [], region: 'mars', period: { kind: 'today' } },
       { symbols: [], region: null, period: { kind: 'today' }, level: 6512 },

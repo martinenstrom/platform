@@ -15,15 +15,24 @@ import type { JarvisAnswer } from './answer'
 import { parseReference } from './liveOpen'
 import { isMarketScope, type MarketScope } from './marketBrief'
 import type { MarketConversation, MarketPeriod } from './marketQuery'
+import type {
+  Country,
+  Institution,
+  MacroRelease,
+  ResearchCompany,
+  ResearchContext,
+} from './research/researchQuery'
 
 export interface MarketContextPointer {
   at: string
   scope?: MarketScope
   conversation?: MarketConversation
+  /** The research conversation's subject, in typed slots, so "varför?" and "vad säger analytiker?" continue it. */
+  research?: ResearchContext
 }
 
 const MAX_CONVERSATION_SYMBOLS = 8
-const RANGES = ['1w', '1m', '3m', '1y', 'ytd'] as const
+const RANGES = ['this-week', '5d', '1w', 'mtd', '1m', '3m', '1y', 'ytd'] as const
 
 /** A period as the server wrote it, checked field by field; null for anything else. */
 function parsePeriod(value: unknown): MarketPeriod | null {
@@ -56,23 +65,138 @@ function parsePeriod(value: unknown): MarketPeriod | null {
   }
 }
 
-/** The market conversation handed back: symbols the platform could have named, a scope, a period. */
-function parseConversation(value: unknown): MarketConversation | null {
-  if (!isRecord(value) || Object.keys(value).length !== 3) return null
-  if (!Array.isArray(value.symbols) || value.symbols.length > MAX_CONVERSATION_SYMBOLS)
-    return null
+/** Symbols the platform could have named: canonical, and no more than a conversation holds. */
+function parseSymbols(value: unknown): CanonicalSymbol[] | null {
+  if (!Array.isArray(value) || value.length > MAX_CONVERSATION_SYMBOLS) return null
   const symbols: CanonicalSymbol[] = []
-  for (const entry of value.symbols) {
+  for (const entry of value) {
     if (typeof entry !== 'string' || !/^[a-z]+:[a-z0-9-]+$/.test(entry)) return null
     symbols.push(entry as CanonicalSymbol)
   }
+  return symbols
+}
+
+/** The market conversation handed back: the subject, a scope, a period, and the thread when it is wider than the subject. */
+function parseConversation(value: unknown): MarketConversation | null {
+  if (!isRecord(value)) return null
+  for (const key of Object.keys(value))
+    if (key !== 'symbols' && key !== 'region' && key !== 'period' && key !== 'set')
+      return null
+  const symbols = parseSymbols(value.symbols)
+  if (!symbols) return null
   if (value.region !== null && !isMarketScope(value.region)) return null
   const period = parsePeriod(value.period)
   if (!period) return null
-  return { symbols, region: value.region === null ? null : value.region, period }
+  const conversation: MarketConversation = {
+    symbols,
+    region: value.region === null ? null : value.region,
+    period,
+  }
+  if (value.set !== undefined) {
+    const set = parseSymbols(value.set)
+    if (!set || set.length < 2) return null
+    conversation.set = set
+  }
+  return conversation
 }
 
-/** The pointer the server gave back last time: a time, optionally a scope and the conversation. */
+const INSTITUTIONS: readonly Institution[] = ['fed', 'riksbank', 'ecb', 'boe', 'boj']
+const RELEASES: readonly MacroRelease[] = [
+  'cpi',
+  'jobs',
+  'unemployment',
+  'pmi',
+  'ism',
+  'gdp',
+  'retail',
+  'pce',
+]
+const COUNTRIES: readonly Country[] = ['us', 'se', 'eu', 'uk', 'jp']
+const MAX_COMPANIES = 6
+const MAX_EVIDENCE_IDS = 12
+
+function parseCompanies(value: unknown): ResearchCompany[] | null {
+  if (!Array.isArray(value) || value.length > MAX_COMPANIES) return null
+  const companies: ResearchCompany[] = []
+  for (const entry of value) {
+    if (!isRecord(entry) || Object.keys(entry).length !== 3) return null
+    if (typeof entry.name !== 'string' || !entry.name.trim() || entry.name.length > 60)
+      return null
+    if (
+      entry.ticker !== null &&
+      (typeof entry.ticker !== 'string' || !/^[A-Z.-]{1,10}$/.test(entry.ticker))
+    )
+      return null
+    if (entry.country !== null && !COUNTRIES.includes(entry.country as Country))
+      return null
+    companies.push({
+      name: entry.name.trim(),
+      ticker: entry.ticker as string | null,
+      country: entry.country as Country | null,
+    })
+  }
+  return companies
+}
+
+/** The research context handed back: typed slots only, each checked; never a sentence. */
+export function parseResearchContext(value: unknown): ResearchContext | null {
+  if (!isRecord(value)) return null
+  const keys = [
+    'topic',
+    'region',
+    'period',
+    'instruments',
+    'companies',
+    'institution',
+    'release',
+    'evidenceIds',
+    'asOf',
+  ]
+  for (const key of Object.keys(value)) if (!keys.includes(key)) return null
+  if (
+    value.topic !== null &&
+    (typeof value.topic !== 'string' || value.topic.length > 80)
+  )
+    return null
+  if (value.region !== null && !isMarketScope(value.region)) return null
+  const period = value.period === null ? null : parsePeriod(value.period)
+  if (value.period !== null && !period) return null
+  const instruments = parseSymbols(value.instruments)
+  if (!instruments) return null
+  const companies = parseCompanies(value.companies)
+  if (!companies) return null
+  if (
+    value.institution !== null &&
+    !INSTITUTIONS.includes(value.institution as Institution)
+  )
+    return null
+  if (value.release !== null && !RELEASES.includes(value.release as MacroRelease))
+    return null
+  if (
+    !Array.isArray(value.evidenceIds) ||
+    value.evidenceIds.length > MAX_EVIDENCE_IDS ||
+    !value.evidenceIds.every((id) => typeof id === 'string' && /^e\d{1,4}$/.test(id))
+  )
+    return null
+  if (
+    value.asOf !== null &&
+    (typeof value.asOf !== 'string' || Number.isNaN(Date.parse(value.asOf)))
+  )
+    return null
+  return {
+    topic: value.topic as string | null,
+    region: value.region as MarketScope | null,
+    period,
+    instruments,
+    companies,
+    institution: value.institution as Institution | null,
+    release: value.release as MacroRelease | null,
+    evidenceIds: value.evidenceIds as string[],
+    asOf: value.asOf as string | null,
+  }
+}
+
+/** The pointer the server gave back last time: a time, optionally a scope, the market conversation and the research context. */
 export function parseMarketContext(value: unknown): MarketContextPointer | null {
   if (
     !isRecord(value) ||
@@ -81,7 +205,8 @@ export function parseMarketContext(value: unknown): MarketContextPointer | null 
   )
     return null
   for (const key of Object.keys(value))
-    if (key !== 'at' && key !== 'scope' && key !== 'conversation') return null
+    if (key !== 'at' && key !== 'scope' && key !== 'conversation' && key !== 'research')
+      return null
   const pointer: MarketContextPointer = { at: value.at }
   if (value.scope !== undefined) {
     if (!isMarketScope(value.scope)) return null
@@ -91,6 +216,11 @@ export function parseMarketContext(value: unknown): MarketContextPointer | null 
     const conversation = parseConversation(value.conversation)
     if (!conversation) return null
     pointer.conversation = conversation
+  }
+  if (value.research !== undefined && value.research !== null) {
+    const research = parseResearchContext(value.research)
+    if (!research) return null
+    pointer.research = research
   }
   return pointer
 }

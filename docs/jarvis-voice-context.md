@@ -224,3 +224,79 @@ The simulated stub's sentence no longer names the model or the register.
 regression), the live-session tests for the simulated hear sequence and the
 real-voice tool path, `askJarvis.test.ts` for the pointer, and the browser
 probe `.probe/market-voice-probe.mjs` (screenshots in `.probe/market-voice/`).
+
+## 11. Historical Market Data V1 — a real series behind every period (2026-10-03)
+
+**Providers and chains.** The registry's `series` capability now has three
+live adapters: Yahoo's chart endpoint (`fetchSeries` in `providers/yahoo.ts`,
+reviewed bindings `YAHOO_HISTORY_INDICES`: S&P 500, Nasdaq 100, OMXS30, DAX,
+FTSE 100, Nikkei 225, each verified `INDEX` on every fetch), Frankfurter's
+time series for USD/SEK and EUR/USD, and the US Treasury's monthly pages for
+the US 10Y and 2Y par yields. They stand in three new chains —
+`history-index`, `history-fx`, `history-yields-us` — with their own cache
+policy (15 min open / 6 h closed for indices, 12 h for the daily sources),
+and the fixture at the tail only because every chain ends in it: policy
+forbids it in production and the history service refuses it everywhere.
+`infrastructure/marketData/marketHistorySource.ts` routes a symbol to its
+chain and answers an unserved symbol as "no series".
+
+**The contract.** `application/marketData/history.ts` is the one place a
+period is measured, reusable by the chart ranges, the Meeting Pack and
+Market-to-Client: `HistoricalSeries` (metric, unit, frequency, start, end,
+observations, source, observed and retrieved instants, quality, requested
+window, completeness, gaps) from the domain's `MarketSeries`; `periodBounds`
+under the documented trading-day policy — the start is the observation at
+or before the boundary (the prior close), so a weekend or holiday snaps to
+the prior session; `periodChange` by the kind of instrument — a price or an
+FX pair in percent (`end / start − 1`), a yield in basis points
+(`end − start`) — with the sessions counted, a gap beyond six calendar days
+refused as incomplete, and a latest observation older than four days
+flagged stale. Nothing is interpolated.
+
+**Periods.** `den här veckan` / `i veckan` from the last close before the
+week's first session; `senaste 5 handelsdagarna` exactly five sessions;
+`senaste veckan` seven days back; `den här månaden` month to date;
+`senaste månaden`, `kvartalet`, `senaste året` rolling; `i år` / `sedan
+årsskiftet` from the previous year's last close; a named month from its
+first to its last observation, to the latest when still under way. The
+recogniser's period lexicon tells these apart; the parser accepts them.
+
+**The thread.** The conversation remembers the last subject and, when
+wider, the thread (`MarketConversation.set`): "Hur gick S&P 500 i veckan?"
+then "Och Nasdaq?" is about Nasdaq over a thread of two, so "Vilken gick
+bäst?" ranks both and "Och i år?" keeps them; a whole question ("Hur gick
+DAX i veckan?") replaces the subject and the thread. Found by the browser
+probe on 2026-10-03 — the unit test had built the two-index conversation
+by hand — and locked in `marketQuery.test.ts` from the derived
+conversation.
+
+**Answers.** `marketAnswer.ts` carries start, end, sessions, basis points
+and a sparkline per item and a `comparison` with the gap in percentage
+points; `marketAnswerText.ts` speaks "S&P 500 är upp 1,59 procent den här
+veckan. Indexet står senast i 7 772.", "USA:s tioårsränta är upp 14
+baspunkter den här veckan, till 5,28 procent.", "Nasdaq 100 är upp 0,8
+procent den här veckan mot S&P 500:s 1,59, alltså 0,79 procentenheter
+mindre."; a region answers from the components it has and names the one it
+cannot verify. `presentation/jarvis/marketCard.ts` projects a period answer
+to the compact card `components/jarvis/MarketAnswerCard.tsx` renders under
+the sentence: period, change, start, latest, span, source, "Data t.o.m.",
+sparkline. Provider failure keeps the honest form: "Jag kan inte verifiera
+en komplett veckoserie för S&P 500 just nu. Dagens förändring: S&P 500 upp
+0,73 procent."
+
+**Verification.** `history.test.ts`, the three adapter history tests, the
+JARVIS answer and renderer tests (the acceptance sequence: the week, "och
+Nasdaq?", "vilken gick bäst?", the ten-year in bp, September, the year), the
+live probe `.probe/history-live-probe.ts` (ten instruments live through the
+container) and the browser probe `.probe/history-browser-probe.mjs`.
+
+## 12. Public Research V1 — the second intelligence world (2026-10-03)
+
+The research tier stands between the market tier and the model router for
+typed lines, the simulated microphone and the voice's workspace tool: why
+the market moved, what a central bank said, what a release showed, what a
+company reported, what the week holds, what the market expects. Its
+contract — the port, the firewall, the source hierarchy, the evidence
+model, the follow-ups, the cache — is `docs/jarvis-public-research.md`.
+The conversation's research context travels in the same pointer as the
+market conversation (`marketContext.research`), as typed slots only.

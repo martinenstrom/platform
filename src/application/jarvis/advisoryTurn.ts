@@ -17,11 +17,16 @@ import type { JarvisAnswer } from './answer'
 import type { AskJarvisRequest } from './askJarvis'
 import { resolveJarvisContext, type JarvisContext } from './context'
 import { recognizeMarketQuery } from './marketQuery'
+import { recognizeResearchQuery } from './research/researchQuery'
 
 export interface AdvisoryTurnResult {
   advisory: JarvisAnswer
   context: JarvisContext
 }
+
+/** "Varför?", "Vad betyder det?": a continuation of whatever answered last. */
+export const BARE_WHY =
+  /^(?:varför|why|hur kommer det sig|vad betyder det|förklara)\W*$/iu
 
 export async function advisoryTurn(
   request: AskJarvisRequest,
@@ -34,6 +39,20 @@ export async function advisoryTurn(
     recognizeMarketQuery(request.text, {
       scope: jarvis.scope,
       conversation: request.marketContext?.conversation ?? null,
+    })
+  )
+    return null
+  /*
+   * Why the market moved, what a central bank said, what a company reported:
+   * research, wherever the advisor is — except a bare "varför?" right after
+   * the record answered, which continues the record's answer.
+   */
+  if (
+    !(BARE_WHY.test(request.text) && request.previous) &&
+    recognizeResearchQuery(request.text, {
+      scope: jarvis.scope,
+      market: request.marketContext?.conversation ?? null,
+      research: request.marketContext?.research ?? null,
     })
   )
     return null

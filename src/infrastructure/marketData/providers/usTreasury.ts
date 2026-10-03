@@ -31,8 +31,12 @@ import {
   type Maturity,
   type YieldCurve,
 } from '~/domain/market'
-import { isoCurrency } from '~/domain/market'
-import type { FetchContext, YieldProvider } from '~/application/marketData/ports'
+import { buildSeries, isoCurrency, type MarketSeries } from '~/domain/market'
+import type {
+  FetchContext,
+  SeriesProvider,
+  YieldProvider,
+} from '~/application/marketData/ports'
 import { HttpError, type HttpClient } from './httpClient'
 
 export const US_TREASURY_PROVIDER_ID = 'treasury'
@@ -234,7 +238,9 @@ function monthParam(date: Date): string {
   return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
+export function createUsTreasuryProvider(
+  http: HttpClient,
+): YieldProvider & SeriesProvider {
   /**
    * One month of one dataset.
    *
@@ -321,12 +327,27 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
         )
       }
 
+      /*
+       * Every month page in the range, fetched together: a year of history is
+       * thirteen pages, and thirteen sequential round trips were eight seconds
+       * on 2026-10-03 against a budget of four. The pages are independent and
+       * the Treasury's endpoint tolerates a handful of concurrent reads.
+       */
+      const months: Date[] = []
       let cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1))
       while (cursor.getTime() <= to.getTime()) {
-        const url = `${BASE_URL}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${monthParam(cursor)}`
-        observations.push(...parseTreasuryXml(await http.getText(url, ctx.signal)))
+        months.push(cursor)
         cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
       }
+      const pages = await Promise.all(
+        months.map((month) =>
+          http.getText(
+            `${BASE_URL}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${monthParam(month)}`,
+            ctx.signal,
+          ),
+        ),
+      )
+      for (const page of pages) observations.push(...parseTreasuryXml(page))
 
       const inRange = observations
         .filter((entry) => entry.date >= range.from && entry.date <= range.to)
@@ -356,6 +377,39 @@ export function createUsTreasuryProvider(http: HttpClient): YieldProvider {
         }
       }
       return out
+    },
+
+    /**
+     * A yield's daily history as a series: every publication in the window,
+     * in percent, read through `fetchYieldHistory` so the pagination and the
+     * omitted-never-zero rule are the same. The series' provenance is the
+     * latest publication's; each point is a published date.
+     */
+    async fetchSeries(symbol, interval, range, ctx): Promise<MarketSeries> {
+      if (interval !== '1d') {
+        throw new HttpError(
+          'not-found',
+          `US Treasury publishes daily; ${interval} is not offered.`,
+        )
+      }
+      const history = await this.fetchYieldHistory!([symbol], range, ctx)
+      const points = history.map((entry) => ({
+        t: `${entry.observationDate}T00:00:00.000Z`,
+        v: entry.yieldPercent,
+      }))
+      const latest = history[history.length - 1]
+      if (!latest) {
+        throw new HttpError(
+          'schema',
+          `US Treasury published no ${symbol} observation in ${range.from}..${range.to}`,
+        )
+      }
+      return buildSeries({
+        symbol,
+        interval: '1d',
+        points,
+        provenance: latest.provenance,
+      })
     },
 
     async fetchYieldCurve(countryCode, ctx): Promise<YieldCurve> {

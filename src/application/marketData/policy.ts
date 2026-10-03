@@ -280,6 +280,33 @@ export const CATEGORY_POLICY: Readonly<Record<DataCategory, CategoryPolicy>> =
       fallback: PRICE_FALLBACK,
       staleWhileRevalidate: true,
     },
+    /*
+     * Daily history. One series per symbol and window serves every period
+     * question asked of it that day — S&P week, Nasdaq week, the comparison —
+     * so the TTL is set by how often the LATEST bar changes: during a
+     * session the current bar moves, after the close nothing does until the
+     * next one. Never a fixture in production, as for every price category.
+     */
+    'history-index': {
+      ttlOpenMs: 15 * MINUTE,
+      ttlClosedMs: 6 * HOUR,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+      staleWhileRevalidate: true,
+    },
+    'history-fx': {
+      // One ECB publication per TARGET business day.
+      ttlOpenMs: 12 * HOUR,
+      ttlClosedMs: 12 * HOUR,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+      staleWhileRevalidate: false,
+    },
+    'history-yields-us': {
+      // One Treasury publication per business day.
+      ttlOpenMs: 12 * HOUR,
+      ttlClosedMs: 12 * HOUR,
+      fallback: { ...PRICE_FALLBACK, maxStaleMs: 5 * DAY },
+      staleWhileRevalidate: false,
+    },
   })
 
 export function policyFor(category: DataCategory): CategoryPolicy {

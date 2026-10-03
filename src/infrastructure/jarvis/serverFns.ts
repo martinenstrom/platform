@@ -23,7 +23,17 @@ import type { HostRequest, HostResult } from '~/application/analysis/hostContrac
 import { parseLiveOpenRequest } from '~/application/jarvis/liveOpen'
 import { parseAskJarvisRequest } from '~/application/jarvis/askJarvis'
 import { advisoryTurn, type AdvisoryTurnResult } from '~/application/jarvis/advisoryTurn'
+import { resolveJarvisContext } from '~/application/jarvis/context'
+import type { PrivateVocabulary } from '~/application/jarvis/research/firewall'
+import { answerResearchQuery } from '~/application/jarvis/research/researchAnswer'
+import { createResearchCache } from '~/application/jarvis/research/researchCache'
+import { recognizeResearchQuery } from '~/application/jarvis/research/researchQuery'
 import type { AdvisoryContext } from '~/application/advisory/ports'
+import { researchCardOf } from '~/presentation/jarvis/researchCard'
+import {
+  researchAnswerSpeech,
+  researchAnswerText,
+} from '~/presentation/jarvis/researchText'
 import {
   composeMarketBrief,
   fetchMarketBriefParts,
@@ -38,6 +48,8 @@ import {
   type LiveRuntime,
   type LiveSessionState,
   type LiveTelemetry,
+  type ResearchInput,
+  type ResearchTurn,
   type TypedTelemetry,
   type TypedTurnResult,
 } from './liveSession'
@@ -179,6 +191,76 @@ function marketHistory(getContainer: ContainerGetter): MarketHistorySource {
 /** The voice path without audio: every server-side part of it, no provider. Explicit, never default. */
 const simulatedVoice = () => process.env.JARVIS_LIVE_SIMULATE === '1'
 
+/** Research is cached by source class across turns and sessions; process-local, like the market-data cache. */
+const researchCache = createResearchCache()
+
+/** The register's names, so the firewall knows what must never leave; read through the record's own context. */
+async function researchVocabulary(advisory: AdvisoryGetter): Promise<PrivateVocabulary> {
+  const context = await advisory()
+  const [clients, offices] = await Promise.all([
+    context.repositories.clients.list(),
+    context.repositories.clients.offices(),
+  ])
+  return {
+    clients: clients.map((client) => ({
+      id: client.id,
+      displayName: client.displayName,
+    })),
+    offices: offices.map((office) => office.displayName),
+  }
+}
+
+/**
+ * The public research tier, bound lazily per call like the brief and the
+ * history: the recogniser decides whether the line is research; the port
+ * the environment allows gathers the evidence behind the firewall; the
+ * renderers put the typed answer into Swedish for the screen and the voice.
+ */
+function researchTurn(
+  getContainer: ContainerGetter,
+  advisory: AdvisoryGetter,
+): (input: ResearchInput) => Promise<ResearchTurn | null> {
+  return async (input) => {
+    const jarvis = resolveJarvisContext(input.route ?? '/')
+    const query = recognizeResearchQuery(input.text, {
+      scope: jarvis.scope,
+      market: input.market,
+      research: input.research,
+    })
+    if (!query) return null
+    const log = (line: string) => console.log(`[jarvis/research] ${line}`)
+    const { publicSearchPortFromEnv } =
+      await import('~/infrastructure/research/publicSearchPort')
+    const { createResearchHttp } = await import('~/infrastructure/research/http')
+    const port = publicSearchPortFromEnv(
+      process.env,
+      createResearchHttp({
+        networkDisabled: process.env.JARVIS_LIVE_NETWORK_DISABLED === '1',
+      }),
+      () => new Date(),
+      log,
+    )
+    const answer = await answerResearchQuery(query, jarvis.scope, {
+      port,
+      cache: researchCache,
+      vocabulary: () => researchVocabulary(advisory),
+      market: (scope) => marketBrief(scope, getContainer),
+      history: marketHistory(getContainer),
+      now: () => new Date(),
+      log,
+    })
+    return {
+      say: researchAnswerText(answer),
+      spokenSay: researchAnswerSpeech(answer),
+      card: researchCardOf(answer),
+      context: answer.context,
+      kind: answer.query.kind,
+      unavailable: answer.unavailable,
+      evidenceCount: answer.result.evidence.length,
+    }
+  }
+}
+
 /**
  * The relationship record's one context, reached by a dynamic import inside
  * a function body (TD-107 discipline): the advisory tier of the voice path
@@ -204,6 +286,8 @@ function runtime(getContainer: ContainerGetter): LiveRuntime | null {
       host,
       market: (scope) => marketBrief(scope, getContainer),
       history: marketHistory(getContainer),
+      /* The public research tier: why the market moved, what a central bank said, behind the firewall. */
+      research: researchTurn(getContainer, advisory),
       /* The one brain: the voice's workspace questions go through the same advisory tier as a typed line. */
       workspace: (input) => workspaceTurn(advisory, input),
       workspaceLabel: (route) => workspaceLabel(advisory, route),

@@ -98,6 +98,8 @@ import {
 } from '~/presentation/jarvis/hostStateText'
 import { ContextualSurface, SURFACE_TEXT } from './ContextualSurface'
 import { JarvisAnswerView } from './JarvisAnswerView'
+import { MarketAnswerCard } from './MarketAnswerCard'
+import { ResearchCard } from './ResearchCard'
 import {
   resetPresence,
   updatePresence,
@@ -286,6 +288,8 @@ export function JarvisPresence() {
             const card = turn('jarvis', say, {
               via: 'voice',
               ...(entry.answer ? { answer: entry.answer } : {}),
+              ...(entry.card ? { card: entry.card } : {}),
+              ...(entry.research ? { research: entry.research } : {}),
             })
             return {
               ...state,
@@ -390,20 +394,29 @@ export function JarvisPresence() {
     if (!at) return null
     if (Date.now() - new Date(at).getTime() >= 10 * 60_000) return null
     const conversation = presence.marketConversation
-    return conversation
-      ? { at, conversation: conversation as MarketContextPointer['conversation'] }
-      : { at }
+    const research = presence.researchContext
+    return {
+      at,
+      ...(conversation
+        ? { conversation: conversation as MarketContextPointer['conversation'] }
+        : {}),
+      ...(research ? { research: research as MarketContextPointer['research'] } : {}),
+    }
   }
 
   /** The market pointer a reply gave back, kept for the next line; a reply without one changes nothing. */
   const marketPointerOf = (
     state: PresenceState,
     pointer: MarketContextPointer | null | undefined,
-  ): Pick<PresenceState, 'marketContextAt' | 'marketConversation'> => ({
+  ): Pick<
+    PresenceState,
+    'marketContextAt' | 'marketConversation' | 'researchContext'
+  > => ({
     marketContextAt: pointer?.at ?? state.marketContextAt,
     marketConversation: pointer
       ? (pointer.conversation ?? null)
       : state.marketConversation,
+    researchContext: pointer ? (pointer.research ?? null) : state.researchContext,
   })
 
   /** The record's last structured answer in this conversation, for a continuation. */
@@ -476,7 +489,10 @@ export function JarvisPresence() {
         ...marketPointerOf(state, reply.marketContext),
         turns: [
           ...state.turns,
-          turn('jarvis', reply.say || 'JARVIS svarade inte på det.'),
+          turn('jarvis', reply.say || 'JARVIS svarade inte på det.', {
+            ...(reply.card ? { card: reply.card } : {}),
+            ...(reply.research ? { research: reply.research } : {}),
+          }),
         ],
       }))
     } finally {
@@ -539,7 +555,10 @@ export function JarvisPresence() {
         ...marketPointerOf(state, result.marketContext),
         turns: [
           ...state.turns,
-          turn('jarvis', result.say || 'JARVIS svarade inte på det.'),
+          turn('jarvis', result.say || 'JARVIS svarade inte på det.', {
+            ...(result.card ? { card: result.card } : {}),
+            ...(result.research ? { research: result.research } : {}),
+          }),
         ],
       }))
     } catch {
@@ -957,6 +976,8 @@ function ExpandedPanel({
                 {entry.detail}
               </p>
             )}
+            {entry.card && <MarketAnswerCard card={entry.card} />}
+            {entry.research && <ResearchCard card={entry.research} />}
           </li>
         ))}
         {busy && (

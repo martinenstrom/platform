@@ -146,6 +146,17 @@ const DEFAULT_CHAINS: Record<DataCategory, string[]> = {
    * what makes the fall to fixture honest.
    */
   sectors: ['yahoo', 'fixture'],
+  /*
+   * Daily history for JARVIS's period questions. The same adapters that serve
+   * the quotes serve the series, through the `series` capability: Yahoo's
+   * chart endpoint for the six indices, Frankfurter's time series for the
+   * ECB pairs, the Treasury's monthly pages for the US yields. The fixture
+   * stays last only because every chain ends in it; policy forbids it in
+   * production and the history service refuses it anywhere.
+   */
+  'history-index': ['yahoo', 'fixture'],
+  'history-fx': ['frankfurter', 'fixture'],
+  'history-yields-us': ['treasury', 'fixture'],
 }
 
 /** Which env var holds each provider's key. Providers absent here need none. */
@@ -209,6 +220,9 @@ const CATEGORY_ENV: Record<DataCategory, string> = {
   sentiment: 'MARKETDATA_CHAIN_SENTIMENT',
   intraday: 'MARKETDATA_CHAIN_INTRADAY',
   sectors: 'MARKETDATA_CHAIN_SECTORS',
+  'history-index': 'MARKETDATA_CHAIN_HISTORY_INDEX',
+  'history-fx': 'MARKETDATA_CHAIN_HISTORY_FX',
+  'history-yields-us': 'MARKETDATA_CHAIN_HISTORY_YIELDS_US',
 }
 
 function parseMode(raw: string | undefined): MarketDataMode {

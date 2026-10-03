@@ -25,12 +25,14 @@ import {
   SYM_BRENT,
   SYM_DAX,
   SYM_DE10Y,
+  SYM_DJIA,
   SYM_EURUSD,
   SYM_FTSE100,
   SYM_GOLD,
   SYM_NASDAQ100,
   SYM_NIKKEI225,
   SYM_OMXS30,
+  SYM_RUSSELL2000,
   SYM_SE10Y,
   SYM_SECTOR_COMMS,
   SYM_SECTOR_DISCRETIONARY,
@@ -58,7 +60,7 @@ export type RetrievalTarget =
   | { kind: 'risk' }
   /** A VIX level, which the platform does not serve; answered by saying so. */
   | { kind: 'vix' }
-  /** An instrument the platform has no source for — the Dow, the Russell — named so the answer says so instead of guessing. */
+  /** An instrument the platform has no source for at all, named so the answer says so instead of guessing. */
   | { kind: 'not-served'; name: string }
 
 export interface RetrievalIntent {
@@ -113,17 +115,18 @@ export const INSTRUMENT_LEXICON: readonly LexiconEntry[] = [
     pattern: words(['nasdaq(?:[\\s-]?100)?', 'ndx', `nasdaqbörs${L}`, `teknikbörs${L}`]),
     target: quote(SYM_NASDAQ100),
   },
+  /* The Dow and the Russell: daily history from Yahoo for a period question; no live quote, which the answer says. */
   {
     pattern: words([
       'dow(?: jones)?(?: industrial average)?',
       'djia',
       `dow[- ]?index${L}`,
     ]),
-    target: { kind: 'not-served', name: 'Dow Jones' },
+    target: quote(SYM_DJIA),
   },
   {
     pattern: words(['russell(?:\\s?2000)?']),
-    target: { kind: 'not-served', name: 'Russell 2000' },
+    target: quote(SYM_RUSSELL2000),
   },
   {
     pattern: words(['omx(?:s30)?', 'stockholmsbörsen', 'svenska börsen']),
@@ -354,6 +357,8 @@ const MARKET_VOCABULARY = words([
   `teknik${L}`,
   'nasdaq',
   's\\s?&\\s?p',
+  'dow',
+  'russell',
   `omx${L}`,
   'dax',
   'ftse',

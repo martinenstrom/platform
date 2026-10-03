@@ -17,6 +17,8 @@ import { useSyncExternalStore } from 'react'
 import type { DomainReference } from '~/application/analysis/domainSystem'
 import type { HostResult } from '~/application/analysis/hostContract'
 import type { JarvisAnswer } from '~/application/jarvis/answer'
+import type { MarketCard } from '~/presentation/jarvis/marketCard'
+import type { ResearchCard } from '~/presentation/jarvis/researchCard'
 import type { Tone } from '~/types'
 
 export interface PresenceTurn {
@@ -33,6 +35,10 @@ export interface PresenceTurn {
   via?: 'voice'
   /** A structured answer from the relationship record, rendered as its sections. */
   answer?: JarvisAnswer
+  /** The compact card of a period market answer, rendered under the sentence. */
+  card?: MarketCard
+  /** The research strip of a researched answer: sources, freshness, support. */
+  research?: ResearchCard
 }
 
 /**
@@ -62,6 +68,8 @@ export interface PresenceState {
    * here: never read, never edited, only returned.
    */
   marketConversation: unknown | null
+  /** The research conversation's subject, as the server wrote it; opaque here, only returned. */
+  researchContext: unknown | null
 }
 
 export const EMPTY_PRESENCE: PresenceState = Object.freeze({
@@ -73,6 +81,7 @@ export const EMPTY_PRESENCE: PresenceState = Object.freeze({
   surface: null,
   marketContextAt: null,
   marketConversation: null,
+  researchContext: null,
 })
 
 const KEY = 'jarvis:presence'
@@ -108,6 +117,10 @@ function load(): PresenceState {
         typeof parsed.marketConversation === 'object' &&
         parsed.marketConversation !== null
           ? parsed.marketConversation
+          : null,
+      researchContext:
+        typeof parsed.researchContext === 'object' && parsed.researchContext !== null
+          ? parsed.researchContext
           : null,
     }
   } catch {

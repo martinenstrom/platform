@@ -89,7 +89,8 @@ export async function getContainer(): Promise<Container> {
           provider: createUsTreasuryProvider(
             createHttpClient({ networkDisabled: false }),
           ),
-          capabilities: new Set(['yields'] as const),
+          /* `series` since 2026-10-03: the par-yield history, for "vad gjorde tioåringen i veckan?". */
+          capabilities: new Set(['yields', 'series'] as const),
           metadata: {
             // The Treasury issues the securities and publishes the curve.
             trust: 'issuer' as const,
@@ -145,14 +146,19 @@ export async function getContainer(): Promise<Container> {
            * alternative for these two was a fixture constant.
            */
           provider: createYahooProvider(createHttpClient({ networkDisabled: false })),
-          capabilities: new Set(['quotes'] as const),
+          /*
+           * `series` since 2026-10-03: daily closes for the six indices
+           * (`YAHOO_HISTORY_INDICES`), so a period question is answered from
+           * a real series. The quotes keep their routes; only history is new.
+           */
+          capabilities: new Set(['quotes', 'series'] as const),
           metadata: {
             trust: 'aggregator' as const,
             expectedLatencyMs: 400,
             updateFrequency: 'minutely' as const,
             /* Yahoo publishes no delay figure, so none is claimed. */
             delayMinutes: null,
-            supportsHistory: false,
+            supportsHistory: true,
             supportsIntraday: false,
             supportsBatch: false,
             requiresAttribution: true,
@@ -299,7 +305,8 @@ export async function getContainer(): Promise<Container> {
           provider: createFrankfurterProvider(
             createHttpClient({ networkDisabled: false }),
           ),
-          capabilities: new Set(['fx'] as const),
+          /* `series` since 2026-10-03: the ECB reference-rate history of a pair. */
+          capabilities: new Set(['fx', 'series'] as const),
           metadata: {
             // Frankfurter is an open republisher; the ECB originates the
             // rates. `originatorTrust` on the source metadata records that the
