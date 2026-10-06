@@ -265,6 +265,15 @@ departure measured, not reasoned.
   empty data directory → RESTORE EXISTING with the passphrase → relaunch
   (still there). 23/23 on the host; rerun on the packaged executable at the
   end of the phase.
+- **Durability (audit 2026-10-06).** `synchronous=FULL`, not NORMAL as §5
+  planned: NORMAL under WAL is consistent but can lose the commits since the
+  last checkpoint on a power loss; a personal record's write volume makes the
+  sync per commit cheap. The audit also corrected the closing report: the
+  institution (Huvudkontoret, Underlag, agents, cases, runs) has NO adapter on
+  the desktop — `runtime()` throws `NotConfiguredError` without
+  `ANALYSIS_DATABASE_URL`, every HQ door answers NOT_CONFIGURED and the pages
+  say so; the in-memory adapter exists for tests only. Nothing a person
+  enters there on the desktop is accepted in the first place.
 - **Known limits.** Unsigned installer (SmartScreen asks once); the bundle is
   built in memory; the institution (HQ) still runs on its in-memory adapter;
   the external destination is a folder, no transport of its own; log

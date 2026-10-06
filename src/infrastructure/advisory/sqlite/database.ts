@@ -1,6 +1,8 @@
 /**
  * The database file, opened for a personal desktop: write-ahead logging so
- * a crash mid-write leaves the last committed state, foreign keys enforced,
+ * a crash mid-write leaves the last committed state, every commit synced to
+ * disk so an operating-system crash loses nothing that was saved, foreign
+ * keys enforced,
  * a busy timeout rather than an immediate error, and every multi-record act
  * inside one immediate transaction. The checks a startup and a backup rely
  * on are here too, so no other module speaks PRAGMA.
@@ -38,7 +40,13 @@ export function openDatabase(path: string, options: OpenOptions = {}): Database 
   const db = new DatabaseSync(path, { readOnly: options.readonly === true })
   if (!options.readonly) {
     db.exec('PRAGMA journal_mode = WAL')
-    db.exec('PRAGMA synchronous = NORMAL')
+    /*
+     * FULL, not NORMAL: with NORMAL a power loss or an operating-system crash
+     * can lose the commits made since the last checkpoint — consistent, but
+     * not durable. A personal record writes a few rows at a time; the sync
+     * per commit is cheap, and what the advisor saw saved stays saved.
+     */
+    db.exec('PRAGMA synchronous = FULL')
   }
   db.exec('PRAGMA foreign_keys = ON')
   db.exec('PRAGMA busy_timeout = 5000')
