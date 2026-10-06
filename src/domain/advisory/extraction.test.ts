@@ -301,3 +301,97 @@ describe('informal Swedish, typed quickly', () => {
     ).toContain('property')
   })
 })
+
+describe('the record moves: a promise kept, a concern eased', () => {
+  const record = {
+    openCommitments: [
+      { id: 'co-1', title: 'Återkomma med pensionsanalys' },
+      { id: 'co-2', title: 'Se över avgifterna och föreslå prisjustering' },
+      { id: 'co-3', title: 'Ta fram jämförelse av två alternativ till energifonden' },
+    ],
+    activeConcerns: [{ id: 'cf-1', statement: 'Orolig över energiexponeringen efter nedgången' }],
+  }
+  const at = (text: string, rec = record) =>
+    extractFromNote({ text, interactionDate: WEDNESDAY, record: rec })
+
+  it('closes the open promises a past-tense delivery names, each once, for the advisor to confirm', () => {
+    const result = at(
+      'Pratade med Margareta. Gick igenom pensionsanalysen och avgiftsförslaget. Hon är nöjd.',
+    )
+    const completed = result.items.filter((i) => i.kind === 'commitment-completed')
+    expect(completed.map((i) => i.commitmentId)).toEqual(['co-1', 'co-2'])
+    expect(completed[0]).toMatchObject({
+      title: 'Återkomma med pensionsanalys',
+      confidence: 'medium',
+      date: WEDNESDAY,
+      sourceText: 'Gick igenom pensionsanalysen och avgiftsförslaget.',
+    })
+    /* The delivery sentence is not also a new promise. */
+    expect(result.items.some((i) => i.kind === 'commitment')).toBe(false)
+  })
+
+  it('does not close a promise the note only talks about, or one the advisor is still to keep', () => {
+    /* Near miss: the topic without a delivery. */
+    expect(
+      at('Pratade om pensionsanalysen, hon vill vänta.').items.some(
+        (i) => i.kind === 'commitment-completed',
+      ),
+    ).toBe(false)
+    /* Near miss: a future promise is a promise, never a kept one. */
+    const future = at('Jag ska skicka pensionsanalysen på fredag.')
+    expect(future.items.some((i) => i.kind === 'commitment-completed')).toBe(false)
+    expect(future.items.some((i) => i.kind === 'commitment')).toBe(true)
+    /* Near miss: a delivery of something else — "energiexponeringen" is not "energifonden". */
+    expect(
+      at('Vi gick igenom energiexponeringen.').items.some(
+        (i) => i.kind === 'commitment-completed',
+      ),
+    ).toBe(false)
+    /* Without a record, nothing is matched. */
+    expect(
+      extractFromNote({ text: 'Gick igenom pensionsanalysen.', interactionDate: WEDNESDAY }).items.some(
+        (i) => i.kind === 'commitment-completed',
+      ),
+    ).toBe(false)
+  })
+
+  it('eases the one active concern a calmer client speaks to, and never reads it as a new concern', () => {
+    const result = at(
+      'Pratade med kunden. Han är lugnare, ligger kvar och vi bokade möte 28 oktober. Vi går även igenom bolånet.',
+    )
+    const eased = result.items.filter((i) => i.kind === 'concern-eased')
+    expect(eased).toHaveLength(1)
+    expect(eased[0]).toMatchObject({ contextFactId: 'cf-1', confidence: 'low', date: WEDNESDAY })
+    expect(result.items.some((i) => i.kind === 'concern')).toBe(false)
+    expect(result.items.find((i) => i.kind === 'next-meeting')).toMatchObject({ date: '2026-10-28' })
+    expect(result.topics).toContain('financing')
+    /* "Vi går även igenom" is present tense: no promise was kept. */
+    expect(result.items.some((i) => i.kind === 'commitment-completed')).toBe(false)
+  })
+
+  it('names the concern the sentence speaks of when there are several, and is sure of that one', () => {
+    const two = {
+      ...record,
+      activeConcerns: [
+        { id: 'cf-1', statement: 'Orolig över energiexponeringen efter nedgången' },
+        { id: 'cf-2', statement: 'Oroad över avgifterna' },
+      ],
+    }
+    const result = at('Hon är inte längre orolig över avgifterna.', two)
+    expect(result.items.filter((i) => i.kind === 'concern-eased')).toEqual([
+      expect.objectContaining({ contextFactId: 'cf-2', confidence: 'medium' }),
+    ])
+    /* Several concerns and a calm sentence that names none: nobody is guessed. */
+    expect(at('Han är lugnare nu.', two).items.some((i) => i.kind === 'concern-eased')).toBe(false)
+  })
+
+  it('still hears a new concern, and a calm word alone eases nothing', () => {
+    expect(at('Han är orolig över räntan.').items.some((i) => i.kind === 'concern')).toBe(true)
+    expect(at('Han är lugn inför mötet.').items.some((i) => i.kind === 'concern-eased')).toBe(false)
+    expect(
+      at('Han är lugnare.', { openCommitments: [], activeConcerns: [] }).items.some(
+        (i) => i.kind === 'concern-eased',
+      ),
+    ).toBe(false)
+  })
+})

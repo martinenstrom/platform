@@ -223,3 +223,126 @@ describe('the book’s lifecycle', () => {
     )
   })
 })
+
+describe('the day — Daily Command', () => {
+  const DAILY = resolveJarvisContext('/today')
+  const OFFICES = [
+    { id: 'of-strandvagen', displayName: 'Strandvägen' },
+    { id: 'of-arbetargatan', displayName: 'Arbetargatan' },
+  ]
+  const read = (text: string, context = DAILY) =>
+    recognizeAdvisoryIntent(text, context, CLIENTS, OFFICES)
+
+  it('reads the day’s questions on Idag', () => {
+    expect(read('Vem behöver mig idag?')?.kind).toBe('DAILY_PRIORITIES')
+    expect(read('Vilka relationer kräver min uppmärksamhet?')?.kind).toBe('DAILY_PRIORITIES')
+    expect(read('Vad ska jag göra idag?')?.kind).toBe('DAILY_PRIORITIES')
+    expect(read('Who needs me today?')?.kind).toBe('DAILY_PRIORITIES')
+    expect(read('Vilka kan vänta?')?.kind).toBe('DAILY_CAN_WAIT')
+    expect(read('Vilka möten har jag idag?')?.kind).toBe('DAILY_MEETINGS')
+    expect(read('Vilka löften är försenade?')?.kind).toBe('DAILY_OVERDUE')
+    expect(read('Vilka har finansiering som förfaller snart?')?.kind).toBe('DAILY_FINANCING')
+    expect(read('Vilka klienter berörs av marknaden?')?.kind).toBe('MARKET_IMPACT_CLIENTS')
+    expect(read('Vilka klienter påverkas av räntan?')?.kind).toBe('MARKET_IMPACT_CLIENTS')
+  })
+
+  it('reads a window of time from anywhere, with the minutes, unless a client is named', () => {
+    expect(read('Jag har 30 minuter. Vem borde jag ringa?')).toMatchObject({
+      kind: 'DAILY_TIME_WINDOW',
+      minutes: 30,
+    })
+    expect(read('Jag har en kvart över, vad hinner jag?', MARKET)).toMatchObject({
+      kind: 'DAILY_TIME_WINDOW',
+      minutes: 15,
+    })
+    expect(read('I have an hour before my next meeting', SENTINEL)).toMatchObject({
+      kind: 'DAILY_TIME_WINDOW',
+      minutes: 60,
+    })
+    expect(read('Jag har 20 minuter, vad gör jag bäst med dem?', CLIENT)).toMatchObject({
+      kind: 'DAILY_TIME_WINDOW',
+      minutes: 20,
+    })
+    /* On the client's page, a client question with a time in it stays the client's. */
+    expect(read('Jag har 15 minuter innan mötet, vad ska jag ta upp?', CLIENT)?.kind).toBe(
+      'MEETING_PREP',
+    )
+    /* A named client makes it that client's line, not the day's. */
+    expect(read('Jag har 30 minuter, hinner jag med Henrik?')?.kind).not.toBe('DAILY_TIME_WINDOW')
+  })
+
+  it('reads what changed, and from when', () => {
+    expect(read('Vad har förändrats sedan igår?')).toMatchObject({
+      kind: 'DAILY_CHANGES',
+      since: 'yesterday',
+    })
+    expect(read('Vad har hänt sedan i fredags?')).toMatchObject({
+      kind: 'DAILY_CHANGES',
+      since: 'friday',
+    })
+    expect(read('Vad har ändrats den här veckan?')).toMatchObject({
+      kind: 'DAILY_CHANGES',
+      since: 'week',
+    })
+    expect(read('What changed since yesterday?', MARKET)).toMatchObject({
+      kind: 'DAILY_CHANGES',
+      since: 'yesterday',
+    })
+    /* On the directory the same line is the day's; on a client it is the meeting's. */
+    expect(read('Vad har förändrats sedan igår?', DIRECTORY)?.kind).toBe('DAILY_CHANGES')
+    expect(read('Vad har förändrats sedan igår?', CLIENT)?.kind).toBe(
+      'CHANGES_SINCE_LAST_MEETING',
+    )
+  })
+
+  it('narrows to an office the line names', () => {
+    expect(read('Vilka på Strandvägen behöver mig?')).toMatchObject({
+      kind: 'DAILY_PRIORITIES',
+      office: { id: 'of-strandvagen' },
+    })
+    expect(read('Vilka möten har vi på Arbetargatan den här veckan?', MARKET)).toMatchObject({
+      kind: 'DAILY_MEETINGS',
+      office: { id: 'of-arbetargatan' },
+    })
+  })
+
+  it('answers the day from the market and the firm only when the line is anchored in the day', () => {
+    expect(read('Vem behöver mig idag?', MARKET)?.kind).toBe('DAILY_PRIORITIES')
+    expect(read('Vilka kan vänta?', MARKET)?.kind).toBe('DAILY_CAN_WAIT')
+    expect(read('Vilka löften är försenade?', MARKET)?.kind).toBe('DAILY_OVERDUE')
+    /* "call" alone, on the market, is not the day's. */
+    expect(read('What is the margin call risk on the index?', MARKET)).toBeNull()
+    expect(read('Vilka möten brukar ni ha?', MARKET)).toBeNull()
+  })
+
+  it('keeps the existing doors: Sentinel, the directory and the office answer their own', () => {
+    expect(read('Vem behöver mig idag?', SENTINEL)?.kind).toBe('SENTINEL_TODAY')
+    expect(read('Vem borde jag ringa idag?', DIRECTORY)?.kind).toBe('DIRECTORY_CALL_TODAY')
+    expect(read('Vilka kunder här behöver mig?', OFFICE)?.kind).toBe('OFFICE_PRIORITIES')
+    expect(read('Vilka försenade åtaganden finns?', OFFICE)?.kind).toBe('OFFICE_OVERDUE')
+    /* …and the day's own reach them where they had no answer before. */
+    expect(read('Vilka kan vänta?', OFFICE)?.kind).toBe('DAILY_CAN_WAIT')
+    expect(read('Vad har hänt sedan igår?', SENTINEL)?.kind).toBe('DAILY_CHANGES')
+  })
+
+  it('reads a call to prepare and a why for a named client', () => {
+    expect(read('Förbered samtal med Henrik')).toMatchObject({
+      kind: 'PREPARE_CALL',
+      namedClient: { id: 'cl-alvarsson' },
+    })
+    expect(read('Förbered mig inför samtalet med Margareta', MARKET)).toMatchObject({
+      kind: 'PREPARE_CALL',
+      namedClient: { id: 'cl-berglund' },
+    })
+    expect(read('Prepare the call with Berglund')?.kind).toBe('PREPARE_CALL')
+    expect(read('Förbered samtalet', CLIENT)?.kind).toBe('PREPARE_CALL')
+    /* The meeting's preparation stays the meeting's. */
+    expect(read('Förbered mig inför mötet', CLIENT)?.kind).toBe('MEETING_PREP')
+    expect(read('Varför Berglund?')).toMatchObject({
+      kind: 'WHY_PRIORITY',
+      namedClient: { id: 'cl-berglund' },
+    })
+    expect(read('Varför just nu?', CLIENT)?.kind).toBe('WHY_PRIORITY')
+    expect(read('Why Henrik?', MARKET)?.kind).toBe('WHY_PRIORITY')
+  })
+})

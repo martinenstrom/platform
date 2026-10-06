@@ -20,6 +20,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SentinelRouteImport } from './routes/sentinel'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as TodayRouteImport } from './routes/today'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as AgentsIndexRouteImport } from './routes/agents.index'
 import { Route as AgentsDepartmentIdRouteImport } from './routes/agents.$departmentId'
@@ -38,6 +39,7 @@ import { Route as ClientsClientIdMeetingPrepRouteImport } from './routes/clients
 import { Route as ClientsOfficeOfficeIdRouteImport } from './routes/clients.office.$officeId'
 import { Route as ClientsOfficeNewRouteImport } from './routes/clients.office.new'
 import { Route as ClientsOfficesArchivedRouteImport } from './routes/clients.offices.archived'
+import { Route as TodayCallClientIdRouteImport } from './routes/today_.call.$clientId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -92,6 +94,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TodayRoute = TodayRouteImport.update({
+  id: '/today',
+  path: '/today',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchlistRoute = WatchlistRouteImport.update({
@@ -187,6 +194,11 @@ const ClientsOfficesArchivedRoute = ClientsOfficesArchivedRouteImport.update({
   path: '/clients/offices/archived',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TodayCallClientIdRoute = TodayCallClientIdRouteImport.update({
+  id: '/today_/call/$clientId',
+  path: '/today/call/$clientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -200,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/today': typeof TodayRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
@@ -218,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
   '/clients/office/new': typeof ClientsOfficeNewRoute
   '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
+  '/today/call/$clientId': typeof TodayCallClientIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -231,6 +245,7 @@ export interface FileRoutesByTo {
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/today': typeof TodayRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
@@ -249,6 +264,7 @@ export interface FileRoutesByTo {
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
   '/clients/office/new': typeof ClientsOfficeNewRoute
   '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
+  '/today/call/$clientId': typeof TodayCallClientIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -263,6 +279,7 @@ export interface FileRoutesById {
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/today': typeof TodayRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
@@ -281,6 +298,7 @@ export interface FileRoutesById {
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
   '/clients/office/new': typeof ClientsOfficeNewRoute
   '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
+  '/today_/call/$clientId': typeof TodayCallClientIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -296,6 +314,7 @@ export interface FileRouteTypes {
     | '/sentinel'
     | '/settings'
     | '/setup'
+    | '/today'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
@@ -314,6 +333,7 @@ export interface FileRouteTypes {
     | '/clients/office/$officeId'
     | '/clients/office/new'
     | '/clients/offices/archived'
+    | '/today/call/$clientId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -327,6 +347,7 @@ export interface FileRouteTypes {
     | '/sentinel'
     | '/settings'
     | '/setup'
+    | '/today'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
@@ -345,6 +366,7 @@ export interface FileRouteTypes {
     | '/clients/office/$officeId'
     | '/clients/office/new'
     | '/clients/offices/archived'
+    | '/today/call/$clientId'
   id:
     | '__root__'
     | '/'
@@ -358,6 +380,7 @@ export interface FileRouteTypes {
     | '/sentinel'
     | '/settings'
     | '/setup'
+    | '/today'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
@@ -376,6 +399,7 @@ export interface FileRouteTypes {
     | '/clients/office/$officeId'
     | '/clients/office/new'
     | '/clients/offices/archived'
+    | '/today_/call/$clientId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -390,6 +414,7 @@ export interface RootRouteChildren {
   SentinelRoute: typeof SentinelRoute
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
+  TodayRoute: typeof TodayRoute
   WatchlistRoute: typeof WatchlistRoute
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
@@ -408,6 +433,7 @@ export interface RootRouteChildren {
   ClientsOfficeOfficeIdRoute: typeof ClientsOfficeOfficeIdRoute
   ClientsOfficeNewRoute: typeof ClientsOfficeNewRoute
   ClientsOfficesArchivedRoute: typeof ClientsOfficesArchivedRoute
+  TodayCallClientIdRoute: typeof TodayCallClientIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -487,6 +513,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/today': {
+      id: '/today'
+      path: '/today'
+      fullPath: '/today'
+      preLoaderRoute: typeof TodayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watchlist': {
@@ -615,6 +648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsOfficesArchivedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/today_/call/$clientId': {
+      id: '/today_/call/$clientId'
+      path: '/today/call/$clientId'
+      fullPath: '/today/call/$clientId'
+      preLoaderRoute: typeof TodayCallClientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -630,6 +670,7 @@ const rootRouteChildren: RootRouteChildren = {
   SentinelRoute: SentinelRoute,
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
+  TodayRoute: TodayRoute,
   WatchlistRoute: WatchlistRoute,
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
@@ -648,6 +689,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsOfficeOfficeIdRoute: ClientsOfficeOfficeIdRoute,
   ClientsOfficeNewRoute: ClientsOfficeNewRoute,
   ClientsOfficesArchivedRoute: ClientsOfficesArchivedRoute,
+  TodayCallClientIdRoute: TodayCallClientIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

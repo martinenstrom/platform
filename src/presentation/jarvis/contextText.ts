@@ -65,6 +65,7 @@ const SCOPE_LABEL: Record<JarvisScope, string> = {
   MEETING: 'Möte',
   SENTINEL: 'Sentinel',
   MARKET_IMPACT: 'Marknadspåverkan',
+  DAILY: 'Idag',
 }
 
 /** "Anna & Per Dahlqvist", "Anna & Per Dahlqvist · Möte 2 okt", "Strandvägen", "Klienter". */
@@ -97,6 +98,8 @@ export function contextChip(context: JarvisContext, names: ContextNames): string
       return 'MARKN.'
     case 'MARKET':
       return 'MARKN.'
+    case 'DAILY':
+      return 'IDAG'
     case 'GLOBAL':
       return ''
   }
@@ -141,6 +144,14 @@ export function quickActions(context: JarvisContext): readonly string[] {
       return ['Vem behöver mig idag?']
     case 'MARKET_IMPACT':
       return ['Vilka klienter berörs mest?']
+    case 'DAILY':
+      return [
+        'Vem behöver mig idag?',
+        'Jag har 30 minuter. Vem borde jag ringa?',
+        'Vilka kan vänta?',
+        'Vad har förändrats sedan igår?',
+        'Vilka möten har jag den här veckan?',
+      ]
     default:
       return []
   }
@@ -161,6 +172,8 @@ export function emptyHint(context: JarvisContext): string {
       return 'Fråga vem som behöver dig i dag.'
     case 'MARKET_IMPACT':
       return 'Fråga vilka klienter dagens rörelser berör.'
+    case 'DAILY':
+      return 'Fråga om dagen: vem som behöver dig, vad du hinner på en stund, vilka som kan vänta, vad som ändrats sedan igår.'
     default:
       return 'Ställ en investeringsfråga så låter jag investeringsteamet ta den.'
   }
@@ -176,6 +189,8 @@ export function composePlaceholder(context: JarvisContext): string {
       return 'Vilka kunder här behöver mig?'
     case 'CLIENT_DIRECTORY':
       return 'Vem borde jag ringa idag?'
+    case 'DAILY':
+      return 'Jag har 30 minuter. Vem borde jag ringa?'
     default:
       return 'Hur ser amerikanska börsen ut idag?'
   }

@@ -116,7 +116,13 @@ describe('confirming an update', () => {
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.created).toEqual({ contextFacts: 1, commitments: 1, events: 2 })
+    expect(result.created).toEqual({
+      contextFacts: 1,
+      commitments: 1,
+      events: 2,
+      completedCommitments: 0,
+      easedConcerns: 0,
+    })
 
     const interactions =
       await context.repositories.interactions.interactionsOf('cl-alvarsson')
@@ -197,7 +203,13 @@ describe('confirming an update', () => {
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.created).toEqual({ contextFacts: 0, commitments: 1, events: 0 })
+    expect(result.created).toEqual({
+      contextFacts: 0,
+      commitments: 1,
+      events: 0,
+      completedCommitments: 0,
+      easedConcerns: 0,
+    })
     expect((await context.repositories.context.factsOf('cl-alvarsson')).length).toBe(
       factsBefore,
     )

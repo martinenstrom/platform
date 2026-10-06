@@ -253,6 +253,9 @@ export function createSyntheticAdvisoryRepositories(
       async addFact(fact) {
         facts.set(fact.id, fact)
       },
+      async saveFact(fact) {
+        facts.set(fact.id, fact)
+      },
     },
     commitments: {
       async commitmentsOf(clientId) {

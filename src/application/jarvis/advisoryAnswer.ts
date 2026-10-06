@@ -45,6 +45,8 @@ import {
   type NamedOffice,
 } from './advisoryIntent'
 import { canContinue, evidenceOf, itemOf, restOf } from './followUp'
+import { dailyAnswer, prepareCallAnswer } from './dailyAnswer'
+import { item, note, section } from './items'
 import type {
   AdvisoryIntentKind,
   JarvisAbout,
@@ -101,11 +103,12 @@ export async function answerAdvisoryLine(
   )
   const intent = recognizeAdvisoryIntent(text, jarvis, clients, offices)
   if (!intent) return null
-  /* A continuation, a clarification or a question about the book itself is the record's wherever it is asked. */
+  /* A continuation, a clarification, a question about the book itself or about the day is the record's wherever it is asked. */
   const anywhere =
     intent.kind === 'CLARIFY_CLIENT' ||
     intent.kind.startsWith('FOLLOW_UP') ||
-    intent.kind.startsWith('BOOK_')
+    intent.kind.startsWith('BOOK_') ||
+    intent.kind.startsWith('DAILY_')
   if (!intent.namedClient && !isAdvisoryScope(jarvis.scope) && !anywhere) return null
   const answer = await answerIntent(context, jarvis, intent, text, previous)
   if (!answer) return null
@@ -156,6 +159,16 @@ async function answerIntent(
     case 'BOOK_REACTIVATED':
     case 'BOOK_CHANGES':
       return bookAnswer(context, jarvis, intent)
+    case 'DAILY_PRIORITIES':
+    case 'DAILY_TIME_WINDOW':
+    case 'DAILY_CAN_WAIT':
+    case 'DAILY_MEETINGS':
+    case 'DAILY_OVERDUE':
+    case 'DAILY_FINANCING':
+    case 'DAILY_CHANGES':
+      return dailyAnswer(context, jarvis, intent)
+    case 'PREPARE_CALL':
+      return clientId ? prepareCallAnswer(context, jarvis, intent, clientId) : null
     default:
       return clientId ? clientAnswer(context, jarvis, intent, clientId, text) : null
   }
@@ -1346,24 +1359,6 @@ async function marketImpactAnswer(
 }
 
 /* ---------------------------------------------------------------- helpers */
-
-function section(key: SectionKey, items: JarvisItem[]): JarvisSection {
-  return { key, items }
-}
-
-function note(kind: NoteKind): JarvisItem {
-  return { kind: 'note', note: kind, nature: 'fact', sourceIds: [] }
-}
-
-/** A typed item with its nature and sources; the shape is the union's, checked at the call. */
-function item<K extends JarvisItem['kind']>(
-  kind: K,
-  fields: Omit<Extract<JarvisItem, { kind: K }>, 'kind' | 'nature' | 'sourceIds'>,
-  nature: JarvisItem['nature'],
-  sourceIds: readonly string[],
-): JarvisItem {
-  return { kind, ...fields, nature, sourceIds } as unknown as JarvisItem
-}
 
 function sinceLast(cockpit: MeetingCockpit): JarvisItem[] {
   return [

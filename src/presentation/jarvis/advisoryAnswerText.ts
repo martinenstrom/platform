@@ -10,6 +10,7 @@
 import { daysBetween } from '~/domain/advisory'
 import type {
   AdvisoryIntentKind,
+  DailyChangeKind,
   ItemNature,
   JarvisAnswer,
   JarvisItem,
@@ -76,6 +77,17 @@ import {
   readinessReasonText,
   readinessSummary,
 } from '~/presentation/documents/meetingPackText'
+import {
+  actionDetail,
+  actionLine,
+  marketClientAction,
+  marketClientRelevance,
+  marketItemCounts,
+  marketItemFact,
+  OBJECTIVE_TEXT,
+  sinceText,
+  timeText,
+} from '~/presentation/advisory/dailyCommandText'
 
 /* --------------------------------------------------------------- headline */
 
@@ -112,6 +124,19 @@ export function answerHeadline(answer: JarvisAnswer): string {
     BOOK_MOVED: bookHead(answer, 'Flyttade mellan kontor'),
     BOOK_REACTIVATED: bookHead(answer, 'Återaktiverade PB-relationer'),
     BOOK_CHANGES: bookHead(answer, 'Förändringar i PB-boken'),
+    DAILY_PRIORITIES: bookHead(answer, 'Vem som behöver dig i dag'),
+    DAILY_TIME_WINDOW: answer.window
+      ? `Bästa användningen av ${answer.window.minutes} minuter`
+      : 'Bästa användningen av tiden',
+    DAILY_CAN_WAIT: bookHead(answer, 'Kan vänta'),
+    DAILY_MEETINGS: bookHead(answer, 'Möten i dag och den här veckan'),
+    DAILY_OVERDUE: bookHead(answer, 'Försenade åtaganden'),
+    DAILY_FINANCING: bookHead(answer, 'Finansiering som närmar sig'),
+    DAILY_CHANGES: bookHead(
+      answer,
+      `Förändringar ${answer.since ? sinceText(answer.since, answer.today) : 'sedan i går'}`,
+    ),
+    PREPARE_CALL: `Inför samtalet med ${name}`,
     GENERAL_CLIENT_QUERY: 'Ur relationsminnet',
     MEETING_PACK_FULL: `Mötesunderlag · ${name}`,
     MEETING_PACK_EXECUTIVE: `Executive brief · ${name}`,
@@ -169,6 +194,13 @@ export const SECTION_TITLE: Record<SectionKey, string> = {
   overdue: 'Försenade åtaganden',
   'book-changes': 'Förändringar i boken',
   episodes: 'Marknadsepisoder',
+  now: 'Kräver dig nu',
+  'this-week': 'Den här veckan',
+  'can-wait': 'Kan vänta',
+  'best-use': 'Bästa användningen',
+  deferred: 'Ryms inte – skjuts fram',
+  changes: 'Förändringar',
+  onboarding: 'Under onboarding',
   memory: 'Ur relationsminnet',
   agenda: 'Agenda',
   objectives: 'Mål med mötet',
@@ -230,6 +262,11 @@ const NOTE_TEXT: Record<NoteKind, string> = {
   'no-moves': 'Inga klienter har flyttats mellan kontor i det urvalet.',
   'no-reactivations': 'Inga återaktiverade PB-relationer i det urvalet.',
   'no-book-changes': 'Inga förändringar i PB-boken i det urvalet.',
+  'nothing-fits': 'Ingen åtgärd ryms i fönstret – de som väntar behöver mer tid.',
+  'nobody-can-wait': 'Inget kan skjutas upp – allt i kön kräver dig nu.',
+  'no-financing-soon': 'Ingen finansiering förfaller eller läggs om inom 90 dagar.',
+  'no-changes-since': 'Inget har förändrats i registret sedan dess.',
+  'no-call-reason': 'Sentinel kallar inte på ett samtal just nu – det som finns nedan är klientens egen bild.',
   'not-answerable-here': 'Det kan jag inte svara på härifrån.',
   unclear: 'Jag uppfattade inte det. Kan du säga det igen?',
   'nothing-to-continue': 'Det finns inget mer att ta från det senaste svaret.',
@@ -461,6 +498,49 @@ export function itemText(
         text: `${item.affected.client.displayName} · ${RELEVANCE_LABEL[item.affected.impact.relevance]}`,
         detail: marketMoveText(item.event),
       }
+    case 'daily-action':
+      return {
+        text: actionLine(item.action),
+        detail: item.fit
+          ? `${actionDetail(item.action)} · ${item.fit.remainingMinutes} min kvar efteråt`
+          : actionDetail(item.action),
+      }
+    case 'daily-meeting': {
+      const m = item.meeting
+      return {
+        text: `${m.clientName} · ${m.title}`,
+        detail: `${formatLongDate(m.date)} · ${formatDaysFromToday(m.daysAhead)}${m.readiness ? ` · ${READINESS_LABEL[m.readiness]}` : ''}`,
+      }
+    }
+    case 'daily-overdue': {
+      const o = item.overdue
+      return {
+        text: `${o.clientName} · ${o.title}`,
+        detail: `försenat ${o.daysOverdue} ${o.daysOverdue === 1 ? 'dag' : 'dagar'} · förföll ${formatLongDate(o.dueDate)}`,
+      }
+    }
+    case 'daily-financing': {
+      const f = item.financing
+      return {
+        text: `${f.clientName} · ${f.title}`,
+        detail: `${formatLongDate(f.date)} · ${formatDaysFromToday(f.daysAhead)}${f.amount !== null ? ` · ${formatMsek(f.amount)}` : ''}`,
+      }
+    }
+    case 'changed-client':
+      return {
+        text: item.clientName ? `${item.clientName} · ${item.label}` : item.label,
+        detail: `${CHANGE_LABEL[item.change]} · ${formatLongDate(item.date)}`,
+      }
+    case 'daily-market':
+      return {
+        text: marketItemFact(item.item),
+        detail: `${marketItemCounts(item.item)}${item.item.clients[0] ? ` · ${item.item.clients[0].clientName}: ${marketClientRelevance(item.item.clients[0])} · ${marketClientAction(item.item.clients[0])}` : ''}`,
+      }
+    case 'daily-objective':
+      return {
+        text: OBJECTIVE_TEXT[item.objective],
+        detail: `Beräknad tid ${timeText(item.time)}`,
+      }
     case 'clarify-client':
       return {
         text: `Menar du ${item.candidates.map((c) => c.displayName).join(' eller ')}?`,
@@ -501,6 +581,16 @@ export function itemText(
       }
     }
   }
+}
+
+export const CHANGE_LABEL: Record<DailyChangeKind, string> = {
+  'newly-overdue': 'Blev försenat',
+  'completed-commitment': 'Löfte levererat',
+  'meeting-booked': 'Möte bokat',
+  'contact-recorded': 'Kontakt registrerad',
+  'concern-raised': 'Ny oro',
+  'concern-eased': 'Oro avtagit',
+  'market-opened': 'Marknadsepisod öppnad',
 }
 
 /** A source as the Underlag list prints it. */

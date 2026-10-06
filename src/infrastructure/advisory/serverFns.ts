@@ -33,6 +33,12 @@ import {
   type ItemDecision,
 } from '~/application/advisory/confirmClientUpdate'
 import {
+  callBrief,
+  dailyCommand,
+  type CallBrief,
+  type DailyCommandView,
+} from '~/application/advisory/dailyCommand'
+import {
   marketImpactBrief,
   type MarketImpactBrief,
 } from '~/application/advisory/marketImpact'
@@ -366,6 +372,56 @@ export const getSentinelBriefFn = createServerFn({ method: 'POST' }).handler(
     }
   },
 )
+
+/* ---------------------------------------------------------- Daily Command */
+
+export type DailyCommandResponse =
+  { ok: true; view: DailyCommandView } | { ok: false; code: AdvisoryReadFailure }
+
+export interface DailyCommandRequest {
+  officeId?: string
+  /** ISO date the "what changed" window starts; yesterday when omitted. */
+  since?: string
+}
+
+/**
+ * Idag — who needs the advisor, the best use of a window, the week's
+ * meetings, the market's reach, what changed: composed on the server from
+ * the same record and the same read models Sentinel and Market-to-Client
+ * already derive from, on the advisory clock. No model is consulted.
+ */
+export const getDailyCommandFn = createServerFn({ method: 'POST' })
+  .validator((input: DailyCommandRequest) => input)
+  .handler(async ({ data }): Promise<DailyCommandResponse> => {
+    try {
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
+      return { ok: true, view: await dailyCommand(context, data) }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
+
+export type CallBriefResponse =
+  { ok: true; brief: CallBrief } | { ok: false; code: AdvisoryReadFailure }
+
+/** The brief for one call: why now, the last contact, the concerns, the promises, three questions, the objective. */
+export const getCallBriefFn = createServerFn({ method: 'POST' })
+  .validator((clientId: string) => clientId)
+  .handler(async ({ data: clientId }): Promise<CallBriefResponse> => {
+    try {
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
+      const brief = await callBrief(context, clientId)
+      return brief ? { ok: true, brief } : { ok: false, code: 'NOT_FOUND' }
+    } catch {
+      return { ok: false, code: 'SERVICE_UNAVAILABLE' }
+    }
+  })
 
 /* ------------------------------------------------------- Market-to-Client */
 

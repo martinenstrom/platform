@@ -47,7 +47,23 @@ export async function recordClientUpdate(
   const client = await context.repositories.clients.byId(input.clientId)
   if (!client) return { ok: false, code: 'NOT_FOUND' }
 
-  const extraction = extractFromNote({ text: noteText, interactionDate })
+  /* What the note may move: the open promises and the active concerns the record already holds. */
+  const [commitments, facts] = await Promise.all([
+    context.repositories.commitments.commitmentsOf(client.id),
+    context.repositories.context.factsOf(client.id),
+  ])
+  const extraction = extractFromNote({
+    text: noteText,
+    interactionDate,
+    record: {
+      openCommitments: commitments
+        .filter((c) => c.status === 'open')
+        .map((c) => ({ id: c.id, title: c.title })),
+      activeConcerns: facts
+        .filter((f) => f.category === 'concern' && f.status === 'active')
+        .map((f) => ({ id: f.id, statement: f.statement })),
+    },
+  })
   const interactionType = input.interactionType ?? extraction.interactionType
   const items = extraction.items.map((item) =>
     item.kind === 'interaction' ? { ...item, interactionType } : item,

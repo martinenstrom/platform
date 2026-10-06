@@ -21,6 +21,8 @@ export type JarvisScope =
   | 'MEETING'
   | 'SENTINEL'
   | 'MARKET_IMPACT'
+  /** Idag — Daily Command: who needs the advisor, the best use of a window, what changed. */
+  | 'DAILY'
 
 /** What JARVIS can answer from the evidence a scope reaches. */
 export type JarvisCapability =
@@ -44,6 +46,8 @@ export type JarvisCapability =
   | 'book-lifecycle'
   | 'sentinel-queue'
   | 'market-impact'
+  /** Daily Command: priorities, a window of time, meetings, overdue, financing, what changed, a call brief. */
+  | 'daily-command'
   | 'market'
   | 'institution'
 
@@ -93,6 +97,14 @@ const CAPABILITIES: Record<JarvisScope, readonly JarvisCapability[]> = {
   MEETING: CLIENT_CAPABILITIES,
   SENTINEL: ['sentinel-queue', 'why-priority', 'market', 'institution'],
   MARKET_IMPACT: ['market-impact', 'market', 'institution'],
+  DAILY: [
+    'daily-command',
+    'sentinel-queue',
+    'market-impact',
+    'book-lifecycle',
+    'market',
+    'institution',
+  ],
 }
 
 /** The scopes the advisory record answers in Tier 0, before any model. */
@@ -103,6 +115,7 @@ export const ADVISORY_SCOPES: readonly JarvisScope[] = [
   'MEETING',
   'SENTINEL',
   'MARKET_IMPACT',
+  'DAILY',
 ]
 
 export function isAdvisoryScope(scope: JarvisScope): boolean {
@@ -136,6 +149,11 @@ export function resolveJarvisContext(route: string): JarvisContext {
   }
   if (head === 'sentinel') return at('SENTINEL')
   if (head === 'market-impact') return at('MARKET_IMPACT')
+  if (head === 'today') {
+    /* The call brief is about the client it briefs; the day itself is Daily Command's. */
+    if (second === 'call' && third) return at('CLIENT', { clientId: third })
+    return at('DAILY')
+  }
   if (head === 'markets' || head === 'watchlist') return at('MARKET')
   return at('GLOBAL')
 }

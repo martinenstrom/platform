@@ -330,6 +330,8 @@ export const EXTRACTED_KIND_LABEL: Record<ExtractedItemKind, string> = {
   commitment: 'Åtagande',
   'discussion-topics': 'Diskussionsämnen',
   'key-point': 'Nyckelpunkt',
+  'commitment-completed': 'Löfte levererat',
+  'concern-eased': 'Oro avtagit',
 }
 
 export const MEMORY_ANSWER_HEADING: Record<MemoryAnswerKind, string> = {

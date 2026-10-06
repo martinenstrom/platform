@@ -14,6 +14,7 @@
  * without touching the evidence services behind each kind (TD-105).
  */
 
+import { minutesIn } from '~/domain/advisory'
 import type { AdvisoryIntentKind } from './answer'
 import type { JarvisContext, JarvisScope } from './context'
 
@@ -32,6 +33,9 @@ export interface NamedOffice {
 /** The period a book question names: "i år", "den här månaden", "i veckan". The answer turns it into a date. */
 export type BookPeriod = 'year' | 'month' | 'week'
 
+/** The day a "what changed" question counts from: "sedan igår", "sedan i fredags", "den här veckan". */
+export type DailySince = 'yesterday' | 'friday' | 'monday' | 'week'
+
 export interface AdvisoryIntent {
   kind: AdvisoryIntentKind
   /** A client the line named, resolved against the register; absent when the screen's subject is meant. */
@@ -48,6 +52,10 @@ export interface AdvisoryIntent {
   office?: NamedOffice
   /** Whether the named office is where something moved to or from; absent when the line did not say. */
   direction?: 'to' | 'from'
+  /** "Jag har 30 minuter": the minutes a time-window line named. */
+  minutes?: number
+  /** "Sedan igår", "sedan i fredags": where a "what changed" line counts from. */
+  since?: DailySince
   method: 'advisory-intent-v1'
 }
 
@@ -128,6 +136,18 @@ const WHY_PRIORITY = cue([
   'varför (?:är|ligger|står) (?:de|dom|den|kunden|klienten|hon|han|hen)',
   `priorit${L}`,
   'sentinel',
+  'varför (?:just )?nu',
+  'why now',
+  'varför (?:ringa|kontakta|just) (?:dem|dom|honom|henne|hen|kunden|klienten)',
+])
+/** "Förbered samtal med Henrik", "inför samtalet": a call brief, not a meeting's. */
+const PREPARE_CALL = cue([
+  `förbered${L} (?:ett |mitt |mig (?:inför|för) )?samtal${L}`,
+  '(?:inför|innan|före) samtalet',
+  `samtalsunderlag${L}`,
+  'call brief',
+  'prep(?:are)? (?:me for )?(?:the |a |my )?call',
+  'before (?:the|my) call',
 ])
 const MARKET = cue([
   `marknad${L}`,
@@ -475,6 +495,111 @@ const BOOK_CHANGES = cue([
   `livscykel${L}`,
 ])
 
+/* ---------------------------------------------------------- the day's own */
+
+/** A word that anchors a line in the day: "idag", "dagens", "i morse", "just nu". */
+const DAILY_WORD = cue([
+  'idag',
+  'i ?dag',
+  'today',
+  `dagens${L}`,
+  'i morse',
+  'den här (?:morgonen|förmiddagen|eftermiddagen)',
+  'just nu',
+  'right now',
+  'this morning',
+  'this afternoon',
+])
+/** "Jag har 30 minuter", "hinner jag", "best use of an hour". */
+const TIME_WINDOW = cue([
+  'jag har',
+  'i have',
+  'i’ve got',
+  "i've got",
+  `hinner${L}`,
+  'what can i (?:do|fit|manage)',
+  'bästa (?:användning|sätt)',
+  'best use',
+  'vad gör jag (?:bäst )?(?:med|på)',
+  'ledig',
+  'innan (?:nästa|mitt nästa) möte',
+  'before my next meeting',
+])
+const CAN_WAIT = cue([
+  'kan vänta',
+  'can wait',
+  'inte brådskande',
+  'not urgent',
+  'får vänta',
+  'skjuta på',
+  'postpone',
+  `bevak${L}`,
+])
+const SINCE_CUES: readonly { cue: RegExp; since: DailySince }[] = [
+  { cue: cue(['sedan igår', 'sedan i går', 'since yesterday', 'sen igår', 'sen i går']), since: 'yesterday' },
+  { cue: cue(['sedan i fredags', 'sedan fredag', 'sedan fredagen', 'since friday', 'sen i fredags']), since: 'friday' },
+  { cue: cue(['sedan i måndags', 'sedan måndag', 'since monday', 'sen i måndags']), since: 'monday' },
+  { cue: cue(['den här veckan', 'denna vecka', 'i veckan', 'this week', 'veckans']), since: 'week' },
+]
+function sinceOf(line: string): DailySince | undefined {
+  return SINCE_CUES.find((entry) => entry.cue.test(line))?.since
+}
+/** The day's own questions that no other family carries: a brief, what requires attention, what to do. */
+const DAILY_BRIEF = cue([
+  `morgonbrief${L}`,
+  'brief(?:a|ing)? (?:mig|me)',
+  'dagens (?:prioriteringar|lista|agenda|plan)',
+  'vad (?:ska|bör|borde|måste) jag (?:göra|ta tag i)',
+  'what (?:should|must|do) i (?:do|focus on)',
+  'kräver (?:min )?uppmärksamhet',
+  'require(?:s)? (?:my )?attention',
+  'vilka relationer',
+  'which relationships',
+  'vem (?:väntar|behöver)',
+  'who (?:needs|is waiting)',
+])
+/** Anchors that make a line the day's even where no daily word stands: who needs me, what can wait, since yesterday. */
+const DAILY_ANCHOR = cue([
+  'behöver mig',
+  'needs? me',
+  'kan vänta',
+  'can wait',
+  'vem (?:bör|ska|borde) jag (?:ringa|kontakta|börja med)',
+  'who should i (?:call|contact|start with)',
+  'var (?:ska|bör|borde) jag börja',
+  'where (?:do|should) i start',
+  `försenad${L}`,
+  'overdue',
+  'förfaller snart',
+  'läggs om snart',
+  'upcoming financing',
+  'inom (?:en |ett )?(?:vecka|månad)',
+])
+
+/**
+ * The day's question, the more specific ahead of the broader: a window of
+ * time, who can wait, what changed, the financing ahead, the meetings, the
+ * overdue promises, the market's reach, and then who needs me at all.
+ * Strict mode — away from the day's own workspace — asks for an anchor so a
+ * market line with "call" in it is never read as the day's.
+ */
+function dailyIntent(line: string, strict: boolean): AdvisoryIntentKind | null {
+  const minutes = minutesIn(line)
+  if (minutes !== null && TIME_WINDOW.test(line)) return 'DAILY_TIME_WINDOW'
+  const anchored =
+    !strict || DAILY_WORD.test(line) || DAILY_ANCHOR.test(line) || sinceOf(line) !== undefined
+  if (!anchored) return null
+  if (CAN_WAIT.test(line)) return 'DAILY_CAN_WAIT'
+  if (CHANGES.test(line) || /\b(?:hänt|happened)\b/iu.test(line)) return 'DAILY_CHANGES'
+  if (FINANCING.test(line)) return 'DAILY_FINANCING'
+  if (MEETINGS.test(line)) return 'DAILY_MEETINGS'
+  if (OVERDUE.test(line)) return 'DAILY_OVERDUE'
+  if (MARKET.test(line) && AFFECTED.test(line)) return 'MARKET_IMPACT_CLIENTS'
+  if (NEEDS_ME.test(line) || DAILY_BRIEF.test(line) || WHY_PRIORITY.test(line))
+    return 'DAILY_PRIORITIES'
+  return null
+}
+
 /** The book question a line asks, the more specific act ahead of the broader one. */
 function bookIntent(line: string): AdvisoryIntentKind | null {
   if (BOOK_REACTIVATED.test(line)) return 'BOOK_REACTIVATED'
@@ -701,6 +826,20 @@ export function recognizeAdvisoryIntent(
     }
   }
 
+  /*
+   * "Jag har 30 minuter" is the day's wherever the advisor stands, unless a
+   * client is named — or the line is a client question in its own right on
+   * the client's page ("jag har 15 minuter innan mötet, vad tar jag upp?").
+   */
+  const minutes = minutesIn(line)
+  if (
+    !named &&
+    minutes !== null &&
+    TIME_WINDOW.test(line) &&
+    !(IS_CLIENT_SCOPE(context.scope) && clientIntent(line))
+  )
+    return { ...done('DAILY_TIME_WINDOW'), minutes }
+
   /* A named client makes any line a client question, from any scope. */
   if (named || IS_CLIENT_SCOPE(context.scope)) {
     const client = clientIntent(line)
@@ -711,37 +850,66 @@ export function recognizeAdvisoryIntent(
           : undefined
       return { ...done(client), ...(emphasis ? { emphasis } : {}) }
     }
+    /* "Varför Berglund?" — the name and a why: the priority's. */
+    if (named && /^(?:varför|why)\b/iu.test(line)) return done('WHY_PRIORITY')
     if (named) return done('CLIENT_SUMMARY')
     /* Nothing recognised on a client: the relationship memory answers, or says it cannot. */
     return done('GENERAL_CLIENT_QUERY')
   }
 
+  /* The day's question, with the office it names and the day it counts from. */
+  const daily = (kind: AdvisoryIntentKind): AdvisoryIntent => {
+    const office = resolveNamedOffice(line, offices)
+    const since = sinceOf(line)
+    return {
+      ...done(kind),
+      ...(office ? { office: office.office } : {}),
+      ...(since ? { since } : {}),
+      ...(minutes !== null ? { minutes } : {}),
+    }
+  }
+
   switch (context.scope) {
-    case 'OFFICE':
+    case 'OFFICE': {
       if (OVERDUE.test(line)) return done('OFFICE_OVERDUE')
       if (MEETINGS.test(line)) return done('OFFICE_MEETINGS')
       if (OPPORTUNITIES.test(line)) return done('OFFICE_OPPORTUNITIES')
       if (NEEDS_ME.test(line)) return done('OFFICE_PRIORITIES')
-      return null
-    case 'CLIENT_DIRECTORY':
+      const rest = dailyIntent(line, true)
+      return rest ? daily(rest) : null
+    }
+    case 'CLIENT_DIRECTORY': {
       if (EXTERNAL_ASSETS.test(line)) return done('DIRECTORY_EXTERNAL_ASSETS')
       if (OVERDUE.test(line)) return done('DIRECTORY_OVERDUE')
       if (MEETINGS.test(line)) return done('DIRECTORY_MEETINGS')
       if (NEEDS_ME.test(line)) return done('DIRECTORY_CALL_TODAY')
-      return null
-    case 'SENTINEL':
+      const rest = dailyIntent(line, true)
+      return rest ? daily(rest) : null
+    }
+    case 'SENTINEL': {
       if (
         NEEDS_ME.test(line) ||
         WHY_PRIORITY.test(line) ||
         /\b(?:idag|i dag|today)\b/iu.test(line)
       )
         return done('SENTINEL_TODAY')
-      return null
-    case 'MARKET_IMPACT':
+      const rest = dailyIntent(line, true)
+      return rest ? daily(rest) : null
+    }
+    case 'MARKET_IMPACT': {
       if (AFFECTED.test(line)) return done('MARKET_IMPACT_CLIENTS')
-      return null
-    default:
-      return null
+      const rest = dailyIntent(line, true)
+      return rest ? daily(rest) : null
+    }
+    case 'DAILY': {
+      const kind = dailyIntent(line, false)
+      return kind ? daily(kind) : null
+    }
+    default: {
+      /* Away from the record — the market, the firm — only an anchored line is the day's. */
+      const kind = dailyIntent(line, true)
+      return kind ? daily(kind) : null
+    }
   }
 }
 
@@ -755,6 +923,7 @@ function clientIntent(line: string): AdvisoryIntentKind | null {
   if (SAID.test(line)) return 'GENERAL_CLIENT_QUERY'
   const pack = packIntent(line)
   if (pack) return pack
+  if (PREPARE_CALL.test(line)) return 'PREPARE_CALL'
   if (NEXT_MEETING.test(line)) return 'NEXT_MEETING'
   if (CLIENT_QUESTIONS.test(line)) return 'CLIENT_QUESTIONS'
   if (QUESTIONS_TO_ASK.test(line)) return 'QUESTIONS_TO_ASK'

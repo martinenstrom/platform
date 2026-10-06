@@ -254,6 +254,9 @@ export type ExtractedItemKind =
   | 'commitment'
   | 'discussion-topics'
   | 'key-point'
+  /** An open promise the note says was kept, and an active concern the note says has eased: the record moves, nothing is added. */
+  | 'commitment-completed'
+  | 'concern-eased'
 
 /** One thing JARVIS understood from a note, awaiting the advisor's word. */
 export interface ExtractedItem {
@@ -271,6 +274,10 @@ export interface ExtractedItem {
   topics?: readonly DiscussionTopic[]
   contextCategory?: ContextCategory
   priority?: CommitmentPriority
+  /** The open commitment a `commitment-completed` item would close. */
+  commitmentId?: string
+  /** The active concern a `concern-eased` item would resolve. */
+  contextFactId?: string
 }
 
 export type CandidateStatus = 'pending' | 'confirmed' | 'discarded'

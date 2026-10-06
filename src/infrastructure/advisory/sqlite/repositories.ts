@@ -674,6 +674,16 @@ export function createSqliteAdvisoryRepositories(db: Database): AdvisoryReposito
           ...provenanceValues(f.provenance),
         )
       },
+      async saveFact(f) {
+        run(
+          'UPDATE context_facts SET category = ?, statement = ?, status = ?, status_at = ? WHERE id = ?',
+          f.category,
+          f.statement,
+          f.status,
+          f.statusAt,
+          f.id,
+        )
+      },
     },
     commitments: {
       async commitmentsOf(clientId) {

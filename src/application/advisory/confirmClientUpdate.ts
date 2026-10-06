@@ -44,6 +44,9 @@ export interface ConfirmedRecords {
   contextFacts: number
   commitments: number
   events: number
+  /** Open promises the note closed, and active concerns it resolved — the record moved, nothing was added. */
+  completedCommitments: number
+  easedConcerns: number
 }
 
 export type ConfirmClientUpdateResult =
@@ -146,9 +149,42 @@ export async function confirmClientUpdate(
   }
   await repositories.interactions.addInteraction(interaction)
 
-  const created: ConfirmedRecords = { contextFacts: 0, commitments: 0, events: 0 }
+  const created: ConfirmedRecords = {
+    contextFacts: 0,
+    commitments: 0,
+    events: 0,
+    completedCommitments: 0,
+    easedConcerns: 0,
+  }
   for (const item of confirmedItems) {
     switch (item.kind) {
+      /* A promise the note says was kept: closed on the day of the conversation, its provenance untouched. */
+      case 'commitment-completed': {
+        if (!item.commitmentId) break
+        const commitment = await repositories.commitments.commitmentById(item.commitmentId)
+        if (!commitment || commitment.status !== 'open') break
+        await repositories.commitments.saveCommitment({
+          ...commitment,
+          status: 'done',
+          completedAt: candidate.interactionDate,
+        })
+        created.completedCommitments += 1
+        break
+      }
+      /* A concern the note says has eased: resolved on that day; the voiced concern stays in the record as history. */
+      case 'concern-eased': {
+        if (!item.contextFactId) break
+        const facts = await repositories.context.factsOf(candidate.clientId)
+        const fact = facts.find((f) => f.id === item.contextFactId)
+        if (!fact || fact.status !== 'active') break
+        await repositories.context.saveFact({
+          ...fact,
+          status: 'resolved',
+          statusAt: candidate.interactionDate,
+        })
+        created.easedConcerns += 1
+        break
+      }
       case 'concern':
       case 'preference':
       case 'objective':

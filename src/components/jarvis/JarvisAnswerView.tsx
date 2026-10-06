@@ -18,6 +18,8 @@ const ACTION_LABEL = {
   'open-sentinel': 'Öppna Sentinel',
   'open-book': 'Öppna boken',
   'open-market-impact': 'Öppna Marknadspåverkan',
+  'open-today': 'Öppna Idag',
+  'prepare-call': 'Förbered samtal',
 } as const
 
 /**

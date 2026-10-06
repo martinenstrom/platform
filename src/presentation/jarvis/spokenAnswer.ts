@@ -41,7 +41,14 @@ import {
   readinessReasonText,
   readinessSummary,
 } from '~/presentation/documents/meetingPackText'
-import { itemText, noteText } from './advisoryAnswerText'
+import {
+  ACTION_TYPE_LABEL,
+  actionWhyNow,
+  OBJECTIVE_TEXT,
+  sinceText,
+  spokenTime,
+} from '~/presentation/advisory/dailyCommandText'
+import { CHANGE_LABEL, itemText, noteText } from './advisoryAnswerText'
 
 export interface JarvisSpokenAnswer {
   /** The sentences, joined; what the voice reads. */
@@ -364,6 +371,19 @@ function render(answer: JarvisAnswer): Built {
     case 'BOOK_REACTIVATED':
     case 'BOOK_CHANGES':
       return done(lifecycleSpeech(answer, note), SPOKEN_LEAD_ITEMS)
+    case 'DAILY_PRIORITIES':
+    case 'DAILY_CAN_WAIT':
+      return done(dailyActionsSpeech(answer, note), SPOKEN_LEAD_ITEMS)
+    case 'DAILY_TIME_WINDOW':
+      return done(timeWindowSpeech(answer, note), 2)
+    case 'DAILY_MEETINGS':
+    case 'DAILY_OVERDUE':
+    case 'DAILY_FINANCING':
+      return done(dailyListSpeech(answer, note), SPOKEN_LEAD_ITEMS)
+    case 'DAILY_CHANGES':
+      return done(changesSpeech(answer, note), SPOKEN_LEAD_ITEMS)
+    case 'PREPARE_CALL':
+      return done(callSpeech(answer, name), 3)
     case 'MARKET_IMPACT_CLIENTS': {
       const episodes = all(answer).filter((i) => i.kind === 'episode')
       if (episodes.length === 0)
@@ -731,6 +751,132 @@ function lifecycleSpeech(answer: JarvisAnswer, note: string | null): string[] {
   ]
 }
 
+/* ------------------------------------------------------------- the day */
+
+const actionsOf = (answer: JarvisAnswer) =>
+  all(answer).filter(
+    (i): i is Extract<JarvisItem, { kind: 'daily-action' }> => i.kind === 'daily-action',
+  )
+
+/** "Sex relationer kräver din uppmärksamhet. Först Margareta Berglund: följ upp löftet …" */
+function dailyActionsSpeech(answer: JarvisAnswer, note: string | null): string[] {
+  const actions = actionsOf(answer)
+  if (actions.length === 0) return [note ?? 'Ingen relation kräver dig just nu']
+  const now = itemsOf(answer, 'now').filter((i) => i.kind === 'daily-action').length
+  const lines = actions.slice(0, SPOKEN_LEAD_ITEMS).map((a, i) => {
+    const why = actionWhyNow(a.action).replace(/\.$/, '')
+    return `${i === 0 ? 'Först ' : ''}${spokenName(a.action.clientName)}: ${ACTION_TYPE_LABEL[a.action.actionType].toLowerCase()}${why ? `, ${lower(why)}` : ''}`
+  })
+  const head =
+    answer.intent === 'DAILY_CAN_WAIT'
+      ? actions.length === 1
+        ? 'En relation kan vänta'
+        : `${actions.length} relationer kan vänta`
+      : actions.length === 1
+        ? 'En relation kräver din uppmärksamhet'
+        : `${actions.length} relationer kräver din uppmärksamhet${now > 0 && now < actions.length ? `, ${now} av dem nu` : ''}`
+  return [head, ...lines, ...(actions.length > SPOKEN_LEAD_ITEMS ? ['Säg till så tar jag resten'] : [])]
+}
+
+/** "Med 30 minuter: följ upp löftet till Margareta Berglund, 20 till 30 minuter. Det räcker inte för …" */
+function timeWindowSpeech(answer: JarvisAnswer, note: string | null): string[] {
+  const best = itemsOf(answer, 'best-use').filter(
+    (i): i is Extract<JarvisItem, { kind: 'daily-action' }> => i.kind === 'daily-action',
+  )
+  const minutes = answer.window?.minutes ?? 0
+  if (best.length === 0) return [note ?? `Ingen åtgärd ryms på ${minutes} minuter`]
+  const [first, second] = best
+  const sentences = [
+    `Med ${minutes} minuter: ${ACTION_TYPE_LABEL[first!.action.actionType].toLowerCase()} till ${spokenName(first!.action.clientName)}, ${spokenTime(first!.action.time)}${
+      actionWhyNow(first!.action) ? `. ${actionWhyNow(first!.action).replace(/\.$/, '')}` : ''
+    }`,
+  ]
+  if (second)
+    sentences.push(
+      `Sedan ${ACTION_TYPE_LABEL[second.action.actionType].toLowerCase()} till ${spokenName(second.action.clientName)}, ${spokenTime(second.action.time)}`,
+    )
+  const deferred = itemsOf(answer, 'deferred').filter(
+    (i): i is Extract<JarvisItem, { kind: 'daily-action' }> => i.kind === 'daily-action',
+  )
+  if (deferred.length > 0)
+    sentences.push(
+      `Det räcker inte för ${joinAnd(deferred.slice(0, 3).map((d) => spokenName(d.action.clientName)))}, som behöver mer tid`,
+    )
+  return sentences
+}
+
+/** The week's meetings, the overdue promises, the financing ahead: the three first, with their dates. */
+function dailyListSpeech(answer: JarvisAnswer, note: string | null): string[] {
+  const rows = all(answer).filter((i) => i.kind !== 'note')
+  if (rows.length === 0) return [note ?? 'Inget att rapportera']
+  const lines = rows.slice(0, SPOKEN_LEAD_ITEMS).map((row) => {
+    if (row.kind === 'daily-meeting')
+      return `${spokenName(row.meeting.clientName)} ${spokenDays(row.meeting.daysAhead)}, ${row.meeting.title.toLowerCase()}`
+    if (row.kind === 'daily-overdue')
+      return `${spokenName(row.overdue.clientName)}, ${row.overdue.title.toLowerCase()}, försenat ${row.overdue.daysOverdue} dagar`
+    if (row.kind === 'daily-financing')
+      return `${spokenName(row.financing.clientName)}, ${row.financing.title.toLowerCase()} ${spokenDate(row.financing.date)}${row.financing.amount !== null ? `, ${spokenAmount(row.financing.amount)}` : ''}`
+    return itemText(row, answer.titles, answer.today).text
+  })
+  const unit =
+    answer.intent === 'DAILY_MEETINGS'
+      ? rows.length === 1
+        ? 'Ett möte'
+        : `${rows.length} möten`
+      : answer.intent === 'DAILY_OVERDUE'
+        ? rows.length === 1
+          ? 'Ett försenat åtagande'
+          : `${rows.length} försenade åtaganden`
+        : rows.length === 1
+          ? 'En finansiering'
+          : `${rows.length} finansieringar`
+  return [
+    `${unit}: ${joinAnd(lines)}`,
+    ...(rows.length > SPOKEN_LEAD_ITEMS ? ['Säg till så tar jag resten'] : []),
+  ]
+}
+
+/** "Sedan i går: Anna och Per Dahlqvist, löfte levererat; …" */
+function changesSpeech(answer: JarvisAnswer, note: string | null): string[] {
+  const rows = all(answer).filter(
+    (i) => i.kind === 'changed-client' || i.kind === 'lifecycle-entry',
+  )
+  const since = answer.since ? sinceText(answer.since, answer.today) : 'sedan i går'
+  if (rows.length === 0) return [note ?? `Inget har förändrats ${since}`]
+  const lines = rows.slice(0, SPOKEN_LEAD_ITEMS).map((row) => {
+    if (row.kind === 'changed-client')
+      return `${row.clientName ? `${spokenName(row.clientName)}, ` : ''}${CHANGE_LABEL[row.change].toLowerCase()}`
+    if (row.kind === 'lifecycle-entry')
+      return `${spokenName(row.entry.subjectName)}, ${LIFECYCLE_EVENT_LABEL[row.entry.event.kind].toLowerCase()}`
+    return ''
+  })
+  return [
+    `${cap(since)}: ${joinAnd(lines)}`,
+    ...(rows.length > SPOKEN_LEAD_ITEMS ? [`och ${rows.length - SPOKEN_LEAD_ITEMS} till`] : []),
+  ]
+}
+
+/** "Ring Henrik Alvarsson: <why now>. Målet: <objective>. Fråga först: <question>." */
+function callSpeech(answer: JarvisAnswer, name: string): string[] {
+  const action = actionsOf(answer)[0]
+  const objective = all(answer).find((i) => i.kind === 'daily-objective')
+  const question = itemsOf(answer, 'questions-to-ask').find((i) => i.kind === 'advisor-question')
+  const sentences: string[] = []
+  if (action) {
+    const why = actionWhyNow(action.action).replace(/\.$/, '')
+    sentences.push(
+      `Inför samtalet med ${name}: ${lower(ACTION_TYPE_LABEL[action.action.actionType])}${why ? `. ${cap(why)}` : ''}`,
+    )
+  } else sentences.push(`Inget i registret kallar på ett samtal med ${name} just nu`)
+  if (objective && objective.kind === 'daily-objective')
+    sentences.push(`Målet: ${lower(OBJECTIVE_TEXT[objective.objective].replace(/\.$/, ''))}`)
+  if (question && question.kind === 'advisor-question')
+    sentences.push(`Fråga först: ${advisorQuestionText(question.question)}`)
+  return sentences
+}
+
+const lower = (text: string): string => (text ? text[0]!.toLowerCase() + text.slice(1) : text)
+
 function packSpeech(answer: JarvisAnswer): string[] {
   const readiness = first(answer, 'readiness')
   const outline = first(answer, 'contents')
@@ -810,4 +956,12 @@ export const SPOKEN_INTENTS: ReadonlySet<AdvisoryIntentKind> =
     'FINANCING',
     'GOALS',
     'OPPORTUNITIES',
+    'DAILY_PRIORITIES',
+    'DAILY_TIME_WINDOW',
+    'DAILY_CAN_WAIT',
+    'DAILY_MEETINGS',
+    'DAILY_OVERDUE',
+    'DAILY_FINANCING',
+    'DAILY_CHANGES',
+    'PREPARE_CALL',
   ])

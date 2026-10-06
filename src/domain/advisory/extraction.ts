@@ -25,10 +25,22 @@ import type {
   InteractionType,
 } from './relationship'
 
+/**
+ * What the record already holds for the client, so a note can move it: the
+ * open promises a note may say were kept, the active concerns a note may
+ * say have eased. Nothing is matched that is not here, and nothing here is
+ * proposed without words in the note that speak of it.
+ */
+export interface ExtractionRecord {
+  openCommitments: readonly { id: string; title: string }[]
+  activeConcerns: readonly { id: string; statement: string }[]
+}
+
 export interface ExtractionInput {
   text: string
   /** ISO date the interaction happened; relative dates resolve against it. */
   interactionDate: string
+  record?: ExtractionRecord
 }
 
 export interface ExtractionResult {
@@ -266,6 +278,63 @@ const COMMITMENT_PATTERN = lexicon(
   'will prepare',
   'prepare',
   'send over',
+)
+/**
+ * A promise kept, in the past tense: the note says the thing was gone
+ * through, sent, delivered, presented. "Ska skicka" and "går igenom" are
+ * not kept promises; "skickade" and "gick igenom" are.
+ */
+const COMPLETION_PATTERN = lexicon(
+  'gick igenom',
+  'gått igenom',
+  'gick vi igenom',
+  'skickade',
+  'har skickat',
+  'skickat över',
+  'levererade',
+  'har levererat',
+  'presenterade',
+  'visade',
+  'lämnade över',
+  'överlämnade',
+  'genomförde',
+  'är (?:nu )?klar',
+  'är (?:nu )?klart',
+  'blev klar',
+  'är löst',
+  'löste',
+  'went through',
+  'walked (?:him|her|them) through',
+  'delivered',
+  `sent${END}`,
+  'presented',
+  'handed over',
+  'is (?:now )?done',
+  'completed',
+)
+/**
+ * A concern that has eased: calmer, no longer worried, reassured. Checked
+ * before the concern lexicon, because "inte längre orolig" contains "orolig".
+ */
+const EASED_PATTERN = lexicon(
+  'lugnare',
+  'inte längre orolig',
+  'inte orolig längre',
+  'mindre orolig',
+  'inte lika orolig',
+  'känner sig trygg',
+  'tryggare',
+  'oron har (?:lagt sig|minskat|släppt)',
+  'släppt oron',
+  'är nöjd',
+  'nöjd nu',
+  'calmer',
+  'less worried',
+  'no longer worried',
+  'not worried any ?more',
+  'reassured',
+  'at ease',
+  'comfortable now',
 )
 const CONCERN_PATTERN = lexicon(
   'orolig',
@@ -674,6 +743,82 @@ function eventTitle(sentence: string): string {
   return capitalise(sentence.replace(/[.!?]+$/, '').trim())
 }
 
+/* ------------------------------------------------------ record matching */
+
+/**
+ * Words that say nothing about which promise or concern a sentence means:
+ * the people, the verbs of delivery, and the words of worry themselves —
+ * "orolig" is in every concern and names none of them.
+ */
+const NOISE = new Set([
+  'kunden',
+  'klienten',
+  'henne',
+  'honom',
+  'igenom',
+  'gick',
+  'gått',
+  'skickade',
+  'skickat',
+  'lovade',
+  'lovat',
+  'också',
+  'även',
+  'sedan',
+  'efter',
+  'innan',
+  'längre',
+  'mötet',
+  'möte',
+  'samtalet',
+  'under',
+  'orolig',
+  'oroad',
+  'bekymrad',
+  'nervös',
+  'missnöjd',
+  'tveksam',
+  'stressad',
+  'besviken',
+  'frustrerad',
+  'skeptisk',
+  'osäker',
+  'upprörd',
+  'with',
+  'through',
+  'client',
+  'about',
+  'their',
+  'which',
+  'worried',
+  'concerned',
+  'nervous',
+  'unhappy',
+])
+
+/** A Swedish word reduced to a stem a compound or an inflection still starts with. */
+function stemOf(word: string): string {
+  let stem = word
+  for (const suffix of ['erna', 'arna', 'orna', 'ernas', 'arnas', 'en', 'et', 'ar', 'er', 'or', 'na', 's', 't']) {
+    if (stem.length - suffix.length >= 5 && stem.endsWith(suffix)) {
+      stem = stem.slice(0, -suffix.length)
+      break
+    }
+  }
+  return stem
+}
+
+function contentWords(text: string): string[] {
+  return (text.toLowerCase().match(/\p{L}{5,}/gu) ?? []).filter((w) => !NOISE.has(w))
+}
+
+/** True when a word of the sentence starts with a stem of the record's words, or the other way round. */
+function sharesStem(sentence: string, recordText: string): boolean {
+  const stems = contentWords(recordText).map(stemOf).filter((s) => s.length >= 5)
+  const words = contentWords(sentence)
+  return stems.some((stem) => words.some((w) => w.startsWith(stem) || stem.startsWith(stemOf(w))))
+}
+
 /* -------------------------------------------------------------- extraction */
 
 export function extractFromNote(input: ExtractionInput): ExtractionResult {
@@ -705,6 +850,9 @@ export function extractFromNote(input: ExtractionInput): ExtractionResult {
   )
 
   const keyPointCandidates: string[] = []
+  const record = input.record ?? { openCommitments: [], activeConcerns: [] }
+  const completedIds = new Set<string>()
+  const easedIds = new Set<string>()
   for (const sentence of sentences) {
     const dates = datesIn(sentence, input.interactionDate)
     const first = dates[0] ?? null
@@ -713,6 +861,51 @@ export function extractFromNote(input: ExtractionInput): ExtractionResult {
     const dateConfidence: Confidence =
       first === null ? 'medium' : first.precision === 'day' ? 'high' : 'low'
     let classified = false
+
+    /*
+     * The record moves before anything is added to it. A past-tense delivery
+     * that names an open promise closes it; a sentence that says the client
+     * is calmer eases an active concern — the one the sentence speaks of, or
+     * the only one there is. Each is proposed once, at medium confidence,
+     * for the advisor to confirm; never on a sentence that is itself a promise.
+     */
+    const promiseSentence =
+      PROMISE_OPENING.test(sentence) ||
+      (COMMITMENT_PATTERN.test(sentence) && /\b(jag|vi|i|we)\b/i.test(sentence))
+    if (!promiseSentence && COMPLETION_PATTERN.test(sentence)) {
+      for (const commitment of record.openCommitments) {
+        if (completedIds.has(commitment.id) || !sharesStem(sentence, commitment.title)) continue
+        completedIds.add(commitment.id)
+        items.push(
+          next('commitment-completed', {
+            title: commitment.title,
+            sourceText: sentence,
+            confidence: 'medium',
+            date: input.interactionDate,
+            commitmentId: commitment.id,
+          }),
+        )
+        classified = true
+      }
+    }
+    if (EASED_PATTERN.test(sentence)) {
+      const candidates = record.activeConcerns.filter((c) => !easedIds.has(c.id))
+      const named = candidates.filter((c) => sharesStem(sentence, c.statement))
+      const eased = named[0] ?? (candidates.length === 1 ? candidates[0] : undefined)
+      if (eased) {
+        easedIds.add(eased.id)
+        items.push(
+          next('concern-eased', {
+            title: eased.statement,
+            sourceText: sentence,
+            confidence: named[0] ? 'medium' : 'low',
+            date: input.interactionDate,
+            contextFactId: eased.id,
+          }),
+        )
+      }
+      classified = true
+    }
 
     /*
      * A promise first. "Lovade skicka jämförelsen och boka ny genomgång i
@@ -763,7 +956,7 @@ export function extractFromNote(input: ExtractionInput): ExtractionResult {
       )
       classified = true
     }
-    if (CONCERN_PATTERN.test(sentence)) {
+    if (CONCERN_PATTERN.test(sentence) && !EASED_PATTERN.test(sentence)) {
       items.push(
         next('concern', {
           title: eventTitle(sentence),

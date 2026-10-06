@@ -109,6 +109,8 @@ export interface InteractionRepository {
 export interface ContextRepository {
   factsOf(clientId: ClientId): Promise<readonly ContextFact[]>
   addFact(fact: ContextFact): Promise<void>
+  /** Replace by id — a concern resolved, a statement superseded; the provenance stays. */
+  saveFact(fact: ContextFact): Promise<void>
 }
 
 export interface CommitmentRepository {

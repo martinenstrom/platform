@@ -7,6 +7,7 @@ import {
   Radar,
   Settings,
   Sparkles,
+  Sunrise,
   UsersRound,
   Users,
   type LucideIcon,
@@ -102,6 +103,12 @@ export function inJarvisWorkspace(pathname: string): boolean {
  * Paths must match the file routes in `src/routes`.
  */
 const MARKET: NavItem = { to: '/', label: 'Kommandocentral', icon: LayoutDashboard }
+/**
+ * Idag — Daily Command: whom the advisor should act on today, why, and the
+ * best use of a window of time. A first-class workspace beside the market:
+ * the advisor's morning begins here, and the start page stays the market.
+ */
+const TODAY: NavItem = { to: '/today', label: 'Idag', icon: Sunrise }
 const HEADQUARTERS: NavItem = {
   to: '/headquarters',
   label: 'Huvudkontor',
@@ -109,7 +116,7 @@ const HEADQUARTERS: NavItem = {
 }
 const EVIDENCE: NavItem = { to: '/evidence', label: 'Underlag', icon: Library }
 
-export const primaryNav: NavItem[] = [MARKET, HEADQUARTERS, jarvisGateway, EVIDENCE]
+export const primaryNav: NavItem[] = [MARKET, TODAY, HEADQUARTERS, jarvisGateway, EVIDENCE]
 
 /**
  * Utilities — reachable from every rail that carries one, never a peer of the
@@ -128,6 +135,7 @@ export const utilityNav: NavItem[] = [
  * first door of the JARVIS workspace.
  *
  *   Marknad      `/`              the market command centre
+ *   Idag         `/today`         Daily Command — who needs the advisor today
  *   Klienter     `/clients`       the relationship book — a shortcut into the workspace
  *   JARVIS       `/sentinel`      the intelligence system, on its own front
  *   Huvudkontor  `/headquarters`  the firm
@@ -138,6 +146,7 @@ export const utilityNav: NavItem[] = [
  */
 export const globalRail: NavItem[] = [
   { ...MARKET, label: 'Marknad', icon: Globe },
+  TODAY,
   { ...WORKSPACE_ENTRY, icon: UsersRound },
   jarvisGateway,
   HEADQUARTERS,

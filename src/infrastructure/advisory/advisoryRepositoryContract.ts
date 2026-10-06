@@ -114,6 +114,19 @@ export function describeAdvisoryRepositoryContract(subject: ContractSubject): vo
       expect(
         (await repositories.commitments.commitmentById('commitment-new'))?.status,
       ).toBe('done')
+      /* A fact's status moves and its provenance stays: a concern resolved is still the concern that was voiced. */
+      const concern = (await repositories.context.factsOf('cl-alvarsson')).find(
+        (f) => f.category === 'concern' && f.status === 'active',
+      )!
+      await repositories.context.saveFact({
+        ...concern,
+        status: 'resolved',
+        statusAt: '2026-09-24',
+      })
+      const resolved = (await repositories.context.factsOf('cl-alvarsson')).find(
+        (f) => f.id === concern.id,
+      )
+      expect(resolved).toEqual({ ...concern, status: 'resolved', statusAt: '2026-09-24' })
       const disposition = {
         priorityId: 'pr-1',
         clientId: 'cl-alvarsson',

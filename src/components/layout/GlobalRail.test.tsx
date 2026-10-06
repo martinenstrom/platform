@@ -36,6 +36,8 @@ async function mount(initial: string) {
   })
   const children = [
     '/',
+    '/today',
+    '/today/call/$clientId',
     '/clients',
     '/clients/office/$officeId',
     '/clients/$clientId',
@@ -68,11 +70,12 @@ const current = () =>
     .map((link) => link.getAttribute('title'))
 
 describe('the Financial OS rail', () => {
-  it('offers the five destinations in order, Klienter one click from the market', async () => {
+  it('offers the six destinations in order, Idag and Klienter one click from the market', async () => {
     await mount('/')
     const links = within(rail()).getAllByRole('link')
     expect(links.map((link) => link.getAttribute('title'))).toEqual([
       'Marknad',
+      'Idag',
       'Klienter',
       'JARVIS',
       'Huvudkontor',
@@ -80,13 +83,14 @@ describe('the Financial OS rail', () => {
     ])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/',
+      '/today',
       '/clients',
       '/sentinel',
       '/headquarters',
       '/evidence',
     ])
     /* Every link is named for assistive technology by its label, and titled for the pointer. */
-    for (const label of ['Marknad', 'Klienter', 'JARVIS', 'Huvudkontor', 'Underlag']) {
+    for (const label of ['Marknad', 'Idag', 'Klienter', 'JARVIS', 'Huvudkontor', 'Underlag']) {
       expect(within(rail()).getByRole('link', { name: label })).toHaveAttribute(
         'title',
         label,
@@ -103,7 +107,7 @@ describe('the Financial OS rail', () => {
     for (const item of globalRail) expect(known).toContain(item.to)
     /* JARVIS and Klienter are two destinations, with two icons. */
     expect(jarvisGateway.to).toBe('/sentinel')
-    const [, klienter, jarvis] = globalRail
+    const [, , klienter, jarvis] = globalRail
     expect(klienter!.to).not.toBe(jarvis!.to)
     expect(klienter!.icon).not.toBe(jarvis!.icon)
   })
@@ -111,6 +115,14 @@ describe('the Financial OS rail', () => {
   it('marks the market current at home, and neither JARVIS nor Klienter', async () => {
     await mount('/')
     expect(current()).toEqual(['Marknad'])
+  })
+
+  it('marks Idag on the day and on a call brief, and the market stays the start page', async () => {
+    await mount('/today')
+    expect(current()).toEqual(['Idag'])
+    expect(
+      globalRail.filter((item) => railItemCurrent(item, '/today/call/cl-1')).map((i) => i.label),
+    ).toEqual(['Idag'])
   })
 
   it('marks Klienter, not JARVIS, anywhere in the relationship book', async () => {

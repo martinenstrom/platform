@@ -17,6 +17,9 @@ import type {
   ClientQuestion,
   Commitment,
   ContextFact,
+  DailyAction,
+  DailyObjective,
+  DailyTime,
   DataQualityItem,
   FinancingItem,
   FocusTopic,
@@ -41,6 +44,12 @@ import type {
   StrategyObservation,
 } from '~/domain/advisory'
 import type { ClientDirectoryRow } from '~/application/advisory/clientDirectory'
+import type {
+  DailyFinancing,
+  DailyMarketItem,
+  DailyMeeting,
+  DailyOverdue,
+} from '~/application/advisory/dailyCommand'
 import type { LifecycleFeedEntry } from '~/application/advisory/lifecycle'
 import type { AffectedClient } from '~/application/advisory/marketImpact'
 import type { MarketEpisode } from '~/application/advisory/marketEpisodes'
@@ -89,6 +98,19 @@ export type AdvisoryIntentKind =
   | 'BOOK_MOVED'
   | 'BOOK_REACTIVATED'
   | 'BOOK_CHANGES'
+  /**
+   * Daily Command: who needs the advisor, the best use of a window of time,
+   * who can wait, the week's meetings, the overdue promises, the financing
+   * ahead, what changed since a day — and a call brief for one client.
+   */
+  | 'DAILY_PRIORITIES'
+  | 'DAILY_TIME_WINDOW'
+  | 'DAILY_CAN_WAIT'
+  | 'DAILY_MEETINGS'
+  | 'DAILY_OVERDUE'
+  | 'DAILY_FINANCING'
+  | 'DAILY_CHANGES'
+  | 'PREPARE_CALL'
   | 'GENERAL_CLIENT_QUERY'
   /** The Meeting Pack: prepare, in a depth or a format, or refresh against the record. */
   | 'MEETING_PACK_FULL'
@@ -108,7 +130,13 @@ export type AdvisoryIntentKind =
 /* ------------------------------------------------------------------ about */
 
 export type JarvisAboutKind =
-  'client' | 'meeting' | 'office' | 'directory' | 'sentinel' | 'market-impact'
+  | 'client'
+  | 'meeting'
+  | 'office'
+  | 'directory'
+  | 'sentinel'
+  | 'market-impact'
+  | 'daily'
 
 /** What the answer is about — the screen's subject, or the client the line named. */
 export interface JarvisAbout {
@@ -176,6 +204,12 @@ export type NoteKind =
   | 'no-moves'
   | 'no-reactivations'
   | 'no-book-changes'
+  /** Daily Command, empty: nothing fits the window, nobody can wait, no financing ahead, nothing changed, no reason to call. */
+  | 'nothing-fits'
+  | 'nobody-can-wait'
+  | 'no-financing-soon'
+  | 'no-changes-since'
+  | 'no-call-reason'
   | 'not-answerable-here'
   /** The line carried no words a recogniser could read — a dropped transcript. */
   | 'unclear'
@@ -253,6 +287,29 @@ export type JarvisItem =
   | (Grounded & { kind: 'lifecycle-entry'; entry: LifecycleFeedEntry })
   | (Grounded & { kind: 'episode'; episode: MarketEpisode })
   | (Grounded & { kind: 'affected-client'; affected: AffectedClient; event: MarketEvent })
+  /** One client's one action for the day, as Daily Command ranked it. */
+  | (Grounded & {
+      kind: 'daily-action'
+      action: DailyAction
+      /** In a time window: the time it takes at its shortest and what is left after it. */
+      fit?: { remainingMinutes: number }
+    })
+  | (Grounded & { kind: 'daily-meeting'; meeting: DailyMeeting })
+  | (Grounded & { kind: 'daily-overdue'; overdue: DailyOverdue })
+  | (Grounded & { kind: 'daily-financing'; financing: DailyFinancing })
+  /** One change to the book since a day: what moved, for whom, on which record. */
+  | (Grounded & {
+      kind: 'changed-client'
+      change: DailyChangeKind
+      clientId: string
+      clientName: string
+      label: string
+      date: string
+    })
+  /** A market episode and the clients it touches: the fact, each one's relevance, the suggested action. */
+  | (Grounded & { kind: 'daily-market'; item: DailyMarketItem })
+  /** What a call should achieve, and the time it takes. */
+  | (Grounded & { kind: 'daily-objective'; objective: DailyObjective; time: DailyTime })
   | (Grounded & { kind: 'memory-hit'; hit: MemoryHit })
   | (Grounded & { kind: 'pack-readiness'; readiness: PackReadiness })
   | (Grounded & { kind: 'readiness-reason'; reason: ReadinessReason })
@@ -267,6 +324,15 @@ export type JarvisItem =
       appendix: number
       meetingDate: string | null
     })
+
+export type DailyChangeKind =
+  | 'newly-overdue'
+  | 'completed-commitment'
+  | 'meeting-booked'
+  | 'contact-recorded'
+  | 'concern-raised'
+  | 'concern-eased'
+  | 'market-opened'
 
 export type SectionKey =
   | 'focus'
@@ -300,6 +366,14 @@ export type SectionKey =
   | 'overdue'
   | 'book-changes'
   | 'episodes'
+  /** Daily Command: now, this week, can wait, the best use of a window, what it defers, what changed, onboarding. */
+  | 'now'
+  | 'this-week'
+  | 'can-wait'
+  | 'best-use'
+  | 'deferred'
+  | 'changes'
+  | 'onboarding'
   | 'memory'
   | 'agenda'
   | 'objectives'
@@ -328,6 +402,9 @@ export interface JarvisAction {
     | 'open-market-impact'
     /** A lifecycle book: onboarding, former clients. */
     | 'open-book'
+    /** Daily Command, and the call brief for one client. */
+    | 'open-today'
+    | 'prepare-call'
   href: string
 }
 
@@ -346,6 +423,10 @@ export interface JarvisAnswer {
   emphasis?: FigureKind
   /** For a continuation: the intent of the answer it continues. */
   continues?: AdvisoryIntentKind
+  /** For a time window: the minutes the line named. */
+  window?: { minutes: number }
+  /** For "what changed": the ISO date the window starts. */
+  since?: string
   /** Display titles for every record id the items point at, so the presentation can name a source. */
   titles: Readonly<Record<string, string>>
   /** ISO date the derivations used. */

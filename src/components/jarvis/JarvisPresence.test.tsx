@@ -330,10 +330,10 @@ describe('at rest', () => {
     /* The landing page owns its shell; nothing named Huvudnavigation appears there. */
     expect(screen.queryByRole('navigation', { name: 'Huvudnavigation' })).toBeNull()
     /*
-     * The strip is where the product's spine stands: five destinations, the
-     * relationship book among them one click from the market, the market
-     * current at home and JARVIS not. One navigation, and the presence's own
-     * conversation is not a menu.
+     * The strip is where the product's spine stands: six destinations, the
+     * day and the relationship book among them one click from the market,
+     * the market current at home and JARVIS not. One navigation, and the
+     * presence's own conversation is not a menu.
      */
     const strip = presence()
     expect(within(strip).getAllByRole('navigation')).toHaveLength(1)
@@ -342,7 +342,7 @@ describe('at rest', () => {
       within(rail)
         .getAllByRole('link')
         .map((link) => link.getAttribute('title')),
-    ).toEqual(['Marknad', 'Klienter', 'JARVIS', 'Huvudkontor', 'Underlag'])
+    ).toEqual(['Marknad', 'Idag', 'Klienter', 'JARVIS', 'Huvudkontor', 'Underlag'])
     expect(within(rail).getByRole('link', { name: 'Klienter' })).toHaveAttribute(
       'href',
       '/clients',

@@ -170,6 +170,10 @@ export function breadcrumbs(
   if (head === 'sentinel') {
     return [{ label: 'JARVIS', to: '/clients' }, { label: 'Sentinel' }]
   }
+  if (head === 'today') {
+    if (parts[1] === 'call') return [{ label: 'Idag', to: '/today' }, { label: 'Förbered samtal' }]
+    return [{ label: 'Idag' }]
+  }
   if (head === 'market-impact') {
     return [{ label: 'JARVIS', to: '/clients' }, { label: 'Marknadspåverkan' }]
   }

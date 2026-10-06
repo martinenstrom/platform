@@ -117,6 +117,7 @@ export const RECORD_SCOPES: readonly JarvisScope[] = [
   'CLIENT_DIRECTORY',
   'SENTINEL',
   'MARKET_IMPACT',
+  'DAILY',
 ]
 
 export interface HybridDecomposition {

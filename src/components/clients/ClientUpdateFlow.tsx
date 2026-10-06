@@ -415,7 +415,11 @@ export function ClientUpdateFlow({
           <p className="type-inst">Uppdateringen är sparad i relationstidslinjen.</p>
           <p className="type-inst-sub mt-1">
             {saved.created.contextFacts} fakta, {saved.created.commitments} åtaganden och{' '}
-            {saved.created.events} händelser bekräftade.
+            {saved.created.events} händelser bekräftade
+            {saved.created.completedCommitments > 0 || saved.created.easedConcerns > 0
+              ? ` · ${saved.created.completedCommitments} ${saved.created.completedCommitments === 1 ? 'löfte levererat' : 'löften levererade'}, ${saved.created.easedConcerns} ${saved.created.easedConcerns === 1 ? 'oro avtagit' : 'orosmoment avtagit'}`
+              : ''}
+            .
           </p>
           <div className="mt-2 flex gap-2">
             <button
