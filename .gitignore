@@ -23,3 +23,6 @@ scripts/voice-live/audio/
 
 # Generated meeting packs (PowerPoint, PDF) never enter the repository
 .generated/
+
+# Desktop package output (electron-builder)
+release/

@@ -59,8 +59,12 @@ describe('the relationship book, office by office', () => {
     expect(within(metrics).getAllByRole('term')).toHaveLength(6)
 
     const offices = screen.getByRole('region', { name: 'Kontor' })
-    const folders = within(offices).getAllByRole('link')
+    /* One folder per active office; the door to the archived offices stands beside them, not among them. */
+    const folders = within(offices).getAllByRole('link', { name: /^Öppna kontor/ })
     expect(folders).toHaveLength(directory.offices.length)
+    expect(
+      within(offices).getByRole('link', { name: 'Arkiverade kontor →' }),
+    ).toHaveAttribute('href', '/clients/offices/archived')
     expect(folders[0]).toHaveAccessibleName('Öppna kontor Strandvägen')
     expect(folders[0]).toHaveAttribute('href', '/clients/office/of-strandvagen')
     expect(screen.queryByRole('region', { name: 'Klientlista' })).toBeNull()

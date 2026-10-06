@@ -2,6 +2,17 @@ import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { UserX } from 'lucide-react'
 import { Client360 } from '~/components/clients/Client360'
 import type { ClientActions } from '~/components/clients/clientActions'
+import type { LifecycleActions } from '~/components/clients/lifecycle/lifecycleActions'
+import {
+  activateClientFn,
+  changeClientAdvisorFn,
+  closeClientFn,
+  closureReviewFn,
+  editClientFn,
+  getRegisterFn,
+  moveClientOfficeFn,
+  reactivateClientFn,
+} from '~/infrastructure/advisory/lifecycle/serverFns'
 import { PageShell } from '~/components/layout/PageHeader'
 import { EmptyState } from '~/components/ui/EmptyState'
 import {
@@ -58,6 +69,18 @@ function ClientPage() {
     )
   }
 
+  /* The lifecycle doors: the same server functions for every act, the actor resolved on the server. */
+  const lifecycle: LifecycleActions = {
+    register: () => getRegisterFn(),
+    closureReview: (id) => closureReviewFn({ data: id }),
+    activate: (input) => activateClientFn({ data: input }),
+    move: (input) => moveClientOfficeFn({ data: input }),
+    changeAdvisor: (input) => changeClientAdvisorFn({ data: input }),
+    edit: (input) => editClientFn({ data: input }),
+    close: (input) => closeClientFn({ data: input }),
+    reactivate: (input) => reactivateClientFn({ data: input }),
+  }
+
   const actions: ClientActions = {
     recordUpdate: (input) => recordClientUpdateFn({ data: { clientId, ...input } }),
     confirmUpdate: (candidateId, decisions) =>
@@ -72,6 +95,7 @@ function ClientPage() {
       <Client360
         view={response.view}
         actions={actions}
+        lifecycle={lifecycle}
         onChanged={() => router.invalidate()}
       />
     </PageShell>

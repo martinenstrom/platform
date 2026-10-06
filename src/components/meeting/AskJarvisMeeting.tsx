@@ -87,7 +87,7 @@ export function AskJarvisMeeting({
           <button
             type="submit"
             disabled={busy || question.trim().length === 0}
-            className="type-section shrink-0 rounded-[4px] border border-hud-line bg-accent-soft px-3 py-1.5 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
+            className="type-section shrink-0 rounded-module border border-hud-line bg-accent-soft px-3 py-1.5 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
           >
             Fråga
           </button>
@@ -101,7 +101,7 @@ export function AskJarvisMeeting({
                   setQuestion(s)
                   void ask(s)
                 }}
-                className="rounded-[3px] border border-line px-2 py-0.5 text-[11.5px] text-content-muted transition-colors hover:border-line-strong hover:text-content"
+                className="rounded-chip border border-line px-2 py-0.5 text-[11.5px] text-content-muted transition-colors hover:border-line-strong hover:text-content"
               >
                 {s}
               </button>

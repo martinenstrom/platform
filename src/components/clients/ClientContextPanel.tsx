@@ -1,8 +1,9 @@
+import { MessageSquareText } from 'lucide-react'
 import type { ContextCategory, ContextFact } from '~/domain/advisory'
-import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import { formatLongDate } from '~/presentation/advisory/format'
 import { CONFIDENCE_LABEL, CONTEXT_LABEL } from '~/presentation/advisory/text'
+import { Empty, Module } from './dossier/Module'
 
 const ORDER: readonly ContextCategory[] = [
   'concern',
@@ -26,24 +27,36 @@ const ORIGIN_LABEL = {
  * note carries the note's words beneath it, so "where did this come from?"
  * is answered on the spot and an interpretation never passes as a record.
  */
-export function ClientContextPanel({ facts }: { facts: readonly ContextFact[] }) {
+export function ClientContextPanel({
+  facts,
+  className,
+}: {
+  facts: readonly ContextFact[]
+  className?: string
+}) {
   const active = facts.filter((fact) => fact.status === 'active')
   const groups = ORDER.map((category) => ({
     category,
     facts: active.filter((fact) => fact.category === category),
   })).filter((group) => group.facts.length > 0)
   return (
-    <Panel
+    <Module
+      id="klientkontext"
       title="Klientkontext"
+      icon={MessageSquareText}
       meta={`${active.length} aktiva fakta`}
-      bodyClassName="p-3"
+      className={className}
     >
       {groups.length === 0 ? (
-        <p className="type-inst-sub">Ingen klientkontext registrerad ännu.</p>
+        <Empty>Ingen klientkontext registrerad ännu.</Empty>
       ) : (
-        <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+        <div className="flex flex-col">
           {groups.map((group) => (
-            <section key={group.category} aria-label={CONTEXT_LABEL[group.category]}>
+            <section
+              key={group.category}
+              aria-label={CONTEXT_LABEL[group.category]}
+              className="dossier-row py-2.5"
+            >
               <h3
                 className={cn(
                   'type-section',
@@ -52,9 +65,9 @@ export function ClientContextPanel({ facts }: { facts: readonly ContextFact[] })
               >
                 {CONTEXT_LABEL[group.category]}
               </h3>
-              <ul className="mt-1.5 space-y-1.5">
+              <ul className="mt-1.5 space-y-2">
                 {group.facts.map((fact) => (
-                  <li key={fact.id} className="text-[12.5px] leading-snug">
+                  <li key={fact.id} className="text-[13px] leading-snug">
                     <p className="text-content">{fact.statement}</p>
                     <FactSource fact={fact} />
                   </li>
@@ -64,7 +77,7 @@ export function ClientContextPanel({ facts }: { facts: readonly ContextFact[] })
           ))}
         </div>
       )}
-    </Panel>
+    </Module>
   )
 }
 
@@ -83,7 +96,7 @@ export function FactSource({ fact }: { fact: ContextFact }) {
         {line} ·{' '}
         <span className="underline decoration-dotted underline-offset-2">källa</span>
       </summary>
-      <blockquote className="mt-1 border-l border-line pl-2 text-[11.5px] italic leading-snug text-content-muted">
+      <blockquote className="mt-1 border-l border-hairline-strong pl-2 text-[11.5px] italic leading-snug text-content-muted">
         ”{provenance.sourceText}”
       </blockquote>
     </details>

@@ -2,8 +2,12 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { cn } from '~/lib/cn'
 import { usePresence } from '~/components/jarvis/presenceStore'
+import { SystemNotice } from '~/components/platform/SystemNotice'
 import { AppTopBar } from './AppTopBar'
 import { SideNavigation } from './SideNavigation'
+
+/** The pages that stand before the workspace exists — no column, no bar: nothing to navigate to yet. */
+const PLATFORM_PAGES = ['/setup', '/recovery']
 
 /**
  * Application shell: one environment, one left column, one workspace bar,
@@ -35,7 +39,8 @@ import { SideNavigation } from './SideNavigation'
  */
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const ownsItsShell = pathname === '/'
+  const platformPage = PLATFORM_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  const ownsItsShell = pathname === '/' || platformPage
   const railCarriesNavigation = pathname === '/headquarters'
   const sharedShell = !ownsItsShell && !railCarriesNavigation
 
@@ -61,6 +66,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <SideNavigation />
           <div className="flex min-w-0 flex-1 flex-col">
             <AppTopBar />
+            <SystemNotice />
             <main className="relative min-h-0 flex-1 p-2 lg:p-2.5">
               <RouteStage pathname={pathname}>{children}</RouteStage>
             </main>
@@ -94,8 +100,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
  * the page. Decorative, hidden from assistive technology, and drifting the
  * same 6 px over 80 s as the home page's, which reduced motion stops.
  */
-const ENVIRONMENT_PHOTO = '/data/environment/waterfront.jpg'
-const ENVIRONMENT_ROOM = '/data/environment/waterfront-room.jpg'
+const ENVIRONMENT_SCENE = '/data/environment/waterfront-scene.jpg'
 
 function Environment() {
   return (
@@ -104,33 +109,16 @@ function Environment() {
       data-environment
       className="app-environment pointer-events-none fixed inset-0 z-0 overflow-hidden"
     >
-      {/* The room: the scene out of focus, edge to edge. */}
-      <div
-        className="app-environment-room absolute inset-0 bg-cover bg-[position:left_center] bg-no-repeat"
-        style={{ backgroundImage: `url(${ENVIRONMENT_ROOM})` }}
-      />
-      {/* The veil: lighter beside the column, darker under the work; a band for the bar, one at the foot. */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#060910]/24 via-[#060910]/48 via-[45%] to-[#060910]/56" />
-      <div className="absolute inset-0 bg-gradient-to-b from-[#060910]/55 via-transparent via-[26%] to-[#060910]/40" />
-      {/*
-       * The scene in focus where the column stands — the water, the lit
-       * façades and the flag at the viewport's height — fading over its
-       * right half into the room beneath.
-       */}
-      <div className="app-environment-focus absolute inset-y-0 left-0 overflow-hidden">
+      {/* The room: the one scene, edge to edge, covering the viewport from its top-left corner. */}
+      <div className="app-environment-room absolute inset-0 overflow-hidden">
         <div
-          className="hero-photo-drift app-environment-photo absolute -inset-y-[8px] right-0 left-0 bg-[length:auto_100%] bg-[position:left_center] bg-no-repeat"
-          style={{ backgroundImage: `url(${ENVIRONMENT_PHOTO})` }}
+          className="hero-photo-drift app-environment-photo absolute -inset-y-[8px] right-0 left-0 bg-cover bg-no-repeat"
+          style={{ backgroundImage: `url(${ENVIRONMENT_SCENE})` }}
         />
       </div>
-      {/* The lamp light spilling from the quay into the foot of the column and up into the hero. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(42% 60% at 8% 90%, rgb(236 168 72 / 0.12) 0%, transparent 60%), radial-gradient(34% 42% at 20% 18%, rgb(236 180 100 / 0.07) 0%, transparent 65%), radial-gradient(90% 60% at 50% -10%, rgb(226 180 90 / 0.05) 0%, transparent 60%)',
-        }}
-      />
+      {/* A band for the bar, and a little depth at the foot; nothing over the hero. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#060910]/30 via-transparent via-[8%] to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent via-[62%] to-[#060910]/28" />
     </div>
   )
 }

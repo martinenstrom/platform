@@ -96,7 +96,7 @@ export function formatDaysFromToday(days: number): string {
   return `för ${Math.abs(days)} dagar sedan`
 }
 
-/** "3/7" — the risk profile on the firm's scale. */
-export function formatRiskProfile(profile: number): string {
-  return `${profile}/7`
+/** "3/7" — the risk profile on the firm's scale; "Ej fastställd" until a step is agreed. */
+export function formatRiskProfile(profile: number | null): string {
+  return profile === null ? 'Ej fastställd' : `${profile}/7`
 }

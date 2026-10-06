@@ -24,6 +24,14 @@ export interface NamedClient {
 
 export type FigureEmphasis = 'total-wealth' | 'aum' | 'net-worth' | 'liquidity' | 'debt'
 
+export interface NamedOffice {
+  id: string
+  displayName: string
+}
+
+/** The period a book question names: "i år", "den här månaden", "i veckan". The answer turns it into a date. */
+export type BookPeriod = 'year' | 'month' | 'week'
+
 export interface AdvisoryIntent {
   kind: AdvisoryIntentKind
   /** A client the line named, resolved against the register; absent when the screen's subject is meant. */
@@ -34,6 +42,12 @@ export interface AdvisoryIntent {
   emphasis?: FigureEmphasis
   /** "Utveckla punkt två": which item of the last answer, 1-based. */
   itemIndex?: number
+  /** A book question's period, where the line named one. */
+  period?: BookPeriod
+  /** An office the line named, resolved against the register — "från Strandvägen", "till Arbetargatan". */
+  office?: NamedOffice
+  /** Whether the named office is where something moved to or from; absent when the line did not say. */
+  direction?: 'to' | 'from'
   method: 'advisory-intent-v1'
 }
 
@@ -398,6 +412,137 @@ const AFFECTED = cue([
 
 const IS_CLIENT_SCOPE = (scope: JarvisScope) => scope === 'CLIENT' || scope === 'MEETING'
 
+/* ------------------------------------------------------- the book's life */
+
+/** A word that makes a line about the book rather than the client on screen. */
+const BOOK_WORD = cue([
+  `klient${L}`,
+  `kund${L}`,
+  `relation${L}`,
+  `client${L}`,
+  `pb-?bok${L}`,
+  `bok${L}`,
+  'registret',
+])
+const BOOK_NEW = cue([
+  'nya? (?:klienter|kunder|relationer|pb-?relationer)',
+  `nytillkom${L}`,
+  'tillkommit',
+  '(?:skapat|lagt till|tagit in|registrerat) (?:nya )?(?:klienter|kunder|relationer)',
+  'new (?:clients|relationships)',
+  'who (?:is|are) new',
+])
+const BOOK_ONBOARDING = cue([
+  `onboarding${L}`,
+  'under uppstart',
+  'inte (?:är )?aktiverade',
+  `ännu inte aktiv${L}`,
+  'being onboarded',
+  'not yet active',
+])
+const BOOK_FORMER = cue([
+  'tidigare (?:klienter|kunder|relationer|pb-?relationer)',
+  `(?:klienter|kunder|relationer)(?: som)? (?:har )?(?:lämna${L}|slutade|slutat|avsluta${L}|gick|gått|försvann|försvunnit)`,
+  'lämnade (?:oss|banken|mig)',
+  'avslutade (?:relationer|klienter|kunder|pb-?relationer)',
+  'former clients',
+  '(?:clients|relationships)(?: that| who| which)? left',
+  'who left',
+  'lost clients',
+])
+const BOOK_MOVED = cue([
+  `(?:vilka|vem|klienter|kunder|relationer|who|clients)(?: som)? (?:har |blev |blivit )?flytta${L}`,
+  `flytta${L} (?:till|från|mellan)`,
+  'bytt(?:e)? kontor',
+  'moved (?:to|from|between|office)',
+  'who moved',
+  'transferred',
+])
+const BOOK_REACTIVATED = cue([
+  `återaktiver${L}`,
+  'kommit tillbaka',
+  'kom tillbaka',
+  'tillbaka som (?:klient|kund)',
+  `reactivat${L}`,
+  'came back',
+  'returned as clients?',
+])
+const BOOK_CHANGES = cue([
+  `(?:ändra|förändra|hänt|hände|händer|händelser|changed|happened)${L} (?:i|med) (?:min |vår |den |the |my )?(?:pb-?bok${L}|klientbok${L}|bok${L}|register${L}|book)`,
+  `(?:pb-?bok|klientbok|bok)${L} (?:förändring|händelse|historik)${L}`,
+  'what changed in (?:my |the )?book',
+  'book changes',
+  `livscykel${L}`,
+])
+
+/** The book question a line asks, the more specific act ahead of the broader one. */
+function bookIntent(line: string): AdvisoryIntentKind | null {
+  if (BOOK_REACTIVATED.test(line)) return 'BOOK_REACTIVATED'
+  if (BOOK_MOVED.test(line)) return 'BOOK_MOVED'
+  if (BOOK_FORMER.test(line)) return 'BOOK_FORMER'
+  if (BOOK_ONBOARDING.test(line)) return 'BOOK_ONBOARDING'
+  if (BOOK_NEW.test(line)) return 'BOOK_NEW_CLIENTS'
+  if (BOOK_CHANGES.test(line)) return 'BOOK_CHANGES'
+  return null
+}
+
+const PERIODS: readonly { cue: RegExp; period: BookPeriod }[] = [
+  {
+    cue: cue(['i år', 'det här året', 'detta år', 'hittills i år', 'this year', 'year to date']),
+    period: 'year',
+  },
+  {
+    cue: cue(['den här månaden', 'denna månad', 'i månaden', 'this month']),
+    period: 'month',
+  },
+  {
+    cue: cue(['den här veckan', 'denna vecka', 'i veckan', 'this week']),
+    period: 'week',
+  },
+]
+
+function periodOf(line: string): BookPeriod | undefined {
+  return PERIODS.find((entry) => entry.cue.test(line))?.period
+}
+
+/** Lower case, without diacritics: "Strandvägen" and "strandvagen" are one office. */
+function plain(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/gu, '')
+    .toLowerCase()
+}
+
+/**
+ * The office a line names, and whether the line says something moved to
+ * it or from it. The longest matching name wins, so "Strandvägen Norra"
+ * is not read as "Strandvägen"; a name that matches nothing names nobody.
+ */
+export function resolveNamedOffice(
+  text: string,
+  offices: readonly NamedOffice[],
+): { office: NamedOffice; direction?: 'to' | 'from' } | null {
+  const line = plain(text)
+  const matches = offices
+    .filter((office) => office.displayName.trim().length > 0)
+    .filter((office) =>
+      new RegExp(`${B}${escapeRegExp(plain(office.displayName))}${E}`, 'u').test(line),
+    )
+    .sort((a, b) => b.displayName.length - a.displayName.length)
+  const office = matches[0]
+  if (!office) return null
+  const name = escapeRegExp(plain(office.displayName))
+  if (new RegExp(`${B}(?:till|to)\\s+${name}${E}`, 'u').test(line))
+    return { office, direction: 'to' }
+  if (new RegExp(`${B}(?:från|fran|from)\\s+${name}${E}`, 'u').test(line))
+    return { office, direction: 'from' }
+  return { office }
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+}
+
 /* --------------------------------------------------------- named clients */
 
 /**
@@ -510,6 +655,7 @@ export function recognizeAdvisoryIntent(
   text: string,
   context: JarvisContext,
   clients: readonly NamedClient[] = [],
+  offices: readonly NamedOffice[] = [],
 ): AdvisoryIntent | null {
   const line = text.trim()
   if (!line || line.length > MAX_LINE) return null
@@ -535,6 +681,25 @@ export function recognizeAdvisoryIntent(
   const itemIndex = followUpItemIndex(line)
   if (itemIndex !== null) return { ...done('FOLLOW_UP_ITEM'), itemIndex }
   if (FOLLOW_UP_MORE.test(line) && line.length <= 40) return done('FOLLOW_UP_MORE')
+
+  /*
+   * The book's lifecycle — who came, who is being taken in, who left, who
+   * moved, who came back, what changed — from wherever the advisor is. On a
+   * client the line must speak of the book, not of the client on screen.
+   */
+  if (!named) {
+    const book = bookIntent(line)
+    if (book && (!IS_CLIENT_SCOPE(context.scope) || BOOK_WORD.test(line))) {
+      const period = periodOf(line)
+      const office = resolveNamedOffice(line, offices)
+      return {
+        ...done(book),
+        ...(period ? { period } : {}),
+        ...(office ? { office: office.office } : {}),
+        ...(office?.direction ? { direction: office.direction } : {}),
+      }
+    }
+  }
 
   /* A named client makes any line a client question, from any scope. */
   if (named || IS_CLIENT_SCOPE(context.scope)) {

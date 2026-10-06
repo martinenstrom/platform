@@ -216,7 +216,7 @@ export type SentinelDriver =
       eventId: string
       date: string
       daysAhead: number
-      turning: number
+      turning: number | null
     }
   | { kind: 'large-withdrawal'; interactionId: string; amount: number; date: string }
   | { kind: 'complaint'; interactionId: string; date: string }
@@ -449,8 +449,9 @@ function collectDrivers(
           date: event.occursOn,
           daysAhead: ahead,
           turning:
-            Number(event.occursOn.slice(0, 4)) -
-            Number(facts.client.dateOfBirth.slice(0, 4)),
+            facts.client.dateOfBirth === null
+              ? null
+              : Number(event.occursOn.slice(0, 4)) - Number(facts.client.dateOfBirth.slice(0, 4)),
         })
       }
       continue

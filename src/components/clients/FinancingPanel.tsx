@@ -1,30 +1,40 @@
+import { Banknote } from 'lucide-react'
 import type { Client360 } from '~/application/advisory/client360'
-import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import { formatLongDate, formatMsek, formatPct } from '~/presentation/advisory/format'
 import { LIABILITY_KIND_LABEL } from '~/presentation/advisory/text'
+import { Empty, Module } from './dossier/Module'
 
 /**
  * The lending relationship: every loan with its balance, rate structure,
  * maturity or refinancing date, collateral, loan-to-value and next review.
  * A summary, not underwriting.
  */
-export function FinancingPanel({ view }: { view: Client360 }) {
+export function FinancingPanel({
+  view,
+  className,
+}: {
+  view: Client360
+  className?: string
+}) {
   const { liabilities, assets, today } = view
   const assetTitle = new Map(assets.map((a) => [a.id, a.title]))
   const total = liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0)
   return (
-    <Panel
+    <Module
+      id="finansiering"
       title="Finansiering"
+      icon={Banknote}
       meta={
         liabilities.length > 0
           ? `${liabilities.length} lån · ${formatMsek(total)}`
           : 'Inga lån'
       }
-      bodyClassName="p-3"
+      className={className}
+      bodyClassName="px-5 pb-3"
     >
       {liabilities.length === 0 ? (
-        <p className="type-inst-sub">Ingen utlåning i relationen.</p>
+        <Empty>Ingen utlåning i relationen.</Empty>
       ) : (
         <div className="-mx-1 overflow-x-auto px-1">
           <table className="w-full min-w-[640px] border-collapse text-[12px]">
@@ -60,40 +70,40 @@ export function FinancingPanel({ view }: { view: Client360 }) {
                   loan.maturityDate >= today &&
                   loan.maturityDate <= addDaysIso(today, 60)
                 return (
-                  <tr key={loan.id} className="border-t border-line">
-                    <td className="py-1.5 pr-2">
-                      <span className="type-inst block">{loan.title}</span>
+                  <tr key={loan.id} className="border-t border-hairline">
+                    <td className="py-2 pr-2">
+                      <span className="block text-[13px] text-content">{loan.title}</span>
                       <span className="type-inst-sub">
                         {LIABILITY_KIND_LABEL[loan.kind]}
                       </span>
                     </td>
-                    <td className="tabular py-1.5 pr-2 text-right text-content">
+                    <td className="tabular py-2 pr-2 text-right text-content">
                       {formatMsek(loan.outstandingBalance)}
                     </td>
-                    <td className="py-1.5 pr-2 text-content-muted">
+                    <td className="py-2 pr-2 text-content-muted">
                       {formatPct(loan.ratePercent, 2)}{' '}
                       {loan.interestType === 'fixed' ? 'bunden' : 'rörlig'}
                     </td>
                     <td
                       className={cn(
-                        'py-1.5 pr-2',
+                        'py-2 pr-2',
                         soon ? 'text-warning' : 'text-content-muted',
                       )}
                     >
                       {loan.maturityDate ? formatLongDate(loan.maturityDate) : 'Löpande'}
                     </td>
-                    <td className="py-1.5 pr-2 text-content-muted">
+                    <td className="py-2 pr-2 text-content-muted">
                       {loan.collateralAssetId
                         ? (assetTitle.get(loan.collateralAssetId) ??
                           loan.collateralAssetId)
                         : '—'}
                     </td>
-                    <td className="tabular py-1.5 pr-2 text-right text-content-muted">
+                    <td className="tabular py-2 pr-2 text-right text-content-muted">
                       {loan.loanToValuePercent !== undefined
                         ? formatPct(loan.loanToValuePercent, 0)
                         : '—'}
                     </td>
-                    <td className="py-1.5 text-content-muted">
+                    <td className="py-2 text-content-muted">
                       {loan.nextReviewDate ? formatLongDate(loan.nextReviewDate) : '—'}
                     </td>
                   </tr>
@@ -103,7 +113,7 @@ export function FinancingPanel({ view }: { view: Client360 }) {
           </table>
         </div>
       )}
-    </Panel>
+    </Module>
   )
 }
 

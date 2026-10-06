@@ -8,12 +8,19 @@
 
 import { describe, expect, it } from 'vitest'
 import { client360 } from '~/application/advisory/client360'
+import {
+  closeClient,
+  createClient,
+  moveClientOffice,
+  reactivateClient,
+} from '~/application/advisory/lifecycle'
 import type { AdvisoryContext } from '~/application/advisory/ports'
 import { FakeClock } from '~/domain/shared/clock'
 import { createSyntheticAdvisoryRepositories } from '~/infrastructure/advisory/syntheticRepositories'
 import { syntheticClients } from '~/infrastructure/advisory/syntheticClients'
 import { answerPlainText } from '~/presentation/jarvis/advisoryAnswerText'
-import { answerAdvisoryLine } from './advisoryAnswer'
+import { spokenAnswerOf } from '~/presentation/jarvis/spokenAnswer'
+import { answerAdvisoryLine, periodStart } from './advisoryAnswer'
 import { advisoryTurn } from './advisoryTurn'
 import type { JarvisAnswer } from './answer'
 import { resolveJarvisContext } from './context'
@@ -284,6 +291,165 @@ describe('the office, the book, Sentinel and Marknadspåverkan', () => {
     expect(items(impact, 'episodes')).toEqual([
       { kind: 'note', note: 'no-affected-clients', nature: 'fact', sourceIds: [] },
     ])
+  })
+})
+
+describe('the book’s lifecycle, from the record of acts', () => {
+  /**
+   * A September on the book: Anna Exempel taken in under onboarding on the
+   * 20th; Margareta Berglund (Strandvägen) lost to a competitor on the 10th;
+   * Anna & Per Dahlqvist moved from Arbetargatan to Strandvägen on the 15th;
+   * Forsell closed last December and brought back on the 18th.
+   */
+  async function bookContext(): Promise<{ context: AdvisoryContext; newId: string }> {
+    const context = contextAt()
+    const by = 'adv-martin'
+    const created = await createClient(context, {
+      displayName: 'Anna Exempel',
+      segment: 'private-banking',
+      officeId: 'of-strandvagen',
+      advisorId: 'adv-martin',
+      relationshipSince: '2026-09-20',
+      status: 'onboarding',
+      by,
+    })
+    if (!created.ok) throw new Error(`create failed: ${created.code}`)
+    const acts = [
+      await closeClient(context, {
+        clientId: 'cl-berglund',
+        reason: 'COMPETITOR',
+        effectiveDate: '2026-09-10',
+        by,
+      }),
+      await moveClientOffice(context, {
+        clientId: 'cl-dahlqvist',
+        toOfficeId: 'of-strandvagen',
+        effectiveDate: '2026-09-15',
+        by,
+      }),
+      await closeClient(context, {
+        clientId: 'cl-forsell',
+        reason: 'CLIENT_CHOICE',
+        effectiveDate: '2025-12-01',
+        by,
+      }),
+      await reactivateClient(context, {
+        clientId: 'cl-forsell',
+        officeId: 'of-arbetargatan',
+        advisorId: 'adv-martin',
+        effectiveDate: '2026-09-18',
+        by,
+      }),
+    ]
+    for (const act of acts) if (!act.ok) throw new Error(`act failed: ${act.code}`)
+    return { context, newId: created.clientId }
+  }
+  const subjects = (answer: JarvisAnswer, key: string) =>
+    items(answer, key).map((i) => (i.kind === 'lifecycle-entry' ? i.entry.event.subjectId : i.kind))
+
+  it('lists who is under onboarding, with how far each has come, and the door to that book', async () => {
+    const { context, newId } = await bookContext()
+    const answer = await answerOn('/clients', 'Vilka är under onboarding?', context)
+    expect(answer.intent).toBe('BOOK_ONBOARDING')
+    expect(answer.about).toMatchObject({ kind: 'directory', label: 'Klienter' })
+    const [row] = items(answer, 'clients')
+    expect(row).toMatchObject({ kind: 'onboarding-row', row: { id: newId } })
+    expect(answerPlainText(answer)).toMatch(/\d av 7 områden kartlagda/)
+    expect(answer.actions).toContainEqual({ kind: 'open-book', href: '/clients/onboarding' })
+    /* On another office's book, nobody. */
+    const elsewhere = await answerOn(
+      '/clients/office/of-arbetargatan',
+      'Vilka är under onboarding?',
+      context,
+    )
+    expect(items(elsewhere, 'clients')).toEqual([
+      { kind: 'note', note: 'nobody-onboarding', nature: 'fact', sourceIds: [] },
+    ])
+  })
+
+  it('answers who came and who left, bounded by the period and the office the line names', async () => {
+    const { context, newId } = await bookContext()
+    const fresh = await answerOn('/clients', 'Vilka nya klienter har jag?', context)
+    expect(fresh.intent).toBe('BOOK_NEW_CLIENTS')
+    expect(subjects(fresh, 'clients')).toEqual([newId])
+    expect(fresh.sources).toEqual([
+      expect.objectContaining({ type: 'lifecycle-event', label: 'Anna Exempel' }),
+    ])
+    /* Berglund left this year; Forsell's closure was last year's. */
+    const left = await answerOn('/clients', 'Vilka kunder lämnade i år?', context)
+    expect(left.intent).toBe('BOOK_FORMER')
+    expect(subjects(left, 'clients')).toEqual(['cl-berglund'])
+    expect(answerPlainText(left)).toMatch(/Bytte till annan aktör/)
+    expect(left.actions).toContainEqual({ kind: 'open-book', href: '/clients/former' })
+    /* Named office: only its closures, and the answer is about that office. */
+    const strandvagen = await answerOn(
+      '/clients',
+      'Visa tidigare klienter från Strandvägen',
+      context,
+    )
+    expect(strandvagen.about).toMatchObject({ kind: 'office', label: 'Strandvägen' })
+    expect(subjects(strandvagen, 'clients')).toEqual(['cl-berglund'])
+    const arbetargatan = await answerOn(
+      '/clients',
+      'Visa tidigare klienter från Arbetargatan',
+      context,
+    )
+    expect(subjects(arbetargatan, 'clients')).toEqual(['cl-forsell'])
+  })
+
+  it('answers moves by direction, reactivations, and everything that changed in the month', async () => {
+    const { context } = await bookContext()
+    const moved = await answerOn('/clients', 'Vilka flyttades till Strandvägen?', context)
+    expect(moved.intent).toBe('BOOK_MOVED')
+    expect(subjects(moved, 'clients')).toEqual(['cl-dahlqvist'])
+    expect(answerPlainText(moved)).toMatch(/Arbetargatan → Strandvägen/)
+    const fromStrandvagen = await answerOn(
+      '/clients',
+      'Vilka flyttades från Strandvägen?',
+      context,
+    )
+    expect(items(fromStrandvagen, 'clients')).toEqual([
+      { kind: 'note', note: 'no-moves', nature: 'fact', sourceIds: [] },
+    ])
+    const back = await answerOn('/clients', 'Vilka har återaktiverats?', context)
+    expect(back.intent).toBe('BOOK_REACTIVATED')
+    expect(subjects(back, 'clients')).toEqual(['cl-forsell'])
+
+    const changes = await answerOn(
+      '/clients',
+      'Vad ändrades i min PB-bok den här månaden?',
+      context,
+    )
+    expect(changes.intent).toBe('BOOK_CHANGES')
+    const entries = items(changes, 'book-changes')
+    expect(entries.map((i) => (i.kind === 'lifecycle-entry' ? i.entry.event.kind : ''))).toEqual([
+      'CLIENT_CREATED',
+      'CLIENT_REACTIVATED',
+      'CLIENT_MOVED_OFFICE',
+      'CLIENT_CLOSED',
+    ])
+    for (const entry of entries) expect(entry.sourceIds).toHaveLength(1)
+    /* Aloud: the three latest with their acts, and the offer of the rest. */
+    const spoken = spokenAnswerOf(changes)
+    expect(spoken.say).toMatch(/4 förändringar/)
+    expect(spoken.say).toMatch(/Anna Exempel den 20 september, relation skapad/)
+    expect(spoken.say).toMatch(/Säg till så tar jag resten/)
+    expect(spoken.remaining).toBe(1)
+  })
+
+  it('is the book’s from the market page too, and the period starts where the calendar says', async () => {
+    const { context } = await bookContext()
+    const turn = await advisoryTurn(
+      { text: 'Vilka kunder lämnade i år?', context: { route: '/' } },
+      () => Promise.resolve(context),
+    )
+    expect(turn?.advisory.intent).toBe('BOOK_FORMER')
+    expect(periodStart('year', '2026-09-23')).toBe('2026-01-01')
+    expect(periodStart('month', '2026-09-23')).toBe('2026-09-01')
+    /* 2026-09-23 is a Wednesday; the week began on Monday the 21st. */
+    expect(periodStart('week', '2026-09-23')).toBe('2026-09-21')
+    expect(periodStart('week', '2026-09-21')).toBe('2026-09-21')
+    expect(periodStart('week', '2026-09-20')).toBe('2026-09-14')
   })
 })
 

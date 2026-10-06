@@ -19,6 +19,7 @@ import type {
   Asset,
   Client,
   ClientId,
+  ClientOfficeHistory,
   Commitment,
   ContextFact,
   Goal,
@@ -27,6 +28,7 @@ import type {
   ImportantEvent,
   Interaction,
   Liability,
+  LifecycleEvent,
   MarketLedgerState,
   MarketObservation,
   MaterialityPolicy,
@@ -41,18 +43,47 @@ import type {
 import type { Clock } from '~/domain/shared/clock'
 
 export interface ClientRepository {
+  /** Every relationship, whatever its lifecycle status, in a stable order. */
   list(): Promise<readonly Client[]>
   byId(id: ClientId): Promise<Client | null>
+  /** Insert a new relationship; its id was minted by the record. */
+  addClient(client: Client): Promise<void>
+  /** Replace by id. */
+  saveClient(client: Client): Promise<void>
   householdById(id: HouseholdId): Promise<Household | null>
+  /** Insert or replace by id, members included. */
+  saveHousehold(household: Household): Promise<void>
   advisorById(id: AdvisorId): Promise<Advisor | null>
-  /** Every office in the register, in a stable order. */
+  advisors(): Promise<readonly Advisor[]>
+  /** Insert or replace by id: the one advisor a personal Financial OS is set up for. */
+  saveAdvisor(advisor: Advisor): Promise<void>
+  /** Every office in the register, archived ones included, in a stable order. */
   offices(): Promise<readonly Office[]>
   officeById(id: OfficeId): Promise<Office | null>
+  addOffice(office: Office): Promise<void>
+  /** Replace by id; the id itself never changes. */
+  saveOffice(office: Office): Promise<void>
+}
+
+/** The book's history: every lifecycle event, and each client's stretches at its offices. */
+export interface LifecycleRepository {
+  /** Newest first. */
+  eventsOf(subjectId: string): Promise<readonly LifecycleEvent[]>
+  /** Every event, newest first. */
+  events(): Promise<readonly LifecycleEvent[]>
+  addEvent(event: LifecycleEvent): Promise<void>
+  /** Oldest first. */
+  officeHistoryOf(clientId: ClientId): Promise<readonly ClientOfficeHistory[]>
+  addOfficeHistory(stretch: ClientOfficeHistory): Promise<void>
+  /** Replace by id. */
+  saveOfficeHistory(stretch: ClientOfficeHistory): Promise<void>
 }
 
 export interface WealthRepository {
   assetsOf(clientId: ClientId): Promise<readonly Asset[]>
   liabilitiesOf(clientId: ClientId): Promise<readonly Liability[]>
+  addAsset(asset: Asset): Promise<void>
+  addLiability(liability: Liability): Promise<void>
 }
 
 export interface PortfolioRepository {
@@ -61,6 +92,7 @@ export interface PortfolioRepository {
 
 export interface GoalRepository {
   goalsOf(clientId: ClientId): Promise<readonly Goal[]>
+  addGoal(goal: Goal): Promise<void>
 }
 
 export interface InteractionRepository {
@@ -90,6 +122,8 @@ export interface CommitmentRepository {
 export interface EventRepository {
   eventsOf(clientId: ClientId): Promise<readonly ImportantEvent[]>
   addEvent(event: ImportantEvent): Promise<void>
+  /** Replace by id. */
+  saveEvent(event: ImportantEvent): Promise<void>
 }
 
 export interface OpportunityRepository {
@@ -142,7 +176,23 @@ export interface MeetingSnapshotRepository {
   save(snapshot: MeetingSnapshot): Promise<void>
 }
 
-export type MintedKind = 'interaction' | 'candidate' | 'fact' | 'commitment' | 'event'
+export type MintedKind =
+  | 'interaction'
+  | 'candidate'
+  | 'fact'
+  | 'commitment'
+  | 'event'
+  | 'client'
+  | 'household'
+  | 'member'
+  | 'office'
+  | 'lifecycle'
+  | 'stretch'
+  | 'asset'
+  | 'liability'
+  | 'goal'
+  | 'opportunity'
+  | 'document'
 
 /** The record mints every identity. A caller never supplies one. */
 export interface IdentityMint {
@@ -162,7 +212,15 @@ export interface AdvisoryRepositories {
   sentinel: SentinelRepository
   marketEvents: MarketEventLedger
   meetingSnapshots: MeetingSnapshotRepository
+  lifecycle: LifecycleRepository
   ids: IdentityMint
+  /**
+   * One unit of work: everything `work` writes lands together or not at
+   * all. A multi-record act — a move, a closure, an activation — runs
+   * inside it, so a crash between its writes leaves the record as it was.
+   * Nests: an inner call joins the outer unit.
+   */
+  transaction<T>(work: () => Promise<T>): Promise<T>
 }
 
 /** Everything an advisory use case needs: the record, the time, and — where wired — the market. */

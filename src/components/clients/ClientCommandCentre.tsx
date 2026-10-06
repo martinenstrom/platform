@@ -8,6 +8,7 @@ import {
 } from '~/presentation/advisory/advisorIdentity'
 import { formatMsek } from '~/presentation/advisory/format'
 import { AdvisorPortrait } from './AdvisorPortrait'
+import { BookSwitch } from './lifecycle/BookSwitch'
 import { ClientBook } from './ClientBook'
 import { OfficeFolder } from './OfficeFolder'
 
@@ -107,7 +108,7 @@ export function ClientCommandCentre({
             <h1 className="type-display-name mt-1.5 text-[54px] leading-none">
               Klienter
             </h1>
-            <p className="mt-2 max-w-2xl font-display text-[15px] leading-snug text-content-muted">
+            <p className="mt-2 max-w-[21rem] font-display text-[15px] leading-snug text-content-muted">
               Dina private banking-relationer, prioriteringar och möjligheter — kontor för
               kontor.
             </p>
@@ -119,13 +120,7 @@ export function ClientCommandCentre({
             </p>
           </div>
         </div>
-        <nav
-          aria-label="Vy"
-          className="view-pill-group flex items-center self-start md:self-end md:mb-5"
-        >
-          <ViewSwitch view="kontor" current={view} label="Kontor" />
-          <ViewSwitch view="alla" current={view} label="Alla klienter" />
-        </nav>
+        <BookSwitch current={view} />
       </header>
 
       <section aria-label="Nyckeltal" className="ref-panel">
@@ -179,9 +174,14 @@ export function ClientCommandCentre({
         <section aria-label="Kontor" className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between px-1">
             <h2 className="type-section">Kontorsböcker</h2>
-            <span className="type-machine">
-              {offices.length === 1 ? '1 kontor' : `${offices.length} kontor`} ·{' '}
-              {rows.length} klienter
+            <span className="flex items-center gap-4">
+              <span className="type-machine">
+                {offices.length === 1 ? '1 kontor' : `${offices.length} kontor`} ·{' '}
+                {rows.length} klienter
+              </span>
+              <Link to="/clients/offices/archived" className="dossier-link">
+                Arkiverade kontor →
+              </Link>
             </span>
           </div>
           {offices.length === 0 ? (
@@ -208,27 +208,5 @@ export function ClientCommandCentre({
         />
       )}
     </div>
-  )
-}
-
-function ViewSwitch({
-  view,
-  current,
-  label,
-}: {
-  view: DirectoryViewMode
-  current: DirectoryViewMode
-  label: string
-}) {
-  const active = view === current
-  return (
-    <Link
-      to="/clients"
-      search={view === 'alla' ? { view: 'alla' } : {}}
-      aria-current={active ? 'page' : undefined}
-      className="view-pill"
-    >
-      {label}
-    </Link>
   )
 }

@@ -15,9 +15,11 @@ import { Route as HeadquartersRouteImport } from './routes/headquarters'
 import { Route as MarketImpactRouteImport } from './routes/market-impact'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as RecoveryRouteImport } from './routes/recovery'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SentinelRouteImport } from './routes/sentinel'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as AgentsIndexRouteImport } from './routes/agents.index'
 import { Route as AgentsDepartmentIdRouteImport } from './routes/agents.$departmentId'
@@ -25,12 +27,17 @@ import { Route as CasesIndexRouteImport } from './routes/cases.index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as ClientsIndexRouteImport } from './routes/clients.index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as ClientsFormerRouteImport } from './routes/clients.former'
+import { Route as ClientsNewRouteImport } from './routes/clients.new'
+import { Route as ClientsOnboardingRouteImport } from './routes/clients.onboarding'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as AgentsDepartmentIdCommissionRouteImport } from './routes/agents_.$departmentId.commission'
 import { Route as CasesCaseIdUnderlagRouteImport } from './routes/cases.$caseId_.underlag'
 import { Route as ClientsClientIdMeetingPackRouteImport } from './routes/clients.$clientId_.meeting-pack'
 import { Route as ClientsClientIdMeetingPrepRouteImport } from './routes/clients.$clientId_.meeting-prep'
 import { Route as ClientsOfficeOfficeIdRouteImport } from './routes/clients.office.$officeId'
+import { Route as ClientsOfficeNewRouteImport } from './routes/clients.office.new'
+import { Route as ClientsOfficesArchivedRouteImport } from './routes/clients.offices.archived'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -62,6 +69,11 @@ const PortfolioRoute = PortfolioRouteImport.update({
   path: '/portfolio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecoveryRoute = RecoveryRouteImport.update({
+  id: '/recovery',
+  path: '/recovery',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -75,6 +87,11 @@ const SentinelRoute = SentinelRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchlistRoute = WatchlistRouteImport.update({
@@ -112,6 +129,21 @@ const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   path: '/clients/$clientId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsFormerRoute = ClientsFormerRouteImport.update({
+  id: '/clients/former',
+  path: '/clients/former',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsNewRoute = ClientsNewRouteImport.update({
+  id: '/clients/new',
+  path: '/clients/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsOnboardingRoute = ClientsOnboardingRouteImport.update({
+  id: '/clients/onboarding',
+  path: '/clients/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RunsRunIdRoute = RunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
@@ -145,6 +177,16 @@ const ClientsOfficeOfficeIdRoute = ClientsOfficeOfficeIdRouteImport.update({
   path: '/clients/office/$officeId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsOfficeNewRoute = ClientsOfficeNewRouteImport.update({
+  id: '/clients/office/new',
+  path: '/clients/office/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsOfficesArchivedRoute = ClientsOfficesArchivedRouteImport.update({
+  id: '/clients/offices/archived',
+  path: '/clients/offices/archived',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -153,13 +195,18 @@ export interface FileRoutesByFullPath {
   '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
+  '/recovery': typeof RecoveryRoute
   '/reports': typeof ReportsRoute
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
+  '/setup': typeof SetupRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/clients/former': typeof ClientsFormerRoute
+  '/clients/new': typeof ClientsNewRoute
+  '/clients/onboarding': typeof ClientsOnboardingRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
@@ -169,6 +216,8 @@ export interface FileRoutesByFullPath {
   '/clients/$clientId/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
+  '/clients/office/new': typeof ClientsOfficeNewRoute
+  '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -177,13 +226,18 @@ export interface FileRoutesByTo {
   '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
+  '/recovery': typeof RecoveryRoute
   '/reports': typeof ReportsRoute
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
+  '/setup': typeof SetupRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/clients/former': typeof ClientsFormerRoute
+  '/clients/new': typeof ClientsNewRoute
+  '/clients/onboarding': typeof ClientsOnboardingRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents': typeof AgentsIndexRoute
   '/cases': typeof CasesIndexRoute
@@ -193,6 +247,8 @@ export interface FileRoutesByTo {
   '/clients/$clientId/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
+  '/clients/office/new': typeof ClientsOfficeNewRoute
+  '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -202,13 +258,18 @@ export interface FileRoutesById {
   '/market-impact': typeof MarketImpactRoute
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
+  '/recovery': typeof RecoveryRoute
   '/reports': typeof ReportsRoute
   '/sentinel': typeof SentinelRoute
   '/settings': typeof SettingsRoute
+  '/setup': typeof SetupRoute
   '/watchlist': typeof WatchlistRoute
   '/agents/$departmentId': typeof AgentsDepartmentIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/clients/former': typeof ClientsFormerRoute
+  '/clients/new': typeof ClientsNewRoute
+  '/clients/onboarding': typeof ClientsOnboardingRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/cases/': typeof CasesIndexRoute
@@ -218,6 +279,8 @@ export interface FileRoutesById {
   '/clients/$clientId_/meeting-pack': typeof ClientsClientIdMeetingPackRoute
   '/clients/$clientId_/meeting-prep': typeof ClientsClientIdMeetingPrepRoute
   '/clients/office/$officeId': typeof ClientsOfficeOfficeIdRoute
+  '/clients/office/new': typeof ClientsOfficeNewRoute
+  '/clients/offices/archived': typeof ClientsOfficesArchivedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -228,13 +291,18 @@ export interface FileRouteTypes {
     | '/market-impact'
     | '/markets'
     | '/portfolio'
+    | '/recovery'
     | '/reports'
     | '/sentinel'
     | '/settings'
+    | '/setup'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/clients/$clientId'
+    | '/clients/former'
+    | '/clients/new'
+    | '/clients/onboarding'
     | '/runs/$runId'
     | '/agents/'
     | '/cases/'
@@ -244,6 +312,8 @@ export interface FileRouteTypes {
     | '/clients/$clientId/meeting-pack'
     | '/clients/$clientId/meeting-prep'
     | '/clients/office/$officeId'
+    | '/clients/office/new'
+    | '/clients/offices/archived'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -252,13 +322,18 @@ export interface FileRouteTypes {
     | '/market-impact'
     | '/markets'
     | '/portfolio'
+    | '/recovery'
     | '/reports'
     | '/sentinel'
     | '/settings'
+    | '/setup'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/clients/$clientId'
+    | '/clients/former'
+    | '/clients/new'
+    | '/clients/onboarding'
     | '/runs/$runId'
     | '/agents'
     | '/cases'
@@ -268,6 +343,8 @@ export interface FileRouteTypes {
     | '/clients/$clientId/meeting-pack'
     | '/clients/$clientId/meeting-prep'
     | '/clients/office/$officeId'
+    | '/clients/office/new'
+    | '/clients/offices/archived'
   id:
     | '__root__'
     | '/'
@@ -276,13 +353,18 @@ export interface FileRouteTypes {
     | '/market-impact'
     | '/markets'
     | '/portfolio'
+    | '/recovery'
     | '/reports'
     | '/sentinel'
     | '/settings'
+    | '/setup'
     | '/watchlist'
     | '/agents/$departmentId'
     | '/cases/$caseId'
     | '/clients/$clientId'
+    | '/clients/former'
+    | '/clients/new'
+    | '/clients/onboarding'
     | '/runs/$runId'
     | '/agents/'
     | '/cases/'
@@ -292,6 +374,8 @@ export interface FileRouteTypes {
     | '/clients/$clientId_/meeting-pack'
     | '/clients/$clientId_/meeting-prep'
     | '/clients/office/$officeId'
+    | '/clients/office/new'
+    | '/clients/offices/archived'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -301,13 +385,18 @@ export interface RootRouteChildren {
   MarketImpactRoute: typeof MarketImpactRoute
   MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
+  RecoveryRoute: typeof RecoveryRoute
   ReportsRoute: typeof ReportsRoute
   SentinelRoute: typeof SentinelRoute
   SettingsRoute: typeof SettingsRoute
+  SetupRoute: typeof SetupRoute
   WatchlistRoute: typeof WatchlistRoute
   AgentsDepartmentIdRoute: typeof AgentsDepartmentIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
+  ClientsFormerRoute: typeof ClientsFormerRoute
+  ClientsNewRoute: typeof ClientsNewRoute
+  ClientsOnboardingRoute: typeof ClientsOnboardingRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   CasesIndexRoute: typeof CasesIndexRoute
@@ -317,6 +406,8 @@ export interface RootRouteChildren {
   ClientsClientIdMeetingPackRoute: typeof ClientsClientIdMeetingPackRoute
   ClientsClientIdMeetingPrepRoute: typeof ClientsClientIdMeetingPrepRoute
   ClientsOfficeOfficeIdRoute: typeof ClientsOfficeOfficeIdRoute
+  ClientsOfficeNewRoute: typeof ClientsOfficeNewRoute
+  ClientsOfficesArchivedRoute: typeof ClientsOfficesArchivedRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -363,6 +454,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortfolioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/recovery': {
+      id: '/recovery'
+      path: '/recovery'
+      fullPath: '/recovery'
+      preLoaderRoute: typeof RecoveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
@@ -382,6 +480,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watchlist': {
@@ -433,6 +538,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsClientIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/former': {
+      id: '/clients/former'
+      path: '/clients/former'
+      fullPath: '/clients/former'
+      preLoaderRoute: typeof ClientsFormerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/new': {
+      id: '/clients/new'
+      path: '/clients/new'
+      fullPath: '/clients/new'
+      preLoaderRoute: typeof ClientsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/onboarding': {
+      id: '/clients/onboarding'
+      path: '/clients/onboarding'
+      fullPath: '/clients/onboarding'
+      preLoaderRoute: typeof ClientsOnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/runs/$runId': {
       id: '/runs/$runId'
       path: '/runs/$runId'
@@ -475,6 +601,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsOfficeOfficeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/office/new': {
+      id: '/clients/office/new'
+      path: '/clients/office/new'
+      fullPath: '/clients/office/new'
+      preLoaderRoute: typeof ClientsOfficeNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/offices/archived': {
+      id: '/clients/offices/archived'
+      path: '/clients/offices/archived'
+      fullPath: '/clients/offices/archived'
+      preLoaderRoute: typeof ClientsOfficesArchivedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -485,13 +625,18 @@ const rootRouteChildren: RootRouteChildren = {
   MarketImpactRoute: MarketImpactRoute,
   MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
+  RecoveryRoute: RecoveryRoute,
   ReportsRoute: ReportsRoute,
   SentinelRoute: SentinelRoute,
   SettingsRoute: SettingsRoute,
+  SetupRoute: SetupRoute,
   WatchlistRoute: WatchlistRoute,
   AgentsDepartmentIdRoute: AgentsDepartmentIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
+  ClientsFormerRoute: ClientsFormerRoute,
+  ClientsNewRoute: ClientsNewRoute,
+  ClientsOnboardingRoute: ClientsOnboardingRoute,
   RunsRunIdRoute: RunsRunIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   CasesIndexRoute: CasesIndexRoute,
@@ -501,6 +646,8 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsClientIdMeetingPackRoute: ClientsClientIdMeetingPackRoute,
   ClientsClientIdMeetingPrepRoute: ClientsClientIdMeetingPrepRoute,
   ClientsOfficeOfficeIdRoute: ClientsOfficeOfficeIdRoute,
+  ClientsOfficeNewRoute: ClientsOfficeNewRoute,
+  ClientsOfficesArchivedRoute: ClientsOfficesArchivedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -410,7 +410,7 @@ function PriorityRow({
         <Link
           to="/clients/$clientId"
           params={{ clientId: client.id }}
-          className="type-section rounded-[4px] border border-institution-line bg-institution-soft/60 px-3 py-1.5 text-institution transition-colors hover:bg-institution-soft"
+          className="type-section rounded-module border border-institution-line bg-institution-soft/60 px-3 py-1.5 text-institution transition-colors hover:bg-institution-soft"
         >
           Öppna klient
         </Link>
@@ -471,7 +471,7 @@ function PriorityRow({
             <button
               type="submit"
               disabled={busy || !until}
-              className="type-machine rounded-[3px] border border-line px-2 py-1 text-content-muted hover:text-content disabled:opacity-40"
+              className="type-machine rounded-chip border border-line px-2 py-1 text-content-muted hover:text-content disabled:opacity-40"
             >
               Bekräfta
             </button>
@@ -508,7 +508,7 @@ function RowButton({
       aria-label={label}
       aria-pressed={pressed}
       className={cn(
-        'type-machine rounded-[3px] border px-2 py-1 transition-colors disabled:opacity-40',
+        'type-machine rounded-chip border px-2 py-1 transition-colors disabled:opacity-40',
         pressed
           ? 'border-hud-line text-accent'
           : 'border-line text-content-subtle hover:text-content',

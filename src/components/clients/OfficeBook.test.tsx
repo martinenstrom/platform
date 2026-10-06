@@ -147,6 +147,7 @@ describe('the office book', () => {
         displayName: 'Tomgatan',
         shortName: 'Tomg.',
         status: 'active',
+        archivedAt: null,
       },
       directory.rows,
       TODAY,

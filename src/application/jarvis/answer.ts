@@ -30,6 +30,7 @@ import type {
   MeetingFocus,
   MemoryHit,
   ObjectiveItem,
+  OnboardingOverview,
   Opportunity,
   OpportunityToExplore,
   PromiseView,
@@ -40,6 +41,7 @@ import type {
   StrategyObservation,
 } from '~/domain/advisory'
 import type { ClientDirectoryRow } from '~/application/advisory/clientDirectory'
+import type { LifecycleFeedEntry } from '~/application/advisory/lifecycle'
 import type { AffectedClient } from '~/application/advisory/marketImpact'
 import type { MarketEpisode } from '~/application/advisory/marketEpisodes'
 import type {
@@ -80,6 +82,13 @@ export type AdvisoryIntentKind =
   | 'DIRECTORY_EXTERNAL_ASSETS'
   | 'SENTINEL_TODAY'
   | 'MARKET_IMPACT_CLIENTS'
+  /** The book's lifecycle: who came, who is being taken in, who left, who moved, who came back, what changed. */
+  | 'BOOK_NEW_CLIENTS'
+  | 'BOOK_ONBOARDING'
+  | 'BOOK_FORMER'
+  | 'BOOK_MOVED'
+  | 'BOOK_REACTIVATED'
+  | 'BOOK_CHANGES'
   | 'GENERAL_CLIENT_QUERY'
   /** The Meeting Pack: prepare, in a depth or a format, or refresh against the record. */
   | 'MEETING_PACK_FULL'
@@ -160,6 +169,13 @@ export type NoteKind =
   | 'no-overdue'
   | 'no-external-assets'
   | 'no-affected-clients'
+  /** The book's lifecycle, empty in the period or the office asked about. */
+  | 'no-new-clients'
+  | 'nobody-onboarding'
+  | 'no-former-clients'
+  | 'no-moves'
+  | 'no-reactivations'
+  | 'no-book-changes'
   | 'not-answerable-here'
   /** The line carried no words a recogniser could read — a dropped transcript. */
   | 'unclear'
@@ -227,6 +243,14 @@ export type JarvisItem =
   | (Grounded & { kind: 'strategy-observation'; observation: StrategyObservation })
   | (Grounded & { kind: 'financing'; item: FinancingItem })
   | (Grounded & { kind: 'client-row'; row: ClientDirectoryRow; because: RowReason })
+  /** A relationship being taken in, with how far its onboarding has come. */
+  | (Grounded & {
+      kind: 'onboarding-row'
+      row: ClientDirectoryRow
+      overview: OnboardingOverview
+    })
+  /** One change to the book, as the lifecycle recorded it; office and advisor ids read through the answer's titles. */
+  | (Grounded & { kind: 'lifecycle-entry'; entry: LifecycleFeedEntry })
   | (Grounded & { kind: 'episode'; episode: MarketEpisode })
   | (Grounded & { kind: 'affected-client'; affected: AffectedClient; event: MarketEvent })
   | (Grounded & { kind: 'memory-hit'; hit: MemoryHit })
@@ -274,6 +298,7 @@ export type SectionKey =
   | 'clients'
   | 'meetings'
   | 'overdue'
+  | 'book-changes'
   | 'episodes'
   | 'memory'
   | 'agenda'
@@ -301,6 +326,8 @@ export interface JarvisAction {
     | 'open-office'
     | 'open-sentinel'
     | 'open-market-impact'
+    /** A lifecycle book: onboarding, former clients. */
+    | 'open-book'
   href: string
 }
 

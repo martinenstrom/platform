@@ -34,6 +34,10 @@ import type {
   SuggestedTopicKind,
   DiscussionTopic,
   Confidence,
+  ClosureReason,
+  LifecycleEventKind,
+  LifecycleStatus,
+  OnboardingArea,
 } from '~/domain/advisory'
 
 export const SEGMENT_LABEL: Record<ClientSegment, string> = {
@@ -245,6 +249,14 @@ export const HEALTH_BAND_LABEL: Record<HealthBand, string> = {
   'at-risk': 'I riskzonen',
 }
 
+/** The band read as a sentence: what the score means for the advisor, in the relationship lens. */
+export const HEALTH_INTERPRETATION: Record<HealthBand, string> = {
+  strong: 'Relationen är stark och aktiv; rytmen håller.',
+  stable: 'Relationen är stabil. Håll kontaktrytmen och leverera det som lovats.',
+  watch: 'Relationen behöver uppmärksamhet inom kort innan något av det öppna växer.',
+  'at-risk': 'Relationen är i riskzonen och behöver en aktiv åtgärd från dig.',
+}
+
 /** The band as the dossier's pill states it: one phrase, uppercase in the UI. */
 export const HEALTH_PILL_LABEL: Record<HealthBand, string> = {
   strong: 'Hög relationshälsa',
@@ -273,6 +285,11 @@ export const RISK_PROFILE_LABEL: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, string> = {
   5: 'Tillväxt',
   6: 'Offensiv',
   7: 'Mycket offensiv',
+}
+
+/** The step's name, or what stands in its place until one is agreed. */
+export function riskProfileLabel(profile: 1 | 2 | 3 | 4 | 5 | 6 | 7 | null): string {
+  return profile === null ? 'Riskprofil ej fastställd' : RISK_PROFILE_LABEL[profile]
 }
 
 export const CONFIDENCE_LABEL: Record<Confidence, string> = {
@@ -367,4 +384,89 @@ export function healthDriverText(kind: HealthDriverKind, count?: number): string
     case 'goal-behind':
       return 'Mål efter plan'
   }
+}
+
+/* ------------------------------------------------------------- lifecycle */
+
+export const LIFECYCLE_STATUS_LABEL: Record<LifecycleStatus, string> = {
+  onboarding: 'Onboarding',
+  active: 'Aktiv',
+  former: 'Tidigare klient',
+}
+
+export const CLOSURE_REASON_LABEL: Record<ClosureReason, string> = {
+  CLIENT_CHOICE: 'Klientens val',
+  COMPETITOR: 'Bytte till annan aktör',
+  NO_LONGER_ELIGIBLE: 'Uppfyller inte längre kriterierna',
+  DECEASED_OR_ESTATE: 'Dödsbo',
+  MOVED_OR_REASSIGNED: 'Flyttad eller omfördelad',
+  OTHER: 'Annan orsak',
+}
+
+export const ONBOARDING_AREA_LABEL: Record<OnboardingArea, string> = {
+  'financial-overview': 'Finansiell översikt',
+  'risk-profile': 'Riskprofil & mandat',
+  portfolio: 'Portfölj',
+  loans: 'Lån',
+  goals: 'Mål',
+  'family-context': 'Familj & bolag',
+  'first-review': 'Första genomgång',
+}
+
+export const LIFECYCLE_EVENT_LABEL: Record<LifecycleEventKind, string> = {
+  CLIENT_CREATED: 'Relation skapad',
+  CLIENT_ACTIVATED: 'PB-relation aktiverad',
+  CLIENT_UPDATED: 'Relation uppdaterad',
+  CLIENT_MOVED_OFFICE: 'Flyttad till annat kontor',
+  CLIENT_ADVISOR_CHANGED: 'Ansvarig rådgivare ändrad',
+  CLIENT_CLOSED: 'PB-relation avslutad',
+  CLIENT_REACTIVATED: 'PB-relation återaktiverad',
+  OFFICE_CREATED: 'Kontor skapat',
+  OFFICE_UPDATED: 'Kontor uppdaterat',
+  OFFICE_ARCHIVED: 'Kontor arkiverat',
+  OFFICE_REACTIVATED: 'Kontor återöppnat',
+}
+
+/**
+ * What a lifecycle event's detail says, in words: the offices of a move,
+ * the advisors of a hand-over, the reason of a closure, the status a
+ * relationship was created in, what a closure cancelled. Ids read through
+ * `names` where the caller knows them; an id nobody can name stays an id
+ * rather than a guess.
+ */
+export function lifecycleEventDetail(
+  detail: Readonly<Record<string, string | number | null>>,
+  names: Readonly<Record<string, string>> = {},
+): string {
+  const name = (id: string) => names[id] ?? id
+  const parts: string[] = []
+  if (
+    typeof detail['fromOfficeId'] === 'string' &&
+    typeof detail['toOfficeId'] === 'string'
+  )
+    parts.push(`${name(detail['fromOfficeId'])} → ${name(detail['toOfficeId'])}`)
+  if (
+    typeof detail['fromAdvisorId'] === 'string' &&
+    typeof detail['toAdvisorId'] === 'string'
+  )
+    parts.push(`${name(detail['fromAdvisorId'])} → ${name(detail['toAdvisorId'])}`)
+  if (typeof detail['reason'] === 'string')
+    parts.push(CLOSURE_REASON_LABEL[detail['reason'] as ClosureReason] ?? detail['reason'])
+  if (typeof detail['fields'] === 'string') parts.push(detail['fields'])
+  if (typeof detail['status'] === 'string')
+    parts.push(
+      `status ${(LIFECYCLE_STATUS_LABEL[detail['status'] as LifecycleStatus] ?? detail['status']).toLowerCase()}`,
+    )
+  if (typeof detail['previousClosureReason'] === 'string')
+    parts.push(
+      `tidigare avslutad: ${(CLOSURE_REASON_LABEL[detail['previousClosureReason'] as ClosureReason] ?? detail['previousClosureReason']).toLowerCase()}`,
+    )
+  if (
+    typeof detail['cancelledCommitments'] === 'number' &&
+    detail['cancelledCommitments'] > 0
+  )
+    parts.push(`${detail['cancelledCommitments']} åtaganden avbrutna`)
+  if (typeof detail['cancelledMeetings'] === 'number' && detail['cancelledMeetings'] > 0)
+    parts.push(`${detail['cancelledMeetings']} möten avbokade`)
+  return parts.join(' · ')
 }

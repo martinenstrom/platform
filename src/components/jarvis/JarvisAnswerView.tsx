@@ -16,6 +16,7 @@ const ACTION_LABEL = {
   'open-meeting-pack': 'Öppna mötesunderlag',
   'open-office': 'Öppna kontor',
   'open-sentinel': 'Öppna Sentinel',
+  'open-book': 'Öppna boken',
   'open-market-impact': 'Öppna Marknadspåverkan',
 } as const
 

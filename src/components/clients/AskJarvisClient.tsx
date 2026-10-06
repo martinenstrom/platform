@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { MessageCircleQuestion } from 'lucide-react'
 import type { AskAboutClientResult } from '~/application/advisory/askAboutClient'
 import type { MemoryHit } from '~/domain/advisory'
 import { cn } from '~/lib/cn'
@@ -10,6 +11,7 @@ import {
   MEMORY_ANSWER_HEADING,
 } from '~/presentation/advisory/text'
 import type { ClientActions } from './clientActions'
+import { ModuleHead } from './dossier/Module'
 import { JarvisMark } from './JarvisBlock'
 
 const SUGGESTIONS = [
@@ -48,12 +50,17 @@ export function AskJarvisClient({ actions }: { actions: ClientActions }) {
   }
 
   return (
-    <section className="ref-panel" aria-label="Fråga JARVIS om klienten">
-      <header className="ref-head">
-        <h2 className="type-section">Fråga JARVIS om klienten</h2>
-        <span className="type-machine">relationsminne · lexikon v1</span>
-      </header>
-      <div className="p-3">
+    <section
+      id="fraga"
+      className="ref-panel dossier-target"
+      aria-label="Fråga JARVIS om klienten"
+    >
+      <ModuleHead
+        title="Fråga JARVIS om klienten"
+        icon={MessageCircleQuestion}
+        meta="relationsminne · lexikon v1"
+      />
+      <div className="px-5 pb-4">
         <form
           className="flex gap-2"
           onSubmit={(event) => {
@@ -74,7 +81,7 @@ export function AskJarvisClient({ actions }: { actions: ClientActions }) {
           <button
             type="submit"
             disabled={busy || question.trim().length === 0}
-            className="type-section shrink-0 rounded-[4px] border border-hud-line bg-accent-soft px-3 py-1.5 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
+            className="type-section shrink-0 rounded-module border border-hud-line bg-accent-soft px-3 py-1.5 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
           >
             Fråga
           </button>
@@ -88,7 +95,7 @@ export function AskJarvisClient({ actions }: { actions: ClientActions }) {
                   setQuestion(suggestion)
                   void ask(suggestion)
                 }}
-                className="rounded-[3px] border border-line px-2 py-0.5 text-[11.5px] text-content-muted transition-colors hover:border-line-strong hover:text-content"
+                className="rounded-chip border border-line px-2 py-0.5 text-[11.5px] text-content-muted transition-colors hover:border-line-strong hover:text-content"
               >
                 {suggestion}
               </button>

@@ -1,28 +1,25 @@
 /**
- * The synthetic relationship record: the Phase 1 store.
+ * The synthetic relationship record: the demonstration and test store.
  *
  * Named for what it is. The institution's fitness rule forbids a memory
  * fallback at the analysis composition root ("constructs the in-memory store
  * nowhere but its own module"), and this is not that: it is the seeded,
- * synthetic advisory record the phase gate asked for, held in memory because
- * no durable store may hold client data before the privacy posture is ruled
- * (TD-104). A PostgreSQL adapter replaces it behind the same ports.
+ * synthetic advisory record for development, demonstration and tests. The
+ * desktop runs on the SQLite adapter behind the same ports
+ * (`sqlite/repositories.ts`), and the two are judged by one contract.
  *
- * Phase 1 storage: seeded from the synthetic clients when the process starts
- * and held in maps for the life of the process. Confirmed updates persist
- * across page loads and vanish on restart, and the document says so
- * (TD-104). PostgreSQL repositories later satisfy the same ports behind the
- * same container.
- *
- * Every read returns copies of immutable records, sorted where the port
- * says so, so a caller can neither mutate the store nor depend on insertion
- * order.
+ * Held in maps for the life of the process. Every read returns copies of
+ * immutable records, sorted where the port says so, so a caller can neither
+ * mutate the store nor depend on insertion order. A unit of work snapshots
+ * every map and restores it when the work throws, so a multi-record act
+ * rolls back here exactly as it does in SQLite.
  */
 
 import type {
   Advisor,
   Asset,
   Client,
+  ClientOfficeHistory,
   Commitment,
   ContextFact,
   Goal,
@@ -30,6 +27,7 @@ import type {
   ImportantEvent,
   Interaction,
   Liability,
+  LifecycleEvent,
   MarketLedgerState,
   MeetingSnapshot,
   MemoryCandidate,
@@ -66,6 +64,24 @@ const ofClient = <T extends { clientId: string }>(
   clientId: string,
 ) => [...store.values()].filter((item) => item.clientId === clientId)
 
+/** The empty record: what a new Financial OS holds before its first relationship. */
+export const EMPTY_SEED: AdvisorySeed = Object.freeze({
+  advisors: [],
+  offices: [],
+  clients: [],
+  households: [],
+  assets: [],
+  liabilities: [],
+  portfolios: [],
+  goals: [],
+  interactions: [],
+  contextFacts: [],
+  commitments: [],
+  events: [],
+  opportunities: [],
+  meetingSnapshots: [],
+})
+
 export function createSyntheticAdvisoryRepositories(
   seed: AdvisorySeed,
 ): AdvisoryRepositories {
@@ -84,33 +100,94 @@ export function createSyntheticAdvisoryRepositories(
   const events = byId<ImportantEvent>(seed.events)
   const opportunities = byId<Opportunity>(seed.opportunities)
   const meetingSnapshots = byId<MeetingSnapshot>(seed.meetingSnapshots)
+  const lifecycleEvents = new Map<string, LifecycleEvent>()
+  /* Every seeded client stands at its office since the relationship began. */
+  const officeHistory = new Map<string, ClientOfficeHistory>(
+    seed.clients.map((client) => [
+      `stretch-seed-${client.id}`,
+      {
+        id: `stretch-seed-${client.id}`,
+        clientId: client.id,
+        officeId: client.officeId,
+        from: client.relationshipSince,
+        to: null,
+      },
+    ]),
+  )
 
   /* Sequences per kind, like a database would keep. */
   const sequences = new Map<MintedKind, number>()
   /* What the advisor decided about Sentinel priorities, in the order decided. Empty at seed. */
-  const dispositions: SentinelDisposition[] = []
+  let dispositions: SentinelDisposition[] = []
   /* The open market events and the closed ones kept as history. Derived state, rebuilt on every read. */
   let marketLedger: MarketLedgerState = { active: [], history: [] }
 
-  return {
+  const stores = [
+    advisors,
+    offices,
+    clients,
+    households,
+    assets,
+    liabilities,
+    portfolios,
+    goals,
+    interactions,
+    candidates,
+    facts,
+    commitments,
+    events,
+    opportunities,
+    meetingSnapshots,
+    lifecycleEvents,
+    officeHistory,
+    sequences,
+  ] as const
+  let depth = 0
+
+  const repositories: AdvisoryRepositories = {
     clients: {
       async list() {
-        return [...clients.values()]
+        return [...clients.values()].sort((a, b) => (a.id < b.id ? -1 : 1))
       },
       async byId(id) {
         return clients.get(id) ?? null
       },
+      async addClient(client) {
+        if (clients.has(client.id)) throw new Error(`client ${client.id} already exists`)
+        clients.set(client.id, client)
+      },
+      async saveClient(client) {
+        if (!clients.has(client.id)) throw new Error(`client ${client.id} does not exist`)
+        clients.set(client.id, client)
+      },
       async householdById(id) {
         return households.get(id) ?? null
       },
+      async saveHousehold(household) {
+        households.set(household.id, household)
+      },
       async advisorById(id) {
         return advisors.get(id) ?? null
+      },
+      async advisors() {
+        return [...advisors.values()].sort((a, b) => (a.id < b.id ? -1 : 1))
+      },
+      async saveAdvisor(advisor) {
+        advisors.set(advisor.id, advisor)
       },
       async offices() {
         return [...offices.values()]
       },
       async officeById(id) {
         return offices.get(id) ?? null
+      },
+      async addOffice(office) {
+        if (offices.has(office.id)) throw new Error(`office ${office.id} already exists`)
+        offices.set(office.id, office)
+      },
+      async saveOffice(office) {
+        if (!offices.has(office.id)) throw new Error(`office ${office.id} does not exist`)
+        offices.set(office.id, office)
       },
     },
     wealth: {
@@ -124,6 +201,12 @@ export function createSyntheticAdvisoryRepositories(
           (a, b) => b.outstandingBalance - a.outstandingBalance || (a.id < b.id ? -1 : 1),
         )
       },
+      async addAsset(asset) {
+        assets.set(asset.id, asset)
+      },
+      async addLiability(liability) {
+        liabilities.set(liability.id, liability)
+      },
     },
     portfolios: {
       async portfolioOf(clientId) {
@@ -133,6 +216,9 @@ export function createSyntheticAdvisoryRepositories(
     goals: {
       async goalsOf(clientId) {
         return ofClient(goals, clientId).sort((a, b) => (a.id < b.id ? -1 : 1))
+      },
+      async addGoal(goal) {
+        goals.set(goal.id, goal)
       },
     },
     interactions: {
@@ -199,6 +285,9 @@ export function createSyntheticAdvisoryRepositories(
       async addEvent(event) {
         events.set(event.id, event)
       },
+      async saveEvent(event) {
+        events.set(event.id, event)
+      },
     },
     opportunities: {
       async opportunitiesOf(clientId) {
@@ -215,7 +304,7 @@ export function createSyntheticAdvisoryRepositories(
         return dispositions.filter((d) => d.clientId === clientId)
       },
       async addDisposition(disposition) {
-        dispositions.push(disposition)
+        dispositions = [...dispositions, disposition]
       },
     },
     meetingSnapshots: {
@@ -249,6 +338,30 @@ export function createSyntheticAdvisoryRepositories(
         marketLedger = { active: [...state.active], history: [...state.history] }
       },
     },
+    lifecycle: {
+      async eventsOf(subjectId) {
+        return [...lifecycleEvents.values()]
+          .filter((event) => event.subjectId === subjectId)
+          .sort(newestAtFirst)
+      },
+      async events() {
+        return [...lifecycleEvents.values()].sort(newestAtFirst)
+      },
+      async addEvent(event) {
+        lifecycleEvents.set(event.id, event)
+      },
+      async officeHistoryOf(clientId) {
+        return ofClient(officeHistory, clientId).sort((a, b) =>
+          a.from < b.from ? -1 : a.from > b.from ? 1 : a.id < b.id ? -1 : 1,
+        )
+      },
+      async addOfficeHistory(stretch) {
+        officeHistory.set(stretch.id, stretch)
+      },
+      async saveOfficeHistory(stretch) {
+        officeHistory.set(stretch.id, stretch)
+      },
+    },
     ids: {
       async mint(kind) {
         const next = (sequences.get(kind) ?? 0) + 1
@@ -256,5 +369,30 @@ export function createSyntheticAdvisoryRepositories(
         return `${kind}-${String(next).padStart(4, '0')}`
       },
     },
+    async transaction(work) {
+      if (depth > 0) return work()
+      const snapshot = stores.map((store) => new Map(store as Map<unknown, unknown>))
+      const dispositionsBefore = dispositions
+      const ledgerBefore = marketLedger
+      depth += 1
+      try {
+        return await work()
+      } catch (error) {
+        stores.forEach((store, index) => {
+          const map = store as Map<unknown, unknown>
+          map.clear()
+          for (const [key, value] of snapshot[index]!) map.set(key, value)
+        })
+        dispositions = dispositionsBefore
+        marketLedger = ledgerBefore
+        throw error
+      } finally {
+        depth -= 1
+      }
+    },
   }
+  return repositories
 }
+
+const newestAtFirst = (a: { at: string; id: string }, b: { at: string; id: string }) =>
+  a.at > b.at ? -1 : a.at < b.at ? 1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0

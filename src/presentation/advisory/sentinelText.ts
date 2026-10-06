@@ -150,7 +150,9 @@ export function priorityTitle(entry: SentinelEntry): string {
           : 'Portföljen avviker'
     case 'birthday':
       return p.kind === 'birthday'
-        ? `${client.displayName.split(' ')[0]} fyller ${p.turning} ${dayWord(p.daysAhead)}`
+        ? p.turning === null
+          ? `${client.displayName.split(' ')[0]} har födelsedag ${dayWord(p.daysAhead)}`
+          : `${client.displayName.split(' ')[0]} fyller ${p.turning} ${dayWord(p.daysAhead)}`
         : 'Födelsedag'
     case 'stale-valuation':
       return 'Föråldrad värdering inför genomgången'
@@ -201,7 +203,9 @@ export function driverText(driver: SentinelDriver): string {
     case 'stale-valuation':
       return `Äldsta värderingen är från ${formatLongDate(driver.valuedAt)}, ${driver.daysOld} dagar gammal, inför en genomgång.`
     case 'birthday':
-      return `Fyller ${driver.turning} ${dayWord(driver.daysAhead)} (${formatLongDate(driver.date)}).`
+      return driver.turning === null
+        ? `Födelsedag ${dayWord(driver.daysAhead)} (${formatLongDate(driver.date)}).`
+        : `Fyller ${driver.turning} ${dayWord(driver.daysAhead)} (${formatLongDate(driver.date)}).`
     case 'large-withdrawal':
       return `Stort uttag ${formatMsek(driver.amount)} den ${formatLongDate(driver.date)}.`
     case 'complaint':

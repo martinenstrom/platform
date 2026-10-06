@@ -7,6 +7,7 @@
  */
 
 export * from './client'
+export * from './lifecycle'
 export * from './wealth'
 export * from './portfolio'
 export * from './goals'

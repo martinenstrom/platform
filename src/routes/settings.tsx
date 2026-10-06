@@ -1,12 +1,16 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { Plug, ShieldCheck } from 'lucide-react'
 import { PageHeader, PageShell } from '~/components/layout/PageHeader'
+import { RecoveryCenter } from '~/components/platform/RecoveryCenter'
 import { DashboardCard } from '~/components/ui/DashboardCard'
 import { Button } from '~/components/ui/Button'
 import { EmptyState } from '~/components/ui/EmptyState'
 import { StatusBadge } from '~/components/ui/StatusBadge'
+import { getSystemStatusFn } from '~/infrastructure/platform/serverFns'
 
 export const Route = createFileRoute('/settings')({
+  loader: () => getSystemStatusFn(),
+  staleTime: 0,
   component: SettingsPage,
 })
 
@@ -18,12 +22,17 @@ const PREFERENCES = [
 ]
 
 function SettingsPage() {
+  const status = Route.useLoaderData()
+  const router = useRouter()
   return (
     <PageShell>
       <PageHeader
         title="Inställningar"
-        description="Kontoinställningar, format och framtida datakällor."
+        description="Säkerhet & backup, visning och datakällor."
       />
+
+      {/* The Recovery Center first: what protects the record is what matters most on this page. */}
+      <RecoveryCenter status={status} onChanged={() => router.invalidate()} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <DashboardCard title="Visning" className="lg:col-span-6" bodyClassName="p-0">

@@ -12,12 +12,14 @@
  * value wrong.
  */
 
+import type { ClientLifecycle } from './lifecycle'
+
 export type ClientId = string
 export type HouseholdId = string
 export type AdvisorId = string
 export type OfficeId = string
 
-export type OfficeStatus = 'active' | 'closed'
+export type OfficeStatus = 'active' | 'archived'
 
 /**
  * The office a relationship belongs to.
@@ -39,6 +41,8 @@ export interface Office {
   /** How a dense row names it. */
   shortName: string
   status: OfficeStatus
+  /** ISO date the office was archived; null while active. */
+  archivedAt: string | null
   description?: string
 }
 
@@ -60,13 +64,16 @@ export interface Client {
   /** ISO date the relationship opened. */
   relationshipSince: string
   primaryAdvisorId: AdvisorId
-  /** ISO date of birth. Synthetic in Phase 1; sensitive in production. */
-  dateOfBirth: string
-  riskProfile: RiskProfile
+  /** ISO date of birth where known. Synthetic in Phase 1; sensitive in production. */
+  dateOfBirth: string | null
+  /** The mandate's risk step where one has been agreed; null until it is. */
+  riskProfile: RiskProfile | null
   preferredChannel: CommunicationChannel
   /** Gross annual income, minor units are not used: whole currency units. */
   annualIncome: number | null
   currency: 'SEK'
+  /** Where the relationship stands: onboarding, active or former, and since when. */
+  lifecycle: ClientLifecycle
 }
 
 export type HouseholdMemberRole =

@@ -1,55 +1,62 @@
 import { Link } from '@tanstack/react-router'
-import { CalendarCheck2, CalendarDays } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { Client360 } from '~/application/advisory/client360'
-import {
-  formatDaysFromToday,
-  formatLongDate,
-  formatMsek,
-  yearOf,
-} from '~/presentation/advisory/format'
+import { cn } from '~/lib/cn'
+import { formatLongDate, formatMsek, yearOf } from '~/presentation/advisory/format'
 import {
   HEALTH_PILL_LABEL,
-  INTERACTION_LABEL,
   SEGMENT_LABEL,
   SEGMENT_PILL_LABEL,
 } from '~/presentation/advisory/text'
 import { ClientPortrait } from './ClientPortrait'
 
 /**
- * The dossier's cover: the portrait in its frame, CLIENT 360, the name in
- * the display face, who they are to the firm, three facts as pills, and the
- * two dates a relationship is measured by. The name carries in from the
- * relationship book (its view-transition name is the client's id) and the
- * frame with it.
+ * The dossier's cover, standing on the room itself: the portrait in its
+ * frame, the kicker, the name in the display face as the dominant element,
+ * one line saying who they are to the firm, three facts as pills — and,
+ * at the right, the two things an advisor does from here: prepare the
+ * meeting, add what happened. The administration of the relationship
+ * stands behind one restrained menu, never on the cover. No panel behind
+ * it: the scene is the cover.
  *
- * No doors here: the recommendation panel beside the dossier holds them,
- * because the thing to do next is JARVIS's to say.
+ * A former relationship says so in its pill and offers no meeting to
+ * prepare; the dossier beneath reads as history.
  */
-export function ClientHero({ view }: { view: Client360 }) {
-  const {
-    client,
-    advisor,
-    household,
-    office,
-    health,
-    lastContact,
-    nextMeeting,
-    balanceSheet,
-  } = view
+export function ClientHero({
+  view,
+  onAddUpdate,
+  updating,
+  menu,
+}: {
+  view: Client360
+  onAddUpdate: () => void
+  updating: boolean
+  /** The overflow menu, where the route provides the lifecycle doors. */
+  menu?: ReactNode
+}) {
+  const { client, advisor, household, office, health, balanceSheet } = view
+  const status = client.lifecycle.status
   return (
-    <header className="ref-panel px-5 pt-5 pb-4">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <ClientPortrait clientId={client.id} displayName={client.displayName} size="lg" />
+    <header className="flex flex-col gap-5 px-2 pt-3 pb-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex min-w-0 items-center gap-6 lg:gap-8">
+        <ClientPortrait clientId={client.id} displayName={client.displayName} size="xl" />
 
-        <div className="min-w-0 flex-1">
-          <p className="type-section text-institution">Client 360</p>
+        <div className="min-w-0">
+          <p className="type-section text-institution">
+            {status === 'former'
+              ? 'Client 360 · Tidigare klient'
+              : status === 'onboarding'
+                ? 'Client 360 · Onboarding'
+                : 'Client 360'}
+          </p>
           <h1
-            className="type-display-name mt-1.5"
+            className="type-display-name mt-1.5 text-[52px] leading-none"
             style={{ viewTransitionName: `client-${client.id}` }}
           >
             {client.displayName}
           </h1>
-          <p className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-content-muted">
+          <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-display text-[15px] leading-snug text-content-muted">
             <span>
               {SEGMENT_LABEL[client.segment]} sedan {yearOf(client.relationshipSince)}
             </span>
@@ -81,59 +88,48 @@ export function ClientHero({ view }: { view: Client360 }) {
               AUM {formatMsek(balanceSheet.assetsWithBank)}
             </li>
             <li className="dossier-pill">{SEGMENT_PILL_LABEL[client.segment]}</li>
-            <li className="dossier-pill">{HEALTH_PILL_LABEL[health.band]}</li>
+            {status === 'former' ? (
+              <li className="dossier-pill">
+                Relation avslutad
+                {client.lifecycle.closure
+                  ? ` ${formatLongDate(client.lifecycle.closure.effectiveDate)}`
+                  : ''}
+              </li>
+            ) : status === 'onboarding' ? (
+              <li className="dossier-pill">
+                Onboarding sedan {formatLongDate(client.lifecycle.since)}
+              </li>
+            ) : (
+              <li className="dossier-pill">{HEALTH_PILL_LABEL[health.band]}</li>
+            )}
           </ul>
         </div>
+      </div>
 
-        {/* The two dates, beside the identity: not cards, a column of facts. */}
-        <dl className="grid shrink-0 grid-cols-2 gap-x-8 gap-y-3 lg:grid-cols-1 lg:border-l lg:border-line lg:pl-5 lg:pt-1">
-          <div className="flex items-start gap-2.5">
-            <CalendarCheck2
-              className="mt-0.5 h-4 w-4 shrink-0 text-[#c9b17a]"
-              aria-hidden="true"
-              strokeWidth={1.5}
-            />
-            <div className="min-w-0">
-              <dt className="type-section">Senaste kontakt</dt>
-              <dd className="mt-0.5 text-[13px] font-medium text-content">
-                {lastContact ? (
-                  <>
-                    {formatLongDate(lastContact.date)}
-                    <span className="type-inst-sub block">
-                      {INTERACTION_LABEL[lastContact.type]}
-                      {view.daysSinceContact !== null &&
-                        ` · ${formatDaysFromToday(-view.daysSinceContact)}`}
-                    </span>
-                  </>
-                ) : (
-                  <span className="type-inst-sub">Ingen kontakt registrerad</span>
-                )}
-              </dd>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <CalendarDays
-              className="mt-0.5 h-4 w-4 shrink-0 text-[#c9b17a]"
-              aria-hidden="true"
-              strokeWidth={1.5}
-            />
-            <div className="min-w-0">
-              <dt className="type-section">Nästa möte</dt>
-              <dd className="mt-0.5 text-[13px] font-medium text-content">
-                {nextMeeting ? (
-                  <>
-                    {formatLongDate(nextMeeting.occursOn)}
-                    <span className="type-inst-sub block">
-                      {formatDaysFromToday(nextMeeting.daysAhead)}
-                    </span>
-                  </>
-                ) : (
-                  <span className="type-inst-sub">Ej bokat</span>
-                )}
-              </dd>
-            </div>
-          </div>
-        </dl>
+      {/* The acts, at the cover's right: the primary in the gold, the second beside it, the rest behind the menu. */}
+      <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end lg:pb-2">
+        {status !== 'former' && (
+          <Link
+            to="/clients/$clientId/meeting-prep"
+            params={{ clientId: client.id }}
+            className="jarvis-gold-btn dossier-cta"
+          >
+            Förbered möte
+            <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" strokeWidth={2} />
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onAddUpdate}
+          aria-pressed={updating}
+          className={cn(
+            'jarvis-ghost-btn dossier-cta',
+            updating && 'bg-[rgb(255_226_170_/_0.12)]',
+          )}
+        >
+          Lägg till klientuppdatering
+        </button>
+        {menu}
       </div>
     </header>
   )
@@ -141,8 +137,8 @@ export function ClientHero({ view }: { view: Client360 }) {
 
 function Separator() {
   return (
-    <span aria-hidden="true" className="text-content-subtle/60">
-      |
+    <span aria-hidden="true" className="text-content-subtle/70">
+      ·
     </span>
   )
 }

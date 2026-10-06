@@ -1,4 +1,5 @@
 import { Building2 } from 'lucide-react'
+import { useState } from 'react'
 import type { OfficeBookView } from '~/application/advisory/officeBook'
 import { cn } from '~/lib/cn'
 import {
@@ -10,6 +11,13 @@ import { officeStatusLines, officeSummaryText } from '~/presentation/advisory/of
 import { ClientBook } from './ClientBook'
 import { officeScope } from './directoryState'
 import { JarvisMark } from './JarvisBlock'
+import {
+  ArchivedOfficeModule,
+  OfficeActPanel,
+  OfficeActionsMenu,
+  type OfficeAct,
+  type OfficeActions,
+} from './lifecycle/OfficeActions'
 
 /**
  * One office's Private Banking book, open: the office's name in the display
@@ -18,8 +26,18 @@ import { JarvisMark } from './JarvisBlock'
  * as the same cards the whole book uses — scoped to the office, with the
  * whole book's search one step away.
  */
-export function OfficeBook({ book }: { book: OfficeBookView }) {
+export function OfficeBook({
+  book,
+  actions,
+  onChanged,
+}: {
+  book: OfficeBookView
+  /** The office's lifecycle doors, where the route provides them. */
+  actions?: OfficeActions
+  onChanged?: () => Promise<void>
+}) {
   const { office, metrics, summary, rows } = book
+  const [act, setAct] = useState<OfficeAct | null>(null)
   const figures: {
     label: string
     value: string
@@ -74,16 +92,31 @@ export function OfficeBook({ book }: { book: OfficeBookView }) {
             {office.city ? ` · ${office.city}` : ''}.
           </p>
         </div>
-        {metrics.nextMeeting && (
-          <p className="type-inst-sub shrink-0 text-right">
-            <span className="type-section block">Nästa möte</span>
-            <span className="tabular mt-0.5 block text-[13px] font-medium text-content">
-              {formatDayMonth(metrics.nextMeeting.date)} ·{' '}
-              {metrics.nextMeeting.displayName}
-            </span>
-          </p>
-        )}
+        <div className="flex shrink-0 items-end gap-5">
+          {metrics.nextMeeting && (
+            <p className="type-inst-sub shrink-0 text-right">
+              <span className="type-section block">Nästa möte</span>
+              <span className="tabular mt-0.5 block text-[13px] font-medium text-content">
+                {formatDayMonth(metrics.nextMeeting.date)} ·{' '}
+                {metrics.nextMeeting.displayName}
+              </span>
+            </p>
+          )}
+          {actions && <OfficeActionsMenu office={office} onChoose={setAct} />}
+        </div>
       </header>
+
+      {act && actions && (
+        <OfficeActPanel
+          act={act}
+          office={office}
+          today={book.today}
+          actions={actions}
+          onDone={async () => onChanged?.()}
+          onClose={() => setAct(null)}
+        />
+      )}
+      {office.status === 'archived' && <ArchivedOfficeModule office={office} />}
 
       <section aria-label="Kontorets nyckeltal" className="ref-panel">
         <dl className="grid grid-cols-3 divide-line sm:divide-x xl:grid-cols-7">

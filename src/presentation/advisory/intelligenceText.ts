@@ -101,7 +101,10 @@ export function signalText(signal: Signal): SignalText {
       }
     case 'birthday-approaching':
       return {
-        signal: `Klienten fyller ${signal.turning} ${formatDayMonth(signal.date)}, ${formatDaysFromToday(signal.daysAhead)}.`,
+        signal:
+          signal.turning === null
+            ? `Klienten har födelsedag ${formatDayMonth(signal.date)}, ${formatDaysFromToday(signal.daysAhead)}.`
+            : `Klienten fyller ${signal.turning} ${formatDayMonth(signal.date)}, ${formatDaysFromToday(signal.daysAhead)}.`,
         why: 'Ett personligt tillfälle att höra av sig.',
         action: 'Skicka en hälsning.',
       }

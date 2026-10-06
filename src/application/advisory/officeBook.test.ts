@@ -41,6 +41,7 @@ describe('the office register', () => {
         displayName: 'Strandvägen',
         city: 'Stockholm',
         status: 'active',
+        archivedAt: null,
       },
     )
     expect(await context.repositories.clients.officeById('of-nope')).toBeNull()
@@ -137,6 +138,7 @@ describe('an office with no clients', () => {
     displayName: 'Tomgatan',
     shortName: 'Tomg.',
     status: 'active',
+    archivedAt: null,
   }
 
   it('is a book of zeros with a calm reading, never an error', async () => {

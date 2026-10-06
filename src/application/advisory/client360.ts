@@ -20,6 +20,7 @@ import {
   lastMeeting,
   nextBestAction,
   nextMeeting,
+  onboardingOverview,
   openCommitments,
   relationshipHealth,
   remindersDue,
@@ -33,6 +34,7 @@ import {
   type Client,
   type ClientFlags,
   type ClientId,
+  type ClientOfficeHistory,
   type ClientMarketImpact,
   type Commitment,
   type ContextFact,
@@ -42,9 +44,11 @@ import {
   type ImportantEvent,
   type Interaction,
   type Liability,
+  type LifecycleEvent,
   type MemoryCandidate,
   type NextBestAction,
   type Office,
+  type OnboardingOverview,
   type Opportunity,
   type Portfolio,
   type RelationshipHealth,
@@ -106,6 +110,12 @@ export interface Client360 {
    * page can answer "what happened lately" after the urgency has passed.
    */
   recentMarketHistory: readonly MarketChangeSince[]
+  /** The book's history for this relationship, newest first. */
+  lifecycleEvents: readonly LifecycleEvent[]
+  /** The offices the relationship has belonged to, oldest first; the current stretch has no end. */
+  officeHistory: readonly ClientOfficeHistory[]
+  /** How far the onboarding has come; null unless the relationship is onboarding. */
+  onboarding: OnboardingOverview | null
   lastContact: Interaction | null
   lastMeeting: Interaction | null
   nextMeeting: UpcomingEvent | null
@@ -131,6 +141,10 @@ export async function client360(
     repositories.clients.officeById(facts.client.officeId),
     repositories.interactions.candidatesOf(clientId),
     marketLedger(context),
+  ])
+  const [lifecycleEvents, officeHistory] = await Promise.all([
+    repositories.lifecycle.eventsOf(clientId),
+    repositories.lifecycle.officeHistoryOf(clientId),
   ])
   const marketHistory = marketChangesSince(
     ledger,
@@ -175,6 +189,12 @@ export async function client360(
     flags: clientFlags(facts, signals, health),
     marketImpacts: assessClient(ledger.active, facts),
     recentMarketHistory: marketHistory,
+    lifecycleEvents,
+    officeHistory,
+    onboarding:
+      facts.client.lifecycle.status === 'onboarding'
+        ? onboardingOverview(facts, household)
+        : null,
     lastContact: lastContact(facts),
     lastMeeting: lastMeeting(facts),
     nextMeeting: meeting

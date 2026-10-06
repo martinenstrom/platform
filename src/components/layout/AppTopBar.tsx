@@ -76,7 +76,7 @@ export function AppTopBar() {
       : null
 
   return (
-    <header className="app-rail sticky top-0 z-30 border-b border-line bg-[#070c14]/92 backdrop-blur-md">
+    <header className="app-rail sticky top-0 z-30 border-b border-line bg-gradient-to-b from-[#060910]/55 to-[#060910]/30 backdrop-blur-[6px]">
       <div className="flex h-[52px] items-center gap-4 pl-4 pr-3">
         <nav aria-label="Var du är" className="min-w-0 flex-1">
           <ol className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
@@ -148,6 +148,11 @@ export function breadcrumbs(
       { label: 'JARVIS', to: '/clients' },
       { label: 'Klienter', to: '/clients' },
     ]
+    if (parts[1] === 'new') return [...crumbs, { label: 'Ny PB-klient' }]
+    if (parts[1] === 'onboarding') return [...crumbs, { label: 'Onboarding' }]
+    if (parts[1] === 'former') return [...crumbs, { label: 'Tidigare klienter' }]
+    if (parts[1] === 'office' && parts[2] === 'new')
+      return [...crumbs, { label: 'Nytt kontor' }]
     if (parts[1] === 'office') {
       crumbs.push({
         label: office?.label ?? parts[2] ?? 'Kontor',
@@ -171,6 +176,8 @@ export function breadcrumbs(
   const NAMED: Record<string, string> = {
     evidence: 'Underlag',
     settings: 'Inställningar',
+    setup: 'Kom igång',
+    recovery: 'Återställning',
     watchlist: 'Bevakning',
     portfolio: 'Portfölj',
     reports: 'Rapporter',

@@ -40,6 +40,8 @@ export type JarvisCapability =
   | 'client-memory'
   | 'office-priorities'
   | 'directory-priorities'
+  /** The book's lifecycle: new, onboarding, former, moved, reactivated, what changed. */
+  | 'book-lifecycle'
   | 'sentinel-queue'
   | 'market-impact'
   | 'market'
@@ -79,8 +81,14 @@ const CLIENT_CAPABILITIES: readonly JarvisCapability[] = [
 const CAPABILITIES: Record<JarvisScope, readonly JarvisCapability[]> = {
   GLOBAL: ['market', 'institution'],
   MARKET: ['market', 'institution'],
-  CLIENT_DIRECTORY: ['directory-priorities', 'sentinel-queue', 'market', 'institution'],
-  OFFICE: ['office-priorities', 'sentinel-queue', 'market', 'institution'],
+  CLIENT_DIRECTORY: [
+    'directory-priorities',
+    'book-lifecycle',
+    'sentinel-queue',
+    'market',
+    'institution',
+  ],
+  OFFICE: ['office-priorities', 'book-lifecycle', 'sentinel-queue', 'market', 'institution'],
   CLIENT: CLIENT_CAPABILITIES,
   MEETING: CLIENT_CAPABILITIES,
   SENTINEL: ['sentinel-queue', 'why-priority', 'market', 'institution'],

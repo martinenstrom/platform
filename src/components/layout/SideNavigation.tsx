@@ -25,7 +25,7 @@ export function SideNavigation() {
     to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`)
 
   return (
-    <div className="app-side-nav sticky top-0 flex h-screen w-14 shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-r from-[#060910]/28 to-[#060910]/6 xl:w-[200px]">
+    <div className="app-side-nav sticky top-0 flex h-screen w-14 shrink-0 flex-col border-r border-seam bg-gradient-to-r from-[#060910]/14 to-transparent xl:w-[200px]">
       <Link
         to="/"
         aria-label="Financial OS — till kommandocentralen"
@@ -110,7 +110,7 @@ export function SideNavigation() {
         </ul>
       </nav>
 
-      <div className="border-t border-white/[0.06] px-2 py-2">
+      <div className="border-t border-hairline px-2 py-2">
         {utilityNav.map((item) => {
           const Icon = item.icon
           return (

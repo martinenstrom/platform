@@ -92,8 +92,10 @@ export function MeetingPackPreview({
     if (!result.ok) {
       setError(
         result.code === 'NOT_FOUND'
-          ? 'Versionen finns inte längre i den här processen.'
-          : FAILURE.SERVICE_UNAVAILABLE!,
+          ? 'Versionen finns inte i registret.'
+          : result.code === 'CORRUPT'
+            ? 'Filen för den här versionen saknas eller stämmer inte längre med registrets kontrollsumma. Återställ dokumenten från en backup.'
+            : FAILURE.SERVICE_UNAVAILABLE!,
       )
       return
     }
@@ -133,7 +135,7 @@ export function MeetingPackPreview({
                   }}
                   aria-current={d === depth ? 'page' : undefined}
                   className={cn(
-                    'type-section rounded-[4px] border px-3 py-1.5 transition-colors',
+                    'type-section rounded-module border px-3 py-1.5 transition-colors',
                     d === depth
                       ? 'border-institution-line bg-institution-soft/60 text-institution'
                       : 'border-line text-content-muted hover:text-content',
@@ -154,9 +156,9 @@ export function MeetingPackPreview({
             <div className="flex items-center gap-2">
               <span
                 className={cn(
-                  'rounded-[3px] px-2 py-[3px] text-[10px] font-semibold tracking-[0.14em] uppercase',
+                  'rounded-chip px-2 py-[3px] text-[10px] font-semibold tracking-[0.14em] uppercase',
                   pack.readiness.state === 'REDO' && 'bg-positive/15 text-positive',
-                  pack.readiness.state === 'GRANSKA' && 'bg-[#e9c46a] text-[#1a1305]',
+                  pack.readiness.state === 'GRANSKA' && 'bg-institution text-[#1a1305]',
                   pack.readiness.state === 'BLOCKERAD' && 'bg-negative/20 text-negative',
                 )}
               >
@@ -172,7 +174,7 @@ export function MeetingPackPreview({
                       aria-hidden="true"
                       className={cn(
                         'mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full',
-                        reason.severity === 'block' ? 'bg-negative' : 'bg-[#e9c46a]',
+                        reason.severity === 'block' ? 'bg-negative' : 'bg-institution',
                       )}
                     />
                     {readinessReasonText(reason)}
@@ -320,7 +322,7 @@ export function MeetingPackPreview({
                     <button
                       type="button"
                       onClick={() => void download(meta)}
-                      className="type-machine inline-flex items-center gap-1 rounded-[3px] border border-line px-2 py-1 text-content-muted transition-colors hover:text-content"
+                      className="type-machine inline-flex items-center gap-1 rounded-chip border border-line px-2 py-1 text-content-muted transition-colors hover:text-content"
                       aria-label={`Ladda ner ${meta.fileName}`}
                     >
                       <Download className="h-3 w-3" aria-hidden="true" />

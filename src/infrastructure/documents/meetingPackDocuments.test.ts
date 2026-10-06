@@ -27,7 +27,7 @@ import {
   type PptxReading,
 } from '~/test/documentReaders'
 import { generateMeetingPack } from './generateMeetingPack'
-import { MeetingPackStore } from './meetingPackStore'
+import { MemoryMeetingPackStore } from './meetingPackStore'
 import { renderPdf } from './pdf'
 import { renderPptx } from './pptx'
 
@@ -241,7 +241,7 @@ describe('generation, versions and the policy', () => {
   })
 
   it('generates both formats under one version, reuses it for an unchanged record, and steps the version when the record moves', async () => {
-    const store = new MeetingPackStore(dir)
+    const store = new MemoryMeetingPackStore(dir)
     const context = contextAt()
     const first = await generateMeetingPack(context, store, {
       clientId: 'cl-dahlqvist',
@@ -311,7 +311,7 @@ describe('generation, versions and the policy', () => {
   })
 
   it('respects versions already on disk from an earlier process', async () => {
-    const store = new MeetingPackStore(dir)
+    const store = new MemoryMeetingPackStore(dir)
     const result = await generateMeetingPack(contextAt(), store, {
       clientId: 'cl-dahlqvist',
       depth: 'full',
@@ -323,7 +323,7 @@ describe('generation, versions and the policy', () => {
   })
 
   it('refuses any audience but the internal advisor, and a blocked record', async () => {
-    const store = new MeetingPackStore(null)
+    const store = new MemoryMeetingPackStore(null)
     const facing = await generateMeetingPack(contextAt(), store, {
       clientId: 'cl-dahlqvist',
       depth: 'full',

@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react'
-import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
+import {
+  Outlet,
+  createRootRoute,
+  HeadContent,
+  redirect,
+  Scripts,
+} from '@tanstack/react-router'
 import { AppLayout } from '~/components/layout/AppLayout'
 import { JarvisPresence } from '~/components/jarvis/JarvisPresence'
 import { getCurrentOperatorFn } from '~/infrastructure/analysis/serverFns'
+import { getSystemStatusFn } from '~/infrastructure/platform/serverFns'
+import { systemGate } from '~/presentation/platform/systemText'
 import appCss from '~/styles/app.css?url'
 
 /*
@@ -14,11 +22,20 @@ const DISPLAY_FONT_URL =
 
 export const Route = createRootRoute({
   /*
-   * Who is here, for the shell's identity mark. The same server-asserted
-   * operator the home page greets; read once and kept, since it does not
-   * change within a session.
+   * Who is here, for the shell's identity mark — the same server-asserted
+   * operator the home page greets — and what the system is: whether the
+   * record exists and opened. Read once and kept, since neither changes
+   * within a session; a page that acts on the system invalidates the
+   * router. No record yet sends the reader to the first-run page; a record
+   * that refused to open sends them to Recovery Mode, before anything else
+   * is read.
    */
-  loader: () => getCurrentOperatorFn(),
+  loader: async ({ location }) => {
+    const [operator, system] = await Promise.all([getCurrentOperatorFn(), getSystemStatusFn()])
+    const gate = systemGate(system, location.pathname)
+    if (gate) throw redirect({ to: gate })
+    return { ...operator, system }
+  },
   staleTime: Infinity,
   head: () => ({
     meta: [

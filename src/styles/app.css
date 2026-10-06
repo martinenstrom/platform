@@ -53,6 +53,36 @@
   --color-institution-soft: #2a1f0d;
   --color-institution-line: rgb(217 164 65 / 0.32);
 
+  /*
+   * The shared shell's line language — Client Intelligence and the rooms
+   * beside it — in one place, so no panel, strip, card, rail or table draws
+   * a line of its own.
+   *
+   *   panel          the surface: deep navy-black with a little of the room
+   *                  sensed through it (never blur)
+   *   panel-border   LEVEL 1 — a major module's edge: one cool steel hairline
+   *   hairline       LEVEL 2 — an internal rule: crisp, quieter, still legible
+   *                  against the photograph
+   *   panel-edge     LEVEL 3 — the restrained champagne edge of a selected or
+   *                  high-value element; gold is spent here and nowhere else
+   *   seam           the structural line between the column and the work
+   *   bar            the workspace bar's surface over the scrolling work
+   *   radius-panel / radius-module / radius-chip — tight-to-medium geometry
+   */
+  --color-panel: rgb(10 15 25 / 0.88);
+  --color-panel-solid: #0b111c;
+  --color-panel-border: #2c3c57;
+  --color-hairline: rgb(150 172 210 / 0.15);
+  --color-hairline-strong: rgb(150 172 210 / 0.28);
+  --color-panel-edge: rgb(226 180 90 / 0.42);
+  --color-seam: rgb(150 172 210 / 0.09);
+  --color-bar: rgb(7 12 20 / 0.94);
+  --radius-panel: 6px;
+  --radius-module: 4px;
+  --radius-chip: 3px;
+  --shadow-panel-sharp:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 1px 0 0 rgb(0 0 0 / 0.55);
+
   /* HUD-only tokens: corner-frame lines and glow shadows read the accent at
      reduced opacity, kept separate so plain `accent` stays a solid, AA colour. */
   --color-hud-line: rgb(76 198 232 / 0.45);
@@ -2663,6 +2693,219 @@
     border-top: 1px solid rgb(255 255 255 / 0.06);
   }
 
+  /* ------------------------------------------------------- the dossier */
+
+  /*
+   * The dossier's module system. One surface (the panel), one edge, and
+   * inside it a quiet head — the icon in a thin gold ring, the label, the
+   * fact opposite — then rows cut by hairlines. Nothing floats, nothing
+   * glows; the hierarchy is carried by type and by the gold ring, which is
+   * the only ornament a module gets.
+   */
+  .dossier-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid rgb(226 180 90 / 0.5);
+    background: rgb(226 180 90 / 0.06);
+    color: #e6c987;
+  }
+  /* A ranked numeral: the same ring, the number in the display face. */
+  .dossier-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid rgb(226 180 90 / 0.5);
+    background: rgb(226 180 90 / 0.06);
+    font-family: var(--font-display);
+    font-size: 14px;
+    line-height: 1;
+    color: #e6c987;
+  }
+  /* Rows inside a module: a hairline between, no fill, no box. */
+  .dossier-row + .dossier-row {
+    border-top: 1px solid var(--color-hairline);
+  }
+  /* A round chevron: the door out of a row or a module. */
+  .dossier-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid var(--color-hairline-strong);
+    color: var(--color-content-muted);
+    transition:
+      border-color 150ms ease,
+      color 150ms ease,
+      background-color 150ms ease;
+  }
+  .dossier-chevron:hover,
+  .dossier-chevron:focus-visible {
+    border-color: rgb(226 180 90 / 0.55);
+    color: #e6c987;
+    background: rgb(226 180 90 / 0.08);
+  }
+  /* A quiet text door: uppercase, gold on hover. */
+  .dossier-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-content-muted);
+    transition: color 150ms ease;
+  }
+  .dossier-link:hover {
+    color: #e6c987;
+  }
+  /* The hero's two actions: the same buttons, set as the reference sets them. */
+  .dossier-cta {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+    padding: 0.7rem 1.15rem;
+  }
+  /* The ghost action on the cover stands over the photograph: it carries its own dark ground. */
+  .jarvis-ghost-btn.dossier-cta {
+    background: rgb(6 9 16 / 0.62);
+  }
+  .jarvis-ghost-btn.dossier-cta:hover {
+    background: rgb(6 9 16 / 0.78);
+  }
+
+  /*
+   * The section band under the hero: one structural strip, the sections
+   * as uppercase labels, the one in view underlined in gold. It stays
+   * under the bar while the dossier scrolls, so the architecture is always
+   * one glance away.
+   */
+  .dossier-band {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-top: 1px solid var(--color-hairline);
+    border-bottom: 1px solid var(--color-hairline);
+    background: rgb(7 12 20 / 0.86);
+    padding: 0 0.25rem;
+  }
+  .dossier-band::-webkit-scrollbar {
+    display: none;
+  }
+  /* Under the narrow column the band may run past the edge: it fades there, so the rest is implied. */
+  @media (max-width: 1279px) {
+    .dossier-band {
+      -webkit-mask-image: linear-gradient(
+        90deg,
+        #000 calc(100% - 48px),
+        transparent 100%
+      );
+      mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent 100%);
+    }
+  }
+  .dossier-band-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.8rem 0.85rem;
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--color-content-muted);
+    transition: color 150ms ease;
+  }
+  .dossier-band-link:hover {
+    color: var(--color-content);
+  }
+  .dossier-band-link[aria-current] {
+    color: #f0dcae;
+  }
+  .dossier-band-link[aria-current]::after {
+    content: '';
+    position: absolute;
+    left: 0.85rem;
+    right: 0.85rem;
+    bottom: -1px;
+    height: 2px;
+    background: var(--color-institution);
+  }
+  /* Every section the band points at stops under the bar and the band. */
+  .dossier-target {
+    scroll-margin-top: 108px;
+  }
+
+  /* The cover's overflow: a quiet menu under "Fler åtgärder", the grave act last and red. */
+  .dossier-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .dossier-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 30;
+    min-width: 15rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-panel-border);
+    border-radius: var(--radius-panel);
+    background: var(--color-panel-solid);
+    box-shadow: var(--shadow-panel-sharp);
+  }
+  .dossier-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--radius-module);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-content);
+    transition: background-color 150ms ease;
+  }
+  .dossier-menu-item:hover {
+    background: rgb(226 180 90 / 0.1);
+    color: #f0dcae;
+  }
+  .dossier-menu-item.is-grave {
+    color: var(--color-negative);
+    border-top: 1px solid var(--color-hairline);
+    border-radius: 0 0 var(--radius-module) var(--radius-module);
+    margin-top: 0.25rem;
+  }
+
+  /* The insight's art: contour lines in the gold, drawn once, at the card's right. */
+  .dossier-wave {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 52%;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 45%);
+    mask-image: linear-gradient(90deg, transparent 0%, #000 45%);
+  }
+
   /*
    * The portrait frame: a thin gold ring standing off the image by a
    * hairline of dark, the way a frame holds a photograph.
@@ -3030,33 +3273,96 @@
 .app-shell {
   --color-institution: #e2b45a;
   --color-institution-line: rgb(226 180 90 / 0.36);
+  /*
+   * One line language for the whole room (the tokens above): every internal
+   * rule a component draws with `border-line` / `divide-line` is the LEVEL 2
+   * hairline, `line-strong` its firmer step, and the panel classes below take
+   * the LEVEL 1 border, the panel surface and the two radii.
+   */
+  --color-line: var(--color-hairline);
+  --color-line-strong: var(--color-hairline-strong);
 }
-.app-shell .ref-panel {
+/* LEVEL 1: the major module. The room is sensed through the surface; the edge is one steel hairline. */
+.app-shell .ref-panel,
+.app-shell .client-card,
+.app-shell .office-tile {
   background:
     linear-gradient(180deg, rgb(255 226 170 / 0.03) 0%, rgb(255 255 255 / 0) 42%),
-    var(--color-surface);
+    var(--color-panel);
+  border-color: var(--color-panel-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel-sharp);
 }
+/* LEVEL 2: internal rules and nested modules. */
+.app-shell .ref-head {
+  border-bottom-color: var(--color-hairline);
+}
+.app-shell .ref-module {
+  border-color: var(--color-hairline-strong);
+  border-radius: var(--radius-module);
+}
+.app-shell .office-tile-insight {
+  border-color: var(--color-hairline);
+  border-radius: var(--radius-module);
+  background: rgb(150 172 210 / 0.04);
+}
+.app-shell .rail-row + .rail-row {
+  border-top-color: var(--color-hairline);
+}
+.app-shell .dossier-pill {
+  border-color: var(--color-hairline-strong);
+}
+/* LEVEL 3: the champagne edge — the recommendation, the gold pill, a lifted card. */
+.app-shell .dossier-pill-gold,
+.app-shell .jarvis-gold,
+.app-shell .office-tile:hover,
+.app-shell .office-tile:focus-visible,
+.app-shell .client-card:hover,
+.app-shell .client-card:focus-visible {
+  border-color: var(--color-panel-edge);
+}
+.app-shell .jarvis-gold {
+  border-radius: var(--radius-panel);
+}
+.app-shell .jarvis-gold-soft {
+  border-radius: var(--radius-module);
+}
+.app-shell .jarvis-gold-btn,
+.app-shell .jarvis-ghost-btn,
+.app-shell .side-nav-link {
+  border-radius: var(--radius-module);
+}
+.app-shell .side-nav-sublink {
+  border-radius: var(--radius-chip);
+}
+/*
+ * The work's own veil: a low pool of navy under the dense content, deepest
+ * where the numbers stand and gone at the edges, so the room is sensed and
+ * never read through a figure — the same room, never a second background.
+ */
+.app-shell main {
+  background: radial-gradient(
+    110% 64% at 56% 70%,
+    rgb(6 9 16 / 0.24) 0%,
+    rgb(6 9 16 / 0.08) 58%,
+    transparent 100%
+  );
+}
+/*
+ * The scene is the reference's own photograph (`.probe/make-scene.mjs`),
+ * so it carries no filter. Its darkened column is 248 px wide at the
+ * reference scale — the presence strip and the wide navigation column at
+ * the reference height. Under the narrow column (below `xl`) the scene
+ * moves left by the width the column gave up, so the darkened column still
+ * ends where the navigation ends and the hero still stands on the water.
+ */
 .app-environment-photo {
-  filter: brightness(1.04) saturate(1.06);
+  background-position: left top;
 }
-/* The scene in focus: exactly as wide as the photograph stands at the viewport's height (272 : 941,
- * plus the 8 px drift margin above and below), so the fade ends where the photograph does and the
- * out-of-focus room beneath — the same scene, aligned — takes over without an edge. */
-.app-environment-focus {
-  width: calc((100vh + 16px) * 0.289);
-  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 48%, transparent 100%);
-  mask-image: linear-gradient(90deg, #000 0%, #000 48%, transparent 100%);
-}
-/* Under the narrow column the photograph would stand in focus beneath the work; it goes out of
- * focus sooner, where the column ends. */
 @media (max-width: 1279px) {
-  .app-environment-focus {
-    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 28%, transparent 72%);
-    mask-image: linear-gradient(90deg, #000 0%, #000 28%, transparent 72%);
+  .app-environment-photo {
+    background-position: -144px top;
   }
-}
-.app-environment-room {
-  filter: saturate(1.05);
 }
 
 .app-rail {

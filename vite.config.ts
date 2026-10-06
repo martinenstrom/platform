@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
         // Probe artefacts and generated meeting packs are written while the
         // server runs; watching them once crashed the server (EBUSY on a file
         // PowerPoint was still writing) and would reload nothing useful.
-        ignored: ['**/.probe/**', '**/.generated/**'],
+        ignored: ['**/.probe/**', '**/.generated/**', '**/release/**'],
       },
     },
     plugins: [

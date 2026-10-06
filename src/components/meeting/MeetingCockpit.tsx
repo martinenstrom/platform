@@ -132,7 +132,7 @@ export function MeetingCockpit({
                     <button
                       type="button"
                       onClick={() => setClosing(true)}
-                      className="type-section mt-2 rounded-[4px] border border-institution-line bg-institution-soft/60 px-3.5 py-2 text-institution transition-colors hover:bg-institution-soft"
+                      className="type-section mt-2 rounded-module border border-institution-line bg-institution-soft/60 px-3.5 py-2 text-institution transition-colors hover:bg-institution-soft"
                     >
                       Registrera mötesanteckning
                     </button>
@@ -255,14 +255,14 @@ function Hero({ cockpit }: { cockpit: MeetingCockpitModel }) {
             to="/clients/$clientId/meeting-pack"
             params={{ clientId: client.id }}
             search={{ depth: 'full' }}
-            className="type-section rounded-[4px] border border-institution-line bg-institution-soft/60 px-3.5 py-2 text-center text-institution transition-colors hover:bg-institution-soft"
+            className="type-section rounded-module border border-institution-line bg-institution-soft/60 px-3.5 py-2 text-center text-institution transition-colors hover:bg-institution-soft"
           >
             Skapa mötesunderlag
           </Link>
           <Link
             to="/clients/$clientId"
             params={{ clientId: client.id }}
-            className="type-section rounded-[4px] border border-line px-3.5 py-2 text-center text-content-muted transition-colors hover:border-line-strong hover:text-content"
+            className="type-section rounded-module border border-line px-3.5 py-2 text-center text-content-muted transition-colors hover:border-line-strong hover:text-content"
           >
             Öppna Klient 360
           </Link>
@@ -271,7 +271,7 @@ function Hero({ cockpit }: { cockpit: MeetingCockpitModel }) {
 
       <section
         aria-label="Mötets huvudfokus"
-        className="mt-3 rounded-[4px] border border-institution-line bg-institution-soft/35 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_var(--color-institution)]"
+        className="mt-3 rounded-module border border-institution-line bg-institution-soft/35 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_var(--color-institution)]"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <span className="type-section text-institution">Mötets huvudfokus</span>
@@ -545,7 +545,7 @@ function Strategy({ cockpit }: { cockpit: MeetingCockpitModel }) {
                   return (
                     <li
                       key={`${o.kind}-${i}`}
-                      className="rounded-[3px] border border-line px-2.5 py-2 text-[12.5px]"
+                      className="rounded-chip border border-line px-2.5 py-2 text-[12.5px]"
                     >
                       <dl className="space-y-0.5">
                         <Row label="Observation" value={t.observation} />
@@ -777,7 +777,7 @@ function Opportunities({ cockpit }: { cockpit: MeetingCockpitModel }) {
             return (
               <li
                 key={o.kind}
-                className="rounded-[3px] border border-line px-2.5 py-2 text-[12.5px]"
+                className="rounded-chip border border-line px-2.5 py-2 text-[12.5px]"
               >
                 <p className="type-section">{t.title}</p>
                 <dl className="mt-0.5 space-y-0.5">

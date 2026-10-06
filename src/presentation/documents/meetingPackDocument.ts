@@ -91,7 +91,7 @@ import {
   IMPORTANCE_LABEL,
   INTERACTION_LABEL,
   LIABILITY_KIND_LABEL,
-  RISK_PROFILE_LABEL,
+  riskProfileLabel,
   SEGMENT_LABEL,
   STRATEGIC_ROLE_LABEL,
 } from '~/presentation/advisory/text'
@@ -379,7 +379,7 @@ function executiveSlide(ctx: Ctx): Built {
         {
           label: 'Riskprofil',
           value: formatRiskProfile(clientSnapshot.riskProfile),
-          detail: RISK_PROFILE_LABEL[clientSnapshot.riskProfile],
+          detail: riskProfileLabel(clientSnapshot.riskProfile),
         },
         {
           label: 'Relationshälsa',
@@ -1318,7 +1318,7 @@ function portfolioSlide(ctx: Ctx): Built {
         {
           label: 'Riskprofil',
           value: formatRiskProfile(s.riskProfile),
-          detail: RISK_PROFILE_LABEL[s.riskProfile],
+          detail: riskProfileLabel(s.riskProfile),
         },
       ],
     },

@@ -1,7 +1,7 @@
+import { Globe } from 'lucide-react'
 import type { ClientMarketImpact } from '~/domain/advisory'
 import type { MarketChangeSince } from '~/application/advisory/marketImpact'
 import { ImpactExplanation } from '~/components/marketImpact/ImpactExplanation'
-import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import {
   changeStatusText,
@@ -15,6 +15,7 @@ import {
   relevanceText,
   SEVERITY_LABEL,
 } from '~/presentation/advisory/marketImpactText'
+import { Empty, Module } from './dossier/Module'
 
 const RELEVANCE_TONE = {
   high: 'text-warning',
@@ -28,35 +29,39 @@ const RELEVANCE_TONE = {
  * by side — and, on request, the five-section explanation. Beneath them,
  * the client-relevant moves that already closed: history, quoted at peak,
  * contributing to no priority. An empty list is an answer — the client's
- * record says nothing the market moved — and the panel says so rather than
- * hiding.
+ * record says nothing the market moved — and the module says so rather
+ * than hiding.
  */
 export function MarketImpactPanel({
   impacts,
   history,
+  className,
 }: {
   impacts: readonly ClientMarketImpact[]
   history: readonly MarketChangeSince[]
+  className?: string
 }) {
   return (
-    <Panel
+    <Module
+      id="marknad"
       title="Marknadspåverkan"
+      icon={Globe}
       meta={
         impacts.length === 0
-          ? 'inga aktuella rörelser berör klienten'
+          ? 'inga aktuella rörelser'
           : `${impacts.length} ${impacts.length === 1 ? 'rörelse' : 'rörelser'} berör klienten`
       }
-      bodyClassName="p-3"
+      className={className}
     >
       {impacts.length === 0 ? (
-        <p className="type-inst-sub">
+        <Empty>
           Inga aktuella marknadsrörelser möter en registrerad exponering eller kontext hos
           den här klienten. Rörelser utan koppling till relationen visas inte.
-        </p>
+        </Empty>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="flex flex-col">
           {impacts.map((impact) => (
-            <li key={impact.id} className="py-2 first:pt-0 last:pb-0">
+            <li key={impact.id} className="dossier-row py-2.5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <p className="text-[13px] font-medium text-content">
                   {marketMoveText(impact.event)}
@@ -73,7 +78,7 @@ export function MarketImpactPanel({
                   </span>
                 </p>
               </div>
-              <p className="mt-0.5 text-[12.5px] leading-snug text-content-muted">
+              <p className="type-inst-sub mt-1 leading-[1.05rem]">
                 {relevanceText(impact)}
                 {concernMatches(impact) && (
                   <span className="text-warning">
@@ -91,7 +96,7 @@ export function MarketImpactPanel({
                 </summary>
                 <ImpactExplanation
                   impact={impact}
-                  className="mt-2 border-l border-line pl-3"
+                  className="mt-2 border-l border-hairline-strong pl-3"
                 />
               </details>
             </li>
@@ -100,11 +105,11 @@ export function MarketImpactPanel({
       )}
       {history.length > 0 && (
         <section
-          className="mt-3 border-t border-line pt-2"
+          className="mt-3 border-t border-hairline pt-3"
           aria-label="Tidigare marknadsrörelser"
         >
           <h3 className="type-section">Tidigare rörelser · senaste 30 dagarna</h3>
-          <ul className="mt-1 space-y-1">
+          <ul className="mt-1.5 space-y-1.5">
             {history.map((change) => (
               <li
                 key={change.impact.event.id + change.impact.event.firstSeenAt}
@@ -127,6 +132,6 @@ export function MarketImpactPanel({
           </ul>
         </section>
       )}
-    </Panel>
+    </Module>
   )
 }

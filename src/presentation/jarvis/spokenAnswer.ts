@@ -31,7 +31,11 @@ import {
 import { priorityTitle, whyNow } from '~/presentation/advisory/sentinelText'
 import { signalText } from '~/presentation/advisory/intelligenceText'
 import { episodeHeadline } from '~/presentation/advisory/marketImpactText'
-import { HEALTH_BAND_LABEL, INTERACTION_LABEL } from '~/presentation/advisory/text'
+import {
+  HEALTH_BAND_LABEL,
+  INTERACTION_LABEL,
+  LIFECYCLE_EVENT_LABEL,
+} from '~/presentation/advisory/text'
 import {
   DEPTH_LABEL,
   readinessReasonText,
@@ -353,6 +357,13 @@ function render(answer: JarvisAnswer): Built {
     case 'DIRECTORY_EXTERNAL_ASSETS':
     case 'SENTINEL_TODAY':
       return done(bookSpeech(answer, note), SPOKEN_LEAD_ITEMS)
+    case 'BOOK_NEW_CLIENTS':
+    case 'BOOK_ONBOARDING':
+    case 'BOOK_FORMER':
+    case 'BOOK_MOVED':
+    case 'BOOK_REACTIVATED':
+    case 'BOOK_CHANGES':
+      return done(lifecycleSpeech(answer, note), SPOKEN_LEAD_ITEMS)
     case 'MARKET_IMPACT_CLIENTS': {
       const episodes = all(answer).filter((i) => i.kind === 'episode')
       if (episodes.length === 0)
@@ -676,6 +687,44 @@ function bookSpeech(answer: JarvisAnswer, note: string | null): string[] {
     rows.length <= SPOKEN_LEAD_ITEMS
       ? `${rows.length === 1 ? 'En klient' : `${rows.length} klienter`}: ${joinAnd(lines)}`
       : `Jag ser ${rows.length} klienter. De ${SPOKEN_LEAD_ITEMS} viktigaste är ${joinAnd(lines)}`
+  return [
+    head,
+    ...(rows.length > SPOKEN_LEAD_ITEMS ? ['Säg till så tar jag resten'] : []),
+  ]
+}
+
+/**
+ * The book's lifecycle aloud: the three latest acts with their dates — and
+ * for an onboarding, how far it has come — then how many more there are.
+ */
+function lifecycleSpeech(answer: JarvisAnswer, note: string | null): string[] {
+  const rows = all(answer).filter(
+    (i) => i.kind === 'onboarding-row' || i.kind === 'lifecycle-entry',
+  )
+  if (rows.length === 0) return [note ?? 'Inget att rapportera ur boken']
+  const changes = answer.intent === 'BOOK_CHANGES'
+  const lines = rows.slice(0, SPOKEN_LEAD_ITEMS).map((row) => {
+    if (row.kind === 'onboarding-row')
+      return `${spokenName(row.row.displayName)}, ${row.overview.known} av ${row.overview.total} områden kartlagda`
+    if (row.kind === 'lifecycle-entry') {
+      const event = row.entry.event
+      const act = changes ? `, ${LIFECYCLE_EVENT_LABEL[event.kind].toLowerCase()}` : ''
+      return `${spokenName(row.entry.subjectName)} ${spokenDate(event.effectiveDate)}${act}`
+    }
+    return ''
+  })
+  const unit = (n: number) =>
+    changes
+      ? n === 1
+        ? 'en förändring'
+        : `${n} förändringar`
+      : n === 1
+        ? 'en klient'
+        : `${n} klienter`
+  const head =
+    rows.length <= SPOKEN_LEAD_ITEMS
+      ? `${cap(unit(rows.length))}: ${joinAnd(lines)}`
+      : `Jag ser ${unit(rows.length)}. De ${SPOKEN_LEAD_ITEMS} senaste är ${joinAnd(lines)}`
   return [
     head,
     ...(rows.length > SPOKEN_LEAD_ITEMS ? ['Säg till så tar jag resten'] : []),

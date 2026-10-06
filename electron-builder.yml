@@ -1,0 +1,35 @@
+# Financial OS — the Windows package.
+#
+# One per-user installer with a Start Menu entry and a desktop shortcut. The
+# application is the built TanStack Start bundle under `dist/` with the
+# desktop host under `desktop/`; production dependencies travel with it.
+# Unsigned in V1: Windows SmartScreen will ask once.
+appId: se.financialos.desktop
+productName: Financial OS
+copyright: Financial OS
+directories:
+  output: release
+  buildResources: build
+files:
+  - desktop/**/*
+  - dist/**/*
+  - build/icon.png
+  - package.json
+  - '!**/*.map'
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.png
+  artifactName: Financial-OS-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Financial OS
+  runAfterFinish: false
+  deleteAppDataOnUninstall: false

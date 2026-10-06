@@ -39,6 +39,7 @@ const client: Client = {
   preferredChannel: 'phone',
   annualIncome: null,
   currency: 'SEK',
+  lifecycle: { status: 'active', since: '2020-01-01', closure: null },
 }
 
 const provenance: Provenance = {

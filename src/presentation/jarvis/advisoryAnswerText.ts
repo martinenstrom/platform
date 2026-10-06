@@ -66,6 +66,8 @@ import {
   GOAL_STATUS_LABEL,
   HEALTH_BAND_LABEL,
   INTERACTION_LABEL,
+  LIFECYCLE_EVENT_LABEL,
+  lifecycleEventDetail,
   OPPORTUNITY_STATUS_LABEL,
 } from '~/presentation/advisory/text'
 import {
@@ -104,6 +106,12 @@ export function answerHeadline(answer: JarvisAnswer): string {
     DIRECTORY_EXTERNAL_ASSETS: 'Störst tillgångar utanför banken',
     SENTINEL_TODAY: 'Behöver dig i dag',
     MARKET_IMPACT_CLIENTS: 'Klienter som berörs',
+    BOOK_NEW_CLIENTS: bookHead(answer, 'Nya klienter'),
+    BOOK_ONBOARDING: bookHead(answer, 'Under onboarding'),
+    BOOK_FORMER: bookHead(answer, 'Tidigare klienter'),
+    BOOK_MOVED: bookHead(answer, 'Flyttade mellan kontor'),
+    BOOK_REACTIVATED: bookHead(answer, 'Återaktiverade PB-relationer'),
+    BOOK_CHANGES: bookHead(answer, 'Förändringar i PB-boken'),
     GENERAL_CLIENT_QUERY: 'Ur relationsminnet',
     MEETING_PACK_FULL: `Mötesunderlag · ${name}`,
     MEETING_PACK_EXECUTIVE: `Executive brief · ${name}`,
@@ -120,6 +128,13 @@ export function answerHeadline(answer: JarvisAnswer): string {
     return `${HEAD[answer.intent]} · ${HEAD[answer.continues]}`
   }
   return HEAD[answer.intent]
+}
+
+/** A book headline: on its own for the whole book, after the office's name for one office. */
+function bookHead(answer: JarvisAnswer, label: string): string {
+  return answer.about.kind === 'office'
+    ? `${answer.about.label}: ${label[0]!.toLowerCase()}${label.slice(1)}`
+    : label
 }
 
 export const SECTION_TITLE: Record<SectionKey, string> = {
@@ -152,6 +167,7 @@ export const SECTION_TITLE: Record<SectionKey, string> = {
   clients: 'Klienter',
   meetings: 'Möten',
   overdue: 'Försenade åtaganden',
+  'book-changes': 'Förändringar i boken',
   episodes: 'Marknadsepisoder',
   memory: 'Ur relationsminnet',
   agenda: 'Agenda',
@@ -183,6 +199,7 @@ export const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   'sentinel-priority': 'Sentinel-prioritet',
   'market-event': 'Marknadshändelse',
   'relationship-health': 'Relationshälsa',
+  'lifecycle-event': 'Relationshändelse',
   client: 'Klient',
 }
 
@@ -207,6 +224,12 @@ const NOTE_TEXT: Record<NoteKind, string> = {
   'no-overdue': 'Inga försenade åtaganden.',
   'no-external-assets': 'Inga tillgångar utanför banken är registrerade.',
   'no-affected-clients': 'Ingen klient berörs meningsfullt av dagens rörelser.',
+  'no-new-clients': 'Inga nya klienter i det urvalet.',
+  'nobody-onboarding': 'Ingen klient är under onboarding.',
+  'no-former-clients': 'Inga avslutade PB-relationer i det urvalet.',
+  'no-moves': 'Inga klienter har flyttats mellan kontor i det urvalet.',
+  'no-reactivations': 'Inga återaktiverade PB-relationer i det urvalet.',
+  'no-book-changes': 'Inga förändringar i PB-boken i det urvalet.',
   'not-answerable-here': 'Det kan jag inte svara på härifrån.',
   unclear: 'Jag uppfattade inte det. Kan du säga det igen?',
   'nothing-to-continue': 'Det finns inget mer att ta från det senaste svaret.',
@@ -412,6 +435,21 @@ export function itemText(
         }
       })()
       return { text: `${r.displayName} · ${r.officeName}`, detail: because }
+    }
+    case 'onboarding-row': {
+      const r = item.row
+      return {
+        text: `${r.displayName} · ${r.officeName}`,
+        detail: `Onboarding sedan ${formatLongDate(r.lifecycle.since)} · ${item.overview.known} av ${item.overview.total} områden kartlagda`,
+      }
+    }
+    case 'lifecycle-entry': {
+      const { event, subjectName, officeName } = item.entry
+      const specifics = lifecycleEventDetail(event.detail, titles)
+      return {
+        text: officeName ? `${subjectName} · ${officeName}` : subjectName,
+        detail: `${LIFECYCLE_EVENT_LABEL[event.kind]} ${formatLongDate(event.effectiveDate)}${specifics ? ` · ${specifics}` : ''}`,
+      }
     }
     case 'episode':
       return {

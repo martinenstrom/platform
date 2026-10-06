@@ -1,8 +1,16 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { Building2 } from 'lucide-react'
 import { OfficeBook } from '~/components/clients/OfficeBook'
 import { PageShell } from '~/components/layout/PageHeader'
 import { EmptyState } from '~/components/ui/EmptyState'
+import type { OfficeActions } from '~/components/clients/lifecycle/OfficeActions'
+import {
+  archiveOfficeFn,
+  getRegisterFn,
+  officeArchiveReviewFn,
+  reactivateOfficeFn,
+  updateOfficeFn,
+} from '~/infrastructure/advisory/lifecycle/serverFns'
 import { getOfficeBookFn } from '~/infrastructure/advisory/serverFns'
 
 /**
@@ -18,6 +26,8 @@ export const Route = createFileRoute('/clients/office/$officeId')({
 
 function OfficePage() {
   const response = Route.useLoaderData()
+  const { officeId } = Route.useParams()
+  const router = useRouter()
   if (!response.ok) {
     return (
       <PageShell>
@@ -45,9 +55,33 @@ function OfficePage() {
       </PageShell>
     )
   }
+  const officeActions: OfficeActions = {
+    update: (values) =>
+      updateOfficeFn({
+        data: {
+          officeId,
+          displayName: values.displayName,
+          shortName: values.shortName,
+          city: values.city,
+          description: values.description || null,
+        },
+      }),
+    archiveReview: () => officeArchiveReviewFn({ data: officeId }),
+    archive: (input) => archiveOfficeFn({ data: { officeId, ...input } }),
+    reactivate: (input) => reactivateOfficeFn({ data: { officeId, ...input } }),
+    destinations: async () => {
+      const register = await getRegisterFn()
+      return register.ok ? register.offices : []
+    },
+  }
+
   return (
     <PageShell className="gap-2">
-      <OfficeBook book={response.book} />
+      <OfficeBook
+        book={response.book}
+        actions={officeActions}
+        onChanged={() => router.invalidate()}
+      />
     </PageShell>
   )
 }

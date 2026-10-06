@@ -127,6 +127,7 @@ export function quickActions(context: JarvisContext): readonly string[] {
         'Vem har möte den här veckan?',
         'Vilka försenade åtaganden finns?',
         'Var finns störst möjlighet?',
+        'Vilka är under onboarding?',
       ]
     case 'CLIENT_DIRECTORY':
       return [
@@ -134,6 +135,7 @@ export function quickActions(context: JarvisContext): readonly string[] {
         'Vilka kunder har möte kommande vecka?',
         'Vilka löften är försenade?',
         'Vilka kunder har stora externa tillgångar?',
+        'Vad ändrades i min PB-bok den här månaden?',
       ]
     case 'SENTINEL':
       return ['Vem behöver mig idag?']
@@ -152,9 +154,9 @@ export function emptyHint(context: JarvisContext): string {
     case 'MEETING':
       return 'Fråga inför mötet: vad de kan fråga, vad du inte slutfört, vilka siffror du behöver kunna.'
     case 'OFFICE':
-      return 'Fråga om kontorets bok: vem som behöver dig, vem du möter, vad som är försenat.'
+      return 'Fråga om kontorets bok: vem som behöver dig, vem du möter, vad som är försenat, vilka som är nya eller under onboarding.'
     case 'CLIENT_DIRECTORY':
-      return 'Fråga om hela boken: vem du borde ringa, vilka möten som kommer, vilka löften som är försenade.'
+      return 'Fråga om hela boken: vem du borde ringa, vilka möten som kommer, vilka löften som är försenade, vad som ändrats i PB-boken.'
     case 'SENTINEL':
       return 'Fråga vem som behöver dig i dag.'
     case 'MARKET_IMPACT':

@@ -21,6 +21,8 @@ export type SourceType =
   | 'sentinel-priority'
   | 'market-event'
   | 'relationship-health'
+  /** One change to the book, as the lifecycle recorded it. */
+  | 'lifecycle-event'
   | 'client'
 
 export interface RecordSource {

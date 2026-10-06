@@ -268,7 +268,10 @@ function researchTurn(
  */
 async function advisory(): Promise<AdvisoryContext> {
   const { advisoryContext } = await import('~/infrastructure/advisory/serverFns')
-  return advisoryContext(() => import('~/infrastructure/advisory/marketSource'))
+  return advisoryContext(
+    () => import('~/infrastructure/advisory/marketSource'),
+    () => import('~/infrastructure/advisory/container'),
+  )
 }
 
 function runtime(getContainer: ContainerGetter): LiveRuntime | null {
@@ -478,7 +481,10 @@ export const askJarvisFn = createServerFn({ method: 'POST' })
     /* The relationship record's one context, reached the way its own doors reach it (TD-107 discipline). */
     const { advisoryContext } = await import('~/infrastructure/advisory/serverFns')
     return typedTurn(data, getContainer, () =>
-      advisoryContext(() => import('~/infrastructure/advisory/marketSource')),
+      advisoryContext(
+        () => import('~/infrastructure/advisory/marketSource'),
+        () => import('~/infrastructure/advisory/container'),
+      ),
     )
   })
 

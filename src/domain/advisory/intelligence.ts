@@ -373,7 +373,7 @@ export type Signal =
       priority: Priority
       date: string
       daysAhead: number
-      turning: number
+      turning: number | null
     }
   | {
       kind: 'opportunity-open'
@@ -513,8 +513,9 @@ export function signalsFor(
         date: event.occursOn,
         daysAhead: ahead,
         turning:
-          Number(event.occursOn.slice(0, 4)) -
-          Number(facts.client.dateOfBirth.slice(0, 4)),
+          facts.client.dateOfBirth === null
+            ? null
+            : Number(event.occursOn.slice(0, 4)) - Number(facts.client.dateOfBirth.slice(0, 4)),
       })
     }
   }

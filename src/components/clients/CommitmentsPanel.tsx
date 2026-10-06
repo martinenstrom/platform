@@ -1,41 +1,46 @@
 import { useState } from 'react'
+import { Handshake } from 'lucide-react'
 import type { Client360 } from '~/application/advisory/client360'
 import type { Commitment } from '~/domain/advisory'
-import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import { formatDaysFromToday, formatLongDate } from '~/presentation/advisory/format'
 import { COMMITMENT_PRIORITY_LABEL } from '~/presentation/advisory/text'
+import { Empty, Module } from './dossier/Module'
 
 /**
  * Promises. The product principle: the advisor never forgets something
  * promised to a client. Open commitments come first, overdue ones cannot be
- * missed, each says which note it came from, and one press closes it.
+ * missed, each says which note it came from, and one press closes it. This
+ * is the one place on the dossier a promise is closed; the priorities open
+ * a door here rather than offering a second button.
  */
 export function CommitmentsPanel({
   view,
   onComplete,
+  className,
 }: {
   view: Client360
   onComplete: (commitmentId: string) => Promise<void>
+  className?: string
 }) {
   const closed = view.commitments.filter((c) => c.status !== 'open')
   const overdue = view.openCommitments.filter((c) => c.overdue).length
   return (
-    <Panel
-      title="Löften och öppna åtaganden"
+    <Module
+      id="ataganden"
+      title="Åtaganden"
+      icon={Handshake}
       meta={
         overdue > 0
           ? `${overdue} försenade · ${view.openCommitments.length} öppna`
           : `${view.openCommitments.length} öppna`
       }
-      bodyClassName="p-3"
+      className={className}
     >
       {view.openCommitments.length === 0 ? (
-        <p className="type-inst-sub">
-          Inga öppna åtaganden. Allt som lovats är levererat.
-        </p>
+        <Empty>Inga öppna åtaganden. Allt som lovats är levererat.</Empty>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="flex flex-col">
           {view.openCommitments.map((commitment) => (
             <CommitmentRow
               key={commitment.id}
@@ -46,13 +51,9 @@ export function CommitmentsPanel({
         </ul>
       )}
       {closed.length > 0 && (
-        <details className="mt-3">
-          <summary className="type-machine cursor-pointer list-none hover:text-content">
-            <span className="underline decoration-dotted underline-offset-2">
-              {closed.length} avslutade
-            </span>
-          </summary>
-          <ul className="mt-1.5 space-y-1">
+        <details className="mt-3 border-t border-hairline pt-3">
+          <summary className="dossier-link list-none">{closed.length} avslutade</summary>
+          <ul className="mt-2 space-y-1">
             {closed.map((c) => (
               <li
                 key={c.id}
@@ -69,7 +70,7 @@ export function CommitmentsPanel({
           </ul>
         </details>
       )}
-    </Panel>
+    </Module>
   )
 }
 
@@ -82,15 +83,17 @@ function CommitmentRow({
 }) {
   const [busy, setBusy] = useState(false)
   return (
-    <li
-      className={cn(
-        'ref-module flex items-start gap-3 px-2.5 py-2',
-        commitment.overdue && 'shadow-[inset_2px_0_0_0_var(--color-negative)]',
-      )}
-    >
+    <li className="dossier-row flex items-start gap-3 py-2.5">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full',
+          commitment.overdue ? 'bg-negative' : 'bg-info',
+        )}
+      />
       <div className="min-w-0 flex-1">
-        <p className="type-inst">{commitment.title}</p>
-        <p className="type-machine mt-0.5">
+        <p className="text-[13px] leading-snug text-content">{commitment.title}</p>
+        <p className="type-machine mt-0.5 normal-case">
           {commitment.dueDate ? (
             <span className={cn(commitment.overdue && 'text-negative')}>
               {commitment.overdue ? 'Försenat · ' : 'Senast '}
@@ -118,9 +121,10 @@ function CommitmentRow({
             setBusy(false)
           }
         }}
-        className="type-section shrink-0 rounded-[3px] border border-line px-2 py-1 text-content-muted transition-colors hover:border-institution-line hover:text-institution disabled:opacity-40"
+        aria-label={`Markera "${commitment.title}" som klart`}
+        className="dossier-link shrink-0 rounded-chip border border-hairline-strong px-2.5 py-1.5 transition-colors hover:border-panel-edge disabled:opacity-40"
       >
-        Markera klart
+        Klart
       </button>
     </li>
   )
@@ -136,7 +140,7 @@ function SourceLine({ commitment }: { commitment: Commitment }) {
           Ur noteringen {formatLongDate(provenance.sourceDate)}
         </span>
       </summary>
-      <blockquote className="mt-1 border-l border-line pl-2 text-[11.5px] italic leading-snug text-content-muted">
+      <blockquote className="mt-1 border-l border-hairline-strong pl-2 text-[11.5px] italic leading-snug text-content-muted">
         ”{provenance.sourceText}”
       </blockquote>
     </details>

@@ -77,7 +77,7 @@ export function AgendaEditor({
           {items.map((item, index) => (
             <li
               key={item.id}
-              className="flex items-center gap-2 rounded-[3px] border border-line px-2 py-1.5"
+              className="flex items-center gap-2 rounded-chip border border-line px-2 py-1.5"
             >
               <span className="type-machine w-5 shrink-0 text-content-subtle">
                 {index + 1}
@@ -92,7 +92,7 @@ export function AgendaEditor({
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
                   aria-label={`Flytta upp: ${item.label}`}
-                  className="type-machine rounded-[3px] border border-line px-1.5 py-0.5 hover:text-content disabled:opacity-30"
+                  className="type-machine rounded-chip border border-line px-1.5 py-0.5 hover:text-content disabled:opacity-30"
                 >
                   ↑
                 </button>
@@ -101,7 +101,7 @@ export function AgendaEditor({
                   onClick={() => move(index, 1)}
                   disabled={index === items.length - 1}
                   aria-label={`Flytta ned: ${item.label}`}
-                  className="type-machine rounded-[3px] border border-line px-1.5 py-0.5 hover:text-content disabled:opacity-30"
+                  className="type-machine rounded-chip border border-line px-1.5 py-0.5 hover:text-content disabled:opacity-30"
                 >
                   ↓
                 </button>
@@ -109,7 +109,7 @@ export function AgendaEditor({
                   type="button"
                   onClick={() => remove(index)}
                   aria-label={`Ta bort: ${item.label}`}
-                  className="type-machine rounded-[3px] border border-line px-1.5 py-0.5 hover:text-negative"
+                  className="type-machine rounded-chip border border-line px-1.5 py-0.5 hover:text-negative"
                 >
                   ×
                 </button>
@@ -138,7 +138,7 @@ export function AgendaEditor({
         <button
           type="submit"
           disabled={draft.trim().length === 0}
-          className="type-section shrink-0 rounded-[4px] border border-line px-3 py-1.5 text-content-muted transition-colors hover:text-content disabled:opacity-40"
+          className="type-section shrink-0 rounded-module border border-line px-3 py-1.5 text-content-muted transition-colors hover:text-content disabled:opacity-40"
         >
           Lägg till
         </button>

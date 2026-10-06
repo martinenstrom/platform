@@ -206,7 +206,7 @@ export interface MeetingPack {
     advisorName: string | null
     segment: ClientSegment
     relationshipSince: string
-    riskProfile: RiskProfile
+    riskProfile: RiskProfile | null
     preferredChannel: CommunicationChannel
   }
   meeting: {
@@ -247,7 +247,7 @@ export interface MeetingPack {
     totalLiabilities: number
     shareOfWalletPercent: number
     externalAssets: number
-    riskProfile: RiskProfile
+    riskProfile: RiskProfile | null
     primaryGoal: Goal | null
     /** The next dated event that is not the meeting itself. */
     nextEvent: UpcomingEvent | null

@@ -259,7 +259,7 @@ export function ClientUpdateFlow({
               <button
                 type="submit"
                 disabled={stage === 'analysing' || noteText.trim().length === 0}
-                className="type-section rounded-[4px] border border-hud-line bg-accent-soft px-3.5 py-2 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
+                className="type-section rounded-module border border-hud-line bg-accent-soft px-3.5 py-2 text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-40"
               >
                 Spara &amp; analysera
               </button>
@@ -351,7 +351,7 @@ export function ClientUpdateFlow({
                         onClick={() => decide(item.id, 'confirm')}
                         aria-pressed={d.decision === 'confirm'}
                         className={cn(
-                          'type-machine rounded-[3px] border px-2 py-1 transition-colors',
+                          'type-machine rounded-chip border px-2 py-1 transition-colors',
                           d.decision === 'confirm'
                             ? 'border-positive text-positive'
                             : 'border-line text-content-muted hover:text-content',
@@ -364,7 +364,7 @@ export function ClientUpdateFlow({
                         onClick={() => decide(item.id, 'discard')}
                         aria-pressed={d.decision === 'discard'}
                         className={cn(
-                          'type-machine rounded-[3px] border px-2 py-1 transition-colors',
+                          'type-machine rounded-chip border px-2 py-1 transition-colors',
                           d.decision === 'discard'
                             ? 'border-negative text-negative'
                             : 'border-line text-content-muted hover:text-content',
@@ -383,7 +383,7 @@ export function ClientUpdateFlow({
               type="button"
               onClick={() => void save(true)}
               disabled={stage === 'saving'}
-              className="type-section rounded-[4px] border border-institution-line bg-institution-soft px-3.5 py-2 text-institution transition-colors hover:bg-institution-soft/70 disabled:opacity-40"
+              className="type-section rounded-module border border-institution-line bg-institution-soft px-3.5 py-2 text-institution transition-colors hover:bg-institution-soft/70 disabled:opacity-40"
             >
               Bekräfta alla
             </button>
@@ -391,7 +391,7 @@ export function ClientUpdateFlow({
               type="button"
               onClick={() => void save(false)}
               disabled={stage === 'saving'}
-              className="type-section rounded-[4px] border border-line px-3.5 py-2 text-content-muted transition-colors hover:text-content disabled:opacity-40"
+              className="type-section rounded-module border border-line px-3.5 py-2 text-content-muted transition-colors hover:text-content disabled:opacity-40"
             >
               Spara {confirmedCount} bekräftade
             </button>
@@ -426,14 +426,14 @@ export function ClientUpdateFlow({
                 setCandidate(null)
                 setSaved(null)
               }}
-              className="type-section rounded-[4px] border border-line px-3 py-1.5 text-content-muted hover:text-content"
+              className="type-section rounded-module border border-line px-3 py-1.5 text-content-muted hover:text-content"
             >
               Ny uppdatering
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="type-section rounded-[4px] border border-line px-3 py-1.5 text-content-muted hover:text-content"
+              className="type-section rounded-module border border-line px-3 py-1.5 text-content-muted hover:text-content"
             >
               Stäng
             </button>

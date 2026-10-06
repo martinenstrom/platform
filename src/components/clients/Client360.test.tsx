@@ -109,7 +109,7 @@ describe('understanding the client in ten seconds', () => {
     /* A Panel is a section headed by an h2; it carries no label of its own. */
     const panel = (name: string) =>
       screen.getByRole('heading', { level: 2, name }).closest('section')!
-    const promises = panel('Löften och öppna åtaganden')
+    const promises = panel('Åtaganden')
     expect(
       within(promises).getByText(
         'Ta fram jämförelse av två alternativ till energifonden',
@@ -128,8 +128,11 @@ describe('understanding the client in ten seconds', () => {
 
   it('names the drivers behind the health score rather than a bare number', async () => {
     const { rendered } = await renderClient(contextAt())
-    const rail = screen.getByRole('complementary', { name: 'Intelligensrail' })
-    const drivers = within(rail).getByRole('list', {
+    /* The relationship lens: the score, its band, and every driver beneath it. */
+    const lens = screen
+      .getByRole('heading', { level: 2, name: 'Relationshälsa' })
+      .closest('section')!
+    const drivers = within(lens).getByRole('list', {
       name: 'Drivkrafter bakom relationshälsan',
     })
     expect(within(drivers).getByText('Kontakt för 11 dagar sedan')).toBeInTheDocument()

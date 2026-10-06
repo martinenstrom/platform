@@ -10,10 +10,10 @@ import {
 } from 'lucide-react'
 import type { Client360 } from '~/application/advisory/client360'
 import type { AssetKind } from '~/domain/advisory'
-import { Panel } from '~/components/ui/Panel'
 import { ASSET_KIND_COLOR } from '~/presentation/advisory/chartData'
 import { formatLongDate, formatMsek } from '~/presentation/advisory/format'
 import { ASSET_KIND_LABEL } from '~/presentation/advisory/text'
+import { Module } from './dossier/Module'
 
 const SOURCE_LABEL: Record<Client360['assets'][number]['source'], string> = {
   bank: 'Handelsbanken',
@@ -35,29 +35,37 @@ const KIND_ICON: Record<AssetKind, LucideIcon> = {
 const SHOWN = 7
 
 /**
- * The largest assets, one compact row each: what it is, where the figure
- * comes from and when it was struck, the value and its share of the whole.
- * An estimate says it is an estimate; the valuation date stands beside it,
+ * The largest assets, one row each: what it is, where the figure comes
+ * from and when it was struck, the value and its share of the whole. An
+ * estimate says it is an estimate; the valuation date stands beside it,
  * so a stale figure cannot pass as a fresh one.
  */
-export function LargestHoldings({ view }: { view: Client360 }) {
+export function LargestHoldings({
+  view,
+  className,
+}: {
+  view: Client360
+  className?: string
+}) {
   const { assets, balanceSheet } = view
   const rows = [...assets].sort((a, b) => b.value - a.value).slice(0, SHOWN)
   const total = balanceSheet.totalAssets
   return (
-    <Panel
-      title="Största innehav"
+    <Module
+      title="Största tillgångar"
+      icon={Landmark}
       meta={
         assets.length > SHOWN
           ? `${SHOWN} av ${assets.length} poster`
           : `${assets.length} poster`
       }
-      bodyClassName="px-4 pt-2 pb-3"
+      className={className}
+      bodyClassName="px-5 pb-3"
     >
-      {/* Fixed columns, so a long title truncates instead of widening the panel. */}
+      {/* Fixed columns, so a long title truncates instead of widening the module. */}
       <table
         className="w-full table-fixed border-collapse text-[12.5px]"
-        aria-label="Största innehav"
+        aria-label="Största tillgångar"
       >
         <thead>
           <tr>
@@ -83,8 +91,8 @@ export function LargestHoldings({ view }: { view: Client360 }) {
             const Icon = KIND_ICON[asset.kind]
             const share = total > 0 ? Math.round((asset.value / total) * 100) : 0
             return (
-              <tr key={asset.id} className="border-t border-white/[0.06]">
-                <td className="py-2 pr-3">
+              <tr key={asset.id} className="border-t border-hairline">
+                <td className="py-2.5 pr-3">
                   <span className="flex items-center gap-2.5">
                     <Icon
                       className="h-[15px] w-[15px] shrink-0"
@@ -93,7 +101,7 @@ export function LargestHoldings({ view }: { view: Client360 }) {
                       style={{ color: ASSET_KIND_COLOR[asset.kind] }}
                     />
                     <span className="min-w-0">
-                      <span className="block truncate font-medium text-content">
+                      <span className="block truncate text-[13px] text-content">
                         {asset.title}
                       </span>
                       <span className="type-inst-sub block truncate text-[11.5px]">
@@ -103,10 +111,10 @@ export function LargestHoldings({ view }: { view: Client360 }) {
                     </span>
                   </span>
                 </td>
-                <td className="tabular py-2 pr-3 text-right font-semibold whitespace-nowrap text-content">
+                <td className="tabular py-2.5 pr-3 text-right font-semibold whitespace-nowrap text-content">
                   {formatMsek(asset.value)}
                 </td>
-                <td className="tabular py-2 text-right whitespace-nowrap text-content-muted">
+                <td className="tabular py-2.5 text-right whitespace-nowrap text-content-muted">
                   {share} %
                 </td>
               </tr>
@@ -114,6 +122,6 @@ export function LargestHoldings({ view }: { view: Client360 }) {
           })}
         </tbody>
       </table>
-    </Panel>
+    </Module>
   )
 }

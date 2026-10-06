@@ -10,13 +10,23 @@
  * then the answer says so and the screen does not move.
  */
 
-import { daysBetween, type Interaction, type InteractionType } from '~/domain/advisory'
+import {
+  daysBetween,
+  type Interaction,
+  type InteractionType,
+  type LifecycleEventKind,
+} from '~/domain/advisory'
 import { askAboutClient } from '~/application/advisory/askAboutClient'
 import { client360, type Client360 } from '~/application/advisory/client360'
 import {
   clientDirectory,
   type ClientDirectoryRow,
 } from '~/application/advisory/clientDirectory'
+import {
+  lifecycleFeed,
+  onboardingOverviewOf,
+  type LifecycleFeedFilter,
+} from '~/application/advisory/lifecycle'
 import { marketImpactBrief } from '~/application/advisory/marketImpact'
 import {
   meetingCockpit,
@@ -30,7 +40,9 @@ import { fallbackSource, sourceIndex, titlesOf } from '~/application/advisory/so
 import {
   recognizeAdvisoryIntent,
   type AdvisoryIntent,
+  type BookPeriod,
   type NamedClient,
+  type NamedOffice,
 } from './advisoryIntent'
 import { canContinue, evidenceOf, itemOf, restOf } from './followUp'
 import type {
@@ -84,12 +96,17 @@ export async function answerAdvisoryLine(
     id: c.id,
     displayName: c.displayName,
   }))
-  const intent = recognizeAdvisoryIntent(text, jarvis, clients)
+  const offices: NamedOffice[] = (await context.repositories.clients.offices()).map(
+    (o) => ({ id: o.id, displayName: o.displayName }),
+  )
+  const intent = recognizeAdvisoryIntent(text, jarvis, clients, offices)
   if (!intent) return null
-  const conversational =
-    intent.kind === 'CLARIFY_CLIENT' || intent.kind.startsWith('FOLLOW_UP')
-  if (!intent.namedClient && !isAdvisoryScope(jarvis.scope) && !conversational)
-    return null
+  /* A continuation, a clarification or a question about the book itself is the record's wherever it is asked. */
+  const anywhere =
+    intent.kind === 'CLARIFY_CLIENT' ||
+    intent.kind.startsWith('FOLLOW_UP') ||
+    intent.kind.startsWith('BOOK_')
+  if (!intent.namedClient && !isAdvisoryScope(jarvis.scope) && !anywhere) return null
   const answer = await answerIntent(context, jarvis, intent, text, previous)
   if (!answer) return null
   return { answer, intent, context: withMeeting(jarvis, answer) }
@@ -132,6 +149,13 @@ async function answerIntent(
       return sentinelAnswer(context, jarvis)
     case 'MARKET_IMPACT_CLIENTS':
       return marketImpactAnswer(context, jarvis)
+    case 'BOOK_NEW_CLIENTS':
+    case 'BOOK_ONBOARDING':
+    case 'BOOK_FORMER':
+    case 'BOOK_MOVED':
+    case 'BOOK_REACTIVATED':
+    case 'BOOK_CHANGES':
+      return bookAnswer(context, jarvis, intent)
     default:
       return clientId ? clientAnswer(context, jarvis, intent, clientId, text) : null
   }
@@ -1051,6 +1075,171 @@ function rowsAnswer(
     method: 'advisory-rules-v1',
     askedAt: context.clock.isoNow(),
   }
+}
+
+/* ------------------------------------------------------ the book's life */
+
+/** More than a book answer shows, so a month's changes are all there; the voice leads with three. */
+const BOOK_MAX = 12
+
+const BOOK_KINDS: Partial<Record<AdvisoryIntentKind, readonly LifecycleEventKind[]>> = {
+  BOOK_NEW_CLIENTS: ['CLIENT_CREATED'],
+  BOOK_FORMER: ['CLIENT_CLOSED'],
+  BOOK_MOVED: ['CLIENT_MOVED_OFFICE'],
+  BOOK_REACTIVATED: ['CLIENT_REACTIVATED'],
+}
+
+/** The first day of the period that contains today: the year's, the month's, the week's Monday. */
+export function periodStart(period: BookPeriod, today: string): string {
+  switch (period) {
+    case 'year':
+      return `${today.slice(0, 4)}-01-01`
+    case 'month':
+      return `${today.slice(0, 7)}-01`
+    case 'week': {
+      const date = new Date(`${today}T00:00:00.000Z`)
+      date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7))
+      return date.toISOString().slice(0, 10)
+    }
+  }
+}
+
+/**
+ * The book's lifecycle, from the record of acts: who was taken in, who is
+ * still being taken in and how far, who left and why, who moved where,
+ * who came back, and everything that changed in a period. An office named
+ * in the line, or the office on screen, narrows the answer; a period
+ * named in the line bounds it. Every item is one recorded act, and the
+ * act is its source.
+ */
+async function bookAnswer(
+  context: AdvisoryContext,
+  jarvis: JarvisContext,
+  intent: AdvisoryIntent,
+): Promise<JarvisAnswer> {
+  const { repositories } = context
+  const [offices, advisors] = await Promise.all([
+    repositories.clients.offices(),
+    repositories.clients.advisors(),
+  ])
+  const scopedOfficeId =
+    intent.office?.id ?? (jarvis.scope === 'OFFICE' ? jarvis.officeId : undefined)
+  const office = scopedOfficeId
+    ? (offices.find((o) => o.id === scopedOfficeId) ?? null)
+    : null
+  const today = context.clock.isoNow().slice(0, 10)
+  const since = intent.period ? periodStart(intent.period, today) : undefined
+  const about: JarvisAbout = office
+    ? {
+        kind: 'office',
+        id: office.id,
+        label: office.displayName,
+        href: `/clients/office/${office.id}`,
+        switched: intent.office !== undefined && intent.office.id !== jarvis.officeId,
+      }
+    : { kind: 'directory', id: null, label: 'Klienter', href: '/clients', switched: false }
+  const names: Record<string, string> = Object.fromEntries([
+    ...offices.map((o) => [o.id, o.displayName] as const),
+    ...advisors.map((a) => [a.id, a.displayName] as const),
+  ])
+  const actions: JarvisAction[] = office
+    ? [{ kind: 'open-office', href: `/clients/office/${office.id}` }]
+    : []
+  const finish = (
+    key: SectionKey,
+    items: JarvisItem[],
+    empty: NoteKind,
+    sources: JarvisSource[],
+    titles: Record<string, string>,
+    doors: JarvisAction[],
+  ): JarvisAnswer => ({
+    scope: jarvis.scope,
+    intent: intent.kind,
+    about,
+    sections: [{ key, items: items.length === 0 ? [note(empty)] : items }],
+    sources,
+    actions: [...doors, ...actions],
+    titles: { ...names, ...titles },
+    today,
+    confidence: 'high',
+    method: 'advisory-rules-v1',
+    askedAt: context.clock.isoNow(),
+  })
+
+  if (intent.kind === 'BOOK_ONBOARDING') {
+    const directory = await clientDirectory(context, 'onboarding')
+    const rows = directory.rows
+      .filter((row) => !office || row.officeId === office.id)
+      .filter((row) => !since || row.lifecycle.since >= since)
+      .sort((a, b) => b.lifecycle.since.localeCompare(a.lifecycle.since))
+      .slice(0, BOOK_MAX)
+    const items: JarvisItem[] = []
+    for (const row of rows) {
+      const overview = await onboardingOverviewOf(context, row.id)
+      if (overview) items.push(item('onboarding-row', { row, overview }, 'fact', [row.id]))
+    }
+    return finish(
+      'clients',
+      items,
+      'nobody-onboarding',
+      rows.map((row) => ({
+        id: row.id,
+        type: 'client' as const,
+        label: row.displayName,
+        date: row.lifecycle.since,
+      })),
+      Object.fromEntries(rows.map((row) => [row.id, row.displayName])),
+      [{ kind: 'open-book', href: '/clients/onboarding' }],
+    )
+  }
+
+  const kinds = BOOK_KINDS[intent.kind]
+  const directed = intent.kind === 'BOOK_MOVED' && office !== null && intent.direction
+  const filter: LifecycleFeedFilter = {
+    ...(since ? { since } : {}),
+    ...(kinds ? { kinds } : {}),
+    ...(office && !directed ? { officeId: office.id } : {}),
+  }
+  let entries = await lifecycleFeed(context, filter)
+  if (directed) {
+    const side = intent.direction === 'to' ? 'toOfficeId' : 'fromOfficeId'
+    entries = entries.filter((entry) => entry.event.detail[side] === office.id)
+  }
+  const shown = [...entries]
+    .sort(
+      (a, b) =>
+        b.event.effectiveDate.localeCompare(a.event.effectiveDate) ||
+        b.event.at.localeCompare(a.event.at),
+    )
+    .slice(0, BOOK_MAX)
+  const empty: NoteKind =
+    intent.kind === 'BOOK_NEW_CLIENTS'
+      ? 'no-new-clients'
+      : intent.kind === 'BOOK_FORMER'
+        ? 'no-former-clients'
+        : intent.kind === 'BOOK_MOVED'
+          ? 'no-moves'
+          : intent.kind === 'BOOK_REACTIVATED'
+            ? 'no-reactivations'
+            : 'no-book-changes'
+  return finish(
+    intent.kind === 'BOOK_CHANGES' ? 'book-changes' : 'clients',
+    shown.map((entry) => item('lifecycle-entry', { entry }, 'fact', [entry.event.id])),
+    empty,
+    shown.map((entry) => ({
+      id: entry.event.id,
+      type: 'lifecycle-event' as const,
+      label: entry.subjectName,
+      date: entry.event.effectiveDate,
+    })),
+    Object.fromEntries(
+      shown.flatMap((entry) => [
+        [entry.event.id, entry.subjectName] as const,
+        [entry.event.subjectId, entry.subjectName] as const,
+      ]),
+    ),
+    intent.kind === 'BOOK_FORMER' ? [{ kind: 'open-book', href: '/clients/former' }] : [],
+  )
 }
 
 async function sentinelAnswer(

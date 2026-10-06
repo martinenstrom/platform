@@ -147,7 +147,7 @@ function BlockView({ block }: { block: PackBlock }) {
           className={cn(
             'grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6',
             block.lead &&
-              'rounded-[4px] border border-line bg-surface-2 px-3 py-2 lg:grid-cols-4',
+              'rounded-module border border-line bg-surface-2 px-3 py-2 lg:grid-cols-4',
           )}
         >
           {block.items.map((item) => (
@@ -247,7 +247,7 @@ function BlockView({ block }: { block: PackBlock }) {
       return (
         <div
           className={cn(
-            'rounded-[4px] border px-3 py-2',
+            'rounded-module border px-3 py-2',
             block.tone === 'gold'
               ? 'border-institution-line jarvis-gold-soft'
               : block.tone === 'warning'
@@ -531,7 +531,7 @@ function ChartView({ block }: { block: Extract<PackBlock, { kind: 'chart' }> }) 
           >
             <span className="truncate text-content-muted">{category}</span>
             {block.chart === 'stacked-bar' ? (
-              <div className="flex h-3 w-full overflow-hidden rounded-[2px] bg-white/[0.06]">
+              <div className="flex h-3 w-full overflow-hidden rounded-[2px] bg-hairline">
                 {block.series
                   .filter((s) => (s.values[c] ?? 0) > 0)
                   .map((s) => (

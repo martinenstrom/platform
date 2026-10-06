@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "node .output/server/index.mjs",
+    "start": "node desktop/run-node.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,7 +19,10 @@
     "dev:prove-synthesis": "npx vite-node scripts/prove-office-synthesis.ts --",
     "dev:ingest-prices": "npx vite-node scripts/ingest-prices.ts --",
     "dev:ingest-yields": "npx vite-node scripts/ingest-yields.ts --",
-    "dev:measure-governance": "npx vite-node scripts/measure-governance-contexts.ts --"
+    "dev:measure-governance": "npx vite-node scripts/measure-governance-contexts.ts --",
+    "desktop": "electron desktop/main.mjs",
+    "desktop:package": "vite build && electron-builder --config electron-builder.yml --win nsis",
+    "desktop:probe": "node desktop/probe-desktop.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -40,6 +43,7 @@
     "world-atlas": "^2.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
@@ -52,6 +56,8 @@
     "@types/three": "^0.185.1",
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "embedded-postgres": "^18.4.0-beta.17",
     "jsdom": "^29.1.1",
     "jszip": "^3.10.2",
@@ -62,5 +68,8 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
-  }
+  },
+  "main": "desktop/main.mjs",
+  "description": "Financial OS — ett personligt operativsystem för Private Banking-rådgivning",
+  "author": "Martin Enström"
 }

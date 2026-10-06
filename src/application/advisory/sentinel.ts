@@ -12,6 +12,7 @@
 import {
   assessClient,
   comparePriorities,
+  contributesToActiveBook,
   daysBetween,
   isIsoDate,
   lastContact,
@@ -102,7 +103,8 @@ function decidingDisposition(
 export async function sentinelBrief(context: AdvisoryContext): Promise<SentinelBrief> {
   const { repositories } = context
   const today = todayOf(context)
-  const clients = await repositories.clients.list()
+  /* Only active relationships are judged: a former client is never a priority, an onboarding one not yet. */
+  const clients = (await repositories.clients.list()).filter(contributesToActiveBook)
   const dispositions = await repositories.sentinel.dispositions()
   const offices = new Map((await repositories.clients.offices()).map((o) => [o.id, o]))
   /* The market, once for the whole brief: the same events every client is judged against. */

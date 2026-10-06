@@ -155,7 +155,7 @@ export type BriefItem =
   | { kind: 'relationship-since'; since: string; sourceIds: readonly string[] }
   | { kind: 'total-wealth'; amount: number; sourceIds: readonly string[] }
   | { kind: 'aum'; amount: number; sourceIds: readonly string[] }
-  | { kind: 'risk-profile'; profile: RiskProfile; sourceIds: readonly string[] }
+  | { kind: 'risk-profile'; profile: RiskProfile | null; sourceIds: readonly string[] }
   | { kind: 'primary-goal'; goalId: string; title: string; sourceIds: readonly string[] }
   | {
       kind: 'known-concern'
@@ -226,7 +226,7 @@ export interface StrategyStatus {
     shareOfFinancialPercent: number
     strategicCashPercent: number | null
   }
-  riskProfile: RiskProfile
+  riskProfile: RiskProfile | null
   goalsAffected: readonly Goal[]
   observations: readonly StrategyObservation[]
   /** True when the client has no managed portfolio to compare. */

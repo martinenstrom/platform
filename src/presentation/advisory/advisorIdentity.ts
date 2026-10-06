@@ -51,3 +51,16 @@ export function advisorIdentityOf(
 export function workspaceAdvisor(): AdvisorIdentity {
   return advisorIdentityOf(WORKSPACE_ADVISOR_ID)
 }
+
+/**
+ * The workspace's advisor as the record carries them: the id, and the
+ * first name a client's page speaks of. What a new Financial OS is set up
+ * for, before its first relationship.
+ */
+export function workspaceAdvisorRecord(): Advisor {
+  const identity = workspaceAdvisor()
+  return {
+    id: identity.advisorId,
+    displayName: identity.fullName.split(' ')[0] ?? identity.fullName,
+  }
+}

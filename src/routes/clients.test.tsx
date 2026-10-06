@@ -36,7 +36,10 @@ describe('the client routes', () => {
       const infrastructureImports = [
         ...source.matchAll(/from '~\/infrastructure\/([^']+)'/g),
       ].map((m) => m[1])
-      expect(infrastructureImports).toEqual(['advisory/serverFns'])
+      /* The doors: the advisory server functions and the lifecycle ones — nothing else in the layer. */
+      expect(infrastructureImports.length).toBeGreaterThan(0)
+      for (const door of infrastructureImports)
+        expect(['advisory/serverFns', 'advisory/lifecycle/serverFns']).toContain(door)
       /* The client page derives nothing: no domain rule is called from a route. */
       expect(source).not.toMatch(/^import (?!type).*from '~\/domain\/advisory'/m)
       expect(source).not.toMatch(/from '~\/data\/mockData'/)

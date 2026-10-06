@@ -1,41 +1,50 @@
+import { ChartPie } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import type { Client360 } from '~/application/advisory/client360'
-import { Panel } from '~/components/ui/Panel'
 import { cn } from '~/lib/cn'
 import { wealthSlices } from '~/presentation/advisory/chartData'
 import { formatLongDate, formatMsek, formatPct } from '~/presentation/advisory/format'
+import { Module } from './dossier/Module'
 
 /**
- * The whole financial situation by kind — property, portfolio, pension,
- * company, cash — as a donut with the total in its centre, the legend
- * beside it with the share and the amount, and the three totals the
- * balance sheet derives beneath. The assets themselves stand in the
- * holdings panel beside this one.
+ * The wealth snapshot: the whole financial situation by kind — property,
+ * portfolio, pension, company, cash — as a donut with the total in its
+ * centre, the legend beside it with the share and the amount, and the
+ * three totals the balance sheet derives beneath. The assets themselves
+ * stand in the holdings module.
  */
-export function WealthStructure({ view }: { view: Client360 }) {
+export function WealthStructure({
+  view,
+  className,
+}: {
+  view: Client360
+  className?: string
+}) {
   const { balanceSheet } = view
   const slices = wealthSlices(balanceSheet)
   /* "34,2" and "MSEK": the amount in the centre, the unit beneath it. */
   const [amount, unit] = formatMsek(balanceSheet.totalAssets).split(' ')
   return (
-    <Panel
-      title="Förmögenhetsstruktur"
+    <Module
+      id="formogenhet"
+      title="Förmögenhetens sammansättning"
+      icon={ChartPie}
       meta={
         balanceSheet.oldestValuationAt
-          ? `Äldsta värdering ${formatLongDate(balanceSheet.oldestValuationAt)}`
+          ? `Uppdaterad ${formatLongDate(balanceSheet.oldestValuationAt)}`
           : undefined
       }
-      bodyClassName="p-4"
+      className={className}
     >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-        <figure className="relative m-0 h-[156px] w-[156px] shrink-0 self-center">
+        <figure className="relative m-0 h-[150px] w-[150px] shrink-0 self-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={slices}
                 dataKey="value"
                 nameKey="label"
-                innerRadius="72%"
+                innerRadius="74%"
                 outerRadius="100%"
                 paddingAngle={1.5}
                 stroke="#0b111c"
@@ -57,12 +66,15 @@ export function WealthStructure({ view }: { view: Client360 }) {
           </figcaption>
         </figure>
 
-        <ul className="min-w-0 flex-1 space-y-2" aria-label="Tillgångar per slag">
+        <ul className="min-w-0 flex-1" aria-label="Tillgångar per slag">
           {slices.map((slice) => (
-            <li key={slice.id} className="flex items-center gap-2 text-[12px]">
+            <li
+              key={slice.id}
+              className="dossier-row flex items-center gap-2.5 py-1.5 text-[12.5px]"
+            >
               <span
                 aria-hidden="true"
-                className="h-2 w-2 shrink-0 rounded-full"
+                className="h-2 w-2 shrink-0 rounded-[1px]"
                 style={{ backgroundColor: slice.color }}
               />
               <span
@@ -71,23 +83,23 @@ export function WealthStructure({ view }: { view: Client360 }) {
               >
                 {slice.label}
               </span>
-              <span className="tabular w-12 shrink-0 text-right font-semibold text-content">
-                {formatPct(slice.percent, 1)}
-              </span>
-              <span className="tabular w-[74px] shrink-0 text-right text-content-subtle">
+              <span className="tabular w-[76px] shrink-0 text-right text-content">
                 {formatMsek(slice.value)}
+              </span>
+              <span className="tabular w-11 shrink-0 text-right font-semibold text-content">
+                {formatPct(slice.percent, 0)}
               </span>
             </li>
           ))}
         </ul>
       </div>
 
-      <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3">
+      <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-hairline pt-3">
         <Total label="Tillgångar" value={balanceSheet.totalAssets} />
         <Total label="Skulder" value={balanceSheet.totalLiabilities} negative />
         <Total label="Netto" value={balanceSheet.netWorth} />
       </dl>
-    </Panel>
+    </Module>
   )
 }
 
@@ -105,7 +117,7 @@ function Total({
       <dt className="type-section">{label}</dt>
       <dd
         className={cn(
-          'type-display-figure-sm mt-1 text-[20px]',
+          'type-display-figure-sm mt-1 text-[19px]',
           negative && value > 0 ? 'text-negative' : 'text-content',
         )}
       >

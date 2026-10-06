@@ -70,7 +70,22 @@ import { FakeClock, systemClock, type Clock } from '~/domain/shared/clock'
 
 export type AdvisoryReadFailure = 'NOT_FOUND' | 'SERVICE_UNAVAILABLE'
 
-let cached: AdvisoryContext | null = null
+/*
+ * One opening per PROCESS, shared by every door that arrives while it is in
+ * flight — kept on `globalThis`, not in module scope. The lifecycle doors
+ * live in a module of their own and the dev server can hold more than one
+ * instance of this module; a module-local cache gave each instance its own
+ * record, so an office created through one door was missing behind another.
+ */
+const CONTEXT_KEY = Symbol.for('financial-os:advisory-context')
+type ContextRegistry = { [CONTEXT_KEY]?: Promise<AdvisoryContext> | null }
+const registry = globalThis as unknown as ContextRegistry
+function cachedContext(): Promise<AdvisoryContext> | null {
+  return registry[CONTEXT_KEY] ?? null
+}
+function rememberContext(value: Promise<AdvisoryContext> | null): void {
+  registry[CONTEXT_KEY] = value
+}
 
 /**
  * The market source module, loaded by each handler with a dynamic import
@@ -81,6 +96,16 @@ let cached: AdvisoryContext | null = null
  */
 type MarketSourceModule = typeof import('./marketSource')
 type LoadMarketSource = () => Promise<MarketSourceModule>
+/*
+ * The composition root the same way: the loader is written inside each
+ * handler body. A module-level `import('./container')` — even inside a
+ * helper nobody on the client calls — is followed by the client build while
+ * it maps the graph, and the SQLite driver and the file system behind the
+ * root are a hard error there (measured: the whole backup engine entered
+ * the browser graph through one such helper).
+ */
+type ContainerModule = typeof import('./container')
+type LoadContainer = () => Promise<ContainerModule>
 
 /**
  * The clock the synthetic record is seeded and read against.
@@ -110,17 +135,43 @@ function advisoryClock(): Clock {
  */
 export function advisoryContext(
   loadMarketSource: LoadMarketSource,
+  loadContainer: LoadContainer,
 ): Promise<AdvisoryContext> {
-  return getContext(loadMarketSource)
+  return getContext(loadMarketSource, loadContainer)
 }
 
-async function getContext(loadMarketSource: LoadMarketSource): Promise<AdvisoryContext> {
-  if (cached) return cached
-  const [{ createAdvisoryContext }, { createMarketObservationSource }] =
-    await Promise.all([import('./container'), loadMarketSource()])
-  const clock = advisoryClock()
-  cached = createAdvisoryContext(clock, createMarketObservationSource(clock))
-  return cached
+function getContext(
+  loadMarketSource: LoadMarketSource,
+  loadContainer: LoadContainer,
+): Promise<AdvisoryContext> {
+  const existing = cachedContext()
+  if (existing) return existing
+  const opening = (async () => {
+    const [{ createAdvisoryContext }, { createMarketObservationSource }] =
+      await Promise.all([loadContainer(), loadMarketSource()])
+    const clock = advisoryClock()
+    return createAdvisoryContext(clock, createMarketObservationSource(clock))
+  })()
+  rememberContext(opening)
+  /* A store that refused to open is asked again on the next door, not remembered as refused. */
+  opening.catch(() => {
+    if (cachedContext() === opening) rememberContext(null)
+  })
+  return opening
+}
+
+/**
+ * Forget the process's context so the next door opens the record afresh —
+ * after the first-run page created it, after a restore swapped the files.
+ * The platform doors call this; nothing else should.
+ */
+export function resetAdvisoryContext(): void {
+  rememberContext(null)
+}
+
+/** The clock the platform doors stamp their acts with: the same one the record reads. */
+export function platformClock(): Clock {
+  return advisoryClock()
 }
 
 export type ClientDirectoryResponse =
@@ -129,7 +180,10 @@ export type ClientDirectoryResponse =
 export const getClientDirectoryFn = createServerFn({ method: 'POST' }).handler(
   async (): Promise<ClientDirectoryResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return { ok: true, directory: await clientDirectory(context) }
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -145,7 +199,10 @@ export const getOfficeBookFn = createServerFn({ method: 'POST' })
   .validator((officeId: string) => officeId)
   .handler(async ({ data: officeId }): Promise<OfficeBookResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const book = await officeBook(context, officeId)
       return book ? { ok: true, book } : { ok: false, code: 'NOT_FOUND' }
     } catch {
@@ -160,7 +217,10 @@ export const getClient360Fn = createServerFn({ method: 'POST' })
   .validator((clientId: string) => clientId)
   .handler(async ({ data: clientId }): Promise<Client360Response> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const view = await client360(context, clientId)
       return view ? { ok: true, view } : { ok: false, code: 'NOT_FOUND' }
     } catch {
@@ -176,7 +236,10 @@ export const getMeetingCockpitFn = createServerFn({ method: 'POST' })
   .validator((clientId: string) => clientId)
   .handler(async ({ data: clientId }): Promise<MeetingCockpitResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const cockpit = await meetingCockpit(context, clientId)
       return cockpit ? { ok: true, cockpit } : { ok: false, code: 'NOT_FOUND' }
     } catch {
@@ -192,7 +255,10 @@ export const askBeforeMeetingFn = createServerFn({ method: 'POST' })
   .validator((input: AskBeforeMeetingInput) => input)
   .handler(async ({ data }): Promise<AskBeforeMeetingResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await askBeforeMeeting(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -215,7 +281,10 @@ export const recordClientUpdateFn = createServerFn({ method: 'POST' })
   .validator((input: RecordClientUpdateRequest) => input)
   .handler(async ({ data }): Promise<RecordClientUpdateResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await recordClientUpdate(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -234,7 +303,10 @@ export const confirmClientUpdateFn = createServerFn({ method: 'POST' })
   .validator((input: ConfirmClientUpdateRequest) => input)
   .handler(async ({ data }): Promise<ConfirmClientUpdateResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await confirmClientUpdate(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -248,7 +320,10 @@ export const completeCommitmentFn = createServerFn({ method: 'POST' })
   .validator((commitmentId: string) => commitmentId)
   .handler(async ({ data: commitmentId }): Promise<CompleteCommitmentResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await completeCommitment(context, commitmentId)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -262,7 +337,10 @@ export const askAboutClientFn = createServerFn({ method: 'POST' })
   .validator((input: { clientId: string; question: string }) => input)
   .handler(async ({ data }): Promise<AskAboutClientResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await askAboutClient(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -278,7 +356,10 @@ export type SentinelBriefResponse =
 export const getSentinelBriefFn = createServerFn({ method: 'POST' }).handler(
   async (): Promise<SentinelBriefResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return { ok: true, brief: await sentinelBrief(context) }
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -299,7 +380,10 @@ export type MarketImpactResponse =
 export const getMarketImpactFn = createServerFn({ method: 'POST' }).handler(
   async (): Promise<MarketImpactResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return { ok: true, brief: await marketImpactBrief(context) }
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -315,7 +399,10 @@ export const disposePriorityFn = createServerFn({ method: 'POST' })
   .validator((input: DisposeInput) => input)
   .handler(async ({ data }): Promise<DisposePriorityResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       return await disposePriority(context, data)
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -343,15 +430,19 @@ export const getMeetingPackFn = createServerFn({ method: 'POST' })
   .validator((input: MeetingPackRequest) => input)
   .handler(async ({ data }): Promise<MeetingPackResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const pack = await meetingPack(context, data.clientId, data.depth)
       if (!pack) return { ok: false, code: 'NOT_FOUND' }
       const { meetingPackStore } =
         await import('~/infrastructure/documents/meetingPackStore')
+      const store = await meetingPackStore()
       return {
         ok: true,
         pack,
-        versions: meetingPackStore().listForClient(pack.identity.clientId, pack.depth),
+        versions: store.listForClient(pack.identity.clientId, pack.depth),
       }
     } catch {
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
@@ -376,12 +467,15 @@ export const generateMeetingPackFn = createServerFn({ method: 'POST' })
   .validator((input: GenerateMeetingPackRequest) => input)
   .handler(async ({ data }): Promise<GenerateMeetingPackResponse> => {
     try {
-      const context = await getContext(() => import('./marketSource'))
+      const context = await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const [{ generateMeetingPack }, { meetingPackStore }] = await Promise.all([
         import('~/infrastructure/documents/generateMeetingPack'),
         import('~/infrastructure/documents/meetingPackStore'),
       ])
-      return await generateMeetingPack(context, meetingPackStore(), {
+      return await generateMeetingPack(context, await meetingPackStore(), {
         clientId: data.clientId,
         depth: data.depth,
         formats: data.formats,
@@ -394,23 +488,34 @@ export const generateMeetingPackFn = createServerFn({ method: 'POST' })
 
 export type DownloadMeetingPackResponse =
   | { ok: true; meta: GeneratedPackMeta; base64: string }
-  | { ok: false; code: 'NOT_FOUND' | 'SERVICE_UNAVAILABLE' }
+  /** CORRUPT: the record knows the version but its file is missing or no longer matches the checksum taken when it was generated. */
+  | { ok: false; code: 'NOT_FOUND' | 'CORRUPT' | 'SERVICE_UNAVAILABLE' }
 
-/** A generated version's bytes again, by its id; an earlier version is never rewritten. */
+/**
+ * A generated version's bytes again, by its id, proved against the
+ * checksum the record holds; an earlier version is never rewritten, and a
+ * file that no longer matches is reported rather than served.
+ */
 export const downloadMeetingPackFn = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
   .handler(async ({ data: id }): Promise<DownloadMeetingPackResponse> => {
     try {
+      await getContext(
+        () => import('./marketSource'),
+        () => import('./container'),
+      )
       const { meetingPackStore } =
         await import('~/infrastructure/documents/meetingPackStore')
-      const generated = meetingPackStore().get(id)
+      const generated = (await meetingPackStore()).get(id)
       if (!generated) return { ok: false, code: 'NOT_FOUND' }
       return {
         ok: true,
         meta: generated.meta,
         base64: generated.bytes.toString('base64'),
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === 'DocumentIntegrityError')
+        return { ok: false, code: 'CORRUPT' }
       return { ok: false, code: 'SERVICE_UNAVAILABLE' }
     }
   })

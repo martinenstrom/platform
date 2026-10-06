@@ -13,6 +13,7 @@ import {
 } from '~/presentation/advisory/directoryView'
 import { formatLongDate } from '~/presentation/advisory/format'
 import { SEGMENT_LABEL } from '~/presentation/advisory/text'
+import { useRecordLabel } from '../platform/recordLabel'
 import { ClientCard } from './ClientCard'
 import {
   updateDirectoryState,
@@ -53,6 +54,7 @@ export function ClientBook({
 }) {
   const { query, filter, sort } = useDirectoryState(scope)
   const [more, setMore] = useState(false)
+  const record = useRecordLabel()
   const showSecondary =
     secondaryFilters.length > 0 && (more || secondaryFilters.includes(filter))
 
@@ -75,7 +77,7 @@ export function ClientBook({
         onClick={() => updateDirectoryState(scope, { filter: id })}
         aria-pressed={filter === id}
         className={cn(
-          'rounded-[3px] border px-1.5 py-0.5 text-[11.5px] transition-colors',
+          'rounded-chip border px-1.5 py-0.5 text-[11.5px] transition-colors',
           filter === id
             ? 'border-institution-line bg-institution-soft text-institution'
             : 'border-line text-content-muted hover:border-line-strong hover:text-content',
@@ -125,7 +127,7 @@ export function ClientBook({
                     type="button"
                     onClick={() => setMore((v) => !v)}
                     aria-expanded={showSecondary}
-                    className="type-machine rounded-[3px] border border-dashed border-line px-1.5 py-[3px] text-content-subtle transition-colors hover:border-line-strong hover:text-content"
+                    className="type-machine rounded-chip border border-dashed border-line px-1.5 py-[3px] text-content-subtle transition-colors hover:border-line-strong hover:text-content"
                   >
                     {showSecondary ? 'Färre filter' : 'Fler filter'}
                   </button>
@@ -173,7 +175,7 @@ export function ClientBook({
       )}
       <p className="type-machine px-1">
         {shown.length} av {rows.length} klienter · derivat per {formatLongDate(today)} ·{' '}
-        {method} · syntetiska klienter
+        {method} · {record}
       </p>
     </section>
   )

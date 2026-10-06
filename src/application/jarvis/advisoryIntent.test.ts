@@ -153,3 +153,73 @@ describe('in the book, the office, Sentinel and Marknadspåverkan', () => {
     expect(kind('Vad ska jag ta upp på mötet?', MARKET)).toBeNull()
   })
 })
+
+describe('the book’s lifecycle', () => {
+  const OFFICES = [
+    { id: 'of-strandvagen', displayName: 'Strandvägen' },
+    { id: 'of-arbetargatan', displayName: 'Arbetargatan' },
+  ]
+  const read = (text: string, context = DIRECTORY) =>
+    recognizeAdvisoryIntent(text, context, CLIENTS, OFFICES)
+
+  it('reads who came, who is being taken in, who left, who moved, who came back, what changed', () => {
+    expect(read('Vilka nya klienter har jag?')?.kind).toBe('BOOK_NEW_CLIENTS')
+    expect(read('Vilka är under onboarding?', OFFICE)?.kind).toBe('BOOK_ONBOARDING')
+    expect(read('Vilka kunder lämnade i år?')).toMatchObject({
+      kind: 'BOOK_FORMER',
+      period: 'year',
+    })
+    expect(read('Vilka har återaktiverats?')?.kind).toBe('BOOK_REACTIVATED')
+    expect(read('Vad ändrades i min PB-bok den här månaden?')).toMatchObject({
+      kind: 'BOOK_CHANGES',
+      period: 'month',
+    })
+    expect(read('Which clients left this year?')).toMatchObject({
+      kind: 'BOOK_FORMER',
+      period: 'year',
+    })
+    expect(read('Vad hände i boken i veckan?')).toMatchObject({
+      kind: 'BOOK_CHANGES',
+      period: 'week',
+    })
+  })
+
+  it('resolves an office the line names, with the direction of a move', () => {
+    expect(read('Visa tidigare klienter från Strandvägen')).toMatchObject({
+      kind: 'BOOK_FORMER',
+      office: { id: 'of-strandvagen' },
+      direction: 'from',
+    })
+    expect(read('Vilka flyttades till Arbetargatan?')).toMatchObject({
+      kind: 'BOOK_MOVED',
+      office: { id: 'of-arbetargatan' },
+      direction: 'to',
+    })
+    /* Without diacritics, and in English, the office is still the office. */
+    expect(read('Who moved to Strandvagen?')).toMatchObject({
+      kind: 'BOOK_MOVED',
+      office: { id: 'of-strandvagen' },
+      direction: 'to',
+    })
+    expect(read('Vilka har flyttats?')).toMatchObject({ kind: 'BOOK_MOVED' })
+    expect(read('Vilka har flyttats?')?.office).toBeUndefined()
+    expect(read('Vilka flyttades till Kungsgatan?')?.office).toBeUndefined()
+  })
+
+  it('is the book’s from anywhere, and on a client only when the line speaks of the book', () => {
+    expect(read('Vilka kunder lämnade i år?', MARKET)?.kind).toBe('BOOK_FORMER')
+    expect(read('Vilka nya klienter har jag?', CLIENT)?.kind).toBe('BOOK_NEW_CLIENTS')
+    expect(read('Vad ändrades i min PB-bok den här månaden?', CLIENT)?.kind).toBe(
+      'BOOK_CHANGES',
+    )
+    /* On a client, the onboarding and a moved meeting are the client's, not the book's. */
+    expect(read('Hur går onboardingen?', CLIENT)?.kind).toBe('GENERAL_CLIENT_QUERY')
+    expect(read('Kan vi flytta mötet?', CLIENT)?.kind).not.toBe('BOOK_MOVED')
+    /* A named client makes the line that client's. */
+    expect(read('Har Henrik flyttats?', DIRECTORY)?.kind).not.toBe('BOOK_MOVED')
+    /* What changed since the last meeting stays the meeting's. */
+    expect(read('Vad har förändrats sedan sist?', CLIENT)?.kind).toBe(
+      'CHANGES_SINCE_LAST_MEETING',
+    )
+  })
+})

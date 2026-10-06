@@ -23,8 +23,10 @@ import {
   signalsFor,
   upcomingEvents,
   type ClientFlags,
+  type ClientLifecycle,
   type ClientSegment,
   type InteractionType,
+  type LifecycleStatus,
   type NextBestAction,
   type OfficeId,
   type RelationshipHealth,
@@ -45,7 +47,8 @@ export interface ClientDirectoryRow {
   officeName: string
   /** ISO date. */
   relationshipSince: string
-  riskProfile: RiskProfile
+  riskProfile: RiskProfile | null
+  lifecycle: ClientLifecycle
   /** Total assets, the client's whole estimated wealth. */
   estimatedWealth: number
   /** Assets the firm holds or manages. */
@@ -97,14 +100,21 @@ export interface ClientDirectory {
   method: 'rule-based-v1'
 }
 
+/** Which relationships a directory lists: the active book unless a lifecycle book is asked for. */
+export type DirectoryBook = LifecycleStatus | 'all'
+
 export async function clientDirectory(
   context: AdvisoryContext,
+  book: DirectoryBook = 'active',
 ): Promise<ClientDirectory> {
   const { repositories } = context
-  const [clients, offices] = await Promise.all([
+  const [allClients, offices] = await Promise.all([
     repositories.clients.list(),
     repositories.clients.offices(),
   ])
+  /* Former and onboarding relationships never enter the active book or its sums. */
+  const clients =
+    book === 'all' ? allClients : allClients.filter((c) => c.lifecycle.status === book)
   const officeNames = new Map(offices.map((o) => [o.id, o.displayName]))
   const rows: ClientDirectoryRow[] = []
 
@@ -133,6 +143,7 @@ export async function clientDirectory(
       officeName: officeNames.get(client.officeId) ?? client.officeId,
       relationshipSince: client.relationshipSince,
       riskProfile: client.riskProfile,
+      lifecycle: client.lifecycle,
       estimatedWealth: facts.balanceSheet.totalAssets,
       aum: facts.balanceSheet.assetsWithBank,
       liquidity: facts.balanceSheet.liquidity,
@@ -162,7 +173,12 @@ export async function clientDirectory(
   return {
     rows,
     metrics: directoryMetricsOf(rows, today),
-    offices: officeBooksOf(offices, rows, today),
+    /* The active book is read office by office over the active offices; an archived office keeps its book behind its own door. */
+    offices: officeBooksOf(
+      offices.filter((office) => office.status === 'active'),
+      rows,
+      today,
+    ),
     today,
     generatedAt: context.clock.isoNow(),
     method: 'rule-based-v1',
