@@ -11,8 +11,9 @@
  * not a credential.
  */
 
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const MANIFEST_FILE = 'build-manifest.json'
@@ -170,6 +171,67 @@ export function subjectMatches(subject, publisher) {
 /** `sha256sum`-style lines for the artefacts, from the manifest, for a checksums file beside it. */
 export function checksumsText(manifest) {
   return `${manifest.files.map((f) => `${f.sha256} *${f.path.split('/').pop()}`).join('\n')}\n`
+}
+
+/* ------------------------------------------------------------ authenticode */
+
+/**
+ * The query as a script file with a parameter, so the same text parses the
+ * same way on every PowerShell, and a failure to read the signature is its
+ * own message rather than an empty status. The security module is imported
+ * by name: on a runner whose shell is PowerShell 7, the module path handed
+ * down to Windows PowerShell made the module fail to autoload — measured
+ * as an empty status in a manifest.
+ */
+const AUTHENTICODE_SCRIPT = `param([string]$Path)
+try {
+  Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+  $s = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+  [pscustomobject]@{
+    status = [string]$s.Status
+    subject = $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null })
+    algorithm = $(if ($s.SignerCertificate) { $s.SignerCertificate.SignatureAlgorithm.FriendlyName } else { $null })
+    timestamped = ($null -ne $s.TimeStamperCertificate)
+    error = $null
+  } | ConvertTo-Json -Compress
+} catch {
+  [pscustomobject]@{ status = 'Error'; subject = $null; algorithm = $null; timestamped = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`
+
+/** Windows PowerShell's own module path, so a child never inherits a PowerShell 7 module path. */
+const WINDOWS_POWERSHELL_MODULES = [
+  join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
+  join(process.env.ProgramFiles ?? 'C:\\Program Files', 'WindowsPowerShell', 'Modules'),
+].join(';')
+
+/**
+ * Authenticode status of a file, as Windows reports it: status, the signer's
+ * subject, the certificate's signature algorithm, whether it is timestamped,
+ * and the reading error if any. PowerShell 7 where it is installed, else
+ * Windows PowerShell with its own module path. Never a guess.
+ */
+export function authenticodeOf(path, scriptFile) {
+  if (process.platform !== 'win32')
+    return { status: 'NotChecked', subject: null, algorithm: null, timestamped: false, error: null }
+  writeFileSync(scriptFile, AUTHENTICODE_SCRIPT, 'utf8')
+  const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile, '-Path', path]
+  try {
+    let out
+    try {
+      out = execFileSync('pwsh.exe', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      if (error && error.code !== 'ENOENT') throw error
+      out = execFileSync('powershell.exe', args, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PSModulePath: WINDOWS_POWERSHELL_MODULES },
+      })
+    }
+    return JSON.parse(out.trim())
+  } finally {
+    rmSync(scriptFile, { force: true })
+  }
 }
 
 export function writeManifest(dir, manifest) {

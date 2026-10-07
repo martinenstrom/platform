@@ -161,7 +161,7 @@ jobs:
             if ($s.Status -ne 'Valid') { Write-Error "$rel is not validly signed"; $failed = $true }
             if ($cn -ne $publisher) { Write-Error "$rel is signed by '$cn', not by the configured publisher"; $failed = $true }
             if (-not $stamped) { Write-Error "$rel carries no timestamp"; $failed = $true }
-            if ($alg -notmatch 'sha256') { Write-Error "$rel is not signed with a SHA-256 chain ($alg)"; $failed = $true }
+            if ($alg -notmatch 'sha(256|384|512)') { Write-Error "$rel is not signed with a SHA-2 certificate chain ($alg)"; $failed = $true }
           }
           if ($failed) { exit 1 }
 

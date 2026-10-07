@@ -36,6 +36,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   ARTEFACTS,
+  authenticodeOf,
   checksumsText,
   describeBuild,
   hashFile,
@@ -121,7 +122,9 @@ async function buildAndPublish() {
       if (!subjectMatches(status.subject, signing.publisher))
         throw new Error(`${rel} is signed by "${status.subject}", not by the configured publisher`)
       if (!status.timestamped) throw new Error(`${rel} carries no timestamp`)
-      if (!/sha256/iu.test(status.algorithm ?? '')) throw new Error(`${rel} is not signed with a SHA-256 chain`)
+      /* The file digest is SHA-256 by the signing configuration; the certificate chain must be SHA-2 (the CA chooses 256, 384 or 512). */
+      if (!/sha(256|384|512)/iu.test(status.algorithm ?? ''))
+        throw new Error(`${rel} is not signed with a SHA-2 certificate chain (${status.algorithm ?? 'unknown'})`)
     }
     const commit = commitSha()
     const manifest = await describeBuild(staging, { buildId, version, signing, signatures, commit })
@@ -166,15 +169,11 @@ function commitSha() {
   }
 }
 
-/** Authenticode status of a file, as Windows reports it; never a guess. */
+/** Authenticode status of a file, as Windows reports it; never a guess (see buildManifest.mjs). */
 function signatureOf(path) {
-  if (process.platform !== 'win32')
-    return { status: 'NotChecked', subject: null, algorithm: null, timestamped: false }
-  const script = `$s = Get-AuthenticodeSignature -LiteralPath '${path.replace(/'/g, "''")}'; [pscustomobject]@{ status = [string]$s.Status; subject = $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null }); algorithm = $(if ($s.SignerCertificate) { $s.SignerCertificate.SignatureAlgorithm.FriendlyName } else { $null }); timestamped = ($null -ne $s.TimeStamperCertificate) } | ConvertTo-Json -Compress`
-  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8',
-  })
-  return JSON.parse(out)
+  const result = authenticodeOf(path, join(releaseDir, '.signature-query.ps1'))
+  if (result.error) log(`signature query for ${path}: ${result.error}`)
+  return result
 }
 
 /* ---------------------------------------------------------- install copy */

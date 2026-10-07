@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   ARTEFACTS,
+  authenticodeOf,
   checksumsText,
   describeBuild,
   signingPlan,
@@ -19,6 +20,29 @@ import {
   writeManifest,
   // @ts-expect-error — the desktop host and its packaging are plain JavaScript by design.
 } from './buildManifest.mjs'
+
+describe.runIf(process.platform === 'win32')('the Authenticode query', () => {
+  it('reads a Microsoft-signed binary as Valid, by its subject, timestamped — and a plain file as NotSigned', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fos-authenticode-'))
+    try {
+      const signed = authenticodeOf(process.execPath, join(dir, 'q1.ps1'))
+      expect(signed.error).toBeNull()
+      expect(signed.status).toBe('Valid')
+      expect(signed.subject).toMatch(/Node\.js|OpenJS|Microsoft/)
+      /* The certificate's own signature algorithm is the CA's choice within SHA-2; the file digest is SHA-256 by our signing. */
+      expect(signed.algorithm).toMatch(/sha(256|384|512)/i)
+      expect(signed.timestamped).toBe(true)
+      /* A signable file that carries no signature (a text file is "UnknownError": not a signable type at all). */
+      const plain = join(dir, 'plain.ps1')
+      writeFileSync(plain, "Write-Output 'unsigned'\n")
+      const unsigned = authenticodeOf(plain, join(dir, 'q2.ps1'))
+      expect(unsigned).toMatchObject({ status: 'NotSigned', subject: null, timestamped: false, error: null })
+      expect(subjectMatches(signed.subject, 'nobody')).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('the publisher check', () => {
   it('matches the certificate’s CN against the publisher with or without the prefix, and nothing else', () => {

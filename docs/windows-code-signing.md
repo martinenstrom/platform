@@ -76,8 +76,9 @@ With either mode electron-builder signs, in this order: `Financial OS.exe`,
 The files inside the archive are not executables Windows loads directly and
 need no signature; Electron's own DLLs keep their state. The package script
 verifies with Windows (`Get-AuthenticodeSignature`) that the executable and
-the installer are **Valid**, by the configured publisher, and timestamped,
-and refuses to publish otherwise.
+the installer are **Valid**, by the configured publisher, timestamped, and
+on a SHA-2 certificate chain (the file digest itself is SHA-256 by the
+signing configuration), and refuses to publish otherwise.
 
 ## 4. One coherent build
 
