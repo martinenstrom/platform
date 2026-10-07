@@ -29,7 +29,10 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: build/icon.png
+  # A prebuilt multi-size .ico (made once from build/icon.png with electron-builder's
+  # own icon toolset): the runner then converts nothing, downloads no toolset and
+  # spawns no node child for it — one failure point fewer, and the same bytes every build.
+  icon: build/icon.ico
   artifactName: Financial-OS-Setup-${version}.${ext}
 nsis:
   oneClick: false

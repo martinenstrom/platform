@@ -89,6 +89,7 @@ async function buildAndPublish() {
   writeFileSync(lockFile, `${process.pid} ${new Date().toISOString()}\n`)
   const buildId = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15)
   const staging = join(releaseDir, `.staging-${buildId}`)
+  let failed = false
   try {
     log('building the application (vite build)')
     run('npx', ['vite', 'build'])
@@ -129,17 +130,23 @@ async function buildAndPublish() {
     renameSync(staging, currentDir)
     log(`published ${currentDir} · build ${buildId} · ${version} · ${signing.mode} · commit ${commit ?? 'unknown'}`)
   } catch (error) {
+    failed = true
     const message = error instanceof Error ? error.message : String(error)
     if (/spawn UNKNOWN/u.test(message))
       log(
         'the installer step was stopped by Windows application control: electron-builder runs the freshly built, not yet signed installer stub to produce the uninstaller, and Smart App Control refuses to run it here. Build the installer on a machine where that stub may run (a CI runner), or ask the person to decide about Smart App Control; nothing was published.',
       )
-    else log('failed:', message.split('\n')[0])
+    else {
+      /* The whole message: a tool's failure carries its own output in the lines after the first. */
+      log('failed:')
+      for (const line of message.split('\n').slice(0, 60)) log('   ', line)
+    }
     rmSync(staging, { recursive: true, force: true })
-    process.exitCode = 1
   } finally {
     if (existsSync(lockFile)) unlinkSync(lockFile)
   }
+  /* A failed run is a failed process, whatever a tool left behind in the exit code. */
+  if (failed) process.exit(1)
 }
 
 function run(command, args) {
