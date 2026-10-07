@@ -1,0 +1,185 @@
+# Financial OS — the signed Windows release, built on a clean runner.
+#
+# Why a runner and not the developer's computer: Windows Smart App Control
+# refuses to run electron-builder's not-yet-signed installer stub, which the
+# NSIS step runs to produce the uninstaller. A GitHub-hosted Windows runner
+# has no such policy, holds no personal data, and starts from one immutable
+# commit. Signing is Microsoft Trusted Signing through electron-builder's own
+# Azure signing; every credential comes from repository secrets and is never
+# echoed, written to a file, or placed in the manifest.
+#
+# Two modes:
+#   release   PRODUCTION Windows package — signed, verified, published as the
+#             artifact "Financial-OS-Windows-<version>". Fails without the
+#             signing secrets; never publishes an unsigned installer.
+#   validate  the pipeline checked end to end WITHOUT signing. Publishes the
+#             build manifest and checksums only — never the installer — under
+#             a name that says UNSIGNED-VALIDATION.
+#
+# A version tag (v0.1.0) runs a release and attaches the installer to a
+# GitHub Release of that tag.
+
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'release = signed PRODUCTION Windows package (needs the Trusted Signing secrets) · validate = unsigned pipeline check, never a release'
+        type: choice
+        required: true
+        default: release
+        options:
+          - release
+          - validate
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package (${{ github.event.inputs.mode || 'release' }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      MODE: ${{ github.event.inputs.mode || 'release' }}
+      ELECTRON_CACHE: ${{ github.workspace }}\.cache\electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}\.cache\electron-builder
+
+    steps:
+      - name: Checkout one immutable commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies exactly as locked
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Desktop, packaging, persistence and fitness tests
+        run: npx vitest run desktop src/test src/infrastructure/platform src/infrastructure/backup src/infrastructure/advisory/sqlite
+
+      - name: .NET 8 runtime for Trusted Signing (release only)
+        if: env.MODE == 'release'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Signing toolchain present (release only)
+        if: env.MODE == 'release'
+        run: |
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { Write-Error 'signtool.exe (Windows SDK) is not on this runner'; exit 1 }
+          Write-Output "signtool: $($signtool.FullName)"
+          $runtimes = dotnet --list-runtimes
+          if (-not ($runtimes -match 'Microsoft\.NETCore\.App 8\.')) { Write-Error '.NET 8 runtime missing'; exit 1 }
+          Write-Output ($runtimes -match 'Microsoft\.NETCore\.App 8\.' | Select-Object -First 1)
+
+      - name: Signing configuration complete (release only; names only, values never printed)
+        if: env.MODE == 'release'
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          FINANCIAL_OS_SIGN_ENDPOINT: ${{ secrets.FINANCIAL_OS_SIGN_ENDPOINT }}
+          FINANCIAL_OS_SIGN_ACCOUNT: ${{ secrets.FINANCIAL_OS_SIGN_ACCOUNT }}
+          FINANCIAL_OS_SIGN_PROFILE: ${{ secrets.FINANCIAL_OS_SIGN_PROFILE }}
+          FINANCIAL_OS_SIGN_PUBLISHER: ${{ secrets.FINANCIAL_OS_SIGN_PUBLISHER }}
+        run: |
+          $missing = @('AZURE_TENANT_ID','AZURE_CLIENT_ID','AZURE_CLIENT_SECRET','FINANCIAL_OS_SIGN_ENDPOINT','FINANCIAL_OS_SIGN_ACCOUNT','FINANCIAL_OS_SIGN_PROFILE','FINANCIAL_OS_SIGN_PUBLISHER') | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
+          if ($missing.Count -gt 0) { Write-Error ("A PRODUCTION release needs these repository secrets: " + ($missing -join ', ') + ". See docs/trusted-signing-setup.md"); exit 1 }
+          Write-Output 'all seven signing values are present'
+
+      - name: Version
+        id: version
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Output "version $version · commit $env:GITHUB_SHA"
+
+      - name: Package (one coherent build, signed per the environment)
+        env:
+          FINANCIAL_OS_SIGN_REQUIRE: ${{ env.MODE == 'release' && '1' || '' }}
+          AZURE_TENANT_ID: ${{ env.MODE == 'release' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ env.MODE == 'release' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ env.MODE == 'release' && secrets.AZURE_CLIENT_SECRET || '' }}
+          FINANCIAL_OS_SIGN_ENDPOINT: ${{ env.MODE == 'release' && secrets.FINANCIAL_OS_SIGN_ENDPOINT || '' }}
+          FINANCIAL_OS_SIGN_ACCOUNT: ${{ env.MODE == 'release' && secrets.FINANCIAL_OS_SIGN_ACCOUNT || '' }}
+          FINANCIAL_OS_SIGN_PROFILE: ${{ env.MODE == 'release' && secrets.FINANCIAL_OS_SIGN_PROFILE || '' }}
+          FINANCIAL_OS_SIGN_PUBLISHER: ${{ env.MODE == 'release' && secrets.FINANCIAL_OS_SIGN_PUBLISHER || '' }}
+        run: node desktop/package.mjs
+
+      - name: Package integrity (re-hash release/current against its manifest)
+        run: node desktop/package.mjs --verify
+
+      - name: Authenticode verification with Windows (release only)
+        if: env.MODE == 'release'
+        env:
+          FINANCIAL_OS_SIGN_PUBLISHER: ${{ secrets.FINANCIAL_OS_SIGN_PUBLISHER }}
+        run: |
+          $publisher = $env:FINANCIAL_OS_SIGN_PUBLISHER -replace '^CN=', ''
+          $failed = $false
+          foreach ($rel in @('win-unpacked\Financial OS.exe', 'Financial-OS-Setup-${{ steps.version.outputs.version }}.exe')) {
+            $path = Join-Path 'release\current' $rel
+            $s = Get-AuthenticodeSignature -LiteralPath $path
+            $cn = if ($s.SignerCertificate) { ($s.SignerCertificate.Subject -split ',\s*' | Where-Object { $_ -like 'CN=*' } | Select-Object -First 1) -replace '^CN=', '' } else { '' }
+            $alg = if ($s.SignerCertificate) { $s.SignerCertificate.SignatureAlgorithm.FriendlyName } else { '' }
+            $stamped = $null -ne $s.TimeStamperCertificate
+            Write-Output ("{0}: status={1} subject-CN={2} algorithm={3} timestamped={4}" -f $rel, $s.Status, $cn, $alg, $stamped)
+            if ($s.Status -ne 'Valid') { Write-Error "$rel is not validly signed"; $failed = $true }
+            if ($cn -ne $publisher) { Write-Error "$rel is signed by '$cn', not by the configured publisher"; $failed = $true }
+            if (-not $stamped) { Write-Error "$rel carries no timestamp"; $failed = $true }
+            if ($alg -notmatch 'sha256') { Write-Error "$rel is not signed with a SHA-256 chain ($alg)"; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Stage the artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item release\current\build-manifest.json artifact\
+          Copy-Item release\current\checksums.sha256 artifact\
+          if ($env:MODE -eq 'release') { Copy-Item "release\current\Financial-OS-Setup-${{ steps.version.outputs.version }}.exe" artifact\ }
+          Get-ChildItem artifact | ForEach-Object { "{0}  {1} B" -f $_.Name, $_.Length }
+
+      - name: Publish the production package
+        if: env.MODE == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Financial-OS-Windows-${{ steps.version.outputs.version }}
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish the validation record (UNSIGNED — not a release)
+        if: env.MODE == 'validate'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Financial-OS-Windows-${{ steps.version.outputs.version }}-UNSIGNED-VALIDATION
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach to the GitHub Release of the tag
+        if: env.MODE == 'release' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" --title "Financial OS ${{ steps.version.outputs.version }}" --notes "Signed Windows package, built from ${{ github.sha }}." "artifact\Financial-OS-Setup-${{ steps.version.outputs.version }}.exe" artifact\build-manifest.json artifact\checksums.sha256

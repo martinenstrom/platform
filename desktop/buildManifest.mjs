@@ -128,8 +128,8 @@ export function hashFile(path) {
   })
 }
 
-/** Describe the published build: every artefact's hash and size, the signing, the run. */
-export async function describeBuild(dir, { buildId, version, signing, signatures = {} }) {
+/** Describe the published build: every artefact's hash and size, the signing, the commit, the run. */
+export async function describeBuild(dir, { buildId, version, signing, signatures = {}, commit = null }) {
   const files = []
   for (const rel of ARTEFACTS) {
     const path = join(dir, rel)
@@ -145,10 +145,31 @@ export async function describeBuild(dir, { buildId, version, signing, signatures
     buildId,
     builtAt: new Date().toISOString(),
     version,
+    commit,
     signing: { mode: signing.mode, publisher: signing.publisher },
     files,
     method: 'build-manifest-v1',
   }
+}
+
+/**
+ * Whether a certificate subject is the configured publisher: the subject's
+ * CN, exactly, against the publisher with or without its `CN=` prefix. The
+ * rest of the subject (O, L, C) is the certificate's to carry.
+ */
+export function subjectMatches(subject, publisher) {
+  if (!subject || !publisher) return false
+  const cn = subject
+    .split(/,\s*(?=[A-Z]+=)/u)
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('CN='))
+  if (!cn) return false
+  return cn.slice(3).trim() === publisher.replace(/^CN=/u, '').trim()
+}
+
+/** `sha256sum`-style lines for the artefacts, from the manifest, for a checksums file beside it. */
+export function checksumsText(manifest) {
+  return `${manifest.files.map((f) => `${f.sha256} *${f.path.split('/').pop()}`).join('\n')}\n`
 }
 
 export function writeManifest(dir, manifest) {

@@ -9,8 +9,27 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-// @ts-expect-error — the desktop host and its packaging are plain JavaScript by design.
-import { ARTEFACTS, describeBuild, signingPlan, verifyManifest, writeManifest } from './buildManifest.mjs'
+import {
+  ARTEFACTS,
+  checksumsText,
+  describeBuild,
+  signingPlan,
+  subjectMatches,
+  verifyManifest,
+  writeManifest,
+  // @ts-expect-error — the desktop host and its packaging are plain JavaScript by design.
+} from './buildManifest.mjs'
+
+describe('the publisher check', () => {
+  it('matches the certificate’s CN against the publisher with or without the prefix, and nothing else', () => {
+    expect(subjectMatches('CN=Martin Enström, O=Martin Enström, L=Stockholm, C=SE', 'CN=Martin Enström')).toBe(true)
+    expect(subjectMatches('CN=Martin Enström, C=SE', 'Martin Enström')).toBe(true)
+    expect(subjectMatches('CN=Someone Else, C=SE', 'CN=Martin Enström')).toBe(false)
+    expect(subjectMatches('O=Martin Enström, C=SE', 'Martin Enström')).toBe(false)
+    expect(subjectMatches(null, 'CN=Martin Enström')).toBe(false)
+    expect(subjectMatches('CN=Martin Enström', '')).toBe(false)
+  })
+})
 
 describe('the signing plan', () => {
   it('is unsigned, and says so, when nothing is set', () => {
@@ -94,7 +113,25 @@ describe('the build manifest', () => {
     writeManifest(dir, manifest)
     expect(manifest.files.map((f: { path: string }) => f.path)).toEqual([...ARTEFACTS])
     expect(manifest.files[0]).toMatchObject({ bytes: 'content of win-unpacked/Financial OS.exe'.length, signature: { status: 'NotSigned' } })
+    expect(manifest.commit).toBeNull()
     expect(await verifyManifest(dir)).toMatchObject({ ok: true, problems: [] })
+    /* The checksums file names each artefact by its file name, sha256sum style. */
+    const lines = checksumsText(manifest).trimEnd().split('\n')
+    expect(lines).toHaveLength(3)
+    expect(lines[2]).toMatch(/^[0-9a-f]{64} \*Financial-OS-Setup-0\.1\.0\.exe$/)
+    /* Nothing of a credential: the manifest carries the mode and the publisher only. */
+    expect(JSON.stringify(manifest)).not.toMatch(/secret|password|AZURE_/i)
+  })
+
+  it('records the commit the build comes from when one is given', async () => {
+    plant()
+    const manifest = await describeBuild(dir, {
+      buildId: 'b3',
+      version: '0.1.0',
+      signing: { mode: 'azure', publisher: 'CN=Martin Enström' },
+      commit: 'a84aef8a84aef8a84aef8a84aef8a84aef8a84aef',
+    })
+    expect(manifest).toMatchObject({ commit: 'a84aef8a84aef8a84aef8a84aef8a84aef8a84aef', signing: { mode: 'azure', publisher: 'CN=Martin Enström' } })
   })
 
   it('refuses an archive altered after the run, and a missing installer', async () => {

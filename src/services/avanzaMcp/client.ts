@@ -32,7 +32,7 @@ async function getClient(): Promise<Client> {
         command: UVX_COMMAND,
         args: ['--prerelease=allow', 'avanza-mcp'],
       })
-      const client = new Client({ name: 'stock-template', version: '0.1.0' })
+      const client = new Client({ name: 'financial-os', version: '0.1.0' })
       await client.connect(transport)
       return client
     })()

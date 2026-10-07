@@ -36,9 +36,12 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   ARTEFACTS,
+  checksumsText,
   describeBuild,
+  hashFile,
   SIGNED_FILES,
   signingPlan,
+  subjectMatches,
   verifyManifest,
   writeManifest,
 } from './buildManifest.mjs'
@@ -108,16 +111,23 @@ async function buildAndPublish() {
     for (const rel of SIGNED_FILES) {
       const status = signatureOf(join(staging, rel))
       signatures[rel] = status
-      log(`signature ${rel}: ${status.status}${status.subject ? ` · ${status.subject}` : ''}${status.timestamped ? ' · timestamped' : ''}`)
-      if (signing.mode !== 'unsigned' && status.status !== 'Valid')
+      log(`signature ${rel}: ${status.status}${status.subject ? ` · ${status.subject}` : ''}${status.algorithm ? ` · ${status.algorithm}` : ''}${status.timestamped ? ' · timestamped' : ''}`)
+      if (signing.mode === 'unsigned') continue
+      if (status.status !== 'Valid')
         throw new Error(`${rel} is not validly signed (${status.status}) although signing was requested`)
+      if (!subjectMatches(status.subject, signing.publisher))
+        throw new Error(`${rel} is signed by "${status.subject}", not by the configured publisher`)
+      if (!status.timestamped) throw new Error(`${rel} carries no timestamp`)
+      if (!/sha256/iu.test(status.algorithm ?? '')) throw new Error(`${rel} is not signed with a SHA-256 chain`)
     }
-    const manifest = await describeBuild(staging, { buildId, version, signing, signatures })
+    const commit = commitSha()
+    const manifest = await describeBuild(staging, { buildId, version, signing, signatures, commit })
     writeManifest(staging, manifest)
+    writeFileSync(join(staging, 'checksums.sha256'), checksumsText(manifest), 'utf8')
 
     if (existsSync(currentDir)) rmSync(currentDir, { recursive: true, force: true })
     renameSync(staging, currentDir)
-    log(`published ${currentDir} · build ${buildId} · ${version} · ${signing.mode}`)
+    log(`published ${currentDir} · build ${buildId} · ${version} · ${signing.mode} · commit ${commit ?? 'unknown'}`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/spawn UNKNOWN/u.test(message))
@@ -137,10 +147,21 @@ function run(command, args) {
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${result.status}`)
 }
 
+/** The commit the build comes from: the runner's, else the working tree's head. */
+function commitSha() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectDir, encoding: 'utf8' }).trim()
+  } catch {
+    return null
+  }
+}
+
 /** Authenticode status of a file, as Windows reports it; never a guess. */
 function signatureOf(path) {
-  if (process.platform !== 'win32') return { status: 'NotChecked', subject: null, timestamped: false }
-  const script = `$s = Get-AuthenticodeSignature -LiteralPath '${path.replace(/'/g, "''")}'; [pscustomobject]@{ status = [string]$s.Status; subject = $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null }); timestamped = ($null -ne $s.TimeStamperCertificate) } | ConvertTo-Json -Compress`
+  if (process.platform !== 'win32')
+    return { status: 'NotChecked', subject: null, algorithm: null, timestamped: false }
+  const script = `$s = Get-AuthenticodeSignature -LiteralPath '${path.replace(/'/g, "''")}'; [pscustomobject]@{ status = [string]$s.Status; subject = $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null }); algorithm = $(if ($s.SignerCertificate) { $s.SignerCertificate.SignatureAlgorithm.FriendlyName } else { $null }); timestamped = ($null -ne $s.TimeStamperCertificate) } | ConvertTo-Json -Compress`
   const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
     encoding: 'utf8',
   })
@@ -183,10 +204,9 @@ async function installCopy() {
     process.exit(4)
   }
   const copied = await Promise.all(
-    ['Financial OS.exe', 'resources/app.asar'].map(async (rel) => {
-      const { hashFile } = await import('./buildManifest.mjs')
-      return (await hashFile(join(target, rel))) === (await hashFile(join(source, rel)))
-    }),
+    ['Financial OS.exe', 'resources/app.asar'].map(
+      async (rel) => (await hashFile(join(target, rel))) === (await hashFile(join(source, rel))),
+    ),
   )
   if (!copied.every(Boolean)) {
     log('the copied executable or archive does not match the published build')

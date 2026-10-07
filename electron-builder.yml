@@ -10,8 +10,15 @@ copyright: Financial OS
 directories:
   output: release
   buildResources: build
+# Only what the running application needs: the host's four runtime modules,
+# the built application, the icon and the package identity. Probes, tests
+# and the packaging tooling stay out, so a change to them never changes the
+# archive — and so the package carries no data, no backups, no configuration.
 files:
-  - desktop/**/*
+  - desktop/main.mjs
+  - desktop/paths.mjs
+  - desktop/preload.cjs
+  - desktop/serve.mjs
   - dist/**/*
   - build/icon.png
   - package.json
