@@ -25,6 +25,17 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, safeStorage, shell 
   createRequire(import.meta.url)('electron')
 
 /*
+ * The application's name, set before any path is resolved. Electron reads
+ * its name from package.json, whose `name` is the repository's and not the
+ * product's, and keeps a person's data under `%APPDATA%\<name>`; measured on
+ * the installed application, that put the data root under a template's
+ * name. The name is the product's, so the root is `…\Financial OS\Financial
+ * OS` and the single-instance lock, which keys on the same path, is the
+ * product's too.
+ */
+app.setName('Financial OS')
+
+/*
  * The two hooks the application and the host share, by well-known symbol
  * rather than by import: the host lends the operating system's sealing
  * (DPAPI) for the backup passphrase, and the application registers how it

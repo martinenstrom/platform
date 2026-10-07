@@ -61,9 +61,8 @@ export function WealthStructure({
             <span className="type-display-figure-sm text-[26px]">{amount}</span>
             <span className="type-section mt-1">{unit}</span>
           </div>
-          <figcaption className="sr-only">
-            Fördelning av tillgångarna per slag. Syntetiska klienter.
-          </figcaption>
+          {/* The caption describes the figure; which record it reads from is the shell's to say, never a figure's. */}
+          <figcaption className="sr-only">Fördelning av tillgångarna per slag.</figcaption>
         </figure>
 
         <ul className="min-w-0 flex-1" aria-label="Tillgångar per slag">
