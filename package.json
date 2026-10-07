@@ -21,7 +21,9 @@
     "dev:ingest-yields": "npx vite-node scripts/ingest-yields.ts --",
     "dev:measure-governance": "npx vite-node scripts/measure-governance-contexts.ts --",
     "desktop": "electron desktop/main.mjs",
-    "desktop:package": "vite build && electron-builder --config electron-builder.yml --win nsis",
+    "desktop:package": "node desktop/package.mjs",
+    "desktop:package:verify": "node desktop/package.mjs --verify",
+    "desktop:install-copy": "node desktop/package.mjs --install-copy",
     "desktop:probe": "node desktop/probe-desktop.mjs"
   },
   "dependencies": {
