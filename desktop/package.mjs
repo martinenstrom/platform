@@ -98,6 +98,8 @@ async function buildAndPublish() {
     const { build, Platform, Arch } = require('electron-builder')
     await build({
       targets: Platform.WINDOWS.createTarget('nsis', Arch.x64),
+      /* Publishing is the workflow's, from a verified build: electron-builder uploads nothing, and asks for no token. */
+      publish: 'never',
       config: {
         extends: './electron-builder.yml',
         directories: { output: staging },

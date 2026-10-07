@@ -7,6 +7,10 @@
 appId: se.financialos.desktop
 productName: Financial OS
 copyright: Financial OS
+# electron-builder publishes nothing: on a CI runner it would otherwise assume a
+# GitHub release provider and demand a token. The release workflow publishes
+# the verified build itself.
+publish: null
 directories:
   output: release
   buildResources: build
